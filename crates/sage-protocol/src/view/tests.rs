@@ -493,6 +493,110 @@ fn mana_pool_is_omitted_when_empty_and_round_trips_when_present() {
 }
 
 #[test]
+fn issue_627_board_fixture_round_trips_with_every_relationship_a_view_projects() {
+    // The cross-language stress fixture for issue #627: one frame carrying every
+    // relationship a client has to be able to draw at once — a deep stack, all four
+    // target tags, two creatures blocking one attacker, an attack on a planeswalker,
+    // an Aura and an Equipment, counters, marked damage, tokens, an emblem, and a
+    // public pile long enough to need its own browser.
+    //
+    // Consumed verbatim by the web client's mirror-parity suite and replayed by its
+    // browser view tier, so a field renamed here and not there fails on one side or
+    // the other rather than drifting quietly.
+    let json = include_str!("../../fixtures/gameview-board.json");
+    let view: GameView = serde_json::from_str(json).unwrap();
+
+    let reencoded = serde_json::to_string(&view).unwrap();
+    let back: GameView = serde_json::from_str(&reencoded).unwrap();
+    assert_eq!(back, view);
+
+    let permanent = |id: &str| {
+        view.battlefield
+            .iter()
+            .find(|p| p.id == id)
+            .unwrap_or_else(|| panic!("{id} is on the battlefield"))
+    };
+
+    // An attack on a planeswalker states both: the seat that answers for it, and the
+    // planeswalker the damage is going to. A client that had only one of them would
+    // draw the arrow at the wrong object.
+    let ogre = permanent("perm_ogre");
+    assert!(ogre.attacking);
+    assert_eq!(ogre.attacking_player.as_deref(), Some("p2"));
+    assert_eq!(ogre.attacking_planeswalker.as_deref(), Some("perm_vivien"));
+
+    // Two blockers on one attacker. Nothing on the attacker says so — the relationship
+    // rides on each blocker, which is why a client has to index it from both ends.
+    let blockers: Vec<&str> = view
+        .battlefield
+        .iter()
+        .filter(|p| p.blocking.as_deref() == Some("perm_ogre"))
+        .map(|p| p.id.as_str())
+        .collect();
+    assert_eq!(blockers, vec!["perm_dreadmaw", "perm_zombie"]);
+
+    // Both kinds of attachment, one of them onto a permanent the attacher's controller
+    // does not control.
+    assert_eq!(
+        permanent("perm_axe").attached_to.as_deref(),
+        Some("perm_serra")
+    );
+    assert_eq!(
+        permanent("perm_pacifism").attached_to.as_deref(),
+        Some("perm_gearsmith")
+    );
+    assert_eq!(permanent("perm_pacifism").controller, "p1");
+    assert_eq!(permanent("perm_gearsmith").controller, "p2");
+
+    // A deep stack, listed bottom first, carrying every target tag between them plus a
+    // single object with more than one target.
+    assert_eq!(view.stack.len(), 7);
+    assert_eq!(view.stack[0].id, "s1");
+    let tags: Vec<&str> = view
+        .stack
+        .iter()
+        .flat_map(|item| &item.targets)
+        .map(|target| match target {
+            StackTarget::Player { .. } => "player",
+            StackTarget::Permanent { .. } => "permanent",
+            StackTarget::Card { .. } => "card",
+            StackTarget::Stack { .. } => "stack",
+        })
+        .collect();
+    for tag in ["player", "permanent", "card", "stack"] {
+        assert!(tags.contains(&tag), "the fixture exercises a {tag} target");
+    }
+    let two = view
+        .stack
+        .iter()
+        .find(|item| item.targets.len() > 1)
+        .unwrap_or_else(|| panic!("one object names more than one target"));
+    assert_eq!(two.id, "s7");
+
+    // An ability on the stack names the permanent it came from, which is the only link
+    // back to a source that has no card of its own on the stack.
+    let trigger = view
+        .stack
+        .iter()
+        .find(|item| item.id == "s3")
+        .unwrap_or_else(|| panic!("the Gravedigger trigger is on the stack"));
+    assert_eq!(trigger.source.as_deref(), Some("perm_gravedigger"));
+    assert!(trigger.card.is_none());
+
+    // A public pile long enough that a panel has to browse it rather than list it, and
+    // an opponent whose graveyard the view summarised instead of itemizing — both
+    // shapes reach a client and they render differently.
+    let mine = view
+        .graveyards
+        .iter()
+        .find(|pile| pile.player_id == "p1")
+        .unwrap_or_else(|| panic!("your graveyard is itemized"));
+    assert_eq!(mine.cards.len(), 10);
+    assert!(!view.graveyards.iter().any(|pile| pile.player_id == "p2"));
+    assert_eq!(view.opponents[0].graveyard_size, 3);
+}
+
+#[test]
 fn issue_620_emblem_fixture_round_trips_with_its_emblem_and_optional_target_slots() {
     // The cross-language contract fixture for the two shapes issue #620 added: an
     // **emblem** beside the battlefield (CR 114 — public, in no zone, nothing but its

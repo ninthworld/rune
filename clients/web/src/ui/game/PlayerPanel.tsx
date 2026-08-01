@@ -1,5 +1,5 @@
 /**
- * One seat: who they are, what they have left, and what is in their public piles.
+ * One seat: who they are, what they have left, and how to open what is in front of them.
  *
  * The same component draws you and your opponent, because the difference between the two is
  * data rather than structure — you have a mana pool and a visible hand, they have a hand size —
@@ -8,23 +8,73 @@
  * Everything is drawn from what the server projected for that seat. A field the view did not
  * carry is not rendered at all: a seat with no life total shows no life, because `0 life` is a
  * player who has lost and is not a thing to say about a seat nobody sent a number for.
+ *
+ * **A zone a player may look through is a button; a zone they may not is a number.** That is the
+ * one line in the panel that carries a rule: a library and an opponent's hand are hidden zones
+ * and the view projects a count and nothing else, so a count is all there is to draw and there
+ * is nothing to open. The public piles are itemized, so they open. The distinction is the
+ * server's — this panel opens what it was sent cards for.
  */
-import type { Seat } from './../../table'
-import { Card } from './../Card'
+import type { Seat, SeatPile } from './../../table'
+import type { RelationLine } from './../../relations'
+import { RelationTrail } from './RelationTrail'
 import type { Surface } from './surface'
 
-export function PlayerPanel({ seat, surface }: { seat: Seat; surface: Surface }) {
+/** One entry in the zone row: a public pile to open, or a hidden zone's count. */
+interface ZoneChip {
+  key: string
+  label: string
+  count: number
+  /** Present only where the view itemized the cards, which is what makes it browsable. */
+  zone?: SeatPile['zone']
+}
+
+const PUBLIC_ZONES = [
+  ['graveyard', 'Graveyard'],
+  ['exile', 'Exile'],
+  ['command', 'Command'],
+] as const
+
+export function PlayerPanel({
+  seat,
+  lines,
+  open,
+  onOpen,
+  surface,
+}: {
+  seat: Seat
+  /** What the view relates this seat to — an attack aimed at it, a spell that named it. */
+  lines: readonly RelationLine[]
+  /** The pile of this seat's currently open in the browser, if any. */
+  open?: SeatPile['zone']
+  onOpen(zone: SeatPile['zone']): void
+  surface: Surface
+}) {
   const state = surface.stateOf(seat.id)
+  const link = surface.linkOf(seat.id)
   const stats = [
     seat.life !== undefined && `${seat.life} life`,
-    seat.librarySize !== undefined && `${seat.librarySize} library`,
-    seat.handSize !== undefined && `${seat.handSize} hand`,
-    seat.graveyardSize !== undefined && `${seat.graveyardSize} graveyard`,
     ...seat.statuses,
     seat.eliminated && 'eliminated',
     !seat.connected && 'disconnected',
     seat.ai && 'AI',
   ].filter((entry): entry is string => typeof entry === 'string')
+
+  const zones: ZoneChip[] = []
+  if (seat.librarySize !== undefined) {
+    zones.push({ key: 'library', label: 'Library', count: seat.librarySize })
+  }
+  if (seat.handSize !== undefined) zones.push({ key: 'hand', label: 'Hand', count: seat.handSize })
+  for (const [zone, label] of PUBLIC_ZONES) {
+    const pile = seat.piles.find((each) => each.zone === zone)
+    if (pile) zones.push({ key: zone, label, count: pile.faces.length, zone })
+    // A seat whose graveyard was summarised rather than itemized still has a graveyard, and a
+    // player counting cards in it needs the number. It is not openable, because there is
+    // nothing to open — the view sent no cards.
+    else if (zone === 'graveyard' && seat.graveyardSize !== undefined) {
+      zones.push({ key: zone, label, count: seat.graveyardSize })
+    }
+  }
 
   return (
     <section
@@ -39,8 +89,14 @@ export function PlayerPanel({ seat, surface }: { seat: Seat; surface: Surface })
       <p className="seat__who">
         <button
           type="button"
-          className={['seat__name', state !== 'idle' && `card--${state}`].filter(Boolean).join(' ')}
+          className={['seat__name', state !== 'idle' && `card--${state}`, link && `card--${link}`]
+            .filter(Boolean)
+            .join(' ')}
           onClick={() => surface.activate(seat.id)}
+          onMouseEnter={() => surface.trace(seat.id)}
+          onMouseLeave={() => surface.trace(undefined)}
+          onFocus={() => surface.trace(seat.id)}
+          onBlur={() => surface.trace(undefined)}
         >
           <strong>{seat.name}</strong>
           {seat.isYou && ' (you)'}
@@ -48,6 +104,26 @@ export function PlayerPanel({ seat, surface }: { seat: Seat; surface: Surface })
       </p>
 
       <p className="seat__stats">{stats.join(' · ')}</p>
+
+      <p className="seat__zones">
+        {zones.map(({ key, label, count, zone }) =>
+          zone ? (
+            <button
+              key={key}
+              type="button"
+              className="seat__zone"
+              aria-pressed={open === zone}
+              onClick={() => onOpen(zone)}
+            >
+              {label} ({count})
+            </button>
+          ) : (
+            <span key={key} className="seat__zone seat__zone--closed">
+              {label} ({count})
+            </span>
+          ),
+        )}
+      </p>
 
       {seat.manaPool.length > 0 && <p className="seat__pool">Pool: {seat.manaPool.join(' ')}</p>}
 
@@ -70,28 +146,7 @@ export function PlayerPanel({ seat, surface }: { seat: Seat; surface: Surface })
         </p>
       )}
 
-      {/* The piles are public and often long. Collapsed by default so a full graveyard cannot
-          push the table around, and openable in place — a `details` element carries its own
-          open state in the DOM, so nothing here is remembered between messages. */}
-      {seat.piles.map((pile) => (
-        <details key={pile.zone} className="pile">
-          <summary>
-            {pile.label} ({pile.faces.length})
-          </summary>
-          <ul className="cards cards--compact">
-            {pile.faces.map((face) => (
-              <li key={face.id}>
-                <Card
-                  face={face}
-                  variant="compact"
-                  state={surface.stateOf(face.id)}
-                  onActivate={surface.activate}
-                />
-              </li>
-            ))}
-          </ul>
-        </details>
-      ))}
+      <RelationTrail lines={lines} surface={surface} />
     </section>
   )
 }

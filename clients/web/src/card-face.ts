@@ -45,6 +45,16 @@ export type CardFaceVariant = 'inspect' | 'hand' | 'battlefield' | 'stack' | 'co
  */
 export type CardFaceState = 'idle' | 'selected' | 'candidate' | 'pending' | 'disabled'
 
+/**
+ * How a face stands in the relationships of whatever is currently focused (`relations.ts`).
+ *
+ * `focus` is the object being traced from; `linked` is an object on the other end of a
+ * relationship the server projected about it. Both are presentation, and both are drawn from
+ * stated identifiers — a client that concluded two objects were related would be deciding a
+ * fact about the game.
+ */
+export type CardFaceLink = 'focus' | 'linked' | undefined
+
 /** The number a face leads with, and what that number means. */
 export interface CardFaceStat {
   kind: 'power_toughness' | 'loyalty'

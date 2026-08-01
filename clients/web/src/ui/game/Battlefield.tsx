@@ -9,15 +9,25 @@
  * row, because sorting them into one would mean deciding what a card *is* from its `type_line`
  * — a rules question the client does not get to answer. When the server projects presentation
  * categories, this is where they will land.
+ *
+ * Under each card hangs its relationship trail: what it is attacking, what blocked it, what it
+ * is attached to, what is attached to it, what named it as a target, and what of its own is on
+ * the stack. Those are relationships *between* objects rather than facts about one, so they are
+ * joined in `relations.ts` from identifiers the server stated, and every name in the trail is a
+ * control that reaches the object on the other end — which is often the only way to see it,
+ * since the other end may be across the table or inside a pile.
  */
 import type { Permanent } from './../../protocol'
 import type { CardFace } from './../../card-face'
+import type { RelationLine } from './../../relations'
 import { Card } from './../Card'
+import { RelationTrail } from './RelationTrail'
 import type { Surface } from './surface'
 
 export interface FieldEntry {
   permanent: Permanent
   face: CardFace
+  lines: readonly RelationLine[]
 }
 
 export function Battlefield({
@@ -40,28 +50,17 @@ export function Battlefield({
         <p className="field__empty">No permanents.</p>
       ) : (
         <ul className="cards cards--battlefield">
-          {entries.map(({ permanent, face }) => (
+          {entries.map(({ permanent, face, lines }) => (
             <li key={permanent.id}>
               <Card
                 face={face}
                 variant="battlefield"
                 state={surface.stateOf(face.id)}
+                link={surface.linkOf(face.id)}
                 onActivate={surface.activate}
+                onTrace={surface.trace}
               />
-              {/* Combat and attachment are relationships *between* objects rather than facts
-                  about one, so they stay beside the face as text until the table can draw the
-                  line itself (#627). */}
-              {(permanent.attacking || permanent.blocking || permanent.attached_to) && (
-                <p className="cards__aside">
-                  {permanent.attacking &&
-                    (permanent.attacking_planeswalker !== undefined
-                      ? `attacking ${surface.labelFor(permanent.attacking_planeswalker)}`
-                      : 'attacking')}
-                  {permanent.blocking && ` blocking ${surface.labelFor(permanent.blocking)}`}
-                  {permanent.attached_to &&
-                    ` attached to ${surface.labelFor(permanent.attached_to)}`}
-                </p>
-              )}
+              <RelationTrail lines={lines} surface={surface} />
             </li>
           ))}
         </ul>

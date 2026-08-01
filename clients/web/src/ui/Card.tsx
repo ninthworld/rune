@@ -18,7 +18,7 @@
  * No decision about the game is made here. `state` is assigned by the caller from what the
  * server advertised; this component styles it and draws no conclusion of its own.
  */
-import type { CardFace, CardFaceState, CardFaceVariant } from './../card-face'
+import type { CardFace, CardFaceLink, CardFaceState, CardFaceVariant } from './../card-face'
 
 /** What each variant has room for. Everything omitted here remains available in `inspect`. */
 const SHOWS: Record<
@@ -63,6 +63,12 @@ const STATE_LABELS: Record<CardFaceState, string | undefined> = {
   disabled: 'Unavailable',
 }
 
+/** The same, for a relationship: emphasis a screen reader cannot see is not emphasis. */
+const LINK_LABELS: Record<'focus' | 'linked', string> = {
+  focus: 'Tracing from',
+  linked: 'Related',
+}
+
 export interface CardProps {
   face: CardFace
   variant: CardFaceVariant
@@ -72,20 +78,36 @@ export interface CardProps {
    */
   state?: CardFaceState
   /**
+   * Where this object sits in the relationships being traced (`relations.ts`). Independent of
+   * `state`: a creature can be a legal target *and* the blocker of whatever the player just
+   * clicked, and a board that showed only one of those would hide the other.
+   */
+  link?: CardFaceLink
+  /**
    * This card was clicked. One gesture for every card on the screen; what it does — fill a
    * target slot, select a subject, open the inspector — is decided by the caller from what the
    * server offered for this object (`interaction.ts`), never here.
    */
   onActivate?(id: string): void
+  /**
+   * The pointer or the keyboard reached this card, or left it (`undefined`).
+   *
+   * Tracing relationships is a *look*, not a click. A card the server offered nothing for opens
+   * the inspector on its first click, so hanging the trace off selection would put the objects
+   * most worth tracing — a blocker, an enchanted creature, anything with no action of its own —
+   * behind a modal that covers the board they are on.
+   */
+  onTrace?(id: string | undefined): void
 }
 
-export function Card({ face, variant, state = 'idle', onActivate }: CardProps) {
+export function Card({ face, variant, state = 'idle', link, onActivate, onTrace }: CardProps) {
   const shows = SHOWS[variant]
   const stateLabel = STATE_LABELS[state]
   const className = [
     'card',
     `card--${variant}`,
     state !== 'idle' && `card--${state}`,
+    link && `card--${link}`,
     shows.board && face.tapped && 'card--tapped',
   ]
     .filter(Boolean)
@@ -124,6 +146,7 @@ export function Card({ face, variant, state = 'idle', onActivate }: CardProps) {
 
       <span className="card__badges">
         {stateLabel && <span className="badge badge--state">{stateLabel}</span>}
+        {link && <span className="badge badge--link">{LINK_LABELS[link]}</span>}
         {face.markers.map((marker) => (
           <span key={marker} className="badge badge--marker">
             {marker}
@@ -149,13 +172,27 @@ export function Card({ face, variant, state = 'idle', onActivate }: CardProps) {
     </>
   )
 
+  // Pointer and keyboard say the same thing, so tracing is not a mouse-only affordance.
+  const traced = onTrace && {
+    onMouseEnter: () => onTrace(face.id),
+    onMouseLeave: () => onTrace(undefined),
+    onFocus: () => onTrace(face.id),
+    onBlur: () => onTrace(undefined),
+  }
+
   // A button whenever it is clickable, so a keyboard reaches it on the same terms as a mouse and
   // no key handling has to be reinvented. Never `disabled`: the gesture always leads somewhere —
   // at worst to the inspector — and reading an object a player cannot act on is exactly when
   // they most need to.
-  if (!onActivate) return <div className={className}>{body}</div>
+  if (!onActivate) {
+    return (
+      <div className={className} {...traced}>
+        {body}
+      </div>
+    )
+  }
   return (
-    <button type="button" className={className} onClick={() => onActivate(face.id)}>
+    <button type="button" className={className} onClick={() => onActivate(face.id)} {...traced}>
       {body}
     </button>
   )

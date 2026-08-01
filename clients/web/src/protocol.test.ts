@@ -36,6 +36,7 @@ const readFixture = (name: string): unknown =>
 const CASES: ReadonlyArray<readonly [string, ZodType]> = [
   ['gameview.json', GameView],
   ['gameview-actions.json', GameView],
+  ['gameview-board.json', GameView],
   ['gameview-commander.json', GameView],
   ['gameview-over.json', GameView],
   ['gameview-prompts.json', GameView],

@@ -25,8 +25,16 @@ import { useState } from 'react'
 
 import type { ClientMessage, GameView, ValidAction } from './../protocol'
 import { list, playerLabel } from './../normalize'
-import { seats } from './../table'
-import { cardFace, emblemFace, permanentFace, stackFace, type CardFace } from './../card-face'
+import { seats, type SeatPile } from './../table'
+import {
+  cardFace,
+  emblemFace,
+  permanentFace,
+  stackFace,
+  type CardFace,
+  type CardFaceLink,
+} from './../card-face'
+import { relationLines, relations } from './../relations'
 import {
   IDLE,
   arm,
@@ -47,7 +55,7 @@ import { Battlefield, type FieldEntry } from './game/Battlefield'
 import { Hand } from './game/Hand'
 import { MatchHeader } from './game/MatchHeader'
 import { PlayerPanel } from './game/PlayerPanel'
-import { SidePanel } from './game/SidePanel'
+import { SidePanel, type OpenZone } from './game/SidePanel'
 import { StackRail } from './game/StackRail'
 import type { Surface } from './game/surface'
 
@@ -62,6 +70,16 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
   // arrived last, so an open inspector shows the object as it is now — and an object that has
   // left the view closes it rather than pinning a card that no longer exists.
   const [inspecting, setInspecting] = useState<string | undefined>(undefined)
+  // The pile the player is looking through, held the same way and for the same reason: a seat
+  // and a zone, never the cards. A pile that empties, or a seat that leaves, stops resolving
+  // and the browser closes rather than showing a graveyard the game no longer has.
+  const [browsing, setBrowsing] = useState<{ seat: string; zone: SeatPile['zone'] } | undefined>(
+    undefined,
+  )
+  // The object the player is looking at. Transient to the point of being disposable — it is not
+  // settled against a new view, because whatever the pointer is over is still under the pointer
+  // when the next frame paints, and an id that has left the view simply relates to nothing.
+  const [hovering, setHovering] = useState<string | undefined>(undefined)
   const [interaction, setInteraction] = useState<Interaction>(IDLE)
 
   // Settled during render rather than in an effect, so the frame that carries a new view is
@@ -74,13 +92,22 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
 
   const actions = list(view.valid_actions)
   const table = seats(view)
+  // Combat, attachments, targets, and sources, joined once from the identifiers the server
+  // stated. Both the trails under the cards and the emphasis on a focused subset read from this
+  // one graph, so the board and the stack cannot describe the same edge differently.
+  const related = relations(view)
   const handFaces = list(view.my_hand).map(cardFace)
   const revealedFaces = list(view.revealed).map(cardFace)
-  const stackEntries = list(view.stack).map((item) => ({ item, face: stackFace(item) }))
+  const stackEntries = list(view.stack).map((item) => ({
+    item,
+    face: stackFace(item),
+    lines: relationLines(related, item.id),
+  }))
   const emblemEntries = list(view.emblems).map((emblem) => ({ emblem, face: emblemFace(emblem) }))
   const fieldEntries: readonly FieldEntry[] = list(view.battlefield).map((permanent) => ({
     permanent,
     face: permanentFace(permanent),
+    lines: relationLines(related, permanent.id),
   }))
 
   // One face per card-shaped object on screen, so the hand, the board, the piles, and the
@@ -137,8 +164,23 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
     dispatch(current.action, interaction.draft)
   }
 
+  // Tracing follows the look, and falls back to the click. Hovering or tabbing to an object
+  // emphasises everything the server related it to, which costs nothing and reaches the objects
+  // that most need it — a blocker or an enchanted creature usually owns no action, so a click on
+  // it opens the inspector over the very board the relationship crosses. Selection keeps the
+  // trace alive once the player's pointer has moved off to the dock.
+  //
+  // An object with no relationships traces nothing at all, because emphasising one card and no
+  // others would promise a connection that is not there.
+  const traced = hovering ?? interaction.selected
+  const linked = traced === undefined ? new Set<string>() : related.linked(traced)
+  const linkOf = (id: string): CardFaceLink =>
+    linked.size === 0 ? undefined : id === traced ? 'focus' : linked.has(id) ? 'linked' : undefined
+
   const surface: Surface = {
     stateOf: (id: string) => highlightFor(actions, interaction, id),
+    linkOf,
+    trace: setHovering,
     activate: (id: string) => {
       const gesture = gestureFor(actions, interaction, id)
       if (gesture.kind === 'inspect') {
@@ -161,6 +203,22 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
   const local = table.find((seat) => seat.isYou)
   const fieldFor = (id: string) => fieldEntries.filter((entry) => entry.permanent.controller === id)
 
+  // Resolved out of this frame's seats rather than remembered as cards, so an opened pile shows
+  // what is in it now. A pile the view no longer carries simply stops resolving, which closes
+  // the browser — the same rule the inspector follows.
+  const openSeat = table.find((seat) => seat.id === browsing?.seat)
+  const openPile = openSeat?.piles.find((pile) => pile.zone === browsing?.zone)
+  const openZone: OpenZone | undefined =
+    openSeat && openPile
+      ? { label: openPile.label, note: openSeat.name, faces: openPile.faces }
+      : undefined
+  const browse = (seat: string) => (zone: SeatPile['zone']) =>
+    setBrowsing((current) =>
+      // Clicking the open pile's own button closes it, so the control that opened it is also
+      // the way out and the column does not need a second one.
+      current?.seat === seat && current.zone === zone ? undefined : { seat, zone },
+    )
+
   return (
     <div className="screen">
       <MatchHeader view={view} label={label} />
@@ -169,7 +227,13 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
         <div className="table__side table__side--opponent">
           {opponents.map((seat) => (
             <div key={seat.id} className="table__seat">
-              <PlayerPanel seat={seat} surface={surface} />
+              <PlayerPanel
+                seat={seat}
+                lines={relationLines(related, seat.id)}
+                open={browsing?.seat === seat.id ? browsing.zone : undefined}
+                onOpen={browse(seat.id)}
+                surface={surface}
+              />
               <Battlefield
                 entries={fieldFor(seat.id)}
                 name={seat.name}
@@ -186,7 +250,13 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
           {local && (
             <div className="table__seat">
               <Battlefield entries={fieldFor(local.id)} name={local.name} isYou surface={surface} />
-              <PlayerPanel seat={local} surface={surface} />
+              <PlayerPanel
+                seat={local}
+                lines={relationLines(related, local.id)}
+                open={browsing?.seat === local.id ? browsing.zone : undefined}
+                onOpen={browse(local.id)}
+                surface={surface}
+              />
             </div>
           )}
           {!local && <p className="field__empty">You are watching this table.</p>}
@@ -207,6 +277,8 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
       />
 
       <SidePanel
+        zone={openZone}
+        closeZone={() => setBrowsing(undefined)}
         revealed={revealedFaces}
         settled={list(view.auto_passed_steps)}
         log={list(view.log)}

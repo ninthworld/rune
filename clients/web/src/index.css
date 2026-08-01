@@ -394,6 +394,58 @@ button.card:hover {
   filter: grayscale(1);
 }
 
+/* Relationship focus. A separate channel from the interaction states above, because the two
+   answer different questions and a dense board has both at once: an outline says the server
+   offered something for this object, a shadow says this object is on the other end of a
+   relationship it stated about the one being traced. Never colour alone, and never the only
+   copy — the trail under the card names the same objects in words. */
+.card--focus {
+  box-shadow: 0 0 0 3px currentColor;
+}
+
+.card--linked {
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 55%, transparent);
+}
+
+/* One object's relationships, as the controls that reach them. Reads as a sentence rather than
+   a row of buttons, so a trail under every permanent does not turn the board into a toolbar. */
+.trail {
+  margin: 0;
+  font-size: 0.7rem;
+  max-width: 14rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.3rem;
+}
+
+.trail__line {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0 0.25rem;
+}
+
+.trail__label {
+  opacity: 0.65;
+}
+
+.trail__end {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  text-decoration: underline dotted;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+  /* A stack object's label is its whole description, which can be a sentence. It is clamped
+     here and never anywhere else: the object itself is one click away and shows all of it. */
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .inspector-backdrop {
   position: fixed;
   inset: 0;
@@ -538,12 +590,26 @@ main:has(.screen) {
   gap: 0.3rem;
 }
 
+/* One line where it fits. The panel is beside the board, not on it, and every row it takes comes
+   out of the height the battlefield has to draw cards in — so the name, the totals, and the zone
+   row flow inline and wrap only when they must. The relationship trail takes a row of its own
+   because it is the one part that names other objects. */
 .seat {
   flex: none;
   padding: 0.3rem 0.5rem;
   border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
   border-radius: 0.3rem;
   font-size: 0.8rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.5rem;
+  row-gap: 0.1rem;
+}
+
+.seat .trail {
+  flex-basis: 100%;
+  max-width: none;
 }
 
 .seat__who,
@@ -554,9 +620,16 @@ main:has(.screen) {
 }
 
 .seat__who {
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The commander block and the pool are their own rows: both are lists that grow. */
+.seat__pool,
+.seat__commander {
+  flex-basis: 100%;
 }
 
 /* A seat is a target like anything else, so its name is the control — styled as text so the
@@ -579,18 +652,66 @@ main:has(.screen) {
   opacity: 0.85;
 }
 
-.pile {
-  font-size: 0.75rem;
-  margin-block-start: 0.15rem;
+/* The zone row. A public pile is a control and a hidden zone is a number, and the two are
+   deliberately drawn differently — a player must be able to tell "I may look through this" from
+   "this is all anyone will tell me" without clicking to find out. */
+.seat__zones {
+  margin: 0.15rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  font-size: 0.72rem;
 }
 
-.pile summary {
+.seat__zone {
+  padding: 0.05rem 0.3rem;
+  border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
+  border-radius: 0.6rem;
+  background: none;
+  color: inherit;
+  font: inherit;
   cursor: pointer;
 }
 
-.pile .cards {
-  margin-block-start: 0.25rem;
-  max-height: 12rem;
+.seat__zone--closed {
+  border-style: dashed;
+  opacity: 0.7;
+  cursor: default;
+}
+
+.seat__zone[aria-pressed='true'] {
+  border-color: currentColor;
+  font-weight: 700;
+}
+
+/* A pile opened beside the table. Capped and scrolling inside itself, so a fifty-card graveyard
+   never pushes the log — or anything else in the column — out of reach. */
+.zone__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.zone__close {
+  flex: none;
+  font-size: 0.7rem;
+  padding: 0.05rem 0.35rem;
+}
+
+.zone__note,
+.zone__empty {
+  margin: 0 0 0.25rem;
+  font-size: 0.72rem;
+  opacity: 0.75;
+}
+
+/* One column, scrolling. `.cards` wraps by default, which in a container with a capped height
+   means wrapping into a *second column* — straight out of the side of a fixed-width column and
+   off the screen. A pile is a list; it goes down. */
+.zone .cards {
+  flex-wrap: nowrap;
+  max-height: 16rem;
   overflow-y: auto;
 }
 
@@ -649,6 +770,27 @@ main:has(.screen) {
   margin: 0;
   font-size: 0.78rem;
   opacity: 0.6;
+}
+
+/* One object on the stack, read top down in resolution order. The position is stated in words
+   above the card rather than left to be inferred from which end of the column it is on, because
+   a column of six cards does not say which end resolves first. */
+.stack__order {
+  margin: 0;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+}
+
+.stack--top .stack__order {
+  opacity: 1;
+  font-weight: 700;
+}
+
+.stack--top {
+  padding-inline-start: 0.3rem;
+  border-inline-start: 3px solid currentColor;
 }
 
 /* The hand scrolls sideways rather than wrapping. A second row would come out of the table's
