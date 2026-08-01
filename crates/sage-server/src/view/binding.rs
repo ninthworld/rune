@@ -14,15 +14,21 @@ pub(crate) fn targets_fill_requirements(
     targets: &[TargetChoice],
     requirements: &[TargetRequirement],
 ) -> bool {
-    if targets.len() != requirements.len() {
+    // Every returned choice must name a slot the action actually advertises — an answer
+    // to a slot that is not on offer is not a partial answer, it is a wrong one.
+    if targets
+        .iter()
+        .any(|choice| !requirements.iter().any(|req| req.slot == choice.slot))
+    {
         return false;
     }
     requirements.iter().all(|req| {
-        targets.iter().any(|choice| {
-            choice.slot == req.slot
-                && !choice.chosen.is_empty()
-                && choice.chosen.iter().all(|id| req.candidates.contains(id))
-        })
+        let chosen = chosen_for(targets, &req.slot);
+        // An **optional** slot ("up to two target creatures") may be omitted entirely or
+        // sent empty; a required one must carry at least one id. Either way, whatever is
+        // sent has to come from that slot's freshly recomputed candidates, so a
+        // redirected id can never smuggle in an illegal target.
+        (req.optional || !chosen.is_empty()) && chosen.iter().all(|id| req.candidates.contains(id))
     })
 }
 
@@ -175,15 +181,21 @@ pub(crate) fn bind_ability_targets(
     let requirements = target_requirements(state, db, action);
     let mut chosen = Vec::with_capacity(requirements.len());
     for (index, req) in requirements.iter().enumerate() {
-        let [id] = chosen_for(targets, &format!("t{index}")) else {
-            return None;
-        };
-        let target = req
-            .candidates
-            .iter()
-            .copied()
-            .find(|&candidate| target_entity_id(candidate) == *id)?;
-        chosen.push(target);
+        match chosen_for(targets, &format!("t{index}")) {
+            [id] => {
+                let target = req
+                    .candidates
+                    .iter()
+                    .copied()
+                    .find(|&candidate| target_entity_id(candidate) == *id)?;
+                chosen.push(target);
+            }
+            // An optional slot the client declined to fill contributes no target, which
+            // is what makes "up to two" mean *up to*. A required one left empty is not a
+            // smaller announcement, it is an incomplete one.
+            [] if req.optional => {}
+            _ => return None,
+        }
     }
     match action {
         Action::ActivateAbility {

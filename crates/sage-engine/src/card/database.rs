@@ -216,16 +216,25 @@ mod tests {
         // ADR 0008 §3: each definition's authored identity is a lowercase snake_case
         // slug of its name, unique across the catalog, and resolves back to the
         // handle the engine interned it under.
+        //
+        // Non-alphanumerics become `_`, and a **run** of them becomes a single one:
+        // `is_well_formed_slug` forbids `__`, so a name carrying two adjacent
+        // separators — "Ajani, Adversary of Tyrants", where the comma and the space are
+        // both non-alphanumeric — has no legal identity under any other reading. The
+        // collapse is the derivation, not an exception to it.
         let db = CardDatabase::bundled().unwrap();
         let mut seen = std::collections::HashSet::new();
         for id in crate::card::tests::every_id() {
             let card = db.card(id).unwrap();
-            let expected: String = card
-                .name
-                .to_lowercase()
-                .chars()
-                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-                .collect();
+            let mut expected = String::new();
+            for ch in card.name.to_lowercase().chars() {
+                if ch.is_ascii_alphanumeric() {
+                    expected.push(ch);
+                } else if !expected.ends_with('_') {
+                    expected.push('_');
+                }
+            }
+            let expected = expected.trim_end_matches('_').to_string();
             assert_eq!(
                 card.functional_id.as_str(),
                 expected,

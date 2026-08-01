@@ -209,6 +209,15 @@ pub struct Resume {
     pub targets: Vec<Target>,
     /// The spell whose card still has to reach its final zone, `None` for an ability.
     pub spell: Option<SuspendedSpell>,
+    /// The log sequence this resolution began at — the window an intervening condition
+    /// about what *this* resolution has done reads over
+    /// ([`Condition::MilledThisWay`](crate::Condition)).
+    ///
+    /// Carried through the suspension for the same reason the remaining effects are: a
+    /// discard-then-draw asks its question, and the `if a card is discarded this way`
+    /// that follows must still be measured from where the resolution started, not from
+    /// where it woke up.
+    pub resolution_start: u64,
 }
 
 /// A spell whose resolution was suspended, and which must still be put into its final
@@ -268,7 +277,7 @@ pub fn choice_candidates(
         ChoiceZone::Library => player.library.clone(),
     };
     pool.into_iter()
-        .filter(|inst| card_matches(db, inst.card, &request.filter, request.source_card))
+        .filter(|inst| card_matches_filter(db, inst.card, &request.filter, request.source_card))
         .collect()
 }
 
@@ -384,7 +393,7 @@ fn cost_could_be_paid(
 /// battlefield, so it has no computed power and no continuous effects applying to it;
 /// asking [`characteristics`](crate::characteristics::characteristics) about it would be
 /// asking about a permanent that does not exist.
-fn card_matches(
+pub(crate) fn card_matches_filter(
     db: &CardDatabase,
     card: CardId,
     filter: &CardFilter,
@@ -396,16 +405,26 @@ fn card_matches(
     match filter {
         CardFilter::Any => true,
         CardFilter::Land => data.has_type(CardType::Land),
-        CardFilter::Creature { max_power } => {
+        CardFilter::Creature { max_power, subtype } => {
             data.has_type(CardType::Creature)
-                && match max_power {
-                    Some(cap) => data.power.is_some_and(|power| power <= *cap),
-                    None => true,
-                }
+                && max_power.is_none_or(|cap| data.power.is_some_and(|power| power <= cap))
+                && subtype
+                    .as_deref()
+                    .is_none_or(|wanted| data.has_subtype(wanted))
         }
         CardFilter::NoncreatureNonland => {
             !data.has_type(CardType::Creature) && !data.has_type(CardType::Land)
         }
+        CardFilter::CreatureOrLand => {
+            data.has_type(CardType::Creature) || data.has_type(CardType::Land)
+        }
+        // CR 110.1: a card that would enter the battlefield. The class a search that puts
+        // its find straight onto the battlefield names, because nothing else could go
+        // there.
+        CardFilter::Permanent => data.is_permanent(),
+        // A card with the subtype, whatever its card type — "a Zombie card" is not the
+        // same class as "a Zombie creature card".
+        CardFilter::Subtype { subtype } => data.has_subtype(subtype),
         // Same printed identity, not same name string: two copies of one printing share
         // a `CardId`, and nothing else does.
         CardFilter::SameNameAsSource => source_card == Some(card),

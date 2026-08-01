@@ -24,8 +24,9 @@ mod types;
 mod zone;
 
 pub use types::{
-    CommanderDamage, CounterKind, DamageTarget, Duration, EffectAffects, GameEvent, GameLogEntry,
-    GameResult, LoggedIdentity, LoggedPermanent, Modification, Permanent, StaticEffect,
+    CommanderDamage, CounterKind, DamageTarget, Duration, EffectAffects, Emblem, GameEvent,
+    GameLogEntry, GameResult, GraveyardCasting, LoggedIdentity, LoggedPermanent, Modification,
+    Permanent, StaticEffect,
 };
 
 use crate::id::PlayerId;
@@ -61,6 +62,23 @@ pub struct GameState {
     pub players: Vec<Player>,
     /// The shared battlefield, owned by the game rather than any one player.
     pub battlefield: Vec<Permanent>,
+    /// The emblems in the game (CR 114), in creation order — see [`Emblem`].
+    ///
+    /// A second list of ability sources beside [`Self::battlefield`], and deliberately
+    /// not part of it: an emblem is not a permanent, is in no zone, and is never removed,
+    /// so putting it on the battlefield would make every state-based action, every
+    /// targeting spec, and every combat gate have to say why it does not apply. Keeping
+    /// it here means each of them says nothing, which is the correct answer.
+    ///
+    /// The two paths that read abilities off objects — the CR 613 characteristics
+    /// computation and the diff-based trigger collector — walk this list alongside the
+    /// battlefield. Nothing else does. Empty in every game where no ultimate has
+    /// resolved, so a game without emblems is byte-for-byte unchanged.
+    pub emblems: Vec<Emblem>,
+    /// Permissions to cast cards from a graveyard, granted this turn — see
+    /// [`GraveyardCasting`]. Empty in almost every state, and cleared at the turn
+    /// boundary.
+    pub graveyard_casting: Vec<GraveyardCasting>,
     /// The stack of spells and abilities, bottom first (the last element is the
     /// top and resolves first). Mana abilities never appear here.
     pub stack: Vec<StackObject>,

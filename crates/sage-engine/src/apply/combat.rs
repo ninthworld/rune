@@ -1934,6 +1934,7 @@ mod tests {
             &mut state,
             lurker,
             vec![Effect::PutCounters {
+                targets: crate::ability::TargetCount::Exactly(1),
                 target: TargetSpec::AnyCreature,
                 counter: CounterKind::MinusOneMinusOne,
                 count: 1,
@@ -1983,7 +1984,7 @@ mod tests {
         assert_eq!(paused.stack.len(), 1);
         assert!(matches!(
             paused.stack[0].kind,
-            StackObjectKind::Ability { source, .. } if source == lurker
+            StackObjectKind::Ability { source, .. } if source.permanent() == Some(lurker)
         ));
         assert_eq!(
             paused.consecutive_passes, 0,

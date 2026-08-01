@@ -1,146 +1,146 @@
 [
   {
-    "name": "Emblems",
-    "blocker": "no zoneless, controller-scoped continuous object"
-  },
-  {
-    "name": "Planeswalker-specific static abilities",
-    "blocker": "static abilities scope to creatures, not to a planeswalker's controller"
-  },
-  {
-    "name": "The legend-rule choice among duplicates",
-    "blocker": "CR 704.5j applies, but which copy survives is a deterministic policy (the newest) rather than the controller's choice"
-  },
-  {
-    "name": "Auras that enchant a player or land, or move between hosts",
-    "blocker": "only enchant-creature Auras granting P/T, keywords, or combat restrictions are modeled"
-  },
-  {
-    "name": "Multi-face cards (transform, modal double-faced)",
-    "blocker": "the card model has a single face"
-  },
-  {
-    "name": "Replacement effects",
-    "blocker": "no replacement-effect layer in the rules engine"
-  },
-  {
-    "name": "Effects that return cards from a graveyard",
-    "blocker": "no graveyard-to-hand or graveyard-to-battlefield effect"
-  },
-  {
-    "name": "Modal spells that choose one",
-    "blocker": "no mode choice on announcement"
-  },
-  {
-    "name": "Spells with X in their cost",
-    "blocker": "mana costs are fixed strings with no X announcement"
-  },
-  {
-    "name": "Kicker and other optional additional costs",
-    "blocker": "no optional cost declared on announcement"
-  },
-  {
-    "name": "Costs paid by sacrificing or discarding",
-    "blocker": "activation costs model only tapping and mana"
-  },
-  {
-    "name": "Cost reduction and cost increase effects",
-    "blocker": "no cost-modification layer"
-  },
-  {
-    "name": "Equipment",
-    "blocker": "no equip action or attachment outside the Aura model"
-  },
-  {
-    "name": "Gaining control of a permanent",
-    "blocker": "no control-change layer"
-  },
-  {
-    "name": "Protection, and evasion that names a subtype or a land type",
-    "blocker": "a blocking restriction names a colour or a count; there is no protection layer"
-  },
-  {
-    "name": "Attack and block requirements, and blocking an additional creature",
-    "blocker": "a declaration can be restricted but never required, and a blocker blocks one attacker"
-  },
-  {
-    "name": "Damage prevention",
-    "blocker": "no prevention shield or damage-replacement layer"
-  },
-  {
-    "name": "Indestructible",
-    "blocker": "no indestructible keyword; destroy and lethal damage have no exception"
-  },
-  {
-    "name": "Effects that count permanents, cards, or other game values",
-    "blocker": "effect amounts are fixed numbers, never derived from game state"
-  },
-  {
-    "name": "Conditional effects and intervening-if clauses",
-    "blocker": "no condition attached to an effect or a trigger"
-  },
-  {
-    "name": "Mana of any colour, and mana filtering",
-    "blocker": "mana production names one fixed colour or colourless"
-  },
-  {
-    "name": "Effects that ask a player to name a colour, type, or card",
-    "blocker": "no player choice recorded on a permanent or spell"
-  },
-  {
-    "name": "Effects that untap, or that stop a permanent untapping",
-    "blocker": "no untap effect and no skipped-untap flag"
-  },
-  {
-    "name": "Fight, and other effects taking two targets",
-    "blocker": "each effect fills exactly one target slot"
-  },
-  {
-    "name": "Keyword removal and loses-all-abilities effects",
-    "blocker": "the ability-adding layer only adds abilities"
-  },
-  {
-    "name": "Maximum hand size modification",
-    "blocker": "the cleanup discard uses a fixed hand size"
-  },
-  {
-    "name": "Abilities that trigger on drawing a card",
-    "blocker": "trigger conditions observe zone changes, attack declaration, life gain, casting, and step boundaries"
+    "name": "Abilities that trigger on an ability being activated",
+    "blocker": "no trigger condition observes an activation"
   },
   {
     "name": "Abilities that trigger on another permanent attacking",
     "blocker": "the attack trigger condition observes only its own source"
   },
   {
-    "name": "Abilities that trigger on an ability being activated",
-    "blocker": "no trigger condition observes an activation"
+    "name": "Abilities that trigger on drawing a card",
+    "blocker": "trigger conditions observe zone changes, attack declaration, life gain, casting, and step boundaries"
   },
   {
-    "name": "Optional costs paid with anything but mana",
-    "blocker": "an optional effect's cost is a mana payment; sacrificing, discarding, or exiling to pay is unwritable"
+    "name": "Attack and block requirements, and blocking an additional creature",
+    "blocker": "a declaration can be restricted but never required, and a blocker blocks one attacker"
   },
   {
-    "name": "Optional effects that choose a target",
-    "blocker": "an optional effect's contents may not target; one effect declares at most one target slot"
+    "name": "Auras that enchant a player or land, or move between hosts",
+    "blocker": "only enchant-creature Auras granting P/T, keywords, or combat restrictions are modeled"
   },
   {
-    "name": "Selectors that filter by power or toughness",
-    "blocker": "no numeric power or toughness threshold in a target, trigger, or mass-effect selector; only a mid-resolution card choice may cap printed power"
-  },
-  {
-    "name": "Trigger selectors that filter by a keyword",
-    "blocker": "observed-permanent selectors filter by subtype and controller only"
+    "name": "Casting from a zone other than the hand, the command zone, or a one-turn graveyard permission",
+    "blocker": "no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure)"
   },
   {
     "name": "Combat damage assigned by a value other than power",
     "blocker": "every attacker and blocker assigns damage equal to its current power"
   },
   {
+    "name": "Conditions other than a permanent count, a mill, or a discard",
+    "blocker": "the intervening-if vocabulary names three questions and grows one variant at a time"
+  },
+  {
+    "name": "Cost reduction and cost increase effects",
+    "blocker": "no cost-modification layer"
+  },
+  {
+    "name": "Costs paid by sacrificing or discarding",
+    "blocker": "activation costs model only tapping and mana"
+  },
+  {
+    "name": "Damage prevention",
+    "blocker": "no prevention shield or damage-replacement layer"
+  },
+  {
+    "name": "Effects that ask a player to name a colour, type, or card",
+    "blocker": "no player choice recorded on a permanent or spell"
+  },
+  {
     "name": "Effects that let a player choose the order of cards put back on a library",
     "blocker": "a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random"
   },
   {
+    "name": "Effects that return cards from a graveyard to a hand",
+    "blocker": "a targeted creature card returns from a graveyard to the battlefield; there is no graveyard-to-hand effect"
+  },
+  {
+    "name": "Effects that untap, or that stop a permanent untapping",
+    "blocker": "no untap effect and no skipped-untap flag"
+  },
+  {
+    "name": "Effects whose amount is derived from anything but a count of permanents",
+    "blocker": "an amount may scale with a count of permanents; cards in a zone, life totals, and mana values feed nothing"
+  },
+  {
+    "name": "Emblems with an activated ability",
+    "blocker": "an emblem carries static and triggered abilities only; nothing offers a way to activate one"
+  },
+  {
+    "name": "Equipment",
+    "blocker": "no equip action or attachment outside the Aura model"
+  },
+  {
+    "name": "Fight, and other effects taking two differently-specified targets",
+    "blocker": "one effect's target slots all share a single spec, so two differently-specified slots are unwritable"
+  },
+  {
+    "name": "Gaining control of a permanent",
+    "blocker": "no control-change layer"
+  },
+  {
+    "name": "Keyword removal and loses-all-abilities effects",
+    "blocker": "the ability-adding layer only adds abilities"
+  },
+  {
+    "name": "Kicker and other optional additional costs",
+    "blocker": "no optional cost declared on announcement"
+  },
+  {
+    "name": "Mana of any colour, and mana filtering",
+    "blocker": "mana production names one fixed colour or colourless, with or without a spend restriction"
+  },
+  {
+    "name": "Maximum hand size modification",
+    "blocker": "the cleanup discard uses a fixed hand size"
+  },
+  {
+    "name": "Modal spells that choose one",
+    "blocker": "no mode choice on announcement"
+  },
+  {
+    "name": "Multi-face cards (transform, modal double-faced)",
+    "blocker": "the card model has a single face"
+  },
+  {
+    "name": "Optional and conditional effects that choose a target",
+    "blocker": "an optional effect's contents may not target, and neither may a conditional's branches; a wrapper cannot declare the slots of what it wraps"
+  },
+  {
+    "name": "Optional costs paid with anything but mana",
+    "blocker": "an optional effect's cost is a mana payment; sacrificing, discarding, or exiling to pay is unwritable"
+  },
+  {
+    "name": "Protection, and evasion that names a subtype or a land type",
+    "blocker": "a blocking restriction names a colour or a count; there is no protection layer"
+  },
+  {
+    "name": "Replacement effects",
+    "blocker": "no replacement-effect layer in the rules engine"
+  },
+  {
+    "name": "Selectors that filter by power or toughness",
+    "blocker": "no numeric power or toughness threshold in a target, trigger, or mass-effect selector; only a mid-resolution card choice may cap printed power"
+  },
+  {
+    "name": "Spells with X in their cost",
+    "blocker": "mana costs are fixed strings with no X announcement"
+  },
+  {
+    "name": "Static abilities that affect anything but creatures their controller controls",
+    "blocker": "the continuous-effect selector names one class, so a permanent or an emblem may modify no other"
+  },
+  {
+    "name": "The legend-rule choice among duplicates",
+    "blocker": "CR 704.5j applies, but which copy survives is a deterministic policy (the newest) rather than the controller's choice"
+  },
+  {
     "name": "Tokens created attacking, or as copies of another permanent",
     "blocker": "a created token enters untapped or tapped and out of combat; there is no copiable-values model"
+  },
+  {
+    "name": "Trigger selectors that filter by a keyword",
+    "blocker": "observed-permanent selectors filter by subtype and controller only"
   }
 ]

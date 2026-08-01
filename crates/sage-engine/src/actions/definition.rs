@@ -339,6 +339,15 @@ impl Action {
 pub struct TargetRequirement {
     /// What the slot may target.
     pub spec: crate::TargetSpec,
+    /// Whether the slot may be left **empty** — the "up to" of "up to two target
+    /// creatures" (CR 601.2c). `false` for every slot of an ordinary effect, which must
+    /// be filled or the announcement is illegal.
+    ///
+    /// A group that takes up to N targets is advertised as N slots, of which the ones
+    /// past its minimum carry this. The alternative — one slot with a count — would make
+    /// every existing client and every existing binding path learn about counts to
+    /// express something only one card needs.
+    pub optional: bool,
     /// Every [`Target`] legal for the slot against current state, in a stable
     /// board order. A single O(N) scan of the relevant candidate universe.
     pub candidates: Vec<Target>,

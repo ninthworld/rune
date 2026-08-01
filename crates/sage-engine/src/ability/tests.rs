@@ -321,6 +321,7 @@ fn issue_149_put_counters_round_trips_with_both_kinds() {
     assert_eq!(
         serde_json::from_str::<Effect>(plus).unwrap(),
         Effect::PutCounters {
+            targets: crate::ability::TargetCount::Exactly(1),
             target: TargetSpec::AnyCreature,
             counter: CounterKind::PlusOnePlusOne,
             count: 1,
@@ -330,6 +331,7 @@ fn issue_149_put_counters_round_trips_with_both_kinds() {
     assert_eq!(
         serde_json::from_str::<Effect>(minus).unwrap(),
         Effect::PutCounters {
+            targets: crate::ability::TargetCount::Exactly(1),
             target: TargetSpec::AnyCreature,
             counter: CounterKind::MinusOneMinusOne,
             count: 2,
@@ -582,7 +584,10 @@ fn issue_604_the_choice_effects_round_trip_with_their_defaults() {
         Effect::LookAtTop {
             count: 4,
             take: 1,
-            filter: CardFilter::Creature { max_power: Some(2) },
+            filter: CardFilter::Creature {
+                max_power: Some(2),
+                subtype: None
+            },
             destination: FoundDestination::Hand,
         }
     );
@@ -610,7 +615,10 @@ fn issue_604_the_choice_effects_round_trip_with_their_defaults() {
         Effect::LookAtTop {
             count: 3,
             take: 1,
-            filter: CardFilter::Creature { max_power: None },
+            filter: CardFilter::Creature {
+                max_power: None,
+                subtype: None
+            },
             destination: FoundDestination::Hand,
         }
     );

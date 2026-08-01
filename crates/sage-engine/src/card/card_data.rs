@@ -181,10 +181,45 @@ impl CardData {
     /// (CR 608.2b). Empty for a spell that chooses no targets.
     #[must_use]
     pub fn cast_target_specs(&self) -> Vec<TargetSpec> {
-        let mut specs: Vec<TargetSpec> =
-            self.aura.as_ref().map(|a| a.enchant).into_iter().collect();
-        specs.extend(self.spell_effects.iter().filter_map(Effect::target_spec));
-        specs
+        self.cast_target_groups()
+            .into_iter()
+            .map(|group| group.spec)
+            .collect()
+    }
+
+    /// The ordered [`TargetGroup`]s a player chooses targets for when **casting** this
+    /// card as a spell (CR 601.2c), in slot order — the arity-aware form of
+    /// [`Self::cast_target_specs`], and the one every gate reads.
+    ///
+    /// An Aura's enchant restriction is a single required target (CR 303.4a), so it
+    /// contributes a one-target group.
+    #[must_use]
+    pub fn cast_target_groups(&self) -> Vec<crate::ability::TargetGroup> {
+        let mut groups: Vec<crate::ability::TargetGroup> = self
+            .aura
+            .as_ref()
+            .map(|a| crate::ability::TargetGroup {
+                spec: a.enchant,
+                min: 1,
+                max: 1,
+            })
+            .into_iter()
+            .collect();
+        groups.extend(self.spell_effects.iter().filter_map(Effect::target_group));
+        groups
+    }
+
+    /// The card's **mana value** (CR 202.3): the total amount of mana in its cost,
+    /// counting each generic point and each colored or colorless pip as one.
+    ///
+    /// Derived from [`Self::mana_cost`] on demand through the one parser every payment
+    /// uses, so "mana value 2 or less" and "can you pay {1}{R}" can never disagree about
+    /// what a cost string means. A card with no mana cost — a land, a token's face — has
+    /// mana value 0, which is what CR 202.3a says.
+    #[must_use]
+    pub fn mana_value(&self) -> u32 {
+        let cost = crate::mana::parse_mana_cost(&self.mana_cost);
+        u32::from(cost.generic) + u32::from(cost.colored_total())
     }
 
     /// Whether the card has printed keyword ability `keyword` (CR 702). Reads only

@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (129)
+## Supported cards (134)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -17,6 +17,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `aether_tunnel` | Aether Tunnel | functional definition |
 | `aggressive_mammoth` | Aggressive Mammoth | functional definition |
 | `air_elemental` | Air Elemental | functional definition |
+| `ajani_adversary_of_tyrants` | Ajani, Adversary of Tyrants | functional definition |
 | `ajani_s_pridemate` | Ajani's Pridemate | functional definition |
 | `ajani_s_welcome` | Ajani's Welcome | functional definition |
 | `angel_of_the_dawn` | Angel of the Dawn | functional definition |
@@ -78,6 +79,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `lava_axe` | Lava Axe | functional definition |
 | `lich_s_caress` | Lich's Caress | functional definition |
 | `lightning_strike` | Lightning Strike | functional definition |
+| `liliana_untouched_by_death` | Liliana, Untouched by Death | functional definition |
 | `llanowar_elves` | Llanowar Elves | functional definition |
 | `loxodon_line_breaker` | Loxodon Line Breaker | functional definition |
 | `luminous_bonds` | Luminous Bonds | functional definition |
@@ -103,6 +105,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `revitalize` | Revitalize | functional definition |
 | `rhox_oracle` | Rhox Oracle | functional definition |
 | `rustwing_falcon` | Rustwing Falcon | functional definition |
+| `sarkhan_fireblood` | Sarkhan, Fireblood | functional definition |
 | `satyr_enchanter` | Satyr Enchanter | functional definition |
 | `serra_s_guardian` | Serra's Guardian | functional definition |
 | `shock` | Shock | functional definition |
@@ -125,6 +128,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `take_vengeance` | Take Vengeance | functional definition |
 | `tattered_mummy` | Tattered Mummy | functional definition |
 | `tectonic_rift` | Tectonic Rift | functional definition |
+| `tezzeret_artifice_master` | Tezzeret, Artifice Master | functional definition |
 | `thornhide_wolves` | Thornhide Wolves | functional definition |
 | `timber_gorge` | Timber Gorge | functional definition |
 | `titanic_growth` | Titanic Growth | functional definition |
@@ -137,6 +141,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `viashino_pyromancer` | Viashino Pyromancer | functional definition |
 | `vigilant_baloth` | Vigilant Baloth | functional definition |
 | `vine_mare` | Vine Mare | functional definition |
+| `vivien_reid` | Vivien Reid | functional definition |
 | `volcanic_dragon` | Volcanic Dragon | functional definition |
 | `walking_corpse` | Walking Corpse | functional definition |
 | `wall_of_mist` | Wall of Mist | functional definition |
@@ -154,34 +159,34 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Abilities that trigger on drawing a card | trigger conditions observe zone changes, attack declaration, life gain, casting, and step boundaries |
 | Attack and block requirements, and blocking an additional creature | a declaration can be restricted but never required, and a blocker blocks one attacker |
 | Auras that enchant a player or land, or move between hosts | only enchant-creature Auras granting P/T, keywords, or combat restrictions are modeled |
+| Casting from a zone other than the hand, the command zone, or a one-turn graveyard permission | no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure) |
 | Combat damage assigned by a value other than power | every attacker and blocker assigns damage equal to its current power |
-| Conditional effects and intervening-if clauses | no condition attached to an effect or a trigger |
+| Conditions other than a permanent count, a mill, or a discard | the intervening-if vocabulary names three questions and grows one variant at a time |
 | Cost reduction and cost increase effects | no cost-modification layer |
 | Costs paid by sacrificing or discarding | activation costs model only tapping and mana |
 | Damage prevention | no prevention shield or damage-replacement layer |
 | Effects that ask a player to name a colour, type, or card | no player choice recorded on a permanent or spell |
-| Effects that count permanents, cards, or other game values | effect amounts are fixed numbers, never derived from game state |
 | Effects that let a player choose the order of cards put back on a library | a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random |
-| Effects that return cards from a graveyard | no graveyard-to-hand or graveyard-to-battlefield effect |
+| Effects that return cards from a graveyard to a hand | a targeted creature card returns from a graveyard to the battlefield; there is no graveyard-to-hand effect |
 | Effects that untap, or that stop a permanent untapping | no untap effect and no skipped-untap flag |
-| Emblems | no zoneless, controller-scoped continuous object |
+| Effects whose amount is derived from anything but a count of permanents | an amount may scale with a count of permanents; cards in a zone, life totals, and mana values feed nothing |
+| Emblems with an activated ability | an emblem carries static and triggered abilities only; nothing offers a way to activate one |
 | Equipment | no equip action or attachment outside the Aura model |
-| Fight, and other effects taking two targets | each effect fills exactly one target slot |
+| Fight, and other effects taking two differently-specified targets | one effect's target slots all share a single spec, so two differently-specified slots are unwritable |
 | Gaining control of a permanent | no control-change layer |
-| Indestructible | no indestructible keyword; destroy and lethal damage have no exception |
 | Keyword removal and loses-all-abilities effects | the ability-adding layer only adds abilities |
 | Kicker and other optional additional costs | no optional cost declared on announcement |
-| Mana of any colour, and mana filtering | mana production names one fixed colour or colourless |
+| Mana of any colour, and mana filtering | mana production names one fixed colour or colourless, with or without a spend restriction |
 | Maximum hand size modification | the cleanup discard uses a fixed hand size |
 | Modal spells that choose one | no mode choice on announcement |
 | Multi-face cards (transform, modal double-faced) | the card model has a single face |
+| Optional and conditional effects that choose a target | an optional effect's contents may not target, and neither may a conditional's branches; a wrapper cannot declare the slots of what it wraps |
 | Optional costs paid with anything but mana | an optional effect's cost is a mana payment; sacrificing, discarding, or exiling to pay is unwritable |
-| Optional effects that choose a target | an optional effect's contents may not target; one effect declares at most one target slot |
-| Planeswalker-specific static abilities | static abilities scope to creatures, not to a planeswalker's controller |
 | Protection, and evasion that names a subtype or a land type | a blocking restriction names a colour or a count; there is no protection layer |
 | Replacement effects | no replacement-effect layer in the rules engine |
 | Selectors that filter by power or toughness | no numeric power or toughness threshold in a target, trigger, or mass-effect selector; only a mid-resolution card choice may cap printed power |
 | Spells with X in their cost | mana costs are fixed strings with no X announcement |
+| Static abilities that affect anything but creatures their controller controls | the continuous-effect selector names one class, so a permanent or an emblem may modify no other |
 | The legend-rule choice among duplicates | CR 704.5j applies, but which copy survives is a deterministic policy (the newest) rather than the controller's choice |
 | Tokens created attacking, or as copies of another permanent | a created token enters untapped or tapped and out of combat; there is no copiable-values model |
 | Trigger selectors that filter by a keyword | observed-permanent selectors filter by subtype and controller only |

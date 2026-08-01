@@ -67,7 +67,15 @@ no Oracle text, flavor, art, or branding.
 | `scripted` | no | Declares behavior implemented in `src/scripted.rs`; defaults to `false` |
 
 Current keyword values are `flying`, `reach`, `vigilance`, `haste`, `defender`, `menace`,
-`first_strike`, `trample`, `deathtouch`, `lifelink`, `double_strike`, and `hexproof`.
+`first_strike`, `trample`, `deathtouch`, `lifelink`, `double_strike`, `hexproof`, and
+`indestructible`.
+
+`indestructible` (CR 702.12) is not a combat rule either, and not a targeting one: it is an
+exception to **destruction**, enforced at the two places destruction happens — the CR
+704.5g/704.5h state-based actions and the `destroy` effect. It is deliberately not an
+exception to anything else: a creature at 0 or less toughness still goes to the graveyard
+(CR 704.5f is not destruction), a planeswalker at zero loyalty still leaves (CR 704.5i), and
+sacrifice, exile, and bounce are untouched.
 
 `defender` (CR 702.3b) removes a creature from the attacker candidate set; `menace`
 (CR 702.110b) is checked over the whole declare-blockers selection, since a lone blocker
@@ -154,16 +162,52 @@ member as the spell or ability is announced (CR 601.2c) and the choice is re-che
 resolution (CR 608.2b). The classes are `any_player`, `any_opponent`, `any_permanent`,
 `any_nonland_permanent`, `any_creature`, `any_creature_you_control`,
 `any_creature_an_opponent_controls`, `any_creature_with_flying`, `any_tapped_creature`,
-`any_artifact`, `any_enchantment`, `any_artifact_or_enchantment`, `any_land`,
-`spell_on_stack`, `creature_spell_on_stack`, and `any_target`.
+`any_artifact`, `any_enchantment`, `any_artifact_or_enchantment`,
+`any_artifact_enchantment_or_creature_with_flying`, `any_land`, `spell_on_stack`,
+`creature_spell_on_stack`, `any_target`, and `creature_card_in_your_graveyard`.
+
+`creature_card_in_your_graveyard` is the one class that names a **card in a zone** rather than
+an object on the battlefield or the stack, so it is the only one a chosen card target
+satisfies. It carries a cap, and is written in the enum's tagged form rather than as a bare
+string:
+
+```json
+{ "kind": "return_card_to_battlefield",
+  "target": { "creature_card_in_your_graveyard": { "max_mana_value": 2 } } }
+```
+
+`max_mana_value` compares against the card's mana value (CR 202.3), derived from its cost
+through the same parser every payment uses; `null` means any. A graveyard is public, so its
+candidates are enumerable exactly as a battlefield's are.
 
 Every class is evaluated **relative to the choosing object's controller**, which is what
 lets one authored card mean "you" from either seat. Classes read through the computed
 characteristics where they can, so `any_creature_with_flying` accepts a creature that was
 *granted* flying and stops accepting it when the grant ends (CR 613.1f).
 
-An effect fills exactly one target slot, and a card's slots are consumed in the order its
-effects are written.
+An effect fills exactly one target slot by default, and a card's slots are consumed in the
+order its effects are written.
+
+**Up to N targets.** One effect — `put_counters` — may name more than one, with a `targets`
+count:
+
+```json
+{ "kind": "put_counters", "target": "any_creature", "targets": { "up_to": 2 },
+  "counter": "plus_one_plus_one", "count": 1 }
+```
+
+`{"exactly": n}` demands exactly `n` distinct targets; `{"up_to": n}` lets the player choose
+between none and `n`. Omitting the field is `{"exactly": 1}`, which is what every other
+authoring means. Three rules follow, and all three are enforced rather than assumed:
+
+- an ability whose every target group has a **minimum of zero** is offered even with nothing
+  to aim at, because choosing nothing is a legal announcement (CR 601.2c) — while one with a
+  mandatory slot and no candidate is withheld;
+- the targets within one group must be **distinct objects**;
+- **at most one** variable-arity group may appear in a single ability or spell. Targets are
+  stored as one flat list per stack object, and with two variable groups the split back onto
+  effects would be ambiguous. The catalog validator rejects it
+  (`Violation::TwoVariableTargetGroups`).
 
 ### Player references
 
@@ -259,8 +303,119 @@ A planeswalker is **not a creature**: it has no power or toughness, it cannot at
 block, and the toughness-based state-based actions never touch it. It *can* be attacked
 (CR 508.1a): an attack names a player or a planeswalker, the planeswalker's controller
 declares blockers for attackers attacking it, and combat damage that gets through removes
-loyalty. Emblems and planeswalker-specific static abilities are not modeled; see
-`data/exclusions.json`.
+loyalty.
+
+### Emblems (CR 114)
+
+`create_emblem` gives a player an **emblem**: a marker whose only characteristics are its
+abilities, in no zone, which nothing in the game ever removes.
+
+```json
+{ "kind": "create_emblem",
+  "abilities": [
+    { "type": "triggered",
+      "event": { "beginning_of_step": { "step": "end_step", "whose_turn": "yours" } },
+      "effects": [{ "kind": "create_token", "count": 3, "token": { "…": "…" } }] }
+  ] }
+```
+
+Its abilities are authored inline, exactly as a token's characteristics are and for the same
+reason: an emblem is not a card, so there is no catalog entry to point at. An optional
+`player_ref` names who gets it, defaulting to `controller` — *you get an emblem*.
+
+Only **static** and **triggered** abilities may appear. An activated ability would have no way
+to be activated and an enters-the-battlefield replacement would have no entry to replace, so
+either is an emblem with a dead ability; the catalog validator rejects it
+(`Violation::EmblemAbilityIsNotStaticOrTriggered`).
+
+An emblem's abilities reach the game through a **second source list** in both ability paths:
+the computed-characteristics loop walks the emblems alongside the battlefield, and so does the
+diff-based trigger collector. Everything else follows: `creatures_you_control` means the
+emblem's controller's creatures, a step trigger is scoped by `whose_turn` exactly as a
+permanent's is, and the emblem's own object id is its CR 613.7 timestamp, so an older emblem's
+anthem applies before a newer permanent's.
+
+### Conditional effects (CR 608.2, the intervening-if)
+
+`conditional` applies one branch or the other, judged **as the effect is reached** — so it
+sees everything the effects before it did:
+
+```json
+{ "kind": "conditional",
+  "condition": { "kind": "controls_at_least",
+                 "permanents": { "card_type": "artifact" }, "count": 3 },
+  "then":      [{ "kind": "draw_card", "count": 2 }],
+  "otherwise": [{ "kind": "draw_card", "count": 1 }] }
+```
+
+The conditions are:
+
+| `kind` | Asks |
+| --- | --- |
+| `controls_at_least` | Whether the controller controls at least `count` permanents matching `permanents` |
+| `milled_this_way` | Whether a card matching `filter` was milled **by this resolution** |
+| `discarded_this_way` | Whether the controller discarded a card during this resolution |
+
+The last two read the events this resolution recorded rather than the zones, and that is the
+point: a Zombie already in the graveyard was not milled this way, and a graveyard scan could
+never tell the two apart. The window survives a suspension, so a discard that stops to ask a
+question still answers `discarded_this_way` correctly when it resumes.
+
+A `permanents` selector is a small product — `scope` (`you_control`, `opponents_control`,
+`any`; default `you_control`), optional `card_type`, optional `subtype` — read against
+printed types, like every other selector in the engine.
+
+A branch **may not choose a target**, for the reason an optional effect's contents may not:
+one effect declares at most one target group, and a wrapper cannot honestly declare the groups
+of what it wraps (`Violation::TargetInsideConditional`).
+
+### Amounts derived from a count
+
+`pump_by_count` shrinks or pumps a target by a per-permanent amount, with X taken **once, on
+resolution** (CR 608.2):
+
+```json
+{ "kind": "pump_by_count", "target": "any_creature",
+  "power_per": -1, "toughness_per": -1,
+  "count_of": { "scope": "you_control", "subtype": "Zombie" } }
+```
+
+The resulting fixed modifier is what the layer system folds in, so a Zombie that dies later in
+the turn does not give the shrunk creature its toughness back — which is what the printed card
+means and what a re-evaluated selector would get wrong.
+
+### Restricted mana (CR 106.6)
+
+`add_restricted_mana` adds mana that may be spent only on what its restriction names:
+
+```json
+{ "kind": "add_restricted_mana", "color": "red", "amount": 2,
+  "restriction": { "kind": "spells_with_subtype", "subtype": "Dragon" } }
+```
+
+It is a mana verb like `add_mana`, so an ability whose every effect is one of the three is a
+mana ability and never uses the stack (CR 605.1a). The restriction rides on the mana rather
+than on the pool, so restricted and ordinary mana of the same colour coexist and both empty at
+the end of the step (CR 500.4). A payment is told what it is *for*: casting a spell whose
+printed subtypes match may spend it, and nothing else can. Restricted mana is spent first,
+which is optimal rather than merely convenient — mana that can pay for nothing else can never
+be saved for anything else.
+
+### Casting from a graveyard
+
+`allow_casting_from_graveyard` grants a player permission to cast cards matching `filter` from
+their graveyard **for the rest of the turn**:
+
+```json
+{ "kind": "allow_casting_from_graveyard", "player_ref": "controller",
+  "filter": { "kind": "creature", "subtype": "Zombie" } }
+```
+
+The cards do not move: they stay in the graveyard, are offered by `valid_actions` beside the
+hand, and are cast through the same action, the same stack object, and the same timing gates a
+hand cast uses. The permission is recorded with the turn it was granted on and dropped at the
+turn boundary, so "this turn" is a comparison of turn numbers rather than a countdown that
+could drift.
 
 ### Effects on the ability's own source
 
@@ -339,9 +494,15 @@ as it is *at that moment* — see `docs/decisions/0013-mid-resolution-player-cho
   spell's controller picks, the hand-attack shape). The chooser is also the only seat the
   cards are shown to.
 - `filter` narrows which cards may be picked: `any` (the default), `land`,
-  `creature` with an optional `max_power`, `noncreature_nonland`, or
-  `same_name_as_source` ("a card named *this card*", matched on printed identity so two
-  copies of one printing find each other).
+  `creature` with an optional `max_power` and an optional `subtype`, `noncreature_nonland`,
+  `creature_or_land` (one class as a card writes it, not two), `permanent` (CR 110.1 — what a
+  search that puts its find straight onto the battlefield names), `subtype` (a card with that
+  printed subtype whatever its card type — "a **Zombie** card" is not "a Zombie **creature**
+  card"), or `same_name_as_source` ("a card named *this card*", matched on printed identity so
+  two copies of one printing find each other).
+
+  The same filter vocabulary is what `milled_this_way` and `allow_casting_from_graveyard` read,
+  so a Zombie is a Zombie in all three.
 - `destination` is `hand` (the default), `battlefield`, or `battlefield_tapped`. A card
   entering the battlefield this way goes through the same seam a resolving permanent
   spell uses, so its "enters tapped"/"enters with counters" replacements and its ETB
@@ -546,6 +707,11 @@ The build and loader reject:
 - a planeswalker with no `loyalty`, or a `loyalty` on anything else;
 - an Aura grant on a non-Aura;
 - printed `restrictions` on a card that is not a creature;
+- an optional effect's contents, or a conditional's branches, choosing a target;
+- a `create_emblem` handing out anything but a static or triggered ability (CR 114.1);
+- two variable-arity (`up_to`) target groups in one ability or spell;
+- a `create_token` describing an object that could not be a permanent, or a creature token
+  with no power/toughness;
 - unresolved printing references or duplicate collector numbers; and
 - disagreement between a scripted definition and `src/scripted.rs`.
 

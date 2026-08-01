@@ -44,6 +44,7 @@ redacted before serialization.
 | `me` | `SelfView` | Receiver’s `life` and `library_size` |
 | `opponents` | `OpponentView[]` | Public opponent state and hidden-zone counts |
 | `battlefield` | `Permanent[]` | Public permanents and computed state |
+| `emblems` | `Emblem[]` | The emblems in the game (CR 114, issue #620); omitted when empty |
 | `stack` | `StackItem[]` | Stack objects, bottom first |
 | `graveyards` | `ZonePile[]` | Public ordered graveyards |
 | `exile` | `ZonePile[]` | Public ordered exile zones |
@@ -52,7 +53,7 @@ redacted before serialization.
 | `turn` | `number` | One-based turn number; `0` only for an empty state |
 | `active_player` | `PlayerId` | Player whose turn it is |
 | `seat_order` | `PlayerId[]` | Every seat's id in seat order, including the receiver and any eliminated players (issue #345). The explicit ordering a multiplayer client uses to arrange opponents; omitted (defaults to `[]`) by an older server |
-| `mana_pool` | `string[]` | Receiver’s unspent mana as pip strings |
+| `mana_pool` | `string[]` | Receiver’s unspent mana as pip strings; a pip suffixed `*` is **restricted** mana (CR 106.6, issue #620) that may be spent only on what made it |
 | `priority_player` | `PlayerId?` | Player currently holding priority |
 | `valid_actions` | `ValidAction[]` | Only actions available to the receiver |
 | `action_deadline` | `number?` | Seconds remaining for the receiver’s current decision |
@@ -379,6 +380,27 @@ A `Permanent` contains:
 
 These fields describe server-computed state. They do not authorize interaction.
 
+### Emblems
+
+An `Emblem` (CR 114, issue #620) is a marker one player has, whose only characteristics are
+its abilities:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `id` | `EntityId` | Per-game id, stable for the rest of the game; never collides with a permanent's or a card's |
+| `controller` | `PlayerId` | The player who has it. Control never changes |
+| `abilities` | `string[]` | Its abilities as server-composed rules sentences, in order; omitted when empty |
+
+It rides **beside** `battlefield` rather than inside it because it is not a permanent: it
+cannot be tapped, attacked, blocked, damaged, destroyed, or targeted, and no other field of a
+`Permanent` would mean anything on one. It is in no zone, and nothing in the game removes it —
+so a client that has rendered an emblem never has to un-render it for any reason but the
+server saying the list is shorter.
+
+**Public information**: every seat and every spectator receives the identical list, and there
+is nothing about an emblem to redact. The list is omitted (read as empty) in the
+overwhelming majority of games, where no ultimate has resolved.
+
 A `StackItem` describes one object on the stack:
 
 | Field | Type | Meaning |
@@ -511,9 +533,18 @@ Target choices use `requirements`:
 }
 ```
 
-Each requirement contains an opaque `slot`, display `prompt`, and the complete set of legal
-candidate entity ids. The server enumerates candidates per slot rather than enumerating the
-cartesian product of possible answers.
+Each requirement contains an opaque `slot`, display `prompt`, an optional `optional` flag, and
+the complete set of legal candidate entity ids. The server enumerates candidates per slot
+rather than enumerating the cartesian product of possible answers.
+
+`optional` (issue #620) says the slot **may be left unanswered** — the "up to" of *put a +1/+1
+counter on each of up to two target creatures*. It is absent (read as `false`) for every slot
+of an ordinary targeted spell or ability, which must be filled or the submission is rejected.
+An effect that may name fewer targets than it allows is advertised as its maximum number of
+slots, of which the ones past its minimum carry the flag; the client omits those from its
+answer, or sends them empty, and the server accepts either. A client MUST NOT infer the bound
+from anything else: an unflagged slot is required and a flagged one is not, and that is the
+whole rule.
 
 Non-target choices use tagged `prompts`:
 
@@ -762,13 +793,15 @@ A connection that joined with `spectate_room` (issue #351) receives a
 the game live with all hidden information redacted. Redaction is **structural**: the type
 simply has no receiver or decision fields, so a projection cannot leak a hand, a library’s
 contents, a mana pool, or a `valid_actions` list to a spectator. It reuses `GameView`’s public
-component types verbatim (`OpponentView`, `Permanent`, `StackItem`, `ZonePile`, `GameLogEntry`,
-`Phase`, `PlayerId`, `GameResult`, `CommanderDamage`, `MatchFormat`, `CommanderIdentity`).
+component types verbatim (`OpponentView`, `Permanent`, `Emblem`, `StackItem`, `ZonePile`,
+`GameLogEntry`, `Phase`, `PlayerId`, `GameResult`, `CommanderDamage`, `MatchFormat`,
+`CommanderIdentity`).
 
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `players` | `OpponentView[]` | **Every** seat as public state and hidden-zone counts — no privileged “self” |
 | `battlefield` | `Permanent[]` | Public permanents and computed state |
+| `emblems` | `Emblem[]` | The emblems in the game (CR 114, issue #620); omitted when empty |
 | `stack` | `StackItem[]` | Stack objects, bottom first |
 | `graveyards` | `ZonePile[]` | Public ordered graveyards |
 | `exile` | `ZonePile[]` | Public ordered exile zones |

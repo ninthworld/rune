@@ -22,10 +22,11 @@
 //! Legal Considerations).
 
 use sage_engine::{
-    Ability, AuraGrant, CardData, CardFilter, Chooser, Color, CombatRestriction, Cost, CounterKind,
-    DamageSubject, Effect, FoundDestination, Keyword, MassAffects, ObservedPermanent,
-    ObservedSpell, PlayerRef, StaticAffects, StaticModification, TargetSpec, TokenData,
-    TriggerCondition, TriggerStep, TurnScope,
+    Ability, AuraGrant, CardData, CardFilter, CardType, Chooser, Color, CombatRestriction,
+    Condition, Cost, CountScope, CounterKind, DamageSubject, Effect, FoundDestination, Keyword,
+    ManaRestriction, MassAffects, ObservedPermanent, ObservedSpell, PermanentCount, PlayerRef,
+    StaticAffects, StaticModification, TargetCount, TargetSpec, TokenData, TriggerCondition,
+    TriggerStep, TurnScope,
 };
 
 /// Generate the rules text of one card.
@@ -372,14 +373,19 @@ fn effect_clause(source: &str, effect: &Effect) -> String {
         Effect::LoseLife { player_ref, amount } => {
             format!("{} {amount} life", conjugate(*player_ref, "lose"))
         }
+        // "on each of up to two target creatures" when the effect may name more than
+        // one, "on target creature" when it names exactly one — read off the same count
+        // the engine builds the target slots from, so the sentence and the slots cannot
+        // disagree.
         Effect::PutCounters {
             target,
+            targets,
             counter,
             count,
         } => format!(
             "put {} on {}",
             counters(*counter, *count),
-            target_noun(*target)
+            target_phrase(*target, *targets)
         ),
         Effect::Pump {
             target,
@@ -518,6 +524,176 @@ fn effect_clause(source: &str, effect: &Effect) -> String {
                 None => format!("you may {}", without_you(&what)),
             }
         }
+        // An emblem reads as the card prints it: the emblem, then its abilities in
+        // quotes. Composed from the abilities the effect actually hands out, so the
+        // sentence and the object cannot disagree.
+        Effect::CreateEmblem {
+            abilities,
+            player_ref,
+        } => {
+            let text: Vec<String> = abilities
+                .iter()
+                .map(|ability| ability_text("this emblem", ability))
+                .collect();
+            format!(
+                "{} an emblem with \"{}\"",
+                conjugate(*player_ref, "get"),
+                text.join(" ")
+            )
+        }
+        // The intervening-if clause, written the way a card writes it: the condition
+        // first, then what it makes happen, and — when there is an `otherwise` — the
+        // fallback as its own sentence.
+        Effect::Conditional {
+            condition,
+            then,
+            otherwise,
+        } => {
+            let head = format!(
+                "if {}, {}",
+                condition_clause(condition),
+                clauses(source, then)
+            );
+            if otherwise.is_empty() {
+                head
+            } else {
+                format!("{head}. Otherwise, {}", clauses(source, otherwise))
+            }
+        }
+        Effect::ReturnCardToBattlefield { target } => {
+            format!("return {} to the battlefield", target_noun(*target))
+        }
+        Effect::PumpByCount {
+            target,
+            power_per,
+            toughness_per,
+            count_of,
+        } => format!(
+            "{} gets {}X/{}X until end of turn, where X is the number of {}",
+            target_noun(*target),
+            sign(*power_per),
+            sign(*toughness_per),
+            count_subject(count_of),
+        ),
+        Effect::AddRestrictedMana {
+            color,
+            amount,
+            restriction,
+        } => format!(
+            "add {}. Spend this mana only to {}",
+            pips(*color, *amount),
+            restriction_phrase(restriction)
+        ),
+        Effect::AllowCastingFromGraveyard { player_ref, filter } => format!(
+            "{} may cast {} from {} graveyard this turn",
+            subject_pronoun(*player_ref),
+            filter_noun(filter, true),
+            possessive_pronoun(*player_ref),
+        ),
+    }
+}
+
+/// A target group as the phrase a card writes it in: `target creature` for the ordinary
+/// single-target effect, `each of up to two target creatures` for the one that may name
+/// fewer than it allows.
+fn target_phrase(spec: TargetSpec, count: TargetCount) -> String {
+    match count {
+        TargetCount::Exactly(1) => target_noun(spec).to_string(),
+        TargetCount::Exactly(n) => format!(
+            "each of {} {}",
+            number(u32::from(n)),
+            plural_target_noun(spec)
+        ),
+        TargetCount::UpTo(n) => format!(
+            "each of up to {} {}",
+            number(u32::from(n)),
+            plural_target_noun(spec)
+        ),
+    }
+}
+
+/// A target spec pluralized — "target creatures" — for a group that names more than one.
+fn plural_target_noun(spec: TargetSpec) -> String {
+    format!("{}s", target_noun(spec))
+}
+
+/// A signed per-unit amount as the `-` or `+` a card prints before its X.
+fn sign(amount: i32) -> &'static str {
+    if amount < 0 {
+        "-"
+    } else {
+        "+"
+    }
+}
+
+/// The class a [`PermanentCount`] counts, as the noun phrase an X clause names.
+fn count_subject(count: &PermanentCount) -> String {
+    let noun = match (&count.subtype, count.card_type) {
+        (Some(subtype), _) => format!("{subtype}s"),
+        (None, Some(card_type)) => format!("{}s", card_type_word(card_type)),
+        (None, None) => "permanents".to_string(),
+    };
+    match count.scope {
+        CountScope::YouControl => format!("{noun} you control"),
+        CountScope::OpponentsControl => format!("{noun} your opponents control"),
+        CountScope::Any => noun,
+    }
+}
+
+/// A card type as the word a rules sentence uses.
+fn card_type_word(card_type: CardType) -> &'static str {
+    match card_type {
+        CardType::Land => "land",
+        CardType::Creature => "creature",
+        CardType::Artifact => "artifact",
+        CardType::Enchantment => "enchantment",
+        CardType::Planeswalker => "planeswalker",
+        CardType::Battle => "battle",
+        CardType::Instant => "instant",
+        CardType::Sorcery => "sorcery",
+    }
+}
+
+/// What a mana restriction allows, as the clause following "spend this mana only to".
+fn restriction_phrase(restriction: &ManaRestriction) -> String {
+    match restriction {
+        ManaRestriction::SpellsWithSubtype { subtype } => format!("cast {subtype} spells"),
+    }
+}
+
+/// An intervening-if condition as the clause following the word "if".
+fn condition_clause(condition: &Condition) -> String {
+    match condition {
+        Condition::ControlsAtLeast { permanents, count } => format!(
+            "you control {} or more {}",
+            number(*count),
+            count_subject(permanents)
+        ),
+        Condition::MilledThisWay { filter } => {
+            format!(
+                "at least one {} was milled this way",
+                filter_noun(filter, false)
+            )
+        }
+        Condition::DiscardedThisWay => "a card is discarded this way".to_string(),
+    }
+}
+
+/// The subject pronoun a player reference reads as at the start of a clause.
+fn subject_pronoun(player_ref: PlayerRef) -> &'static str {
+    match player_ref {
+        PlayerRef::Controller => "you",
+        PlayerRef::EachOpponent => "each opponent",
+        PlayerRef::TargetPlayer => "target player",
+        PlayerRef::TargetOpponent => "target opponent",
+    }
+}
+
+/// The possessive a player reference reads as — "your graveyard", "their graveyard".
+fn possessive_pronoun(player_ref: PlayerRef) -> &'static str {
+    match player_ref {
+        PlayerRef::Controller => "your",
+        PlayerRef::EachOpponent | PlayerRef::TargetPlayer | PlayerRef::TargetOpponent => "their",
     }
 }
 
@@ -573,10 +749,19 @@ fn filter_noun(filter: &CardFilter, plural: bool) -> String {
     match filter {
         CardFilter::Any => card.to_string(),
         CardFilter::Land => format!("land {card}"),
-        CardFilter::Creature { max_power: None } => format!("creature {card}"),
-        CardFilter::Creature {
-            max_power: Some(cap),
-        } => format!("creature {card} with power {cap} or less"),
+        CardFilter::Creature { max_power, subtype } => {
+            let kind = match subtype {
+                Some(subtype) => format!("{subtype} creature {card}"),
+                None => format!("creature {card}"),
+            };
+            match max_power {
+                Some(cap) => format!("{kind} with power {cap} or less"),
+                None => kind,
+            }
+        }
+        CardFilter::CreatureOrLand => format!("creature or land {card}"),
+        CardFilter::Permanent => format!("permanent {card}"),
+        CardFilter::Subtype { subtype } => format!("{subtype} {card}"),
         CardFilter::NoncreatureNonland => format!("noncreature, nonland {card}"),
         // Deliberately not the card's name: the formatter composes one sentence for a
         // *definition*, and the definition is the one that is searching.
@@ -730,6 +915,20 @@ fn target_noun(spec: TargetSpec) -> &'static str {
         TargetSpec::CreatureSpellOnStack => "target creature spell",
         // CR 115.4: "any target" is the phrase itself, not a class of object.
         TargetSpec::AnyTarget => "any target",
+        TargetSpec::AnyArtifactEnchantmentOrCreatureWithFlying => {
+            "target artifact, enchantment, or creature with flying"
+        }
+        TargetSpec::CreatureCardInYourGraveyard {
+            max_mana_value: None,
+        } => "target creature card in your graveyard",
+        // The cap is the printed number, so the two mana values M19 needs read as the
+        // card prints them rather than as an interpolated string.
+        TargetSpec::CreatureCardInYourGraveyard {
+            max_mana_value: Some(2),
+        } => "target creature card with mana value 2 or less in your graveyard",
+        TargetSpec::CreatureCardInYourGraveyard { .. } => {
+            "target creature card of a limited mana value in your graveyard"
+        }
     }
 }
 
@@ -753,6 +952,10 @@ fn object_noun(spec: TargetSpec) -> &'static str {
         TargetSpec::SpellOnStack => "spell",
         TargetSpec::CreatureSpellOnStack => "creature spell",
         TargetSpec::AnyTarget => "any target",
+        TargetSpec::AnyArtifactEnchantmentOrCreatureWithFlying => {
+            "artifact, enchantment, or creature with flying"
+        }
+        TargetSpec::CreatureCardInYourGraveyard { .. } => "creature card in your graveyard",
     }
 }
 
@@ -790,6 +993,7 @@ fn keyword_word(keyword: Keyword) -> &'static str {
         Keyword::Lifelink => "lifelink",
         Keyword::DoubleStrike => "double strike",
         Keyword::Hexproof => "hexproof",
+        Keyword::Indestructible => "indestructible",
     }
 }
 

@@ -177,7 +177,7 @@ fn exile_ability_targeting(state: &mut GameState, target: PermanentId) {
         id: StackId(sid),
         controller: PlayerId(0),
         kind: StackObjectKind::Ability {
-            source: target,
+            source: sage_engine::AbilitySource::Permanent(target),
             origin: AbilityOrigin::Activated,
             effects: vec![Effect::Exile {
                 target: TargetSpec::AnyPermanent,

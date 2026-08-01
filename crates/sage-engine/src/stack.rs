@@ -46,13 +46,51 @@ pub enum StackObjectKind {
     /// A triggered or activated (non-mana) ability; resolving it applies its
     /// effects.
     Ability {
-        /// The permanent whose ability this is.
-        source: PermanentId,
+        /// The object whose ability this is — a permanent, or an emblem (CR 114).
+        source: AbilitySource,
         /// How this ability got onto the stack (CR 113.3).
         origin: AbilityOrigin,
         /// The effects to apply on resolution.
         effects: Vec<Effect>,
     },
+}
+
+/// The object an ability on the stack came from (CR 113.3).
+///
+/// Until emblems existed this was always a [`PermanentId`], and the ability model could
+/// assume its source was on the battlefield: a self-referential effect modified it, a
+/// trigger condition observed it, and a source that had left simply did nothing. An
+/// **emblem** breaks that assumption in a way no future variant will un-break — it is
+/// not a permanent, it has no `PermanentId`, and it is in no zone — so the distinction
+/// is stated here rather than smuggled through a sentinel id.
+///
+/// [`Self::permanent`] is the accessor every existing caller wants: it answers `None`
+/// for an emblem, which is the same answer a permanent that has left the battlefield
+/// effectively gave, so self-referential effects need no new case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum AbilitySource {
+    /// A permanent on the battlefield.
+    Permanent(PermanentId),
+    /// An emblem (CR 114), by its object id
+    /// ([`Emblem::id`](crate::Emblem::id)).
+    Emblem(u64),
+}
+
+impl AbilitySource {
+    /// The permanent this ability came from, or `None` for an emblem.
+    #[must_use]
+    pub fn permanent(self) -> Option<PermanentId> {
+        match self {
+            Self::Permanent(id) => Some(id),
+            Self::Emblem(_) => None,
+        }
+    }
+}
+
+impl From<PermanentId> for AbilitySource {
+    fn from(id: PermanentId) -> Self {
+        Self::Permanent(id)
+    }
 }
 
 /// How an ability came to be on the stack — its rules provenance (CR 113.3).

@@ -34,6 +34,8 @@ impl GameState {
             step: Step::Untap,
             players: vec![Player::new(), Player::new()],
             battlefield: Vec::new(),
+            emblems: Vec::new(),
+            graveyard_casting: Vec::new(),
             stack: Vec::new(),
             static_effects: Vec::new(),
             next_object_id: 1,

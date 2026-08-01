@@ -3,7 +3,7 @@
 use crate::ability::{is_mana_ability, Ability, Cost, Effect};
 use crate::card::abilities_of_permanent;
 use crate::card_type::CardType;
-use crate::id::{CardId, PermanentId, PlayerId};
+use crate::id::{CardId, PlayerId};
 use crate::mana::ManaPool;
 use crate::state::{GameState, Permanent};
 use crate::CardDatabase;
@@ -136,6 +136,17 @@ pub(crate) fn potential_mana_pool(
                 match effect {
                     Effect::AddMana { color, amount } => pool.add(*color, *amount),
                     Effect::AddColorlessMana { amount } => pool.add_colorless(*amount),
+                    // Restricted mana (CR 106.6) is credited *with its restriction*, not
+                    // as ordinary mana: it is real mana a seat could still make, so
+                    // omitting it would under-estimate and could auto-pass a player who
+                    // still had a Dragon to cast — the one direction this estimate must
+                    // never err in. Carrying the restriction is what stops the opposite
+                    // mistake, of crediting it toward a spell it can never pay for.
+                    Effect::AddRestrictedMana {
+                        color,
+                        amount,
+                        restriction,
+                    } => pool.add_restricted(*color, *amount, restriction.clone()),
                     _ => {}
                 }
             }
@@ -176,6 +187,6 @@ pub(crate) fn tap_cost_is_summoning_sick(
 /// Whether every element of `ids` is distinct. O(n²), which is fine for the
 /// handful of creatures a combat declaration ever names and keeps the engine free
 /// of a hashing dependency for a tiny list.
-pub(crate) fn all_unique(ids: &[PermanentId]) -> bool {
+pub(crate) fn all_unique<T: PartialEq>(ids: &[T]) -> bool {
     ids.iter().enumerate().all(|(i, id)| !ids[..i].contains(id))
 }

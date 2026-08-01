@@ -53,7 +53,61 @@ impl Color {
     }
 }
 
-/// A quantity of mana held per color, plus colorless.
+/// A piece of mana that may be spent only on certain things (CR 106.6) — `Add {R}{R}.
+/// Spend this mana only to cast Dragon spells.`
+///
+/// Held apart from the plain per-color counts of [`ManaPool`] because the restriction
+/// travels with the mana rather than with the pool: a player may float two restricted
+/// red and three ordinary red at once, and only one of those five piles can pay for a
+/// Bear. It is still mana in every other respect, and empties with the rest of the pool
+/// at the end of the step (CR 500.4).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RestrictedMana {
+    /// The color of this mana.
+    pub color: Color,
+    /// How much of it is left.
+    pub amount: u8,
+    /// What it may be spent on.
+    pub restriction: crate::ability::ManaRestriction,
+}
+
+/// What a payment is **for** — the question restricted mana has to ask before it can be
+/// spent (CR 106.6).
+///
+/// Ordinary mana never asks, which is why this is a parameter of the payment rather than
+/// a field on the cost: a [`ManaCost`] is a shape ("{1}{R}"), and the same shape is paid
+/// by a cast, an activation, and an optional effect's cost, only one of which is casting
+/// anything.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpendPurpose<'a> {
+    /// Not casting a spell — an activation cost, or an optional effect's cost.
+    /// Restricted mana is never spendable on one of these.
+    Other,
+    /// Casting a spell whose card has these printed subtypes.
+    CastingSpell {
+        /// The spell's printed subtypes, which is what a `Dragon spells` restriction
+        /// reads.
+        subtypes: &'a [String],
+    },
+}
+
+impl crate::ability::ManaRestriction {
+    /// Whether mana carrying this restriction may be spent for `purpose`.
+    #[must_use]
+    pub fn allows(&self, purpose: SpendPurpose<'_>) -> bool {
+        match (self, purpose) {
+            (
+                crate::ability::ManaRestriction::SpellsWithSubtype { subtype },
+                SpendPurpose::CastingSpell { subtypes },
+            ) => subtypes.iter().any(|s| s == subtype),
+            (crate::ability::ManaRestriction::SpellsWithSubtype { .. }, SpendPurpose::Other) => {
+                false
+            }
+        }
+    }
+}
+
+/// A quantity of mana held per color, plus colorless, plus any restricted mana.
 ///
 /// This is a player's mana pool. It stores raw counts only; nothing is derived
 /// or cached here.
@@ -71,6 +125,10 @@ pub struct ManaPool {
     pub green: u8,
     /// Colorless mana available.
     pub colorless: u8,
+    /// Mana that may be spent only on certain things (CR 106.6) — see
+    /// [`RestrictedMana`]. Empty in almost every pool, so a game with no restricted
+    /// mana source is byte-for-byte unchanged.
+    pub restricted: Vec<RestrictedMana>,
 }
 
 impl ManaPool {
@@ -93,7 +151,32 @@ impl ManaPool {
         self.colorless = self.colorless.saturating_add(amount);
     }
 
-    /// Total mana of every color and colorless currently in the pool.
+    /// Add `amount` mana of `color` that may be spent only as `restriction` allows
+    /// (CR 106.6). Mana of the same color under the same restriction pools together, so
+    /// activating one ability twice leaves one entry of two rather than two of one.
+    pub fn add_restricted(
+        &mut self,
+        color: Color,
+        amount: u8,
+        restriction: crate::ability::ManaRestriction,
+    ) {
+        match self
+            .restricted
+            .iter_mut()
+            .find(|entry| entry.color == color && entry.restriction == restriction)
+        {
+            Some(entry) => entry.amount = entry.amount.saturating_add(amount),
+            None => self.restricted.push(RestrictedMana {
+                color,
+                amount,
+                restriction,
+            }),
+        }
+    }
+
+    /// Total mana of every color and colorless currently in the pool, **including**
+    /// restricted mana — it is mana, and a display that omitted it would be lying about
+    /// what a player is holding.
     #[must_use]
     pub fn total(&self) -> u16 {
         u16::from(self.white)
@@ -102,40 +185,72 @@ impl ManaPool {
             + u16::from(self.red)
             + u16::from(self.green)
             + u16::from(self.colorless)
+            + self
+                .restricted
+                .iter()
+                .map(|entry| u16::from(entry.amount))
+                .sum::<u16>()
     }
 
-    /// Whether `cost` can be paid from this pool: every colored (and colorless)
-    /// requirement is covered, and enough mana remains for the generic portion.
+    /// Whether `cost` can be paid from this pool with no restricted mana — the shape
+    /// every payment that is not a cast asks for.
     #[must_use]
     pub fn can_pay(&self, cost: &ManaCost) -> bool {
-        self.white >= cost.white
-            && self.blue >= cost.blue
-            && self.black >= cost.black
-            && self.red >= cost.red
-            && self.green >= cost.green
-            && self.colorless >= cost.colorless
-            && self.total() - cost.colored_total() >= u16::from(cost.generic)
+        self.pay(cost).is_some()
     }
 
-    /// Pay `cost`, returning the resulting pool, or `None` if it cannot be paid.
-    ///
-    /// Colored and colorless requirements are paid from their own colors first;
-    /// the generic portion is then paid deterministically from colorless, then
-    /// white, blue, black, red, green.
+    /// Whether `cost` can be paid from this pool for `purpose`, which decides whether
+    /// the restricted mana in it may be used (CR 106.6).
+    #[must_use]
+    pub fn can_pay_for(&self, cost: &ManaCost, purpose: SpendPurpose<'_>) -> bool {
+        self.pay_for(cost, purpose).is_some()
+    }
+
+    /// Pay `cost` with no restricted mana, returning the resulting pool, or `None` if it
+    /// cannot be paid. The convenience over [`Self::pay_for`] for every payment that is
+    /// not casting a spell.
     #[must_use]
     pub fn pay(&self, cost: &ManaCost) -> Option<Self> {
-        if !self.can_pay(cost) {
+        self.pay_for(cost, SpendPurpose::Other)
+    }
+
+    /// Pay `cost` for `purpose`, returning the resulting pool, or `None` if it cannot be
+    /// paid.
+    ///
+    /// **Restricted mana is spent first**, and that greedy choice is provably optimal
+    /// rather than merely convenient: mana that may only be spent here can pay for
+    /// nothing else, so using it can never cost the player a payment they would
+    /// otherwise have made. Colored and colorless requirements are paid from their own
+    /// colors; the generic portion is then paid deterministically from usable restricted
+    /// mana, then colorless, then white, blue, black, red, green.
+    #[must_use]
+    pub fn pay_for(&self, cost: &ManaCost, purpose: SpendPurpose<'_>) -> Option<Self> {
+        let mut pool = self.clone();
+        // Each colored requirement takes its own color, restricted first.
+        for (needed, color) in [
+            (cost.white, Color::White),
+            (cost.blue, Color::Blue),
+            (cost.black, Color::Black),
+            (cost.red, Color::Red),
+            (cost.green, Color::Green),
+        ] {
+            let mut owed = needed;
+            owed -= pool.spend_restricted(owed, Some(color), purpose);
+            let slot = pool.color_slot(color);
+            if *slot < owed {
+                return None;
+            }
+            *slot -= owed;
+        }
+        // `{C}` requires colorless specifically (CR 107.4c); no colored mana, restricted
+        // or otherwise, can pay it.
+        if pool.colorless < cost.colorless {
             return None;
         }
-        let mut pool = self.clone();
-        pool.white -= cost.white;
-        pool.blue -= cost.blue;
-        pool.black -= cost.black;
-        pool.red -= cost.red;
-        pool.green -= cost.green;
         pool.colorless -= cost.colorless;
 
         let mut generic = cost.generic;
+        generic -= pool.spend_restricted(generic, None, purpose);
         for slot in [
             &mut pool.colorless,
             &mut pool.white,
@@ -151,12 +266,56 @@ impl ManaPool {
                 break;
             }
         }
+        if generic > 0 {
+            return None;
+        }
+        pool.restricted.retain(|entry| entry.amount > 0);
         Some(pool)
     }
 
-    /// The pool as a list of pip strings (e.g. `["{G}", "{G}"]`), colorless last.
+    /// Spend up to `wanted` restricted mana usable for `purpose` — of `color` when one
+    /// is named, of any color otherwise — and report how much was spent.
+    fn spend_restricted(
+        &mut self,
+        wanted: u8,
+        color: Option<Color>,
+        purpose: SpendPurpose<'_>,
+    ) -> u8 {
+        let mut spent = 0;
+        for entry in &mut self.restricted {
+            if spent >= wanted {
+                break;
+            }
+            if color.is_some_and(|wanted_color| entry.color != wanted_color) {
+                continue;
+            }
+            if !entry.restriction.allows(purpose) {
+                continue;
+            }
+            let take = entry.amount.min(wanted - spent);
+            entry.amount -= take;
+            spent += take;
+        }
+        spent
+    }
+
+    /// A mutable handle on the slot holding `color`.
+    fn color_slot(&mut self, color: Color) -> &mut u8 {
+        match color {
+            Color::White => &mut self.white,
+            Color::Blue => &mut self.blue,
+            Color::Black => &mut self.black,
+            Color::Red => &mut self.red,
+            Color::Green => &mut self.green,
+        }
+    }
+
+    /// The pool as a list of pip strings (e.g. `["{G}", "{G}"]`), colorless last and
+    /// restricted mana last of all.
     ///
-    /// Used to build the protocol's server-computed mana-pool display.
+    /// Used to build the protocol's server-computed mana-pool display. Restricted mana
+    /// is marked so a player can see that two of their five red are not general-purpose;
+    /// the marker is display text the client renders and never parses.
     #[must_use]
     pub fn pips(&self) -> Vec<String> {
         let mut out = Vec::new();
@@ -173,6 +332,11 @@ impl ManaPool {
         }
         for _ in 0..self.colorless {
             out.push("{C}".to_string());
+        }
+        for entry in &self.restricted {
+            for _ in 0..entry.amount {
+                out.push(format!("{}*", entry.color.pip()));
+            }
         }
         out
     }

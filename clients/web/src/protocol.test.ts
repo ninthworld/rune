@@ -41,6 +41,7 @@ const CASES: ReadonlyArray<readonly [string, ZodType]> = [
   ['gameview-prompts.json', GameView],
   ['gameview-choice.json', GameView],
   ['gameview-optional.json', GameView],
+  ['gameview-emblem.json', GameView],
   ['lobbyview.json', LobbyView],
   ['catalogview.json', CatalogView],
   ['spectatorview.json', SpectatorView],

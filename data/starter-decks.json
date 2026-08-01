@@ -19,7 +19,7 @@
         {
           "identity": "fire_elemental",
           "name": "Fire Elemental",
-          "count": 3
+          "count": 2
         },
         {
           "identity": "volcanic_dragon",
@@ -39,6 +39,11 @@
         {
           "identity": "electrify",
           "name": "Electrify",
+          "count": 1
+        },
+        {
+          "identity": "sarkhan_fireblood",
+          "name": "Sarkhan, Fireblood",
           "count": 2
         },
         {
@@ -81,7 +86,7 @@
         {
           "identity": "colossal_dreadmaw",
           "name": "Colossal Dreadmaw",
-          "count": 2
+          "count": 1
         },
         {
           "identity": "gigantosaurus",
@@ -101,6 +106,11 @@
         {
           "identity": "revitalize",
           "name": "Revitalize",
+          "count": 1
+        },
+        {
+          "identity": "vivien_reid",
+          "name": "Vivien Reid",
           "count": 2
         },
         {
@@ -143,17 +153,22 @@
         {
           "identity": "tolarian_scholar",
           "name": "Tolarian Scholar",
-          "count": 2
+          "count": 1
         },
         {
           "identity": "divination",
           "name": "Divination",
-          "count": 4
+          "count": 3
         },
         {
           "identity": "cancel",
           "name": "Cancel",
           "count": 4
+        },
+        {
+          "identity": "tezzeret_artifice_master",
+          "name": "Tezzeret, Artifice Master",
+          "count": 2
         },
         {
           "identity": "island",
@@ -180,12 +195,12 @@
         {
           "identity": "daybreak_chaplain",
           "name": "Daybreak Chaplain",
-          "count": 3
+          "count": 2
         },
         {
           "identity": "silverbeak_griffin",
           "name": "Silverbeak Griffin",
-          "count": 3
+          "count": 2
         },
         {
           "identity": "herald_of_faith",
@@ -216,6 +231,11 @@
           "identity": "take_vengeance",
           "name": "Take Vengeance",
           "count": 1
+        },
+        {
+          "identity": "ajani_adversary_of_tyrants",
+          "name": "Ajani, Adversary of Tyrants",
+          "count": 2
         },
         {
           "identity": "plains",
@@ -334,7 +354,7 @@
         {
           "identity": "wall_of_mist",
           "name": "Wall of Mist",
-          "count": 2
+          "count": 1
         },
         {
           "identity": "vampire_neonate",
@@ -349,7 +369,7 @@
         {
           "identity": "snapping_drake",
           "name": "Snapping Drake",
-          "count": 3
+          "count": 2
         },
         {
           "identity": "millstone",
@@ -380,6 +400,11 @@
           "identity": "cancel",
           "name": "Cancel",
           "count": 1
+        },
+        {
+          "identity": "liliana_untouched_by_death",
+          "name": "Liliana, Untouched by Death",
+          "count": 2
         },
         {
           "identity": "island",

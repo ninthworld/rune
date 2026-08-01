@@ -195,6 +195,16 @@ pub enum GameEvent {
         player: PlayerId,
         /// Number of cards that actually moved to the graveyard.
         count: u32,
+        /// **Which** cards moved, in the order they were milled.
+        ///
+        /// Recorded where a draw's and a discard's are not, and the asymmetry is the
+        /// point: a milled card lands in a public graveyard, so naming it here leaks
+        /// nothing that is not already visible — while a `if at least one Zombie card
+        /// was milled this way` condition ([`Condition::MilledThisWay`](crate::Condition))
+        /// cannot be answered from the graveyard, which cannot tell a card milled this
+        /// way from one that was already there. The projection to the wire still carries
+        /// only the count.
+        cards: Vec<CardInstance>,
     },
     /// A player discarded cards from their hand (CR 701.8). Card identities are
     /// deliberately absent for the same reason [`Self::CardsDrawn`]'s are — a hand is
@@ -310,6 +320,60 @@ pub enum CounterKind {
     /// characteristic — a planeswalker has no power or toughness — which is why the
     /// layer-7c delta ignores it.
     Loyalty,
+}
+
+/// An **emblem** (CR 114): a marker a player owns, whose only characteristics are its
+/// abilities, and which exists outside every zone.
+///
+/// The last object model the engine was missing, and the only one with no removal path.
+/// Everything else the engine creates is somewhere — a permanent is on the battlefield,
+/// a card is in a zone, a stack object is on the stack — and every one of them has a
+/// seam it leaves through. An emblem has none: nothing destroys, exiles, bounces, or
+/// targets it, no state-based action collects it, and it survives the planeswalker whose
+/// ultimate made it by an arbitrary number of turns. That is not a simplification; it is
+/// CR 114.5, and it is why this type carries no zone, no tapped state, no counters, and
+/// no damage.
+///
+/// It has **no [`PermanentId`]**, because it is not a permanent. Its [`id`](Self::id) is
+/// minted from the same monotonic [`GameState::next_object_id`](crate::GameState) every
+/// other object's is, so it is a unique, replay-stable handle *and* a CR 613.7 timestamp
+/// — which is what lets an emblem's static ability fold into the layer system beside a
+/// permanent's without the ordering code learning that emblems exist.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Emblem {
+    /// This emblem's object id, minted from
+    /// [`GameState::next_object_id`](crate::GameState) — unique across every object in
+    /// the game, and its CR 613.7 timestamp.
+    pub id: u64,
+    /// The player who has it (CR 114.2), and therefore the "you" its abilities are
+    /// written from. An emblem is controlled by its owner and control never changes.
+    pub controller: PlayerId,
+    /// Its abilities, which are all it has (CR 114.1). Authored inline by the
+    /// [`Effect::CreateEmblem`](crate::Effect) that made it, since an emblem is not a
+    /// card and has no catalog entry to read them from.
+    pub abilities: Vec<crate::ability::Ability>,
+}
+
+/// A permission to cast cards from a graveyard, granted for one turn
+/// ([`Effect::AllowCastingFromGraveyard`](crate::Effect)).
+///
+/// **Raw stored state, not a derivation** (ADR 0005 §1): nothing else in
+/// [`GameState`](crate::GameState) records that a player was given this, and a snapshot
+/// of the zones could never recover it. Kept as a list rather than a flag because two
+/// permissions can be in force at once and each names its own class of card.
+///
+/// It carries the [`turn`](Self::turn) it was granted on rather than a duration to tick
+/// down: "this turn" is a fact about which turn it is, and comparing turn numbers cannot
+/// drift the way a countdown can. The turn boundary drops every entry, so the list is
+/// empty in almost every state.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GraveyardCasting {
+    /// The player whose graveyard becomes castable.
+    pub player: PlayerId,
+    /// Which of that graveyard's cards may be cast.
+    pub filter: crate::ability::CardFilter,
+    /// The turn the permission was granted on; it lapses when that turn ends.
+    pub turn: u32,
 }
 
 /// A permanent on the shared battlefield.

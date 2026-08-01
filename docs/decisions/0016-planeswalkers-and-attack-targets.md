@@ -21,10 +21,11 @@ assignment, the multi-defender flow of #344, and the wire. That single type chan
 most of the risk, and it is why this ADR exists.
 
 Not for the cards, though. All five M19 planeswalkers need an **emblem** — a zoneless,
-controller-scoped continuous object the engine has nothing like — and four of them need a
+controller-scoped continuous object the engine had nothing like — and four of them need a
 second unmodeled subsystem besides. None of them was authorable from this change, and none
 was authored. The acceptance evidence is a set of inline `test_*` definitions, exactly as
-ADR 0009 prescribes for a shape the shipped set does not represent.
+ADR 0009 prescribes for a shape the shipped set does not represent. (ADR 0017 built the
+emblem object and the rest, and authored all five.)
 
 ## Decision
 
@@ -149,10 +150,10 @@ is unaffected by it. What became possible is the subsystem: a planeswalker can b
 accumulate and spend loyalty, be targeted by `any target`, be attacked, be blocked for, and
 die, all through the ordinary pipeline.
 
-Emblems are the next thing, and they are not a variation on anything here. An emblem is a
-zoneless object with a controller-scoped continuous effect; `StaticAffects` scopes to
-creatures a player controls, and `Ability::Static` is derived from a *battlefield* source's
-presence. Both assumptions have to move.
+Emblems were the next thing, and they were not a variation on anything here: an emblem is a
+zoneless object with a controller-scoped continuous effect, while `Ability::Static` is derived
+from a *battlefield* source's presence. ADR 0017 moved that assumption, and the first two of
+those three exclusions are gone with it — the legend-rule choice remains.
 
 The cost is that combat no longer answers "which seat is this attacker attacking?" without
 a lookup — `attacking_defender_of` walks the battlefield to find a planeswalker's

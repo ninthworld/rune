@@ -22,6 +22,7 @@ mod choice;
 mod combat;
 mod commander;
 pub mod compat;
+mod condition;
 #[cfg(test)]
 mod fixtures;
 mod id;
@@ -41,9 +42,11 @@ mod triggers;
 mod zone;
 
 pub use ability::{
-    is_loyalty_ability, is_mana_ability, Ability, CardFilter, Chooser, Cost, DamageSubject, Effect,
-    FoundDestination, MassAffects, ObservedPermanent, ObservedSpell, PlayerRef, StaticAffects,
-    StaticModification, Target, TargetSpec, TriggerCondition, TriggerStep, TurnScope,
+    group_target_counts, is_emblem_ability, is_loyalty_ability, is_mana_ability, maximum_targets,
+    minimum_targets, target_counts, Ability, CardFilter, Chooser, Condition, Cost, CountScope,
+    DamageSubject, Effect, FoundDestination, ManaRestriction, MassAffects, ObservedPermanent,
+    ObservedSpell, PermanentCount, PlayerRef, StaticAffects, StaticModification, Target,
+    TargetCount, TargetGroup, TargetSpec, TriggerCondition, TriggerStep, TurnScope,
 };
 pub use actions::{
     target_requirements, valid_actions, Action, Attack, Block, DamageOrder, TargetRequirement,
@@ -76,7 +79,7 @@ pub use id::{
     CardId, CardInstance, CardInstanceId, FunctionalId, FunctionalIdError, OracleId, PermanentId,
     PlayerId,
 };
-pub use mana::{parse_mana_cost, Color, ManaCost, ManaPool};
+pub use mana::{parse_mana_cost, Color, ManaCost, ManaPool, RestrictedMana, SpendPurpose};
 pub use mulligan::{bottom_requirement, BottomRequirement, MulliganState, PlayerMulligan};
 pub use phase::Step;
 pub use player::{LossReason, Player, MAX_HAND_SIZE, STARTING_LIFE};
@@ -84,10 +87,11 @@ pub use scripted::scripted_rules_text;
 pub use setup::{
     GameSetup, PlayerSetup, SetupError, DEFAULT_STARTING_HAND_SIZE, DEFAULT_STARTING_LIFE,
 };
-pub use stack::{AbilityOrigin, StackId, StackObject, StackObjectKind};
+pub use stack::{AbilityOrigin, AbilitySource, StackId, StackObject, StackObjectKind};
 pub use state::{
-    CommanderDamage, CounterKind, DamageTarget, Duration, EffectAffects, GameEvent, GameLogEntry,
-    GameResult, GameState, LoggedIdentity, LoggedPermanent, Modification, Permanent, StaticEffect,
+    CommanderDamage, CounterKind, DamageTarget, Duration, EffectAffects, Emblem, GameEvent,
+    GameLogEntry, GameResult, GameState, GraveyardCasting, LoggedIdentity, LoggedPermanent,
+    Modification, Permanent, StaticEffect,
 };
 pub use token::{Printed, PrintedFace, TokenData};
 pub use triggers::{collect_triggers, pending_trigger_target_choice, Trigger};

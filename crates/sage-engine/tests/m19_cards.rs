@@ -876,7 +876,7 @@ fn herald_of_faith_gains_two_life_each_time_it_attacks() {
     while state
         .stack
         .iter()
-        .any(|o| matches!(o.kind, StackObjectKind::Ability { source, .. } if source == herald))
+        .any(|o| matches!(o.kind, StackObjectKind::Ability { source, .. } if source.permanent() == Some(herald)))
     {
         state = advance(&state, &db);
     }
@@ -888,7 +888,7 @@ fn herald_of_faith_gains_two_life_each_time_it_attacks() {
     assert!(
         !state.stack.iter().any(|o| matches!(
             o.kind,
-            StackObjectKind::Ability { source, .. } if source == herald
+            StackObjectKind::Ability { source, .. } if source.permanent() == Some(herald)
         )),
         "the trigger resolved rather than re-triggering"
     );
@@ -1108,7 +1108,7 @@ fn infectious_horror_drains_on_every_attack_without_choosing_anything() {
     while state
         .stack
         .iter()
-        .any(|o| matches!(o.kind, StackObjectKind::Ability { source, .. } if source == horror))
+        .any(|o| matches!(o.kind, StackObjectKind::Ability { source, .. } if source.permanent() == Some(horror)))
     {
         state = advance(&state, &db);
     }
@@ -1220,7 +1220,9 @@ fn poison_tip_archer_drains_once_per_other_creature_that_dies() {
     }
     let triggers = sage_engine::collect_triggers(&state, &after, &db);
     assert_eq!(triggers.len(), 2, "two deaths, two triggers");
-    assert!(triggers.iter().all(|t| t.source == archer));
+    assert!(triggers
+        .iter()
+        .all(|t| t.source.permanent() == Some(archer)));
 
     // The Archer dying alone triggers nothing: `except_this` excludes it.
     let mut alone = state.clone();
@@ -1314,7 +1316,7 @@ fn satyr_enchanter_and_aven_wind_mage_watch_what_their_controller_casts() {
         after
             .stack
             .iter()
-            .filter(|o| matches!(o.kind, StackObjectKind::Ability { source, .. } if source == mage))
+            .filter(|o| matches!(o.kind, StackObjectKind::Ability { source, .. } if source.permanent() == Some(mage)))
             .count(),
         1,
         "the instant cast triggered the Wind Mage exactly once"
@@ -1549,7 +1551,8 @@ fn millstone_mills_the_targeted_player_without_decking_them() {
         entry.event,
         GameEvent::CardsMilled {
             player: PlayerId(1),
-            count: 2
+            count: 2,
+            ..
         }
     )));
 

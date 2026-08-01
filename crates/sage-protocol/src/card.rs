@@ -264,6 +264,31 @@ pub struct Permanent {
     pub counters: Vec<Counter>,
 }
 
+/// An **emblem** in the game (CR 114, issue #620): a marker one player has, whose only
+/// characteristics are its abilities, and which is in no zone and never leaves.
+///
+/// It is projected alongside the battlefield rather than inside it because it is not a
+/// permanent: it cannot be tapped, attacked, blocked, damaged, destroyed, or targeted,
+/// and none of [`Permanent`]'s fields would mean anything on it. A client renders it as a
+/// small persistent marker beside its controller, and derives nothing from it — the
+/// abilities arrive as the same server-composed rules sentences a card's do.
+///
+/// **Public information.** Every seat and every spectator sees every emblem, so this list
+/// is identical in each view.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Emblem {
+    /// Entity id of this emblem, stable for the rest of the game. Opaque; the client
+    /// never parses it, and it never collides with a permanent's or a card's.
+    pub id: EntityId,
+    /// The player who has it (CR 114.2). Control never changes.
+    pub controller: PlayerId,
+    /// Its abilities, as server-composed rules sentences — one per ability, in the order
+    /// the emblem carries them. This is the whole of what an emblem *is* (CR 114.1), so a
+    /// client that renders these has rendered the object.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub abilities: Vec<String>,
+}
+
 /// A named counter on a permanent.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Counter {

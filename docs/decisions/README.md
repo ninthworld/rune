@@ -26,6 +26,7 @@ them in order never requires a forward reference.
 | [0014](0014-optional-effects.md) | Optional effects, and paying for one mid-resolution |
 | [0015](0015-tokens.md) | What a permanent is, when it is not a card |
 | [0016](0016-planeswalkers-and-attack-targets.md) | Loyalty as counters, and what an attack names |
+| [0017](0017-emblems-and-variable-target-arity.md) | An object in no zone, and an effect that may name fewer targets than it allows |
 
 New ADRs copy [`0000-template.md`](0000-template.md) and take the next free number.
 

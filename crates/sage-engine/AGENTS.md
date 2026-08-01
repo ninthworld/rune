@@ -68,8 +68,23 @@ loyalty), and what CR 704.5i reads at zero. `is_loyalty_ability` carries the two
 timing rules, gated in the offer *and* re-derived in `apply_action`. `Attack.defender` and
 `Permanent.attacking` are an `AttackTarget` — a player or a planeswalker — so
 "what is attacked" (`attack_target_of`) and "who declares blockers" (`attacking_defender_of`,
-which resolves a planeswalker's controller) are separate questions. Emblems are the next
-hole and are not a variation on any of this.
+which resolves a planeswalker's controller) are separate questions.
+
+**An emblem is in no zone and is never removed** (ADR 0017). `GameState::emblems` is a
+*second source list* both ability paths walk — `characteristics::static_ability_effects` and
+`triggers::collect_triggers` — and nothing else in the engine reads it. Neither list's
+position decides anything: every contribution is timestamped by its source's object id and
+the caller sorts by that. `AbilitySource` says what an ability on the stack came from, and its
+`permanent()` answering `None` is what makes an emblem need no special case in a
+self-referential effect. Do not put an emblem on the battlefield: every state-based action,
+every target spec, and every combat gate would then need a clause saying why it does not
+apply, and *saying nothing* is the correct answer.
+
+**One effect may declare more than one target** (ADR 0017). `Effect::target_group` returns
+`{spec, min, max}`; `min == 0` is the "up to N" shape, and a group with `min == 0` is never a
+reason to withhold an offer. At most **one** variable-arity group per ability or spell — the
+stored target list is flat, and the validator enforces the limit so the pairing back onto
+effects is exact rather than a guess.
 
 `Ability::Static` exists and covers anthems and lords ("creatures you control", optionally
 filtered to a subtype, optionally excluding the source). It is **derived, never stored**:

@@ -335,7 +335,7 @@ pub(crate) fn push_ability(
         id: StackId(id),
         controller: PlayerId(0),
         kind: StackObjectKind::Ability {
-            source,
+            source: crate::stack::AbilitySource::Permanent(source),
             // These helpers stand in for an activation; a resolution behaves the
             // same either way, so the origin only has to be stated, not varied.
             origin: AbilityOrigin::Activated,

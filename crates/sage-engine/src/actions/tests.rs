@@ -173,7 +173,7 @@ fn a_legal_target_is_accepted_and_carried_onto_the_stack() {
     assert_eq!(after.stack.len(), 1);
     assert!(matches!(
         after.stack[0].kind,
-        StackObjectKind::Ability { source, .. } if source == tapper
+        StackObjectKind::Ability { source, .. } if source.permanent() == Some(tapper)
     ));
     assert_eq!(after.stack[0].targets, vec![target]);
 
@@ -677,7 +677,7 @@ fn issue_148_counterspell_cannot_target_an_ability_on_the_stack_cr_605_3() {
         id: sid,
         controller: PlayerId(1),
         kind: StackObjectKind::Ability {
-            source: PermanentId(999),
+            source: crate::stack::AbilitySource::Permanent(PermanentId(999)),
             origin: AbilityOrigin::Activated,
             effects: vec![crate::ability::Effect::DrawCard { count: 1 }],
         },

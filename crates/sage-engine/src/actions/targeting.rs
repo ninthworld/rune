@@ -1,6 +1,6 @@
 //! Action targeting — enumeration of legal targets per action and target slot.
 
-use crate::ability::{Ability, Effect, Target, TargetSpec};
+use crate::ability::{Ability, Effect, Target, TargetGroup, TargetSpec};
 use crate::id::PlayerId;
 use crate::resolve::target_is_legal;
 use crate::state::GameState;
@@ -33,29 +33,37 @@ pub fn target_requirements(
     // ([`acting_player`]). That is what makes "target creature you control"
     // enumerate *their* creatures.
     let controller = acting_player(state, action);
-    action_target_specs(state, db, action)
+    action_target_groups(state, db, action)
         .into_iter()
-        .map(|spec| TargetRequirement {
-            spec,
-            candidates: legal_targets_for_spec(spec, state, controller, db),
+        // One group becomes one slot per target it may take, so the client answers a
+        // slot at a time whether the effect wants one target or two. The slots past the
+        // group's minimum are the ones the player may leave empty — "up to two target
+        // creatures" is one required slot's worth of nothing and two optional ones.
+        .flat_map(|group| {
+            let candidates = legal_targets_for_spec(group.spec, state, controller, db);
+            (0..group.max).map(move |index| TargetRequirement {
+                spec: group.spec,
+                optional: index >= group.min,
+                candidates: candidates.clone(),
+            })
         })
         .collect()
 }
 
-/// The ordered [`TargetSpec`]s `action` must be given a target for — one per
+/// The ordered [`TargetGroup`]s `action` must be given targets for — one per
 /// targeting effect the action declares, in resolution order. Empty for an action
 /// with no targeting effects (or one the state cannot resolve).
 ///
 /// An [`Action::ActivateAbility`] reads its activated ability's effects; an
-/// [`Action::CastSpell`] reads the cast card's cast target specs
-/// ([`crate::CardData::cast_target_specs`]) — the spell-effect target slots plus, for an
+/// [`Action::CastSpell`] reads the cast card's cast target groups
+/// ([`crate::CardData::cast_target_groups`]) — the spell-effect target slots plus, for an
 /// Aura, its enchant restriction (CR 303.4a) — so a spell chooses targets exactly
 /// as an ability does (CR 601.2c). Every other action targets nothing.
-pub(crate) fn action_target_specs(
+pub(crate) fn action_target_groups(
     state: &GameState,
     db: &CardDatabase,
     action: &Action,
-) -> Vec<TargetSpec> {
+) -> Vec<TargetGroup> {
     match action {
         Action::ActivateAbility {
             permanent, index, ..
@@ -67,13 +75,13 @@ pub(crate) fn action_target_specs(
             let Some(Ability::Activated { effects, .. }) = abilities.get(*index) else {
                 return Vec::new();
             };
-            effects.iter().filter_map(Effect::target_spec).collect()
+            effects.iter().filter_map(Effect::target_group).collect()
         }
         Action::CastSpell { card, .. } => db
             .card(card.card)
-            .map(crate::card::CardData::cast_target_specs)
+            .map(crate::card::CardData::cast_target_groups)
             .unwrap_or_default(),
-        // A trigger's slots are the target specs of the effects it carries on the
+        // A trigger's slots are the target groups of the effects it carries on the
         // stack — read from the object itself, since a triggered ability's effects
         // were copied there when it triggered and are what will resolve.
         Action::ChooseTriggerTargets { ability, .. } => state
@@ -82,7 +90,7 @@ pub(crate) fn action_target_specs(
             .find(|o| o.id == *ability)
             .map(|o| match &o.kind {
                 crate::stack::StackObjectKind::Ability { effects, .. } => {
-                    effects.iter().filter_map(Effect::target_spec).collect()
+                    effects.iter().filter_map(Effect::target_group).collect()
                 }
                 crate::stack::StackObjectKind::Spell { .. } => Vec::new(),
             })
@@ -147,7 +155,23 @@ pub(crate) fn legal_targets_for_spec(
         | TargetSpec::AnyArtifact
         | TargetSpec::AnyEnchantment
         | TargetSpec::AnyArtifactOrEnchantment
+        | TargetSpec::AnyArtifactEnchantmentOrCreatureWithFlying
         | TargetSpec::AnyLand => permanents,
+        // A graveyard is public, so its cards are enumerable exactly as the battlefield
+        // is — the universe is the choosing player's own graveyard, and the
+        // `target_is_legal` filter below keeps only the creature cards within the mana
+        // value the spec names.
+        TargetSpec::CreatureCardInYourGraveyard { .. } => state
+            .players
+            .get(controller.0)
+            .map(|player| {
+                player
+                    .graveyard
+                    .iter()
+                    .map(|card| Target::Card(card.id))
+                    .collect()
+            })
+            .unwrap_or_default(),
         // "Any target" (CR 115.4): players and battlefield permanents together; the
         // `target_is_legal` filter below keeps only creatures, planeswalkers, and
         // in-game players, so an artifact or a land never survives it.

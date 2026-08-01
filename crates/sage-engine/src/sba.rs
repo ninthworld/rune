@@ -146,13 +146,20 @@ pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) 
             .battlefield
             .iter()
             .filter(|perm| {
+                // CR 704.5f is **not** destruction, so indestructible is no defence
+                // against it: a creature whose toughness is 0 or less is put into its
+                // owner's graveyard whatever keywords it has.
                 has_zero_toughness(perm, state, db)
-                    || has_lethal_damage(perm, state, db)
-                    // CR 704.5h destroys a *creature* dealt deathtouch damage. The
-                    // creature test used to be implied by the other two arms reading
-                    // toughness; a planeswalker can now be dealt combat damage
-                    // (CR 120.3c) by a deathtouch source, so it is stated.
-                    || (struck.contains(&perm.id) && is_creature(perm, db))
+                    // CR 704.5g and CR 704.5h *destroy*, and CR 702.12 is precisely an
+                    // exception to destruction — so the keyword is checked here and
+                    // nowhere else in this list.
+                    || (!is_indestructible(perm, state, db)
+                        && (has_lethal_damage(perm, state, db)
+                            // CR 704.5h destroys a *creature* dealt deathtouch damage.
+                            // The creature test used to be implied by the other two arms
+                            // reading toughness; a planeswalker can now be dealt combat
+                            // damage (CR 120.3c) by a deathtouch source, so it is stated.
+                            || (struck.contains(&perm.id) && is_creature(perm, db))))
             })
             .map(|perm| perm.id)
             .collect();
@@ -278,6 +285,23 @@ fn has_lethal_damage(perm: &Permanent, state: &GameState, db: &CardDatabase) -> 
 /// never qualifies.
 fn has_zero_toughness(perm: &Permanent, state: &GameState, db: &CardDatabase) -> bool {
     matches!(characteristics(state, perm.id, db).toughness, Some(t) if t <= 0)
+}
+
+/// Whether `perm` is **indestructible** (CR 702.12) — read through the computed
+/// keywords, so an emblem's grant protects a creature exactly as a printed keyword
+/// would.
+///
+/// Scoped to *destruction*, which is what CR 702.12 says and no more: the caller applies
+/// it to the lethal-damage and deathtouch state-based actions and to the `Destroy` verb,
+/// and deliberately not to CR 704.5f (0 toughness), CR 704.5i (a planeswalker at zero
+/// loyalty), sacrifice, exile, or bounce.
+fn is_indestructible(perm: &Permanent, state: &GameState, db: &CardDatabase) -> bool {
+    crate::characteristics::permanent_has_keyword(
+        state,
+        perm.id,
+        crate::card::Keyword::Indestructible,
+        db,
+    )
 }
 
 /// Whether `perm` is a creature, by its printed types — the guard CR 704.5h needs now

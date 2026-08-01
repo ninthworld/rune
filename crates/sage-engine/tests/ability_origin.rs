@@ -82,7 +82,7 @@ fn sparker_and_lurker(db: &CardDatabase) -> (GameState, PermanentId, PermanentId
 fn only_ability(state: &GameState) -> (PermanentId, AbilityOrigin) {
     assert_eq!(state.stack.len(), 1, "exactly one object on the stack");
     match state.stack[0].kind {
-        StackObjectKind::Ability { source, origin, .. } => (source, origin),
+        StackObjectKind::Ability { source, origin, .. } => (source.permanent().unwrap(), origin),
         StackObjectKind::Spell { .. } => panic!("expected an ability on the stack"),
     }
 }

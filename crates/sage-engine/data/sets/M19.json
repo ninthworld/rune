@@ -5,6 +5,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "ajani_adversary_of_tyrants",
+    "collector_number": "3",
+    "rarity": "mythic"
+  },
+  {
     "functional_id": "ajani_s_pridemate",
     "collector_number": "5",
     "rarity": "uncommon"
@@ -130,6 +135,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "tezzeret_artifice_master",
+    "collector_number": "64",
+    "rarity": "mythic"
+  },
+  {
     "functional_id": "snapping_drake",
     "collector_number": "75",
     "rarity": "common"
@@ -173,6 +183,11 @@
     "functional_id": "lich_s_caress",
     "collector_number": "105",
     "rarity": "common"
+  },
+  {
+    "functional_id": "liliana_untouched_by_death",
+    "collector_number": "106",
+    "rarity": "mythic"
   },
   {
     "functional_id": "murder",
@@ -280,6 +295,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "sarkhan_fireblood",
+    "collector_number": "154",
+    "rarity": "mythic"
+  },
+  {
     "functional_id": "shock",
     "collector_number": "156",
     "rarity": "common"
@@ -338,6 +358,11 @@
     "functional_id": "druid_of_the_cowl",
     "collector_number": "177",
     "rarity": "common"
+  },
+  {
+    "functional_id": "vivien_reid",
+    "collector_number": "180",
+    "rarity": "mythic"
   },
   {
     "functional_id": "giant_spider",

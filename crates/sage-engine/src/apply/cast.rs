@@ -138,7 +138,7 @@ pub(crate) fn apply_activate_ability(
             id: StackId(id),
             controller,
             kind: StackObjectKind::Ability {
-                source: permanent,
+                source: crate::stack::AbilitySource::Permanent(permanent),
                 // This is the *activation* push site (CR 602.2): a player chose
                 // this ability and paid for it above. Recording that here is the
                 // only place the fact exists — the object it produces is
@@ -213,7 +213,14 @@ pub(crate) fn apply_cast_spell(
         let Some(player) = state.players.get_mut(controller.0) else {
             return;
         };
-        let Some(new_pool) = player.mana_pool.pay(&cost) else {
+        // CR 106.6: restricted mana may be spent here only if this spell is what its
+        // restriction allows, which is why the payment is told what it is paying for.
+        let Some(new_pool) = player.mana_pool.pay_for(
+            &cost,
+            crate::mana::SpendPurpose::CastingSpell {
+                subtypes: &data.subtypes,
+            },
+        ) else {
             return;
         };
         if from_command {
@@ -225,11 +232,17 @@ pub(crate) fn apply_cast_spell(
             if let Some(commander) = player.commander.as_mut() {
                 commander.casts += 1;
             }
-        } else {
-            let Some(pos) = player.hand.iter().position(|&c| c.id == card.id) else {
-                return;
-            };
+        } else if let Some(pos) = player.hand.iter().position(|&c| c.id == card.id) {
             player.hand.remove(pos);
+        } else if let Some(pos) = player.graveyard.iter().position(|&c| c.id == card.id) {
+            // A card cast from the graveyard under a permission granted this turn
+            // ([`Effect::AllowCastingFromGraveyard`]). It leaves the graveyard for the
+            // stack exactly as a hand cast does; if it is countered or fizzles it comes
+            // back to the graveyard down the ordinary path, and if it resolves as a
+            // permanent it enters the battlefield.
+            player.graveyard.remove(pos);
+        } else {
+            return;
         }
         player.mana_pool = new_pool;
     }
@@ -271,6 +284,52 @@ pub(crate) fn apply_effect(
         Effect::AddColorlessMana { amount } => {
             if let Some(player) = state.players.get_mut(controller.0) {
                 player.mana_pool.add_colorless(*amount);
+            }
+        }
+        // CR 106.6: mana that may be spent only on certain things. It joins the same
+        // pool as ordinary mana and empties with it at the end of the step (CR 500.4);
+        // the restriction rides on the mana, so nothing about the pool has to remember
+        // which ability made it.
+        Effect::AddRestrictedMana {
+            color,
+            amount,
+            restriction,
+        } => {
+            if let Some(player) = state.players.get_mut(controller.0) {
+                player
+                    .mana_pool
+                    .add_restricted(*color, *amount, restriction.clone());
+            }
+        }
+        // CR 114.3: the named player gets an emblem. It is minted from the same
+        // monotonic counter every other object uses — which is both its identity and its
+        // CR 613.7 timestamp — and then it simply exists, for the rest of the game.
+        // Nothing here has to arrange for it to be cleaned up, because nothing ever
+        // cleans one up.
+        Effect::CreateEmblem {
+            abilities,
+            player_ref,
+        } => {
+            for seat in non_targeting_subjects(state, *player_ref, controller) {
+                let id = state.mint_id();
+                state.emblems.push(crate::state::Emblem {
+                    id,
+                    controller: seat,
+                    abilities: abilities.clone(),
+                });
+            }
+        }
+        // A permission for the rest of the turn, recorded with the turn it was granted
+        // on. Re-granting it is idempotent in effect — two identical permissions offer
+        // the same cards — so no de-duplication is needed for correctness.
+        Effect::AllowCastingFromGraveyard { player_ref, filter } => {
+            let turn = state.turn;
+            for seat in non_targeting_subjects(state, *player_ref, controller) {
+                state.graveyard_casting.push(crate::state::GraveyardCasting {
+                    player: seat,
+                    filter: filter.clone(),
+                    turn,
+                });
             }
         }
         Effect::DrawCard { count } => {
@@ -452,7 +511,11 @@ pub(crate) fn apply_effect(
         | Effect::Scry { .. }
         | Effect::LookAtTop { .. }
         | Effect::SearchLibrary { .. }
-        | Effect::May { .. } => {}
+        | Effect::May { .. }
+        // A conditional is likewise intercepted by the resolve loop, which evaluates it
+        // and splices the chosen branch into what remains; reaching here would mean the
+        // branch was never taken.
+        | Effect::Conditional { .. } => {}
         // A targeting effect: its subject is a chosen target, not the controller,
         // so it is applied via [`apply_targeted_effect`] and is a no-op here.
         Effect::Tap { .. }
@@ -462,7 +525,9 @@ pub(crate) fn apply_effect(
         | Effect::ReturnToHand { .. }
         | Effect::PutCounters { .. }
         | Effect::Pump { .. }
+        | Effect::PumpByCount { .. }
         | Effect::GrantKeyword { .. }
+        | Effect::ReturnCardToBattlefield { .. }
         | Effect::Restrict { .. } => {}
     }
 }
@@ -589,7 +654,7 @@ pub(crate) fn apply_targeted_effect(
     state: &mut GameState,
     effect: &Effect,
     target: Target,
-    _controller: PlayerId,
+    controller: PlayerId,
     db: &CardDatabase,
 ) {
     match effect {
@@ -644,7 +709,17 @@ pub(crate) fn apply_targeted_effect(
         // logs a `permanent_died` identically. Regeneration is out of scope.
         Effect::Destroy { .. } => {
             if let Target::Permanent(id) = target {
-                state.destroy_permanent(id, db);
+                // CR 702.12: an indestructible permanent is not destroyed. The effect
+                // still resolves and still had a legal target — it simply does nothing
+                // to it, which is what "can't be destroyed" means.
+                if !crate::characteristics::permanent_has_keyword(
+                    state,
+                    id,
+                    crate::card::Keyword::Indestructible,
+                    db,
+                ) {
+                    state.destroy_permanent(id, db);
+                }
             }
         }
         // Exile the targeted permanent (CR 406.2 / CR 701.19): move it from the
@@ -785,11 +860,63 @@ pub(crate) fn apply_targeted_effect(
         | Effect::LookAtTop { .. }
         | Effect::SearchLibrary { .. }
         | Effect::May { .. } => {}
+        // Shrink (or pump) the targeted creature by a count taken **now** (CR 608.2):
+        // X is computed once, on resolution, and the fixed modifier that results is what
+        // the layer system folds in — so a Zombie dying later in the turn does not give
+        // the creature its toughness back.
+        Effect::PumpByCount {
+            power_per,
+            toughness_per,
+            count_of,
+            ..
+        } => {
+            if let Target::Permanent(id) = target {
+                if state.battlefield.iter().any(|p| p.id == id) {
+                    let count = i32::try_from(crate::condition::count_permanents(
+                        state, count_of, controller, db,
+                    ))
+                    .unwrap_or(i32::MAX);
+                    let source = state.mint_id();
+                    state.static_effects.push(StaticEffect {
+                        source,
+                        affects: EffectAffects::SpecificPermanent(id),
+                        modification: Modification::PowerToughness {
+                            power: power_per.saturating_mul(count),
+                            toughness: toughness_per.saturating_mul(count),
+                        },
+                        duration: Duration::UntilEndOfTurn,
+                    });
+                }
+            }
+        }
+        // Return the targeted card from a graveyard to the battlefield. It goes through
+        // the one card→battlefield seam, so it mints a fresh `PermanentId`, applies its
+        // own enters-the-battlefield replacements, and is seen by the trigger diff
+        // exactly as a resolving creature spell is. The caller has re-checked that the
+        // card is still there and still matches (CR 608.2b).
+        Effect::ReturnCardToBattlefield { .. } => {
+            if let Target::Card(instance) = target {
+                let card = state.players.get_mut(controller.0).and_then(|player| {
+                    player
+                        .graveyard
+                        .iter()
+                        .position(|card| card.id == instance)
+                        .map(|pos| player.graveyard.remove(pos))
+                });
+                if let Some(card) = card {
+                    state.put_card_onto_battlefield(card, controller, false, None, db);
+                }
+            }
+        }
         // Implicit-subject and class-scoped effects do not target; they never reach
         // here, and are applied by [`apply_effect`].
         Effect::AddMana { .. }
         | Effect::AddColorlessMana { .. }
+        | Effect::AddRestrictedMana { .. }
         | Effect::DrawCard { .. }
+        | Effect::CreateEmblem { .. }
+        | Effect::AllowCastingFromGraveyard { .. }
+        | Effect::Conditional { .. }
         | Effect::PumpAll { .. }
         | Effect::GrantKeywordAll { .. }
         | Effect::RestrictAll { .. }

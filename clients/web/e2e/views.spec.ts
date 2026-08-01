@@ -65,6 +65,21 @@ test.describe('the board, from one view', () => {
     )
   })
 
+  test('renders an emblem beside the board, with its abilities', async ({ page }) => {
+    // An emblem (CR 114) is in no zone and is never removed, so it has its own region
+    // rather than a row on the battlefield. Everything shown comes from the view: the
+    // controller's id and the server-composed ability sentences.
+    await serveFrames(page, [fixture('gameview-emblem.json')])
+    await page.goto('/')
+
+    const emblems = page.getByRole('region', { name: 'Emblems' })
+    await expect(emblems).toContainText('Creatures you control get +2/+2.')
+    await expect(emblems).toContainText('Creatures you control have indestructible.')
+
+    // The board it modifies renders from the same view — the client computes no anthem.
+    await expect(page.getByRole('region', { name: 'Battlefield' })).toContainText('6/4')
+  })
+
   test('offers exactly the actions the server listed', async ({ page }) => {
     await serveFrames(page, [fixture('gameview.json')])
     await page.goto('/')

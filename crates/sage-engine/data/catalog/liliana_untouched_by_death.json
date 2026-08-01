@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "functional_id": "liliana_untouched_by_death",
+  "name": "Liliana, Untouched by Death",
+  "supertypes": [
+    "legendary"
+  ],
+  "types": [
+    "planeswalker"
+  ],
+  "subtypes": [
+    "Liliana"
+  ],
+  "mana_cost": "{2}{B}{B}",
+  "colors": [
+    "black"
+  ],
+  "loyalty": 5,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": 1
+        }
+      ],
+      "effects": [
+        {
+          "kind": "mill",
+          "player_ref": "controller",
+          "count": 3
+        },
+        {
+          "kind": "conditional",
+          "condition": {
+            "kind": "milled_this_way",
+            "filter": {
+              "kind": "subtype",
+              "subtype": "Zombie"
+            }
+          },
+          "then": [
+            {
+              "kind": "lose_life",
+              "player_ref": "each_opponent",
+              "amount": 2
+            },
+            {
+              "kind": "gain_life",
+              "player_ref": "controller",
+              "amount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": -2
+        }
+      ],
+      "effects": [
+        {
+          "kind": "pump_by_count",
+          "target": "any_creature",
+          "power_per": -1,
+          "toughness_per": -1,
+          "count_of": {
+            "scope": "you_control",
+            "subtype": "Zombie"
+          }
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": -3
+        }
+      ],
+      "effects": [
+        {
+          "kind": "allow_casting_from_graveyard",
+          "player_ref": "controller",
+          "filter": {
+            "kind": "creature",
+            "subtype": "Zombie"
+          }
+        }
+      ]
+    }
+  ]
+}
