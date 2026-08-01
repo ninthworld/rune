@@ -312,6 +312,11 @@ main:has(.screen) {
   grid-area: table;
   min-height: 0;
   min-width: 0;
+  /* The frame the drawn relationships are measured against, and the reason they are measured
+     against *this* box: everything an arrow can join — both halves of the board, both seats,
+     and the stack rail — is inside it, and nothing that is about the device rather than the
+     game is. */
+  position: relative;
   display: grid;
   gap: 0.4rem;
   padding: 0.4rem;
@@ -347,6 +352,113 @@ main:has(.screen) {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
+}
+
+/* ---------------------------------------------------------------------------
+   The drawn relationships
+   --------------------------------------------------------------------------- */
+
+/* A sheet over the whole table carrying the lines between objects the server related: an
+   attacker to what it is attacking, a blocker to what it stopped, a spell to what it named.
+
+   It takes no pointer events, so every card under it stays exactly as clickable as it was, and
+   it is hidden from assistive technology because the trail under each card is the readable copy
+   of the same facts. Colour is never the only difference either: the kinds sit apart in
+   lightness as well as hue, each line carries an arrowhead saying which way it runs, and the
+   sentence under the card says which relationship it is in words. */
+.overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  /* Above the cards. A line that ran under the objects it joins would be hidden by exactly the
+     two things it is about on a board dense enough to need it. */
+  z-index: 2;
+}
+
+.overlay__edge {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  transition:
+    stroke-opacity var(--trace-duration) ease,
+    stroke-width var(--trace-duration) ease;
+}
+
+/* Combat is the pair a player reads first and the two halves of one exchange, so they are the
+   warm end of the set: an attack, and the block that answered it. Targeting is the stack
+   reaching down onto the board, attachment is a permanent stuck to another, and a source is the
+   object an ability came from — quieter, because they describe a board that is already settled
+   while combat describes one that is about to resolve. */
+.overlay__edge--attacking {
+  stroke: #d9564a;
+}
+
+.overlay__edge--blocking {
+  stroke: #e0b64a;
+}
+
+.overlay__edge--targeting {
+  stroke: #6fb3e0;
+}
+
+.overlay__edge--attached {
+  stroke: #6cc08a;
+}
+
+.overlay__edge--source {
+  stroke: #a99ec4;
+}
+
+.overlay__head--attacking {
+  fill: #d9564a;
+}
+
+.overlay__head--blocking {
+  fill: #e0b64a;
+}
+
+.overlay__head--targeting {
+  fill: #6fb3e0;
+}
+
+.overlay__head--attached {
+  fill: #6cc08a;
+}
+
+.overlay__head--source {
+  fill: #a99ec4;
+}
+
+/* Resting: present, and quiet enough to read a card through. A board mid-combat has a line for
+   every attack, every block, and every target on the stack, and drawing all of them at full
+   strength is how a picture of the board becomes a thing to look past. */
+.overlay__edge--plain {
+  stroke-opacity: 0.55;
+}
+
+/* Everything except combat is quieter still while nobody is looking at anything in particular.
+   Presentation and not a claim about the rules: combat is the one relationship a player has to
+   read *before* they can decide anything, and the rest — what a spell named, what an Aura is on,
+   what an ability came from — is a question about a specific object and is one look away from
+   being answered at full strength. Every one of them is also a sentence under the card. */
+.overlay__edge--plain.overlay__edge--targeting,
+.overlay__edge--plain.overlay__edge--attached,
+.overlay__edge--plain.overlay__edge--source {
+  stroke-opacity: 0.2;
+}
+
+/* Looking at an object answers the question the lines are there for, so its own edges come up
+   and the rest step back — the same rule the cards follow, which is why the two agree about
+   which object is being traced. */
+.overlay__edge--traced {
+  stroke-opacity: 0.95;
+  stroke-width: 3;
+}
+
+.overlay__edge--dimmed {
+  stroke-opacity: 0.18;
 }
 
 /* One line where it fits. The panel is beside the board, not on it, and every row it takes comes

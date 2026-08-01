@@ -69,6 +69,11 @@
   --tap-duration: 500ms;
   --tap-easing: cubic-bezier(0.2, 0.7, 0.3, 1);
 
+  /* How long the lines across the board take to come up under the pointer. Short, because it
+     follows the *look*: a player moving down a row of blockers is asking a question per card,
+     and a fade they have to wait out is a fade that answers the previous one. */
+  --trace-duration: 120ms;
+
   /* The table itself.
 
      Three depths, and the order matters: the felt is furthest back, a seat's half of the board
@@ -111,6 +116,7 @@
 @media (prefers-reduced-motion: reduce) {
   :root {
     --tap-duration: 1ms;
+    --trace-duration: 1ms;
   }
 }
 

@@ -181,6 +181,141 @@ test.describe('a board with relationships to trace', () => {
     await expect(frame(MINE, 'Serra Angel')).not.toHaveClass(/card--linked/)
   })
 
+  /** One drawn relationship, addressed by the two ids the server stated for its ends. */
+  const line = (page: Page, from: string, to: string) =>
+    page.locator(`.overlay line[data-from="${from}"][data-to="${to}"]`)
+
+  /**
+   * The same fixture, on a screen with room for all of it.
+   *
+   * The drawn board deliberately points at nothing a region has scrolled away — an arrow to a
+   * card the player cannot see is worse than the sentence under it, which is still there. This
+   * fixture is the maximal board and does not fit in `DESKTOP`, so these cases give it a screen
+   * where every object is showing and the geometry is what is being tested.
+   */
+  const wholeBoard = async (page: Page) => {
+    await page.setViewportSize({ width: 1600, height: 1200 })
+    const served = await serveFrames(page, [fixture('gameview-board.json')])
+    await page.goto('/')
+    return served
+  }
+
+  // Counted rather than asserted visible: a line straight up the board has a zero-width box,
+  // which a visibility heuristic reads as hidden and a player reads as a line.
+  test('joins combat with drawn lines, between the ids the view stated', async ({ page }) => {
+    await wholeBoard(page)
+
+    // The picture of combat, and the whole of what it is allowed to be: a segment between two
+    // objects the *server* related. Both directions of the same exchange are here — an attack
+    // the attacker states, and the blocks that only its blockers state.
+    await expect(line(page, 'perm_serra', 'p2')).toHaveCount(1)
+    await expect(line(page, 'perm_dreadmaw', 'perm_serra')).toHaveCount(0)
+    await expect(line(page, 'perm_elemental', 'perm_serra')).toHaveCount(1)
+    await expect(line(page, 'perm_dreadmaw', 'perm_ogre')).toHaveCount(1)
+    await expect(line(page, 'perm_zombie', 'perm_ogre')).toHaveCount(1)
+
+    // An attack on a planeswalker points at the planeswalker rather than at the seat that
+    // answers for it, exactly as the trail says it in words.
+    await expect(line(page, 'perm_ogre', 'perm_vivien')).toHaveCount(1)
+    await expect(line(page, 'perm_ogre', 'p2')).toHaveCount(0)
+
+    // The same overlay draws the stack: a spell to what it named, an ability to the permanent
+    // it came from, an Aura to what it is attached to. The object that resolves next is at the
+    // top of the rail, so it is the one whose position no amount of stack is allowed to move.
+    await expect(line(page, 's7', 'perm_elemental')).toHaveCount(1)
+    await expect(line(page, 's7', 'p2')).toHaveCount(1)
+    await expect(line(page, 's7', 'perm_axe')).toHaveCount(1)
+    await expect(line(page, 'perm_pacifism', 'perm_gearsmith')).toHaveCount(1)
+    await expect(line(page, 'perm_axe', 'perm_serra')).toHaveCount(1)
+
+    // A real segment between two boxes, not a point: the geometry ran against a laid-out board.
+    const drawn = line(page, 'perm_dreadmaw', 'perm_ogre')
+    const [x1, y1, x2, y2] = await Promise.all([
+      drawn.getAttribute('x1'),
+      drawn.getAttribute('y1'),
+      drawn.getAttribute('x2'),
+      drawn.getAttribute('y2'),
+    ])
+    expect(`${x1},${y1}`).not.toEqual(`${x2},${y2}`)
+    expect(Number(y1)).toBeGreaterThan(0)
+  })
+
+  test('draws nothing an id could not be resolved for, and nothing extra', async ({ page }) => {
+    await wholeBoard(page)
+
+    // The Gravedigger ability names a card in a graveyard nobody has opened. There is no box to
+    // point at, and the trail under it still names the card in words — which is the copy of the
+    // fact that never depends on where anything is drawn.
+    await expect(line(page, 's3', 'g2')).toHaveCount(0)
+
+    // And every line that *is* drawn is one the view stated. Which of them are on screen is a
+    // question about layout — a seven-deep stack scrolls inside its own rail even here — but
+    // nothing outside this set can ever appear, whatever the layout does, because an edge with
+    // no stated identifier behind it has nowhere to come from.
+    const stated = [
+      'perm_serra->p2',
+      'perm_ogre->perm_vivien',
+      'perm_thopter->p2',
+      'perm_axe->perm_serra',
+      'perm_pacifism->perm_gearsmith',
+      'perm_dreadmaw->perm_ogre',
+      'perm_elemental->perm_serra',
+      'perm_zombie->perm_ogre',
+      's2->s1',
+      's3->perm_gravedigger',
+      's4->perm_serra',
+      's5->perm_vivien',
+      's6->p2',
+      's7->perm_axe',
+      's7->perm_elemental',
+      's7->p2',
+    ]
+    const drawn = await page
+      .locator('.overlay line')
+      .evaluateAll((lines) =>
+        lines.map(
+          (element) => `${element.getAttribute('data-from')}->${element.getAttribute('data-to')}`,
+        ),
+      )
+    expect(drawn.filter((edge) => !stated.includes(edge))).toEqual([])
+  })
+
+  test('keeps the drawn board out of the way of reading it and clicking it', async ({ page }) => {
+    await wholeBoard(page)
+
+    // A drawn arrow is not readable, so the overlay is hidden from assistive technology and the
+    // trail under each card stays the accessible equivalent rather than being replaced by it.
+    const overlay = page.locator('.overlay')
+    await expect(overlay).toHaveAttribute('aria-hidden', 'true')
+    await expect(
+      tile(page, MINE, 'Onakke Ogre').getByRole('button', { name: 'attacking Vivien Reid' }),
+    ).toBeVisible()
+
+    // And it takes no clicks: it lies over the whole table, and everything under it has to stay
+    // exactly as reachable as it was before anything was drawn.
+    await expect(overlay).toHaveCSS('pointer-events', 'none')
+    await tile(page, THEIRS, 'Colossal Dreadmaw')
+      .getByRole('button', { name: /^Colossal Dreadmaw/ })
+      .click()
+    await expect(page.getByRole('dialog')).toContainText('Colossal Dreadmaw')
+  })
+
+  test('raises the lines of what is being looked at, and steps the rest back', async ({ page }) => {
+    await wholeBoard(page)
+
+    await tile(page, MINE, 'Onakke Ogre')
+      .getByRole('button', { name: /^Onakke Ogre/ })
+      .hover()
+
+    // The same look that emphasises the related cards emphasises the lines to them, because
+    // both read from the one join. Either end counts: the Ogre states its attack and states
+    // nothing at all about having been blocked.
+    await expect(line(page, 'perm_ogre', 'perm_vivien')).toHaveClass(/overlay__edge--traced/)
+    await expect(line(page, 'perm_dreadmaw', 'perm_ogre')).toHaveClass(/overlay__edge--traced/)
+    await expect(line(page, 'perm_zombie', 'perm_ogre')).toHaveClass(/overlay__edge--traced/)
+    await expect(line(page, 'perm_elemental', 'perm_serra')).toHaveClass(/overlay__edge--dimmed/)
+  })
+
   test('draws counters, damage, tokens, and emblems on one dense frame', async ({ page }) => {
     await board(page)
 
@@ -209,6 +344,34 @@ test.describe('a board with relationships to trace', () => {
 
     // None of it grew the page: every region still scrolls inside its own area.
     expect(await pageFits(page)).toEqual({ x: true, y: true })
+  })
+})
+
+/**
+ * The same board, for a player who has asked their system for less motion.
+ *
+ * The request is honoured by arriving at the same state instantly rather than by arriving
+ * somewhere else — so what is asserted here is that the drawn board is *identical*, and only the
+ * time it takes to get there is not.
+ */
+test.describe('the board a reduced-motion request reaches', () => {
+  test('reaches the same lines, without the fade that raises them', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.setViewportSize({ width: 1600, height: 1200 })
+    await serveFrames(page, [fixture('gameview-board.json')])
+    await page.goto('/')
+
+    const edge = page.locator('.overlay line[data-from="perm_dreadmaw"][data-to="perm_ogre"]')
+    await expect(edge).toHaveCount(1)
+    // 1ms rather than none: the state is reached, and it is reached at once.
+    await expect(edge).toHaveCSS('transition-duration', '0.001s, 0.001s')
+
+    // And the emphasis a look produces still happens — it is a state, not an animation.
+    await page
+      .getByRole('region', { name: 'Your battlefield' })
+      .getByRole('button', { name: /^Onakke Ogre/ })
+      .hover()
+    await expect(edge).toHaveClass(/overlay__edge--traced/)
   })
 })
 

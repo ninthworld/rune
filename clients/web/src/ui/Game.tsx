@@ -82,6 +82,7 @@ import { Hand } from './game/Hand'
 import { MatchHeader } from './game/MatchHeader'
 import { MatchResult } from './game/MatchResult'
 import { PlayerPanel } from './game/PlayerPanel'
+import { RelationOverlay } from './game/RelationOverlay'
 import { SidePanel, type OpenZone } from './game/SidePanel'
 import { StackRail } from './game/StackRail'
 import type { Surface } from './game/surface'
@@ -454,6 +455,13 @@ export function Game({
           )}
           {!local && <p className="field__empty">You are watching this table.</p>}
         </div>
+
+        {/* Over the whole table and under nothing: the relationships the server stated, drawn
+            between the objects that carry them. Last in the table so it paints above the cards,
+            and it takes no clicks — everything under it stays reachable, and every line it draws
+            is also a sentence in the trail beneath the card. It draws from the same join the
+            trails do, so the picture and the words cannot describe combat differently. */}
+        <RelationOverlay relations={related.all} traced={traced} />
       </div>
 
       <Hand faces={handFaces} surface={surface} />
