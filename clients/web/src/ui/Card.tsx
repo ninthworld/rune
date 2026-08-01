@@ -27,6 +27,7 @@ import { costTint } from './../mana'
 import { useCardArt } from './art'
 import { CardArt } from './CardArt'
 import { ManaCost } from './Mana'
+import { RulesText } from './RulesText'
 
 /** What each variant has room for. Everything omitted here remains available in `inspect`. */
 const SHOWS: Record<
@@ -149,16 +150,18 @@ export function Card({
 
   const body = (
     <>
-      {/* Under a full card image the printed text is on the picture, so SAGE's copy of it is
-          hidden rather than removed: it is still this control's accessible name, still what a
-          screen reader reads, and still what a search of the page finds. What is *never* hidden
-          is anything the server computed — the stat, the counters, the damage, the state — which
-          is why those sit outside this block. */}
-      <span className={full ? 'visually-hidden' : 'card__band'}>
+      {/* The name and the cost stay legible over a full card image rather than being
+          surrendered to it. The image carries both, but at whatever size and in whatever
+          typeface that printing chose, rendered down to a hand tile — which is frequently
+          unreadable, and is never in the place a player's eye has learnt to look on *this*
+          table. The cost especially: it is the number being checked against the mana pool on
+          every card in hand, every turn, and a stylised pip a few device pixels across is not a
+          number anyone reads. So SAGE keeps drawing its own, as a band over the picture. */}
+      <span className={`card__band${full ? ' card__band--over' : ''}`}>
         <span className="card__name" title={face.name}>
           {face.name}
         </span>
-        {shows.cost && !full && <ManaCost cost={face.manaCost} className="card__cost" />}
+        {shows.cost && <ManaCost cost={face.manaCost} className="card__cost" />}
       </span>
 
       {/* Withheld for an object with no type line — an emblem, or a bare ability on the stack —
@@ -175,9 +178,7 @@ export function Card({
       {(shows.rulesText || shows.keywords) && (face.rulesText || face.keywords.length > 0) && (
         <span className={full ? 'visually-hidden' : 'card__text'}>
           {shows.rulesText && face.rulesText && (
-            <span className="card__rules" title={face.rulesText}>
-              {face.rulesText}
-            </span>
+            <RulesText className="card__rules" text={face.rulesText} title={face.rulesText} />
           )}
           {shows.keywords && face.keywords.length > 0 && (
             <span className="card__keywords">{face.keywords.join(' · ')}</span>

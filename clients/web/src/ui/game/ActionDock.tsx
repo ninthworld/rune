@@ -26,6 +26,7 @@
  * other click is a "no", because every other transition drops the question (`interaction.ts`).
  */
 import type { GameResult, ValidAction } from './../../protocol'
+import { dockTone, dockWording } from './../../dock'
 import {
   actionsFor,
   clear,
@@ -37,12 +38,15 @@ import {
   unask,
   type Interaction,
 } from './../../interaction'
+import { RulesText } from './../RulesText'
 import { ActionDraft } from './ActionDraft'
 
 export interface DockProps {
   actions: readonly ValidAction[]
   interaction: Interaction
   result: GameResult | undefined
+  /** Turn and step, restated where the controls are — see the band's note below. */
+  where: string
   labelFor(id: string): string
   /** Start this action — immediately if it asks nothing, otherwise as a draft. */
   take(action: ValidAction): void
@@ -56,6 +60,7 @@ export function ActionDock({
   actions,
   interaction,
   result,
+  where,
   labelFor,
   take,
   update,
@@ -75,7 +80,10 @@ export function ActionDock({
   const button = (action: ValidAction) => (
     <li key={action.id}>
       <button type="button" onClick={() => take(action)} disabled={blocked}>
-        {action.label}
+        {/* An action's label is server text like any other — `{T}: Add {G}.` is a button here
+            as often as it is a line on a card, and the same symbol must not look like two
+            different things depending on where it is read. */}
+        <RulesText text={action.label} />
         {/* Server-computed (CR 605), so a mana ability can be offered as the one-click gesture
             it is without the client ever classifying an ability itself. */}
         {action.mana_ability ? ' ⟨mana⟩' : ''}
@@ -83,10 +91,27 @@ export function ActionDock({
     </li>
   )
 
+  const tone = dockTone(actions, interaction, result)
+
   return (
-    <div className="dock">
+    <div className={`dock dock--${tone}`}>
       <section aria-labelledby="actions-heading">
         <h2 id="actions-heading">Actions</h2>
+
+        {/* What the game wants, in colour and in words, on the band a player's eyes rest on
+            between actions. The colour is what makes it answerable from peripheral vision; the
+            words are what make it answerable at all, because a colour nobody has learnt yet, a
+            colour two of which look alike, and a colour a screen reader cannot see all say
+            nothing on their own (`dock.ts`).
+
+            The step is restated here rather than only in the header. It is the question asked
+            most often after "is it my turn", the header is the full width of the screen away
+            from the controls, and a player mid-decision should not have to look up. */}
+        <p className="dock__tone" role="status">
+          <span className="dock__tone-mark" aria-hidden="true" />
+          <strong>{dockWording(tone)}</strong>
+          <span className="dock__where">{where}</span>
+        </p>
 
         {interaction.pending && (
           <p role="status" className="notice dock__pending">

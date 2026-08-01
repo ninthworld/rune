@@ -171,9 +171,48 @@ const spokenParts = (symbol: ManaSymbol, ...drop: string[]): string =>
     })
     .join(' or ')
 
+/** One symbol, said aloud. `{T}` in a sentence is "tap", not a picture of a tap. */
+export const spokenSymbol = (symbol: ManaSymbol): string =>
+  SPOKEN[symbol.kind]?.(symbol) ?? symbol.glyph
+
 export function spokenCost(cost: string | undefined): string {
   const symbols = manaSymbols(cost)
   if (symbols.length === 0) return ''
-  const words = symbols.map((symbol) => SPOKEN[symbol.kind]?.(symbol) ?? symbol.glyph)
-  return `${words.join(' ')} mana`
+  return `${symbols.map(spokenSymbol).join(' ')} mana`
+}
+
+// ---------------------------------------------------------------------------
+// Symbols inside a sentence
+// ---------------------------------------------------------------------------
+
+/** A run of prose, or one symbol standing in the middle of it. */
+export type InlineToken = { kind: 'text'; text: string } | { kind: 'symbol'; symbol: ManaSymbol }
+
+/**
+ * Split server-generated rules text into prose and symbols.
+ *
+ * `"{T}: Add {G}."` is how the wire writes a sentence a player reads as a tap symbol, a colon,
+ * and a green pip. Leaving the braces on screen is the difference between a card and a debug
+ * dump — and the pips are already drawn everywhere else, so a rules box spelling them out is the
+ * one place the same symbol looks like something else.
+ *
+ * Deliberately the opposite tolerance from `manaSymbols`. That one is reading a *cost*, where
+ * anything outside braces is a malformed cost worth keeping as a symbol; this is reading a
+ * *sentence*, where everything outside braces is the sentence.
+ */
+export function inlineSymbols(text: string): readonly InlineToken[] {
+  const tokens: InlineToken[] = []
+  for (const match of text.matchAll(/\{([^}]*)\}|([^{]+)/g)) {
+    const [, braced, prose] = match
+    if (prose !== undefined) {
+      tokens.push({ kind: 'text', text: prose })
+    } else if (braced !== undefined) {
+      const inner = braced.trim()
+      // An empty pair of braces is not a symbol. Keeping it as prose means a server that emits
+      // one shows something odd rather than an empty disc nobody can explain.
+      if (inner === '') tokens.push({ kind: 'text', text: match[0] })
+      else tokens.push({ kind: 'symbol', symbol: { printed: match[0], ...classify(inner) } })
+    }
+  }
+  return tokens
 }

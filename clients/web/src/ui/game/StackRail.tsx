@@ -24,6 +24,7 @@ import type { Emblem, StackItem } from './../../protocol'
 import type { CardFace } from './../../card-face'
 import type { RelationLine } from './../../relations'
 import { Card } from './../Card'
+import { RulesText } from './../RulesText'
 import { RelationTrail } from './RelationTrail'
 import type { Surface } from './surface'
 
@@ -87,7 +88,9 @@ export function StackRail({
                       something the face does not. Kept only when it adds something: for many
                       spells it is just the name, or verbatim the rules text already above. */}
                   {item.description !== face.name && item.description !== face.rulesText && (
-                    <>{item.description} — </>
+                    <>
+                      <RulesText text={item.description} /> —{' '}
+                    </>
                   )}
                   {label(item.controller)}
                 </p>

@@ -48,12 +48,20 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   one thing — and that is presentation with no rules content: a creature-land is drawn with the
   creatures, because a creature is what a player scans for. Rows mirror across the table so both
   sets of creatures meet at the dividing line, and inside a row the server's order is kept.
+- `src/dock.ts` — what the controls are currently *for*, in one word: your move, the game is
+  asking, in flight, confirm this, waiting, over. Decided in that order — a finished game outranks
+  everything, a destructive question outranks a submission in flight, and a submission in flight
+  outranks an action list, because the player has already answered. The dock draws it as colour
+  *and* says it in words: a colour nobody has learnt, a colour two of which look alike, and a
+  colour a screen reader cannot see all say nothing on their own.
 - `src/mana.ts` — a printed cost as symbols, and the tint a frame is washed in. Tokenizing
   `{2}{G/U}` is presentation of a string the server sent; the tint is **the colours of the pips
   that were printed** and deliberately none of the rules concepts it resembles — not colour, not
   colour identity, not devotion. A card whose colour comes from anywhere else tints neutral,
   which is the honest answer for a client that was handed a cost string, and is why the tint is
-  only ever a wash under text that states the real thing.
+  only ever a wash under text that states the real thing. `inlineSymbols` does the same for a
+  *sentence*: the server writes `{T}: Add {G}.` and a player reads pips, so rules text draws them
+  too — the prose is still the server's, byte for byte, and only the parts between braces change.
 - `src/keys.ts` — a keypress as an intent, and nothing else. Whether the intent is currently
   possible is answered where the view is, out of `valid_actions`. The skip keys are **not** a
   client-side auto-pass: each sends one `set_stops` and one pass, and the pacing that follows is
@@ -135,7 +143,9 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   of it. The composition is fixed, full-viewport, and two-player: chrome at the
   edges and the board in the middle. The turn is a rail down the left, because twelve steps is a
   lot of band to spend above a board and none of it is spent there; the top is one line about the
-  match; the bottom is your hand and the button that moves the game; and one gear opens
+  match; the bottom is your hand, with the controls *above* it rather than below —
+  between the board a player is looking at and the cards they are reaching for, where XMage puts
+  them and where a panel at the very bottom edge of the screen is not; and one gear opens
   everything that is about the *device* rather than the board — pace, keys, card art — because a
   header carrying each of them separately is a header nobody reads. Every region is bounded so a
   full board scrolls inside its own area and never pushes the action dock off the screen. The

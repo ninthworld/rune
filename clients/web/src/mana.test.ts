@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { costTint, manaSymbols, spokenCost } from './mana'
+import { costTint, inlineSymbols, manaSymbols, spokenCost, spokenSymbol } from './mana'
 
 describe('manaSymbols', () => {
   it('splits a printed cost into one symbol per pair of braces', () => {
@@ -103,5 +103,37 @@ describe('spokenCost', () => {
 
   it('says nothing at all for a card with no cost', () => {
     expect(spokenCost(undefined)).toBe('')
+  })
+})
+
+describe('symbols inside a sentence', () => {
+  it('splits rules text into prose and symbols', () => {
+    expect(
+      inlineSymbols('{T}: Add {G}.').map((t) => (t.kind === 'text' ? t.text : t.symbol.glyph)),
+    ).toEqual(['T', ': Add ', 'G', '.'])
+  })
+
+  it('is all prose when there is nothing to draw', () => {
+    expect(inlineSymbols('Flying')).toEqual([{ kind: 'text', text: 'Flying' }])
+  })
+
+  it('keeps prose outside braces as prose', () => {
+    // The opposite tolerance from `manaSymbols`: that one reads a cost, where a bare run is a
+    // malformed cost worth keeping; this reads a sentence, where a bare run is the sentence.
+    const tokens = inlineSymbols('Pay 2 life: add {B}.')
+    expect(tokens.filter((t) => t.kind === 'symbol')).toHaveLength(1)
+  })
+
+  it('leaves an empty pair of braces alone rather than drawing an empty disc', () => {
+    expect(inlineSymbols('a {} b')).toEqual([
+      { kind: 'text', text: 'a ' },
+      { kind: 'text', text: '{}' },
+      { kind: 'text', text: ' b' },
+    ])
+  })
+
+  it('says a symbol the way it is read aloud', () => {
+    const [tap] = inlineSymbols('{T}')
+    expect(tap?.kind === 'symbol' && spokenSymbol(tap.symbol)).toBe('tap')
   })
 })

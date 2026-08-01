@@ -50,10 +50,19 @@
   --mana-gold-ink: #23201a;
 
   /* One width per tier; every height follows from the printed 63:88, so a card is a card at
-     whatever size the surface can afford. */
-  --card-hand-w: 9.4rem;
-  --card-field-w: 7.6rem;
+     whatever size the surface can afford.
+
+     Each is the **smaller** of a comfortable reading size and a share of the viewport's height,
+     and the second half is what stops the layout falling apart. A card's height is what it costs
+     the screen — the hand and the two halves of the board are stacked, and they are competing
+     for one viewport. Sized in `rem` alone, zooming in grows every card while the viewport it
+     has to fit in does not, so the hand eats the board and the lands scroll out from under it.
+     Sized against `vh` as well, a card gives ground when there is less screen to have: it stays
+     as large as it can be and no larger. */
+  --card-hand-w: min(9.4rem, 15.5vh);
+  --card-field-w: min(7.6rem, 11vh);
   --card-field-h: calc(var(--card-field-w) * 88 / 63);
+  --card-hand-h: calc(var(--card-hand-w) * 88 / 63);
 
   /* How long a permanent takes to turn, and the curve it turns on. Named because the slot that
      reserves its rotated footprint has to widen over exactly the same half second. */
@@ -74,8 +83,19 @@
   --ink: #e9e7e3;
   --ink-dim: #e9e7e399;
   --ink-faint: #e9e7e366;
-  /* The one saturated colour on the screen, spent only on "the game is waiting for you". */
+  /* The one saturated colour in the chrome, spent only on "the game is waiting for you". */
   --accent: #e0b64a;
+
+  /* What the controls are currently for (`dock.ts`), as colour. Six states a player learns in
+     one game, each also stated in words on the same band — a colour is a shortcut to something
+     already written, never the only copy of it. Kept far enough apart in hue *and* lightness
+     that they survive the common colour-vision deficiencies, which red-and-green alone do not. */
+  --tone-yours: #4f9d61;
+  --tone-asking: #4a8fc2;
+  --tone-sent: #b08a3c;
+  --tone-confirm: #c8503c;
+  --tone-waiting: #5b6670;
+  --tone-over: #7a6f86;
 
   /* A type scale, because the loudest problem with a screen where everything is 0.7rem is that
      nothing is. Sizes are named for the job, not the number. */
