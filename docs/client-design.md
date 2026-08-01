@@ -277,10 +277,17 @@ not by noticing the absence of a region. What the current client gets wrong is n
 worth fixing: it spends a card row's height printing the sentence **"No permanents."** The sentence
 goes; the place stays.
 
-**The stack is the one exception, and the distinction is the point: the stack is an event, a
-battlefield is a place.** An event that is not happening takes no room, so an empty stack has no box
-and the board takes the width back. A place at the table does not stop existing because nobody has
-put anything on it.
+**The stack is the exception, and the distinction is the point: the stack is an event, a battlefield
+is a place.** An event that is not happening takes no room, so an empty stack has no box and the
+board takes the width back. A place at the table does not stop existing because nobody has put
+anything on it. Note what this does *not* license: the stack's box is decided by whether it exists,
+never by how deep it is. A seven-deep stack and a one-deep stack get the same rail, and the depth is
+absorbed by the items in it exactly as a permanent count is.
+
+The hand-and-dock trade of §2 is the other departure, and it is deliberate rather than an oversight.
+It is driven by **whether the game is asking you something** — a change of mode — and not by how
+much content there is. That distinction is the whole test: a layout may respond to *what the player
+is doing*, and may not respond to *how much stuff there is*.
 
 Region heights are otherwise allocated in contract order: the tier-1 minimums are satisfied first,
 and what is left over goes to the board.
