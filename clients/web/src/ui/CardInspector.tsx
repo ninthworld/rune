@@ -36,7 +36,7 @@ export function CardInspector({ face, onClose }: { face: CardFace; onClose(): vo
         className="inspector"
         onClick={(event) => event.stopPropagation()}
       >
-        <Card face={face} variant="inspect" />
+        <Card face={face} />
         <button type="button" className="inspector__close" onClick={onClose} autoFocus>
           Close
         </button>

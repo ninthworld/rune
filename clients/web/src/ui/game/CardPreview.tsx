@@ -25,7 +25,7 @@ export function CardPreview({ face }: { face: CardFace }) {
     // so a keyboard user has already been read this very card by the control they are on, and
     // announcing it twice is noise rather than help.
     <div className="preview" aria-hidden="true">
-      <Card face={face} variant="inspect" />
+      <Card face={face} />
     </div>
   )
 }

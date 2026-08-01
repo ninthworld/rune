@@ -76,7 +76,6 @@ export function Battlefield({
                 <span className="card-slot">
                   <Card
                     face={face}
-                    variant="battlefield"
                     state={surface.stateOf(face.id)}
                     link={surface.linkOf(face.id)}
                     onActivate={surface.activate}

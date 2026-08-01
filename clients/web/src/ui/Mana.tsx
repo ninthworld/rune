@@ -55,12 +55,27 @@ export function ManaPip({ symbol }: { symbol: ManaSymbol }) {
  * "this costs nothing", which is a different claim from "no cost was sent" — a land, a token,
  * and an ability on the stack are all the second one.
  */
-export function ManaCost({ cost, className }: { cost?: string; className?: string }) {
+export function ManaCost({
+  cost,
+  className,
+  style,
+}: {
+  cost?: string
+  className?: string
+  /**
+   * The size the row is drawn at, where a surface has computed one. A cost is graphic rather
+   * than text, so it is sized against the frame it is on rather than inheriting from the words
+   * beside it — which is what lets it stay a readable disc on a tile too small for the same
+   * information as characters.
+   */
+  style?: CSSProperties
+}) {
   const symbols = manaSymbols(cost)
   if (symbols.length === 0) return null
   return (
     <span
       className={['mana', className].filter(Boolean).join(' ')}
+      style={style}
       role="img"
       aria-label={spokenCost(cost)}
     >

@@ -74,7 +74,6 @@ export function StackRail({
 
                 <Card
                   face={face}
-                  variant="stack"
                   state={surface.stateOf(face.id)}
                   link={surface.linkOf(face.id)}
                   onActivate={surface.activate}
@@ -110,7 +109,6 @@ export function StackRail({
               <li key={emblem.id}>
                 <Card
                   face={face}
-                  variant="stack"
                   state={surface.stateOf(face.id)}
                   link={surface.linkOf(face.id)}
                   onActivate={surface.activate}
