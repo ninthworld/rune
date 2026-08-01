@@ -49,8 +49,8 @@ export function StackRail({
                 <Card
                   face={face}
                   variant="stack"
-                  state={surface.stateOf(face)}
-                  onInspect={surface.inspect}
+                  state={surface.stateOf(face.id)}
+                  onActivate={surface.activate}
                 />
                 <p className="cards__aside">
                   {/* The server composes a description for the stack object itself, which is
@@ -83,7 +83,12 @@ export function StackRail({
           <ul className="cards cards--emblems">
             {emblems.map(({ emblem, face }) => (
               <li key={emblem.id}>
-                <Card face={face} variant="stack" onInspect={surface.inspect} />
+                <Card
+                  face={face}
+                  variant="stack"
+                  state={surface.stateOf(face.id)}
+                  onActivate={surface.activate}
+                />
                 <p className="cards__aside">{label(emblem.controller)}</p>
               </li>
             ))}

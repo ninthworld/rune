@@ -11,22 +11,36 @@
  * rather than by a heading above a list, which is the difference between a table and a state
  * dump. Three to six seats are a different composition and are not this one.
  *
- * Nothing is remembered between messages. A refresh mid-game produces this same screen from the
- * next frame the server sends, minus an open inspector.
+ * It also owns the one piece of interaction state, and routes every click through
+ * `interaction.ts` so the rule is written once. What it holds is presentation and nothing else:
+ * what is selected, what is being drafted, and which submission is still unanswered. A new view
+ * throws all of it away — `settle` — because a draft assembled against the previous view names
+ * slots and ids this one may no longer offer. The submission is the single thing that crosses
+ * that boundary, and it is the server that closes it, by echoing the id back in `action_ack`.
+ *
+ * A refresh mid-game therefore produces this same screen from the next frame the server sends,
+ * minus an open inspector and minus a click in flight.
  */
 import { useState } from 'react'
 
-import type { ClientMessage, GameView } from './../protocol'
+import type { ClientMessage, GameView, ValidAction } from './../protocol'
 import { list, playerLabel } from './../normalize'
 import { seats } from './../table'
+import { cardFace, emblemFace, permanentFace, stackFace, type CardFace } from './../card-face'
 import {
-  cardFace,
-  emblemFace,
-  permanentFace,
-  stackFace,
-  type CardFace,
-  type CardFaceState,
-} from './../card-face'
+  IDLE,
+  arm,
+  fill,
+  focus,
+  gestureFor,
+  highlightFor,
+  needsChoices,
+  select,
+  settle,
+  submitted,
+  type Interaction,
+} from './../interaction'
+import { buildChooseAction, type Draft } from './../submission'
 import { CardInspector } from './CardInspector'
 import { ActionDock } from './game/ActionDock'
 import { Battlefield, type FieldEntry } from './game/Battlefield'
@@ -37,6 +51,10 @@ import { SidePanel } from './game/SidePanel'
 import { StackRail } from './game/StackRail'
 import type { Surface } from './game/surface'
 
+// Opaque and client-generated: the server echoes it back verbatim and derives nothing from it.
+let submissionCounter = 0
+const nextSubmissionId = (): string => `s:${++submissionCounter}`
+
 export function Game({ view, send }: { view: GameView; send(message: ClientMessage): void }) {
   const label = (id: string) => playerLabel(view, id)
 
@@ -44,7 +62,17 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
   // arrived last, so an open inspector shows the object as it is now — and an object that has
   // left the view closes it rather than pinning a card that no longer exists.
   const [inspecting, setInspecting] = useState<string | undefined>(undefined)
+  const [interaction, setInteraction] = useState<Interaction>(IDLE)
 
+  // Settled during render rather than in an effect, so the frame that carries a new view is
+  // never painted with the previous view's draft still in the dock.
+  const [seen, setSeen] = useState(view)
+  if (seen !== view) {
+    setSeen(view)
+    setInteraction(settle(interaction, view.action_ack))
+  }
+
+  const actions = list(view.valid_actions)
   const table = seats(view)
   const handFaces = list(view.my_hand).map(cardFace)
   const revealedFaces = list(view.revealed).map(cardFace)
@@ -70,19 +98,8 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
   }
   const inspected = inspecting === undefined ? undefined : faces.get(inspecting)
 
-  // Every object the server named in an offered action or one of its target slots. This is a
-  // reading of `valid_actions`, not a judgement about it: the client marks what the server
-  // pointed at and works out nothing about why. Acting on one of these is #626's job.
-  const named = new Set<string>()
-  for (const action of list(view.valid_actions)) {
-    for (const id of list(action.subject)) named.add(id)
-    for (const requirement of list(action.requirements)) {
-      for (const id of list(requirement.candidates)) named.add(id)
-    }
-  }
-
-  // Names for entity ids the surfaces and the action panel mention. The server labels players;
-  // cards and permanents are named from the view's own contents, never resolved client-side.
+  // Names for entity ids the surfaces and the dock mention. The server labels players; cards and
+  // permanents are named from the view's own contents, never resolved client-side.
   const names = new Map<string, string>()
   for (const face of faces.values()) names.set(face.id, face.name)
   // The stack's own description, not its card's name: a target on the stack reads better as
@@ -90,9 +107,51 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
   for (const item of list(view.stack)) names.set(item.id, item.description)
   for (const seat of table) names.set(seat.id, seat.name)
 
+  /** Send one action, and start waiting on the answer. */
+  const dispatch = (action: ValidAction, draft: Draft) => {
+    const submission = nextSubmissionId()
+    send(buildChooseAction(action, draft, submission))
+    // The draft is spent. What is kept is the selection, so the table does not jump, and the
+    // submission, so a second click cannot send the same thing twice.
+    setInteraction(
+      submitted(
+        { draft: {}, selected: interaction.selected },
+        { submission, actionId: action.id, label: action.label },
+      ),
+    )
+  }
+
+  /** Start an action: one click when it asks nothing, a draft when it does. */
+  const take = (action: ValidAction) => {
+    if (interaction.pending) return
+    if (needsChoices(action)) {
+      setInteraction(arm(interaction, action))
+      return
+    }
+    dispatch(action, {})
+  }
+
+  const confirm = () => {
+    const current = focus(actions, interaction)
+    if (!current.action || !current.ready || interaction.pending) return
+    dispatch(current.action, interaction.draft)
+  }
+
   const surface: Surface = {
-    stateOf: (face: CardFace): CardFaceState => (named.has(face.id) ? 'candidate' : 'idle'),
-    inspect: (face: CardFace) => setInspecting(face.id),
+    stateOf: (id: string) => highlightFor(actions, interaction, id),
+    activate: (id: string) => {
+      const gesture = gestureFor(actions, interaction, id)
+      if (gesture.kind === 'inspect') {
+        setInspecting(id)
+        return
+      }
+      if (gesture.kind === 'select') {
+        setInteraction(select(interaction, id))
+        return
+      }
+      const slot = focus(actions, interaction).slots.find((each) => each.slot === gesture.slot)
+      if (slot) setInteraction(fill(interaction, slot, id))
+    },
     labelFor: (id: string) => names.get(id) ?? id,
   }
 
@@ -137,10 +196,14 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
       <Hand faces={handFaces} surface={surface} />
 
       <ActionDock
-        actions={list(view.valid_actions)}
+        actions={actions}
+        interaction={interaction}
         result={view.result}
         labelFor={surface.labelFor}
-        send={send}
+        take={take}
+        update={setInteraction}
+        confirm={confirm}
+        inspect={setInspecting}
       />
 
       <SidePanel

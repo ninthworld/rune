@@ -45,8 +45,8 @@ export function Battlefield({
               <Card
                 face={face}
                 variant="battlefield"
-                state={surface.stateOf(face)}
-                onInspect={surface.inspect}
+                state={surface.stateOf(face.id)}
+                onActivate={surface.activate}
               />
               {/* Combat and attachment are relationships *between* objects rather than facts
                   about one, so they stay beside the face as text until the table can draw the
