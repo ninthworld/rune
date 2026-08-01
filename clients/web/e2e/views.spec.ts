@@ -1,51 +1,17 @@
 /**
  * Rendering, driven by committed fixtures over an intercepted WebSocket.
  *
- * No server, no engine, no game — just "given exactly this view, the browser renders this".
- * The fixtures are the same files the Rust tests pin and the unit suite parses, so this tier
- * cannot drift from the wire shape; what it adds over a unit test is a real build, in a real
- * browser, painting real DOM.
+ * The board as one view: what the server sent, what a click on it means, the shapes a prompt
+ * comes in, and the composition the whole table is laid out in. Relationships between objects —
+ * combat, targets, attachments — and the zone browsers are the other half of this tier and live
+ * in `relationships.views.spec.ts`.
  *
  * This is the **non-blocking** tier (ADR 0011). Breadth lives here so breadth never gates a
  * merge on browser flake; the one blocking path is `smoke.spec.ts`.
  */
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { expect, test } from '@playwright/test'
 
-import { expect, test, type Page } from '@playwright/test'
-
-const FIXTURES = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '../../../crates/sage-protocol/fixtures',
-)
-
-const fixture = (name: string): Record<string, unknown> =>
-  JSON.parse(readFileSync(join(FIXTURES, name), 'utf8'))
-
-/**
- * Serve `frames` to the client instead of a server, and record what it sends back.
- *
- * The client opens its socket and says `hello`; everything after that is whatever this hands
- * it. Interception happens in the page, so no port is bound and the two tiers never collide.
- */
-async function serveFrames(page: Page, frames: readonly unknown[]) {
-  // The route handler runs in Node, so what the client sends is captured directly.
-  const sent: string[] = []
-  let socket: { send(message: string): void } | undefined
-  await page.routeWebSocket(/.*/, (ws) => {
-    socket = ws
-    ws.onMessage((message) => sent.push(String(message)))
-    for (const frame of frames) ws.send(JSON.stringify(frame))
-  })
-  // `push` sends a frame *after* the page has acted, which is the only way to test what a
-  // client does with the server's answer to its own click.
-  return { sent, push: (frame: unknown) => socket?.send(JSON.stringify(frame)) }
-}
-
-/** Every `choose_action` the page has sent, oldest first. */
-const submissions = (sent: readonly string[]): Record<string, unknown>[] =>
-  sent.map((raw) => JSON.parse(raw)).filter((message) => message.type === 'choose_action')
+import { DESKTOP, fixture, pageFits, serveFrames, submissions } from './frames'
 
 test.describe('the board, from one view', () => {
   test('renders the turn, the hand, and the stack the server sent', async ({ page }) => {
@@ -60,9 +26,15 @@ test.describe('the board, from one view', () => {
     await expect(hand.getByRole('button', { name: /^Llanowar Elves/ })).toBeVisible()
     await expect(hand.getByRole('button', { name: /^Lightning Bolt/ })).toBeVisible()
 
-    // Bottom-first on the wire, and rendered in that order.
+    // Bottom-first on the wire, top-first on screen: what a player needs from this column is
+    // what resolves next, and the object that does says so in words rather than leaving it to
+    // be inferred from which end of the column it sits on.
     const stack = page.getByRole('region', { name: 'Stack' })
-    await expect(stack.getByRole('listitem').first()).toContainText('Lightning Bolt')
+    const objects = stack.getByRole('listitem')
+    await expect(objects.first()).toContainText('Resolves next')
+    await expect(objects.first()).toContainText('Tap target creature')
+    await expect(objects.last()).toContainText('Lightning Bolt')
+    await expect(objects.last()).toContainText('6 of 6')
 
     await expect(page.getByRole('region', { name: 'Your battlefield' })).toContainText(
       'Grizzly Bears',
@@ -670,21 +642,6 @@ test.describe('a submission the server has not answered', () => {
 
 test.describe('the table as a composition', () => {
   // Desktop landscape is the one layout (`docs/brief.md`), so it is the one these are sized to.
-  const DESKTOP = { width: 1440, height: 900 }
-
-  /**
-   * The page itself does not scroll, in either axis.
-   *
-   * Asked by trying to scroll rather than by comparing `scrollWidth` — a region that clips its
-   * own overflow still inflates the root element's reported scroll width in Chrome, and what
-   * actually matters to a player is whether the table can be scrolled out from under them.
-   */
-  const pageFits = (page: Page) =>
-    page.evaluate(() => {
-      window.scrollTo(9999, 9999)
-      return { x: window.scrollX === 0, y: window.scrollY === 0 }
-    })
-
   test('seats both players with their own half of the board', async ({ page }) => {
     // The point of a table over a state dump: a permanent's controller is answered by where
     // the card is. `gameview-commander.json` has one permanent per opponent and none of yours,
@@ -786,12 +743,13 @@ test.describe('the table as a composition', () => {
     await serveFrames(page, [fixture('gameview.json')])
     await page.goto('/')
 
-    // Exile is yours in this fixture and the graveyard is the opponent's; each is counted and
-    // opens in place rather than being listed somewhere central where ownership is a label.
+    // Exile is yours in this fixture and the graveyard is the opponent's; each is counted in
+    // front of the seat that owns it rather than listed somewhere central where ownership
+    // would be a label. Opening one is a click on that seat's own control.
     const mine = page.getByRole('region', { name: 'Your seat' })
-    await expect(mine.getByText('Exile (1)')).toBeVisible()
-    await mine.getByText('Exile (1)').click()
-    await expect(mine).toContainText('Path to Exile')
+    await expect(mine.getByRole('button', { name: 'Exile (1)' })).toBeVisible()
+    await mine.getByRole('button', { name: 'Exile (1)' }).click()
+    await expect(page.getByRole('region', { name: 'Exile' })).toContainText('Path to Exile')
 
     await expect(page.getByRole('region', { name: 'p2 seat' })).toContainText('Graveyard (1)')
   })

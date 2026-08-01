@@ -57,7 +57,10 @@ export default defineConfig({
     ...devices['Desktop Chrome'],
   },
   projects: [
-    { name: 'views', testMatch: /views\.spec\.ts/ },
+    // The views tier is more than one file — `views.spec.ts` and anything named `*.views.spec.ts`
+    // beside it — because breadth grows and one spec file does not stay readable past a
+    // thousand lines (`docs/coding-standards.md`). The suffix is the whole membership rule.
+    { name: 'views', testMatch: /views\.spec\.ts$/ },
     { name: 'smoke', testMatch: /smoke\.spec\.ts/ },
   ],
   webServer: [

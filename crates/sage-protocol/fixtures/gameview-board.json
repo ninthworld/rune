@@ -1,0 +1,444 @@
+{
+  "you": "p1",
+  "phase": "declare_blockers",
+  "turn": 7,
+  "active_player": "p1",
+  "seat_order": ["p1", "p2"],
+  "priority_player": "p1",
+  "player_names": {
+    "p1": "Ada",
+    "p2": "Bo"
+  },
+  "me": {
+    "life": 14,
+    "library_size": 31
+  },
+  "opponents": [
+    {
+      "player_id": "p2",
+      "hand_size": 4,
+      "life": 9,
+      "library_size": 28,
+      "graveyard_size": 3
+    }
+  ],
+  "my_hand": [
+    {
+      "id": "h1",
+      "name": "Lightning Strike",
+      "type_line": "Instant",
+      "mana_cost": "{1}{R}",
+      "rules_text": "Lightning Strike deals 3 damage to any target.",
+      "functional_id": "lightning_strike"
+    }
+  ],
+  "battlefield": [
+    {
+      "id": "perm_serra",
+      "controller": "p1",
+      "owner": "p1",
+      "card": {
+        "id": "perm_serra",
+        "name": "Serra Angel",
+        "type_line": "Creature — Angel",
+        "mana_cost": "{3}{W}{W}",
+        "power": "6",
+        "toughness": "5",
+        "keywords": ["flying", "vigilance"],
+        "functional_id": "serra_angel"
+      },
+      "attacking": true,
+      "attacking_player": "p2",
+      "counters": [{ "kind": "+1/+1", "count": 1 }]
+    },
+    {
+      "id": "perm_ogre",
+      "controller": "p1",
+      "owner": "p1",
+      "card": {
+        "id": "perm_ogre",
+        "name": "Onakke Ogre",
+        "type_line": "Creature — Ogre Warrior",
+        "mana_cost": "{3}{R}",
+        "power": "4",
+        "toughness": "2",
+        "functional_id": "onakke_ogre"
+      },
+      "tapped": true,
+      "attacking": true,
+      "attacking_player": "p2",
+      "attacking_planeswalker": "perm_vivien"
+    },
+    {
+      "id": "perm_thopter",
+      "controller": "p1",
+      "owner": "p1",
+      "card": {
+        "id": "perm_thopter",
+        "name": "Thopter",
+        "type_line": "Artifact Creature — Thopter",
+        "power": "1",
+        "toughness": "1",
+        "keywords": ["flying"],
+        "token": true
+      },
+      "tapped": true,
+      "attacking": true,
+      "attacking_player": "p2"
+    },
+    {
+      "id": "perm_gravedigger",
+      "controller": "p1",
+      "owner": "p1",
+      "card": {
+        "id": "perm_gravedigger",
+        "name": "Gravedigger",
+        "type_line": "Creature — Zombie",
+        "mana_cost": "{3}{B}",
+        "power": "2",
+        "toughness": "2",
+        "rules_text": "When Gravedigger enters the battlefield, you may return target creature card from your graveyard to your hand.",
+        "functional_id": "gravedigger"
+      }
+    },
+    {
+      "id": "perm_axe",
+      "controller": "p1",
+      "owner": "p1",
+      "card": {
+        "id": "perm_axe",
+        "name": "Marauder's Axe",
+        "type_line": "Artifact — Equipment",
+        "mana_cost": "{3}",
+        "rules_text": "Equipped creature gets +2/+1. Equip {2}",
+        "functional_id": "marauders_axe"
+      },
+      "attached_to": "perm_serra"
+    },
+    {
+      "id": "perm_pacifism",
+      "controller": "p1",
+      "owner": "p1",
+      "card": {
+        "id": "perm_pacifism",
+        "name": "Pacifism",
+        "type_line": "Enchantment — Aura",
+        "mana_cost": "{1}{W}",
+        "rules_text": "Enchant creature. Enchanted creature can't attack or block.",
+        "functional_id": "pacifism"
+      },
+      "attached_to": "perm_gearsmith"
+    },
+    {
+      "id": "perm_mountain",
+      "controller": "p1",
+      "owner": "p1",
+      "card": {
+        "id": "perm_mountain",
+        "name": "Mountain",
+        "type_line": "Basic Land — Mountain",
+        "functional_id": "mountain"
+      },
+      "tapped": true
+    },
+    {
+      "id": "perm_vivien",
+      "controller": "p2",
+      "owner": "p2",
+      "card": {
+        "id": "perm_vivien",
+        "name": "Vivien Reid",
+        "type_line": "Legendary Planeswalker — Vivien",
+        "mana_cost": "{3}{G}{G}",
+        "loyalty": "5",
+        "functional_id": "vivien_reid"
+      },
+      "counters": [{ "kind": "loyalty", "count": 3 }]
+    },
+    {
+      "id": "perm_dreadmaw",
+      "controller": "p2",
+      "owner": "p2",
+      "card": {
+        "id": "perm_dreadmaw",
+        "name": "Colossal Dreadmaw",
+        "type_line": "Creature — Dinosaur",
+        "mana_cost": "{4}{G}{G}",
+        "power": "6",
+        "toughness": "6",
+        "keywords": ["trample"],
+        "functional_id": "colossal_dreadmaw"
+      },
+      "blocking": "perm_ogre",
+      "damage": 3
+    },
+    {
+      "id": "perm_elemental",
+      "controller": "p2",
+      "owner": "p2",
+      "card": {
+        "id": "perm_elemental",
+        "name": "Air Elemental",
+        "type_line": "Creature — Elemental",
+        "mana_cost": "{3}{U}{U}",
+        "power": "4",
+        "toughness": "4",
+        "keywords": ["flying"],
+        "functional_id": "air_elemental"
+      },
+      "blocking": "perm_serra"
+    },
+    {
+      "id": "perm_zombie",
+      "controller": "p2",
+      "owner": "p2",
+      "card": {
+        "id": "perm_zombie",
+        "name": "Zombie",
+        "type_line": "Creature — Zombie",
+        "power": "2",
+        "toughness": "2",
+        "token": true
+      },
+      "blocking": "perm_ogre"
+    },
+    {
+      "id": "perm_gearsmith",
+      "controller": "p2",
+      "owner": "p2",
+      "card": {
+        "id": "perm_gearsmith",
+        "name": "Gearsmith Guardian",
+        "type_line": "Artifact Creature — Construct",
+        "mana_cost": "{5}",
+        "power": "4",
+        "toughness": "4",
+        "functional_id": "gearsmith_guardian"
+      },
+      "damage": 2,
+      "counters": [{ "kind": "-1/-1", "count": 1 }]
+    }
+  ],
+  "emblems": [
+    {
+      "id": "emblem_1",
+      "controller": "p1",
+      "abilities": ["Creatures you control get +1/+1."]
+    }
+  ],
+  "stack": [
+    {
+      "id": "s1",
+      "controller": "p1",
+      "description": "Divine Verdict",
+      "kind": "spell",
+      "targets": [{ "kind": "permanent", "id": "perm_dreadmaw" }],
+      "card": {
+        "id": "card_verdict",
+        "name": "Divine Verdict",
+        "type_line": "Instant",
+        "mana_cost": "{3}{W}",
+        "rules_text": "Destroy target attacking or blocking creature.",
+        "functional_id": "divine_verdict"
+      }
+    },
+    {
+      "id": "s2",
+      "controller": "p2",
+      "description": "Cancel targeting Divine Verdict",
+      "kind": "spell",
+      "targets": [{ "kind": "stack", "id": "s1" }],
+      "card": {
+        "id": "card_cancel",
+        "name": "Cancel",
+        "type_line": "Instant",
+        "mana_cost": "{1}{U}{U}",
+        "rules_text": "Counter target spell.",
+        "functional_id": "cancel"
+      }
+    },
+    {
+      "id": "s3",
+      "controller": "p1",
+      "description": "Return target creature card from your graveyard to your hand.",
+      "kind": "triggered",
+      "source": "perm_gravedigger",
+      "targets": [{ "kind": "card", "id": "g2" }]
+    },
+    {
+      "id": "s4",
+      "controller": "p2",
+      "description": "Shock deals 2 damage to any target.",
+      "kind": "spell",
+      "targets": [{ "kind": "permanent", "id": "perm_serra" }],
+      "card": {
+        "id": "card_shock",
+        "name": "Shock",
+        "type_line": "Instant",
+        "mana_cost": "{R}",
+        "rules_text": "Shock deals 2 damage to any target.",
+        "functional_id": "shock"
+      }
+    },
+    {
+      "id": "s5",
+      "controller": "p2",
+      "description": "+1: Look at the top four cards of your library.",
+      "kind": "activated",
+      "source": "perm_vivien"
+    },
+    {
+      "id": "s6",
+      "controller": "p1",
+      "description": "Lightning Strike deals 3 damage to any target.",
+      "kind": "spell",
+      "targets": [{ "kind": "player", "player": "p2" }],
+      "card": {
+        "id": "card_strike",
+        "name": "Lightning Strike",
+        "type_line": "Instant",
+        "mana_cost": "{1}{R}",
+        "rules_text": "Lightning Strike deals 3 damage to any target.",
+        "functional_id": "lightning_strike"
+      }
+    },
+    {
+      "id": "s7",
+      "controller": "p1",
+      "description": "Equipped creature deals 1 damage to each of two targets.",
+      "kind": "activated",
+      "source": "perm_axe",
+      "targets": [
+        { "kind": "permanent", "id": "perm_elemental" },
+        { "kind": "player", "player": "p2" }
+      ]
+    }
+  ],
+  "graveyards": [
+    {
+      "player_id": "p1",
+      "cards": [
+        {
+          "id": "g1",
+          "name": "Shock",
+          "type_line": "Instant",
+          "mana_cost": "{R}",
+          "functional_id": "shock"
+        },
+        {
+          "id": "g2",
+          "name": "Llanowar Elves",
+          "type_line": "Creature — Elf Druid",
+          "mana_cost": "{G}",
+          "power": "1",
+          "toughness": "1",
+          "functional_id": "llanowar_elves"
+        },
+        {
+          "id": "g3",
+          "name": "Mountain",
+          "type_line": "Basic Land — Mountain",
+          "functional_id": "mountain"
+        },
+        {
+          "id": "g4",
+          "name": "Onakke Ogre",
+          "type_line": "Creature — Ogre Warrior",
+          "mana_cost": "{3}{R}",
+          "power": "4",
+          "toughness": "2",
+          "functional_id": "onakke_ogre"
+        },
+        {
+          "id": "g5",
+          "name": "Divination",
+          "type_line": "Sorcery",
+          "mana_cost": "{2}{U}",
+          "functional_id": "divination"
+        },
+        {
+          "id": "g6",
+          "name": "Forest",
+          "type_line": "Basic Land — Forest",
+          "functional_id": "forest"
+        },
+        {
+          "id": "g7",
+          "name": "Gearsmith Guardian",
+          "type_line": "Artifact Creature — Construct",
+          "mana_cost": "{5}",
+          "power": "4",
+          "toughness": "4",
+          "functional_id": "gearsmith_guardian"
+        },
+        {
+          "id": "g8",
+          "name": "Cancel",
+          "type_line": "Instant",
+          "mana_cost": "{1}{U}{U}",
+          "functional_id": "cancel"
+        },
+        {
+          "id": "g9",
+          "name": "Pacifism",
+          "type_line": "Enchantment — Aura",
+          "mana_cost": "{1}{W}",
+          "functional_id": "pacifism"
+        },
+        {
+          "id": "g10",
+          "name": "Air Elemental",
+          "type_line": "Creature — Elemental",
+          "mana_cost": "{3}{U}{U}",
+          "power": "4",
+          "toughness": "4",
+          "functional_id": "air_elemental"
+        }
+      ]
+    }
+  ],
+  "exile": [
+    {
+      "player_id": "p2",
+      "cards": [
+        {
+          "id": "x1",
+          "name": "Colossal Dreadmaw",
+          "type_line": "Creature — Dinosaur",
+          "mana_cost": "{4}{G}{G}",
+          "power": "6",
+          "toughness": "6",
+          "functional_id": "colossal_dreadmaw"
+        },
+        {
+          "id": "x2",
+          "name": "Divine Verdict",
+          "type_line": "Instant",
+          "mana_cost": "{3}{W}",
+          "functional_id": "divine_verdict"
+        }
+      ]
+    }
+  ],
+  "mana_pool": ["{R}"],
+  "valid_actions": [
+    {
+      "id": "a1",
+      "type": "pass_priority",
+      "label": "Pass"
+    },
+    {
+      "id": "a2",
+      "type": "cast_spell",
+      "label": "Cast Lightning Strike",
+      "subject": ["h1"],
+      "requirements": [
+        {
+          "slot": "t0",
+          "prompt": "Choose any target",
+          "candidates": ["perm_dreadmaw", "perm_elemental", "perm_vivien", "p2"]
+        }
+      ]
+    }
+  ]
+}

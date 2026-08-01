@@ -46,6 +46,12 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
 - `src/table.ts` — joins the seats. Life and library arrive as `me` for you and `opponents[]`
   for everyone else, the piles as three arrays keyed by player, commander state as three more;
   they become one `Seat[]` here so no panel rebuilds that join or gets its absences wrong.
+- `src/relations.ts` — what points at what: attacks, blocks, attachments, targets, and the
+  source of an ability, joined from the identifiers the server stated and indexed **both ways**.
+  One direction is not enough to draw a board — a blocker knows what it blocks and the attacker
+  knows nothing about being blocked — so the reverse is derived here once rather than by each
+  surface scanning the battlefield. Every edge is a stated id; nothing is concluded from rules
+  text or the log.
 - `src/game-log.ts` — the wording for one log event. Events carry data, never prose.
 - `src/submission.ts` — composes one `choose_action`. Bookkeeping over slots the server
   advertised, never rules reasoning.
@@ -64,10 +70,16 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   full board scrolls inside its own area and never pushes the action dock off the screen. The
   dock follows the click — the selected object's actions, or the questions an armed action is
   asking — and keeps two lists beside that: the global actions no object owns, and a disclosure
-  of every action, so a subject no surface happens to draw can still be reached.
+  of every action, so a subject no surface happens to draw can still be reached. A relationship
+  the server projected hangs under the object that carries it as a trail of controls, and
+  looking at an object emphasises what it relates to — tracing follows the *look*, not the
+  click, because the objects most worth tracing own no action and a click on one opens the
+  inspector over the board the relationship crosses. Public piles open beside the table, never
+  over it; a hidden zone is a count with nothing to open.
 - `e2e/smoke.spec.ts` — the blocking gate: one path against the real server.
-- `e2e/views.spec.ts` — the non-blocking tier: committed fixtures replayed over an
-  intercepted socket, no server involved.
+- `e2e/*views.spec.ts` — the non-blocking tier: committed fixtures replayed over an
+  intercepted socket, no server involved. More than one file, sharing `e2e/frames.ts`; the
+  `views` project matches on the suffix.
 
 Keep logic out of components. Anything worth a test belongs in one of the modules above, which
 are pure and need neither React nor a browser.
