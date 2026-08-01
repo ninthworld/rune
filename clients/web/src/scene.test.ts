@@ -2,8 +2,33 @@ import { describe, expect, it } from 'vitest'
 
 import { scene, type Rect, type RegionName, type SceneCounts, type Viewport } from './scene'
 
-/** A table mid-game: permanents on both sides, something on the stack, a hand to choose from. */
-const PLAYING: SceneCounts = { yours: 6, theirs: 5, stackDepth: 1, handSize: 7 }
+/** A table mid-game: something on the stack, and nothing being asked. */
+const PLAYING: SceneCounts = { stackDepth: 1 }
+
+/**
+ * The counts the scene has no field for any more.
+ *
+ * §5's rule is that a region's height and position are a function of the viewport alone, so a
+ * permanent count and a hand size have nowhere to go: they are absorbed by the cards inside the
+ * region, never by the region. Removing them from `SceneCounts` is the strongest form of that —
+ * the old behaviour is not merely absent, it is unrepresentable.
+ *
+ * They are still written out and still passed, as excess properties `scene` ignores, so that
+ * reintroducing them as geometry inputs fails here instead of quietly restoring a table that
+ * rearranges itself every time a creature dies.
+ */
+type Ignored = Record<'yours' | 'theirs' | 'handSize', number>
+
+/** The four board states §5 requires to be one layout. */
+const BOARDS = {
+  'empty on both sides': { yours: 0, theirs: 0 },
+  'only yours': { yours: 12, theirs: 0 },
+  'only theirs': { yours: 0, theirs: 12 },
+  'both, unevenly': { yours: 12, theirs: 9 },
+} satisfies Record<string, Partial<Ignored>>
+
+const at = (viewport: Viewport, ignored: Partial<Ignored>, counts: Partial<SceneCounts> = {}) =>
+  scene(viewport, { ...PLAYING, ...counts, ...ignored })
 
 /**
  * The sizes every rule here is checked against.
@@ -170,21 +195,61 @@ describe('the boxes', () => {
   }
 })
 
-describe('an empty region costs nothing', () => {
-  it('gives a seat with no permanents its height to the seat that has them', () => {
-    const both = scene({ width: 1920, height: 1080 }, PLAYING)
-    const alone = scene({ width: 1920, height: 1080 }, { ...PLAYING, theirs: 0 })
-
-    expect(alone.regions.opponentField).toEqual({ x: 0, y: 0, width: 0, height: 0 })
-    expect(alone.regions.yourField.height).toBeGreaterThan(both.regions.yourField.height)
-    // All of it, not some of it: this is the case that used to reserve two hundred pixels to say
-    // "No permanents". At least, because a height two fields split evenly can leave an odd pixel
-    // that one field takes whole.
-    expect(alone.regions.yourField.height).toBeGreaterThanOrEqual(
-      both.regions.yourField.height + both.regions.opponentField.height,
+describe('a region is sized by the viewport, not by what is in it', () => {
+  it('gives both battlefields the same height at every viewport, whatever is on them', () => {
+    // The dividing line across the middle of the table does not move for any game event. A seat
+    // that wipes the opponent's board does not watch its own permanents jump to a new size and a
+    // new place, and a seat playing its first creature does not shove the other half upward.
+    const uneven = Object.entries(VIEWPORTS).flatMap(([name, viewport]) =>
+      Object.entries(BOARDS)
+        .map(([board, ignored]) => [board, at(viewport, ignored).regions] as const)
+        .filter(([, regions]) => regions.yourField.height !== regions.opponentField.height)
+        .map(([board]) => `${name}, ${board}`),
     )
-    // The seat bar stays. A seat with an empty board still has a life total, and life is tier 1.
-    expect(drawn(alone.regions.opponentSeat)).toBe(true)
+
+    expect(uneven).toEqual([])
+  })
+
+  it('answers every board state with exactly the same scene', () => {
+    // The property the four expectations above are only samples of: with the viewport and the
+    // mode fixed, *nothing* about the arrangement is a function of how much is on the table. This
+    // is what makes content-driven layout unrepresentable here rather than merely absent.
+    for (const [name, viewport] of Object.entries(VIEWPORTS)) {
+      for (const asking of [false, true]) {
+        const drew = Object.fromEntries(
+          Object.entries(BOARDS).map(([board, ignored]) => [
+            board,
+            at(viewport, ignored, { asking }),
+          ]),
+        )
+        const one = at(viewport, BOARDS['empty on both sides'], { asking })
+
+        expect(drew, `${name}, asking=${asking}`).toEqual(
+          Object.fromEntries(Object.keys(BOARDS).map((board) => [board, one])),
+        )
+      }
+    }
+  })
+
+  it('keeps a seat with no permanents at the table', () => {
+    // "My opponent has nothing" is one of the most important facts in the game, and it is read by
+    // looking at an empty half of the table — not by noticing that a region has gone missing.
+    const bare = at({ width: 1920, height: 1080 }, { yours: 0, theirs: 0 })
+
+    expect(drawn(bare.regions.opponentField)).toBe(true)
+    expect(drawn(bare.regions.yourField)).toBe(true)
+    // The seat bar stays too. A seat with an empty board still has a life total, and life is
+    // tier 1. What should not survive is the sentence "No permanents." printed inside the field,
+    // which costs a card row's height — but that belongs to the surface that draws the field.
+    expect(drawn(bare.regions.opponentSeat)).toBe(true)
+  })
+
+  it('keeps the hand a place when there is nothing in it', () => {
+    const holding = at({ width: 1920, height: 1080 }, { handSize: 7 })
+    const empty = at({ width: 1920, height: 1080 }, { handSize: 0 })
+
+    expect(empty.regions.hand).toEqual(holding.regions.hand)
+    expect(drawn(empty.regions.hand)).toBe(true)
   })
 
   it('costs nothing for an empty stack, and gives the width back to the board', () => {
@@ -196,8 +261,8 @@ describe('an empty region costs nothing', () => {
   })
 
   it('does not rearrange the screen when a spell resolves', () => {
-    // The one place the empty-costs-nothing rule is deliberately not applied. The stack rail's
-    // width is given back to the board, but the side panel is decided against the width the rail
+    // The one place the stack's exception is deliberately not carried through. The rail's width
+    // is given back to the board, but the side panel is decided against the width the rail
     // *would* take — otherwise resolving the last spell would promote a drawer to a column.
     const resolving = scene({ width: 1920, height: 1080 }, PLAYING)
     const empty = scene({ width: 1920, height: 1080 }, { ...PLAYING, stackDepth: 0 })
@@ -206,19 +271,30 @@ describe('an empty region costs nothing', () => {
     expect(empty.ladder.sidePanel).toBe('drawer')
   })
 
-  it('costs nothing for an empty hand', () => {
-    const empty = scene({ width: 1920, height: 1080 }, { ...PLAYING, handSize: 0 })
+  it('gives a seven-deep stack and a one-deep stack the same box', () => {
+    // The stack's exception is that it is an event: an event that is not happening takes no room.
+    // What the exception does not license is depth — the box is decided by whether the stack
+    // exists, and the seven objects are absorbed by the items in the rail exactly as a permanent
+    // count is absorbed by the cards in a field.
+    const one = scene({ width: 1920, height: 1080 }, { ...PLAYING, stackDepth: 1 })
+    const seven = scene({ width: 1920, height: 1080 }, { ...PLAYING, stackDepth: 7 })
 
-    expect(empty.regions.hand).toEqual({ x: 0, y: 0, width: 0, height: 0 })
-    expect(empty.regions.dock.y + empty.regions.dock.height).toBe(1080)
+    expect(seven.regions.stack).toEqual(one.regions.stack)
+    expect(seven).toEqual(one)
+
+    // And on a phone, where the rail is a badge rather than a column.
+    const phone = { width: 390, height: 844 }
+    expect(scene(phone, { ...PLAYING, stackDepth: 7 }).regions.stack).toEqual(
+      scene(phone, { ...PLAYING, stackDepth: 1 }).regions.stack,
+    )
   })
 
   it('still describes the room when neither seat has a permanent', () => {
-    // A board that is empty on both sides is drawn in the arrangement it is about to be filled
-    // in, so the first permanent to land does not resize the table under the player.
-    const bare = scene({ width: 1920, height: 1080 }, { ...PLAYING, yours: 0, theirs: 0 })
+    // The flags read off the height a field actually got, and every field gets that height
+    // whether or not anything is standing in it — so an empty table reports the arrangement it
+    // will still be in once both seats are full.
+    const bare = at({ width: 1920, height: 1080 }, { yours: 0, theirs: 0 })
 
-    expect(drawn(bare.regions.yourField)).toBe(false)
     expect(bare.ladder.rows).toBe('split')
     expect(bare.ladder.cardTier).not.toBe('chip')
   })

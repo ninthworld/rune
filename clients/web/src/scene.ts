@@ -2,11 +2,22 @@
  * The scene: a viewport goes in, and every region's box comes out.
  *
  * The client's geometry used to be the residue of its content — a row grew because permanents
- * arrived in it, a band reserved two hundred pixels to say "No permanents", and a battlefield
- * that ran out of room grew a scrollbar. `docs/client-design.md` says geometry is *computed*
- * instead, from the viewport and the counts, and this is where the computing happens. One pure
- * function answers both questions a layout asks: which arrangement this shape of screen is in,
- * and how much room each region gets in it.
+ * arrived in it, a battlefield that ran out of room grew a scrollbar, and half the table moved
+ * when the other seat's last creature died. `docs/client-design.md` §5 says geometry is
+ * *computed* instead, and this is where the computing happens. One pure function answers both
+ * questions a layout asks: which arrangement this shape of screen is in, and how much room each
+ * region gets in it.
+ *
+ * **Regions are sized by the viewport; counts are absorbed by the cards.** How many permanents a
+ * seat controls and how many cards are in a hand change no box here, because a count belongs to
+ * the things inside a region rather than to the region: fifteen permanents in a field sized for
+ * six make the cards smaller, then overlapped, then chips, by §5's `clamp(FLOOR, fitted, ideal)`.
+ * So both battlefields are always the same height and the line across the middle of the table
+ * does not move for any game event — the layout a player learns on their first turn is the layout
+ * they have on their twentieth. An empty half of the table is how "my opponent has nothing" is
+ * read; a missing region is not. (The sentence *inside* an empty field is a different defect and
+ * a real one — a card row's height spent printing "No permanents." — and it belongs to the
+ * surfaces that draw the field, not to the arithmetic that sizes it.)
  *
  * **Nothing here can express overflow.** There is no field for it, no flag that turns it on, and
  * no rect that is allowed to leave the viewport. When the regions do not fit, the ladder tightens
@@ -14,11 +25,11 @@
  * and if the viewport is below the supported floor the band says `unsupported` and the caller
  * draws a notice instead of a broken board (§3, "No region of the board ever scrolls").
  *
- * **It knows nothing about the game.** The counts arrive as plain numbers. This module never sees
- * a `GameView`, never reads `card_types`, and never decides anything a rule decides — a
- * battlefield with eight permanents and a battlefield with eight lands are the same input to it.
- * `asking` is the one input that is not a count, and it is a *presentation* fact: the dock's own
- * tone (`dock.ts`), which is what decides whether the hand or the controls own the bottom band.
+ * **It knows nothing about the game.** This module never sees a `GameView`, never reads
+ * `card_types`, and never decides anything a rule decides. The only number it takes about the
+ * table is the stack's depth, and it reads nothing from that but whether it is zero. `asking` is
+ * the other input and it is a *presentation* fact: the dock's own tone (`dock.ts`), which is what
+ * decides whether the hand or the controls own the bottom band.
  *
  * **It knows nothing about the browser, either.** No React, no DOM, no `window`, no `matchMedia`.
  * That is what makes every band in §4 testable without one — the bands are arithmetic on two
@@ -46,22 +57,26 @@ export interface Viewport {
 }
 
 /**
- * Everything the arrangement needs to know about what is on the table.
+ * The little the arrangement needs to know about the table.
  *
- * All of it is presentation: how many objects there are, and whether the game is mid-question.
- * A region with nothing in it is the reason this is here at all — an empty seat has to cost
- * nothing and hand its height to the seat that has permanents (§5), which a function of the
- * viewport alone cannot do.
+ * Not much, deliberately. A region's height and position are a function of the viewport alone,
+ * so there is nowhere here to put a permanent count or a hand size — they would have nothing to
+ * change, and a dead input is an invitation to wire it back into the geometry. What is left is
+ * §5's two bounded departures, and both of them answer *what is happening* rather than *how much
+ * stuff there is*. That distinction is the whole test.
  */
 export interface SceneCounts {
-  /** Permanents on your battlefield. */
-  yours: number
-  /** Permanents on the opponent's. */
-  theirs: number
-  /** Objects on the stack. Zero means the stack costs nothing at all (§2). */
+  /**
+   * Objects on the stack. Only whether it is zero is ever read.
+   *
+   * The stack is an event and a battlefield is a place: an event that is not happening takes no
+   * room, so an empty stack has no box and the board takes the width back, while a place at the
+   * table does not stop existing because nobody has put anything on it. Note what this does not
+   * license — the box is decided by whether the stack exists, never by how deep it is. A
+   * seven-deep stack and a one-deep stack get the same rail, and the depth is absorbed by the
+   * items in it exactly as a permanent count is.
+   */
   stackDepth: number
-  /** Cards in your hand. Zero means the hand costs nothing at all. */
-  handSize: number
   /**
    * Whether the game is mid-question — `dock.ts`'s `asking` or `confirm` tone.
    *
@@ -71,6 +86,9 @@ export interface SceneCounts {
    * the hand over that is a gesture, and a hand raised over a peek strip is an overlay rather
    * than a region — the same class of thing as an opened pile — because the space it would need
    * belongs to tier-1 minimums the board cannot give up.
+   *
+   * This is a change of *mode*, not a measure of content, which is what makes it a departure §5
+   * allows where an empty battlefield is not one.
    */
   asking?: boolean
 }
@@ -205,22 +223,18 @@ function bandOf(width: number, height: number): Band {
   return 'ultrawide'
 }
 
-/** The heights of the six regions stacked between the chrome, plus what the flags read. */
+/**
+ * The heights of the regions stacked between the chrome.
+ *
+ * One number for both seats and one for both battlefields, rather than four. The guarantee is
+ * that the two halves of the table are mirror images whatever is on them, and a shape with a
+ * `yourField` and an `opponentField` in it is a shape in which they could differ.
+ */
 interface Column {
-  opponentSeat: number
-  opponentField: number
-  yourField: number
-  yourSeat: number
+  seat: number
+  field: number
   dock: number
   hand: number
-  /**
-   * The height one *occupied* battlefield got.
-   *
-   * The ladder is read from this rather than from either box, so a board that is empty on both
-   * sides still reports the arrangement it would be drawn in — the flags describe the room, and
-   * the room does not change the moment the first permanent lands.
-   */
-  fieldEach: number
 }
 
 /**
@@ -242,20 +256,20 @@ interface Column {
  * 5. The battlefields, up to designed and then past it. Whatever is left is board — the one
  *    region that is better for having more of it.
  *
- * An empty region is charged nothing at any step. That is the rule that makes an empty opponent
- * board hand its two hundred pixels to the seat with permanents in it, instead of spending them
- * on a sentence saying there is nothing there.
+ * Every region is charged at every step whether or not anything is in it, and the two
+ * battlefields are charged as one item bought twice. That is what keeps a board wipe from
+ * resizing the table under the player, and a first creature from shoving the other half of it
+ * upward: the height of a field is what the viewport can afford, and the count inside it is the
+ * cards' problem, not the box's (§5).
  */
-function columnHeights(available: number, counts: SceneCounts, peekHand: boolean): Column {
-  const occupied = (counts.theirs > 0 ? 1 : 0) + (counts.yours > 0 ? 1 : 0)
-  const handFloor = counts.handSize === 0 ? 0 : peekHand ? HAND_PEEK : HAND.min
-  const handTarget = counts.handSize === 0 ? 0 : peekHand ? HAND_PEEK : HAND.designed
+function columnHeights(available: number, asking: boolean, peekHand: boolean): Column {
+  const handTarget = peekHand ? HAND_PEEK : HAND.designed
 
   let seat = SEAT.min
   let dock = DOCK.min
-  let hand = handFloor
-  let field = occupied === 0 ? 0 : CHIP_ROW
-  let left = available - (2 * seat + dock + hand + occupied * field)
+  let hand = peekHand ? HAND_PEEK : HAND.min
+  let field = CHIP_ROW
+  let left = available - (2 * seat + dock + hand + 2 * field)
 
   /** Spend what there is toward a target, shared equally between however many regions want it. */
   const raise = (current: number, target: number, copies: number): number => {
@@ -280,35 +294,20 @@ function columnHeights(available: number, counts: SceneCounts, peekHand: boolean
   }
 
   hand = lower(hand, peekHand ? 0 : HAND_PEEK, 1)
-  field = lower(field, 0, occupied)
+  field = lower(field, 0, 2)
   hand = lower(hand, 0, 1)
   dock = lower(dock, 0, 1)
   seat = lower(seat, 0, 2)
 
-  field = raise(field, SPLIT_ROWS * CARD_ROW.min, occupied)
+  field = raise(field, SPLIT_ROWS * CARD_ROW.min, 2)
   seat = raise(seat, SEAT.designed, 2)
   dock = raise(dock, DOCK.designed, 1)
   hand = raise(hand, handTarget, 1)
-  if (counts.asking) dock = raise(dock, DOCK_ASKING, 1)
-  field = raise(field, SPLIT_ROWS * CARD_ROW.designed, occupied)
-  if (occupied > 0 && left > 0) {
-    const share = Math.floor(left / occupied)
-    field += share
-    left -= share * occupied
-  }
+  if (asking) dock = raise(dock, DOCK_ASKING, 1)
+  field = raise(field, SPLIT_ROWS * CARD_ROW.designed, 2)
+  if (left > 0) field += Math.floor(left / 2)
 
-  return {
-    opponentSeat: seat,
-    yourSeat: seat,
-    dock,
-    hand,
-    opponentField: counts.theirs > 0 ? field : 0,
-    yourField: counts.yours > 0 ? field : 0,
-    // With neither seat holding a permanent nothing was charged for a field, so the surplus is
-    // still unspent: half of it is what one battlefield would have had, and that is what the
-    // ladder describes.
-    fieldEach: occupied === 0 ? Math.floor(Math.max(0, left) / 2) : field,
-  }
+  return { seat, field, dock, hand }
 }
 
 /** The widths across the table: the rails at the edges, the side column, and the board between. */
@@ -324,16 +323,18 @@ interface Across {
  * Divide the width, for the arrangements that have rails in them.
  *
  * The stack is taken first because it is tier 1 whenever it is non-empty — and costs nothing at
- * all when it is empty, which is the same rule the battlefields follow. The turn rail is next,
- * both falling back to their floors rather than to nothing, because the board keeps `BOARD_MIN`
- * whatever else happens.
+ * all when it is empty, which is §5's one exception and not a rule the battlefields share: an
+ * event that is not happening takes no room, a place at the table keeps its box. What the
+ * exception does not cover is depth, so the rail is the same width for one object as for seven.
+ * The turn rail is next, both falling back to their floors rather than to nothing, because the
+ * board keeps `BOARD_MIN` whatever else happens.
  *
  * The side column is last and is paid for out of what is left *after* the board has taken its
  * maximum. That single rule reproduces §4's table: at 1440 and 1920 there is nothing spare and
  * the side is a drawer, and at 3440 there is and it is a column.
  *
  * It is measured against the width the stack rail *would* take rather than the width it is taking
- * — the one place the empty-costs-nothing rule is deliberately not applied. A stack that empties
+ * — the one place the stack's exception is deliberately not carried through. A stack that empties
  * gives its width back to the board, which is a board that grows; if it also promoted the side
  * panel from a drawer to a column, resolving a spell would rearrange the screen.
  */
@@ -399,24 +400,25 @@ export function scene(viewport: Viewport, counts: SceneCounts): Scene {
 
   // The hand yields the bottom band to the controls where the two of them cannot both have it:
   // always at Short, where height is the scarce resource and §4 makes the peek strip the resting
-  // state, and at Tall only while something is actually being asked.
-  const peekHand =
-    counts.handSize > 0 && (band === 'short' || (band === 'tall' && counts.asking === true))
-  const column = columnHeights(contentHeight, counts, peekHand)
+  // state, and at Tall only while something is actually being asked. It is the asking that moves
+  // it and never the number of cards — an empty hand is still a place, and is drawn at the height
+  // the hand it is about to hold will need.
+  const peekHand = band === 'short' || (band === 'tall' && counts.asking === true)
+  const column = columnHeights(contentHeight, counts.asking === true, peekHand)
 
   const boardX = collapsed ? Math.floor((width - across.board) / 2) : across.boardX
   const box = (y: number, regionHeight: number): Rect =>
     regionHeight <= 0 ? EMPTY : { x: boardX, y, width: across.board, height: regionHeight }
 
   // Down from the top for the opponent's half and up from the bottom for yours, so the hand sits
-  // on the bottom edge and any height nothing claimed — which happens only when neither seat has
-  // a permanent — falls in the middle of the table where an empty board belongs.
+  // on the bottom edge and the odd pixel an even split cannot place falls on the line between the
+  // two fields, which is the one seam in the table where nothing is read.
   const opponentSeatY = contentTop
-  const opponentFieldY = opponentSeatY + column.opponentSeat
+  const opponentFieldY = opponentSeatY + column.seat
   const handY = contentTop + contentHeight - column.hand
   const dockY = handY - column.dock
-  const yourSeatY = dockY - column.yourSeat
-  const yourFieldY = yourSeatY - column.yourField
+  const yourSeatY = dockY - column.seat
+  const yourFieldY = yourSeatY - column.field
 
   const regions: Record<RegionName, Rect> = {
     header: { x: 0, y: 0, width, height: headerHeight },
@@ -441,32 +443,35 @@ export function scene(viewport: Viewport, counts: SceneCounts): Scene {
             width: across.side,
             height: contentHeight,
           },
-    opponentSeat: box(opponentSeatY, column.opponentSeat),
-    opponentField: box(opponentFieldY, column.opponentField),
-    yourField: box(yourFieldY, column.yourField),
-    yourSeat: box(yourSeatY, column.yourSeat),
+    opponentSeat: box(opponentSeatY, column.seat),
+    opponentField: box(opponentFieldY, column.field),
+    yourField: box(yourFieldY, column.field),
+    yourSeat: box(yourSeatY, column.seat),
     dock: box(dockY, column.dock),
     hand: box(handY, column.hand),
   }
 
-  return { band, regions, ladder: ladderFor(collapsed, column.fieldEach, across.side > 0) }
+  return { band, regions, ladder: ladderFor(collapsed, column.field, across.side > 0) }
 }
 
 /**
  * Which steps of §3 the allocation ended up needing.
  *
- * Rows merge before faces become chips, and both are decided by the height one battlefield got.
- * A field with room for two rows of card faces keeps them apart, because a row is how a board is
- * read by *where things are*; a field without that room is better as one row of taller cards
- * than as two rows of chips, since §4's rule is that height decides whether a permanent is a
- * card at all.
+ * Rows merge before faces become chips, and both are decided by the height a battlefield got —
+ * a height both of them got, so there is one answer here and not one per seat. A field with room
+ * for two rows of card faces keeps them apart, because a row is how a board is read by *where
+ * things are*; a field without that room is better as one row of taller cards than as two rows
+ * of chips, since §4's rule is that height decides whether a permanent is a card at all.
  *
  * A merged field is a crowded field by definition, which is exactly §6's Compact presentation —
  * so the designed presentation is reserved for a board that still has its rows.
+ *
+ * Nothing here consults a count, so the flags describe the room unconditionally: an empty table
+ * reports the arrangement it will still be in once both seats are full.
  */
-function ladderFor(collapsed: boolean, fieldEach: number, sideColumn: boolean): SceneLadder {
-  const rows = fieldEach >= SPLIT_ROWS * CARD_ROW.min ? 'split' : 'merged'
-  const rowHeight = rows === 'split' ? Math.floor(fieldEach / SPLIT_ROWS) : fieldEach
+function ladderFor(collapsed: boolean, field: number, sideColumn: boolean): SceneLadder {
+  const rows = field >= SPLIT_ROWS * CARD_ROW.min ? 'split' : 'merged'
+  const rowHeight = rows === 'split' ? Math.floor(field / SPLIT_ROWS) : field
   return {
     rails: collapsed ? 'collapsed' : 'full',
     rows,
