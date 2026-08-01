@@ -55,11 +55,21 @@ test('two clicks from a fresh page to a played action', async ({ page }) => {
   await expect(first).toBeVisible()
   await first.click()
 
-  // A mulligan decision opens a choice panel rather than submitting; answer it and send.
-  const submit = page.getByRole('button', { name: 'Submit' })
-  if (await submit.isVisible().catch(() => false)) {
-    await page.getByRole('checkbox').first().check()
-    await submit.click()
+  // A mulligan decision opens a draft rather than submitting. Answer it by clicking candidates
+  // until the server's own counts are satisfied — which is exactly what `Confirm` becoming
+  // enabled means, so this needs no knowledge of the prompt it happens to have been handed.
+  const confirm = page.getByRole('button', { name: 'Confirm' })
+  if (await confirm.isVisible().catch(() => false)) {
+    // Scoped to the slot fieldsets, so `Confirm` and `Cancel` are never among the candidates.
+    const candidates = page
+      .getByRole('region', { name: 'Choices' })
+      .getByRole('group')
+      .getByRole('button')
+    for (let i = 0; i < (await candidates.count()); i += 1) {
+      if (await confirm.isEnabled()) break
+      await candidates.nth(i).click()
+    }
+    await confirm.click()
   }
 
   // The server answered: the step advanced, or a fresh action list arrived. Either way a full
@@ -69,5 +79,10 @@ test('two clicks from a fresh page to a played action', async ({ page }) => {
   // A rejected submission is a real failure here: the client built a message the server would
   // not take, which is exactly the class of bug this tier is for.
   await expect(page.getByText('That action could not be taken')).toHaveCount(0)
+
+  // And the correlation closed. The client holds its click as pending until the server echoes
+  // the id back in `action_ack`, so a dock still saying "waiting" after a completed round trip
+  // means the two ends disagree about correlation — which only a real server can prove.
+  await expect(page.getByText('waiting for the server')).toHaveCount(0)
   expect(failures, 'the page threw while playing').toEqual([])
 })

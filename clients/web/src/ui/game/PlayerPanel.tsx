@@ -14,6 +14,7 @@ import { Card } from './../Card'
 import type { Surface } from './surface'
 
 export function PlayerPanel({ seat, surface }: { seat: Seat; surface: Surface }) {
+  const state = surface.stateOf(seat.id)
   const stats = [
     seat.life !== undefined && `${seat.life} life`,
     seat.librarySize !== undefined && `${seat.librarySize} library`,
@@ -30,9 +31,20 @@ export function PlayerPanel({ seat, surface }: { seat: Seat; surface: Surface })
       className={`seat ${seat.isYou ? 'seat--you' : 'seat--opponent'}`}
       aria-label={seat.isYou ? 'Your seat' : `${seat.name} seat`}
     >
+      {/* The seat itself is clickable, because a player is a target: "any target" and "target
+          player" name a seat the same way a burn spell names a creature, and a table where the
+          creature can be clicked but the person cannot is a table where half of red is
+          unplayable without hunting through a list. The state is the server's own answer about
+          this id, exactly as it is for a permanent. */}
       <p className="seat__who">
-        <strong>{seat.name}</strong>
-        {seat.isYou && ' (you)'}
+        <button
+          type="button"
+          className={['seat__name', state !== 'idle' && `card--${state}`].filter(Boolean).join(' ')}
+          onClick={() => surface.activate(seat.id)}
+        >
+          <strong>{seat.name}</strong>
+          {seat.isYou && ' (you)'}
+        </button>
       </p>
 
       <p className="seat__stats">{stats.join(' · ')}</p>
@@ -72,8 +84,8 @@ export function PlayerPanel({ seat, surface }: { seat: Seat; surface: Surface })
                 <Card
                   face={face}
                   variant="compact"
-                  state={surface.stateOf(face)}
-                  onInspect={surface.inspect}
+                  state={surface.stateOf(face.id)}
+                  onActivate={surface.activate}
                 />
               </li>
             ))}

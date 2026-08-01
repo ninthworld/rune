@@ -44,8 +44,8 @@ export function SidePanel({
                 <Card
                   face={face}
                   variant="compact"
-                  state={surface.stateOf(face)}
-                  onInspect={surface.inspect}
+                  state={surface.stateOf(face.id)}
+                  onActivate={surface.activate}
                 />
               </li>
             ))}

@@ -49,13 +49,22 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
 - `src/game-log.ts` — the wording for one log event. Events carry data, never prose.
 - `src/submission.ts` — composes one `choose_action`. Bookkeeping over slots the server
   advertised, never rules reasoning.
+- `src/interaction.ts` — what one click *means*: which objects own an action, which slot a click
+  answers, what is highlighted, and which submission is still unanswered. One gesture reaches
+  every object and resolves in a fixed order (fill a slot → inspect the selected → select a
+  subject → inspect), so the hand, the board, and a pile cannot behave differently. A click is
+  routed to the slot the server listed that id in, never to a cursor the client advances — that
+  is what lets one action ask "who attacks" and "what does each attack" at the same time.
 - `src/socket.ts`, `src/useSession.ts` — the connection, and the latest frame it delivered.
 - `src/ui/` — the screens. Grey-box on purpose: structure and legibility, no visual design.
   `src/ui/game/` holds the table surfaces — header, seat panels, the two battlefields, the
   stack rail, hand, action dock, side panel. `Game.tsx` composes them and derives what they
   need; a surface receives answers, never the view, so none of them can grow a second reading
   of it. The composition is fixed, full-viewport, and two-player; every region is bounded so a
-  full board scrolls inside its own area and never pushes the action dock off the screen.
+  full board scrolls inside its own area and never pushes the action dock off the screen. The
+  dock follows the click — the selected object's actions, or the questions an armed action is
+  asking — and keeps two lists beside that: the global actions no object owns, and a disclosure
+  of every action, so a subject no surface happens to draw can still be reached.
 - `e2e/smoke.spec.ts` — the blocking gate: one path against the real server.
 - `e2e/views.spec.ts` — the non-blocking tier: committed fixtures replayed over an
   intercepted socket, no server involved.

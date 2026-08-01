@@ -60,12 +60,66 @@ p {
 
 .choices {
   border: 1px solid currentColor;
-  padding: 0.75rem;
-  margin-block: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  margin-block: 0.5rem;
 }
 
-.choice {
-  display: block;
+.choices__what {
+  margin: 0 0 0.4rem;
+  font-size: 0.9rem;
+}
+
+.choices__controls {
+  margin-block-end: 0;
+}
+
+/* One question. Each is bounded, because an action asking three of them at once — which
+   creatures attack, and what each of them attacks — is otherwise one undifferentiated wall. */
+.slot {
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  padding: 0.35rem 0.5rem;
+  margin-block: 0.4rem;
+}
+
+.slot__tally {
+  opacity: 0.75;
+}
+
+.slot__hint,
+.dock__hint {
+  margin-block: 0.2rem;
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.slot__number input {
+  width: 5rem;
+}
+
+/* A chosen candidate, in a list of buttons rather than checkboxes: the same click that picks it
+   on the table picks it here, so the two paths cannot behave differently. */
+.actions button[aria-pressed='true'] {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+
+.dock__subject {
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  padding: 0.35rem 0.5rem;
+  margin-block: 0.4rem;
+}
+
+.dock__who {
+  margin-block-start: 0;
+}
+
+.dock__all {
+  margin-block-start: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.dock__all summary {
+  cursor: pointer;
 }
 
 .log {
@@ -503,6 +557,19 @@ main:has(.screen) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A seat is a target like anything else, so its name is the control — styled as text so the
+   panel does not read as a row of buttons, and carrying the same state outlines as a card. */
+.seat__name {
+  background: none;
+  border: 0;
+  padding: 0.1rem 0.2rem;
+  margin: -0.1rem -0.2rem;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
 }
 
 .seat__stats,

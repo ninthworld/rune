@@ -72,13 +72,14 @@ export interface CardProps {
    */
   state?: CardFaceState
   /**
-   * Open the inspector. Inspection is never a game action — it submits nothing and tells the
-   * server nothing, so it stays available on every object, in every state.
+   * This card was clicked. One gesture for every card on the screen; what it does — fill a
+   * target slot, select a subject, open the inspector — is decided by the caller from what the
+   * server offered for this object (`interaction.ts`), never here.
    */
-  onInspect?(face: CardFace): void
+  onActivate?(id: string): void
 }
 
-export function Card({ face, variant, state = 'idle', onInspect }: CardProps) {
+export function Card({ face, variant, state = 'idle', onActivate }: CardProps) {
   const shows = SHOWS[variant]
   const stateLabel = STATE_LABELS[state]
   const className = [
@@ -148,13 +149,13 @@ export function Card({ face, variant, state = 'idle', onInspect }: CardProps) {
     </>
   )
 
-  // A button when it can be inspected, so a keyboard reaches it on the same terms as a mouse
-  // and no key handling has to be reinvented. Never `disabled`: `disabled` describes the game
-  // action a later surface offers, and inspecting an object a player cannot act on is exactly
-  // when they most need to read it.
-  if (!onInspect) return <div className={className}>{body}</div>
+  // A button whenever it is clickable, so a keyboard reaches it on the same terms as a mouse and
+  // no key handling has to be reinvented. Never `disabled`: the gesture always leads somewhere —
+  // at worst to the inspector — and reading an object a player cannot act on is exactly when
+  // they most need to.
+  if (!onActivate) return <div className={className}>{body}</div>
   return (
-    <button type="button" className={className} onClick={() => onInspect(face)}>
+    <button type="button" className={className} onClick={() => onActivate(face.id)}>
       {body}
     </button>
   )

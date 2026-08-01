@@ -21,8 +21,8 @@ export function Hand({ faces, surface }: { faces: readonly CardFace[]; surface: 
               <Card
                 face={face}
                 variant="hand"
-                state={surface.stateOf(face)}
-                onInspect={surface.inspect}
+                state={surface.stateOf(face.id)}
+                onActivate={surface.activate}
               />
             </li>
           ))}
