@@ -12,8 +12,15 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { cardFace, emblemFace, faceSummary, permanentFace, stackFace } from './card-face'
-import { GameView, type Permanent } from './protocol'
+import {
+  cardFace,
+  catalogFace,
+  emblemFace,
+  faceSummary,
+  permanentFace,
+  stackFace,
+} from './card-face'
+import { CatalogView, GameView, type Permanent } from './protocol'
 
 const FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -201,6 +208,51 @@ describe('an emblem', () => {
 
   it('survives an emblem with no abilities listed', () => {
     expect(emblemFace({ id: 'e0', controller: 'p0' }).rulesText).toBeUndefined()
+  })
+})
+
+describe('a card in the catalog', () => {
+  const catalog = CatalogView.parse(
+    JSON.parse(readFileSync(join(FIXTURES, 'catalogview.json'), 'utf8')),
+  )
+  const entry = (id: string) => {
+    const found = catalog.cards?.find((card) => card.functional_id === id)
+    if (!found) throw new Error(`the catalog fixture has no ${id}`)
+    return found
+  }
+
+  it('is the same face as the card in a hand, addressed by identity', () => {
+    // The server builds both projections from one place (ADR 0008 §7), so browsing Llanowar
+    // Elves and drawing it must produce the same face — everything but the id, which is a
+    // per-game entity in a hand and the card's own identity in a catalog.
+    const browsed = catalogFace(entry('llanowar_elves'))
+    const drawn = cardFace(view('gameview.json').my_hand![0]!)
+
+    expect(browsed.id).toBe('llanowar_elves')
+    expect(drawn.id).not.toBe(browsed.id)
+    expect({ ...browsed, id: '' }).toEqual({ ...drawn, id: '' })
+    // The identity doubles as the ADR 0012 art key, because that is the same handle.
+    expect(browsed.artKey).toBe('llanowar_elves')
+  })
+
+  it('carries nothing a game would have added to it', () => {
+    const angel = catalogFace(entry('serra_angel'))
+    expect(angel.stat).toEqual({ kind: 'power_toughness', value: '4/4', label: 'Power/toughness' })
+    expect(angel.keywords).toEqual(['flying', 'vigilance'])
+    // No instance exists, so there is no tap state, no counter, and no marker to draw.
+    expect(angel.tapped).toBe(false)
+    expect(angel.counters).toEqual([])
+    expect(angel.markers).toEqual([])
+    expect(angel.damage).toBeUndefined()
+    // A card with no generated rules text elides the field; an absence stays absent.
+    expect(angel.rulesText).toBeUndefined()
+  })
+
+  it('leaves out what the entry did not state', () => {
+    const forest = catalogFace(entry('forest'))
+    expect(forest.manaCost).toBeUndefined()
+    expect(forest.stat).toBeUndefined()
+    expect(faceSummary(forest)).toBe('Forest · Basic Land — Forest')
   })
 })
 

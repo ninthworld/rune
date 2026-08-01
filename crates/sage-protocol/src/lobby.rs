@@ -1165,4 +1165,51 @@ mod tests {
 
         assert!(view.valid_commands.iter().any(|c| c == "submit_deck"));
     }
+
+    #[test]
+    fn canonical_roomless_lobby_fixture_round_trips_and_matches_typed_fields() {
+        // The other half of the lobby: a connection that is *not* in a room, which is the only
+        // state where the directory is what the screen is made of. Paired with the web client's
+        // `protocol.test.ts` exactly like every other fixture.
+        let json = include_str!("../fixtures/lobbyview-open.json");
+        let view: LobbyView = serde_json::from_str(json).unwrap();
+
+        let reencoded = serde_json::to_string(&view).unwrap();
+        let back: LobbyView = serde_json::from_str(&reencoded).unwrap();
+        assert_eq!(back, view);
+
+        assert_eq!(view.session, "s_1c04be77");
+        assert_eq!(view.you, "p4");
+        // Roomless: no room rides the view, and neither does a name it never set.
+        assert!(view.room.is_none());
+        assert_eq!(view.name, None);
+
+        // Three browsable rooms: one with a seat free, one full but still gathering, and one
+        // already running with spectators — the three cases a directory row has to tell apart.
+        assert_eq!(view.directory.len(), 3);
+        assert_eq!(view.directory[0].filled, 1);
+        assert_eq!(view.directory[0].config.seats, 2);
+        assert_eq!(view.directory[0].state, RoomState::Gathering);
+        assert_eq!(view.directory[1].filled, view.directory[1].config.seats);
+        assert_eq!(view.directory[1].state, RoomState::Gathering);
+        // An unnamed table carries no name at all; the fallback label is the client's concern.
+        assert_eq!(view.directory[1].config.name, None);
+        assert_eq!(view.directory[2].state, RoomState::InProgress);
+        assert_eq!(view.directory[2].spectators, 3);
+        // Every listed room is public by construction, so none of them carries `visibility`.
+        assert!(view
+            .directory
+            .iter()
+            .all(|room| room.config.visibility == RoomVisibility::Public));
+
+        assert_eq!(
+            view.valid_commands,
+            vec![
+                "set_name".to_string(),
+                "create_room".to_string(),
+                "join_room".to_string(),
+                "spectate_room".to_string(),
+            ]
+        );
+    }
 }

@@ -52,7 +52,13 @@ export function App() {
           leave={session.restart}
         />
       ) : session.lobby ? (
-        <Lobby view={session.lobby} error={session.lobbyError} send={session.send} />
+        <Lobby
+          view={session.lobby}
+          catalog={session.catalog}
+          error={session.lobbyError}
+          epoch={session.epoch}
+          send={session.send}
+        />
       ) : (
         <p>Watching — the spectator screen is not built yet.</p>
       )}

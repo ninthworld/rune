@@ -23,7 +23,7 @@
  *   art key of ADR 0012 is withheld rather than passed along as an empty string that a cache
  *   would treat as a card it failed to resolve.
  */
-import type { CardView, Counter, Emblem, Permanent, StackItem } from './protocol'
+import type { CardView, CatalogCard, Counter, Emblem, Permanent, StackItem } from './protocol'
 import { list, powerToughness } from './normalize'
 
 /**
@@ -92,11 +92,29 @@ const STACK_KIND_LABELS: Record<string, string> = {
   triggered: 'Triggered ability',
 }
 
-/** A face for a card in a hand, a pile, or a reveal — anywhere that is not the battlefield. */
-export function cardFace(card: CardView): CardFace {
+/**
+ * The characteristics printed on a card, whichever projection stated them.
+ *
+ * A `CardView` in a game and a `CatalogCard` in the lobby describe the same printed card — the
+ * server builds both from one projection, so their rules text is byte-for-byte identical (ADR
+ * 0008 §7). Reading them separately is how a deck builder and a hand end up disagreeing about a
+ * card neither of them is allowed to have an opinion on, so both come through here.
+ */
+interface Printed {
+  name: string
+  mana_cost?: string
+  type_line?: string
+  rules_text?: string
+  power?: string
+  toughness?: string
+  loyalty?: string
+  keywords?: readonly string[]
+}
+
+function printedFace(id: string, card: Printed): CardFace {
   const pt = powerToughness(card)
   return {
-    id: card.id,
+    id,
     name: card.name,
     manaCost: card.mana_cost,
     typeLine: card.type_line,
@@ -111,10 +129,31 @@ export function cardFace(card: CardView): CardFace {
         ? { kind: 'loyalty', value: card.loyalty, label: 'Starting loyalty' }
         : undefined,
     counters: [],
-    markers: card.token ? ['Token'] : [],
+    markers: [],
     tapped: false,
+  }
+}
+
+/** A face for a card in a hand, a pile, or a reveal — anywhere that is not the battlefield. */
+export function cardFace(card: CardView): CardFace {
+  return {
+    ...printedFace(card.id, card),
+    markers: card.token ? ['Token'] : [],
     artKey: card.token ? undefined : card.functional_id || undefined,
   }
+}
+
+/**
+ * A face for one entry in the public card catalog — a card as it is *browsed*, before any game
+ * exists.
+ *
+ * A catalog entry names a card by identity rather than by instance (there is no per-game entity
+ * id to have), so the `functional_id` is both the id every surface addresses it by and the art
+ * key of ADR 0012 — the same handle a decklist submits. Nothing about a game rides here: no
+ * counters, no tap state, no markers, because none of that is true of a card nobody has drawn.
+ */
+export function catalogFace(card: CatalogCard): CardFace {
+  return { ...printedFace(card.functional_id, card), artKey: card.functional_id || undefined }
 }
 
 /** A face for a permanent on the battlefield, with everything the board state adds to it. */

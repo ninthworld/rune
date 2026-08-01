@@ -1,0 +1,37 @@
+{
+  "session": "s_1c04be77",
+  "you": "p4",
+  "directory": [
+    {
+      "room_id": "r_310",
+      "config": {
+        "seats": 2,
+        "game_setup": "starter-1v1",
+        "name": "Kitchen table"
+      },
+      "filled": 1,
+      "state": "gathering"
+    },
+    {
+      "room_id": "r_311",
+      "config": {
+        "seats": 2,
+        "game_setup": "starter-1v1"
+      },
+      "filled": 2,
+      "state": "gathering"
+    },
+    {
+      "room_id": "r_312",
+      "config": {
+        "seats": 4,
+        "game_setup": "commander",
+        "name": "Casual Commander"
+      },
+      "filled": 4,
+      "spectators": 3,
+      "state": "in_progress"
+    }
+  ],
+  "valid_commands": ["set_name", "create_room", "join_room", "spectate_room"]
+}
