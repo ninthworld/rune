@@ -471,3 +471,121 @@ async fn issue_455_a_resolved_removal_spell_and_its_death_reach_the_skipped_seat
     drop(handle);
     task.await.unwrap();
 }
+
+/// The report a passed seat is owed covers **the action that passed it**, not only the
+/// passes themselves (issue #644).
+///
+/// The reported symptom: a spell was cast on the opponent's turn, resolved, and killed a
+/// creature — all inside one settle — and the player's next view showed a dead creature
+/// with no explanation. `auto_passed_steps` named the steps, which is no help: a player
+/// does not recognise a turn by its step list. What they need is the *events*, and the
+/// log already carries them; what the log cannot say on its own is which of them this
+/// seat missed, because that depends on when the seat was last shown anything.
+///
+/// So the mark is where the seat's unattended stretch began, and it must start at the
+/// opponent's action — a mark taken at the settle's first pass would begin one event too
+/// late and omit the cast, which is the exact event being explained.
+#[tokio::test]
+async fn issue_644_the_settle_mark_covers_the_action_that_triggered_it() {
+    let mut state = spell_less_state();
+    state.step = Step::Upkeep;
+
+    let (handle, task) = Room::new(state, db())
+        .with_auto_pass(AutoPassPolicy::On)
+        .spawn();
+
+    let (tx0, mut rx0) = view_channel();
+    handle.send(RoomInput::Join {
+        seat: 0,
+        outbox: tx0,
+    });
+    let view0 = wait_for_view(&mut rx0).await;
+    let (tx1, mut rx1) = view_channel();
+    handle.send(RoomInput::Join {
+        seat: 1,
+        outbox: tx1,
+    });
+    let view1 = wait_for_view(&mut rx1).await;
+
+    // Whichever seat the settle came to rest on is the one that acts; the other is the
+    // one it will pass. Read rather than assumed, because where a spell-less board comes
+    // to rest is the settle's business and not this test's.
+    let (acting, mut watcher_rx, actor) = if view0.valid_actions.is_empty() {
+        (view1, rx0, 1)
+    } else {
+        (view0, rx1, 0)
+    };
+    let watcher = 1 - actor;
+
+    // The second join broadcasts to every seat, so the watcher has an unread view sitting
+    // in its channel. Mark it seen, or the wait below returns *it* rather than the one the
+    // action produces.
+    watcher_rx.borrow_and_update();
+
+    // Everything after this is something the watching seat has not been shown.
+    let last_seen = acting.log.last().map(|entry| entry.sequence).unwrap_or(0);
+
+    handle.send(RoomInput::Message {
+        seat: actor,
+        message: ClientMessage::ChooseAction(forced_move(&acting)),
+    });
+    let after = wait_for_view(&mut watcher_rx).await;
+    let _ = watcher;
+
+    assert!(
+        after.auto_passed,
+        "the watching seat holds nothing castable, so the settle acted for it"
+    );
+    let from = after
+        .auto_passed_from
+        .expect("a seat that was passed is told where its unattended stretch began");
+    assert_eq!(
+        from,
+        last_seen + 1,
+        "the mark is the first log entry recorded since the watching seat's last view — \
+         which is the acting seat's action, not the settle's first pass"
+    );
+    assert!(
+        after.log.iter().any(|entry| entry.sequence >= from),
+        "and the window still carries the entries it points at, so there is a report to give"
+    );
+
+    drop(handle);
+    task.await.unwrap();
+}
+
+/// No settle for this seat, no mark: the field is strictly in step with the step list
+/// beside it, so a client never reports an unattended stretch that did not happen.
+#[tokio::test]
+async fn issue_644_a_seat_that_was_not_passed_is_given_no_mark() {
+    // Automation off, so nothing is ever passed and nothing is ever marked.
+    let (handle, task) = Room::new(spell_less_state(), db())
+        .with_auto_pass(AutoPassPolicy::Off)
+        .spawn();
+    let (tx, mut rx) = view_channel();
+    handle.send(RoomInput::Join {
+        seat: 0,
+        outbox: tx,
+    });
+    let idle = wait_for_view(&mut rx).await;
+
+    assert!(!idle.auto_passed);
+    assert_eq!(idle.auto_passed_from, None);
+
+    drop(handle);
+    task.await.unwrap();
+}
+
+/// The mark and the step list are one signal: whenever a seat is told it was passed, it
+/// is also told where to read about it.
+#[tokio::test]
+async fn issue_644_the_mark_and_the_step_list_agree() {
+    let (view, handle, task) = paced_resting_view(spell_less_state(), StopPolicy::None, 0).await;
+    assert_eq!(
+        view.auto_passed,
+        view.auto_passed_from.is_some(),
+        "a passed seat always has a mark, and an unpassed one never does"
+    );
+    drop(handle);
+    task.await.unwrap();
+}

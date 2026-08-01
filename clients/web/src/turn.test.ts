@@ -17,6 +17,7 @@ import {
   PHASES,
   matchStatus,
   nextScope,
+  passedEvents,
   passedRuns,
   phaseLabel,
   presetOf,
@@ -255,5 +256,44 @@ describe('the whole preference, as a pace', () => {
     // preference that is none of the three simply matches none of them.
     expect(presetOf(view({ stops: ['end'] }))).toBeUndefined()
     expect(presetOf(view({ own_turn_stops: ['precombat_main'] }))).toBeUndefined()
+  })
+})
+
+describe('what happened while you were passed', () => {
+  const entry = (sequence: number) => ({
+    sequence,
+    event: {
+      type: 'step_changed' as const,
+      turn: 3,
+      active_player: 'p0',
+      phase: 'draw' as const,
+    },
+  })
+
+  it('is nothing when the server said nothing was passed', () => {
+    expect(passedEvents(view({ log: [entry(1), entry(2)] }))).toEqual([])
+  })
+
+  it('is every entry from the mark onward', () => {
+    // The mark is where the receiver's unattended stretch began, stated by the server —
+    // this is a filter over the log and never an inference about it.
+    const passed = view({
+      log: [entry(1), entry(2), entry(3), entry(4)],
+      auto_passed_from: 3,
+      auto_passed_steps: [{ turn: 3, phase: 'draw' }],
+    })
+    expect(passedEvents(passed).map((e) => e.sequence)).toEqual([3, 4])
+  })
+
+  it('reports what the window still holds when a long settle outran it', () => {
+    // The log is bounded, so a settle can cover more than the window keeps. What survives is
+    // still reported — an entry at or after the mark was, by definition, never sent to this
+    // receiver — and the gap is simply not filled.
+    const passed = view({
+      log: [entry(80), entry(81)],
+      auto_passed_from: 3,
+      auto_passed_steps: [{ turn: 3, phase: 'draw' }],
+    })
+    expect(passedEvents(passed).map((e) => e.sequence)).toEqual([80, 81])
   })
 })

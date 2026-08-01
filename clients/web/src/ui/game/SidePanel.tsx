@@ -38,6 +38,7 @@ export function SidePanel({
   preview,
   revealed,
   settled,
+  missed,
   log,
   label,
   surface,
@@ -48,6 +49,8 @@ export function SidePanel({
   preview?: CardFace
   revealed: readonly CardFace[]
   settled: readonly AutoPassedStep[]
+  /** What happened while the settle was acting for this seat (`turn.ts`). */
+  missed: readonly GameLogEntry[]
   log: readonly GameLogEntry[]
   label(id: string): string
   surface: Surface
@@ -80,20 +83,38 @@ export function SidePanel({
 
       {settled.length > 0 && (
         <section className="side__block notice" aria-labelledby="settle-heading">
-          <h2 id="settle-heading">Passed for you</h2>
-          {/* Why, not just where. A player who watches a whole turn go by between two frames
-              and is shown a bare list of steps learns that something happened to them; the
-              sentence is what turns that into something they can act on, and the control it
-              points at is one row up in the header. */}
+          <h2 id="settle-heading">While you were passed</h2>
+
+          {/* What happened, before where it happened. A player whose creature died during a
+              settle does not need the step list — they need the spell that killed it, and
+              until this existed the only way to get it was to read the whole log after the
+              fact. The events are the server's own (`auto_passed_from`), filtered to the ones
+              this seat was never shown; nothing here is inferred from the step path. */}
+          {missed.length > 0 && (
+            <ol className="log side__missed">
+              {missed.map((entry) => (
+                <li
+                  key={entry.sequence}
+                  className={`log__entry log__entry--${kindOf(entry.event)}`}
+                >
+                  {describe(entry.event, label)}
+                </li>
+              ))}
+            </ol>
+          )}
+
           <p className="side__note">
-            The server had nothing to ask you at these steps, so it acted for you. Set a stop on the
-            turn strip to be asked there next time.
+            The server had nothing to ask you here, so it acted for you. Set a stop on the turn
+            strip to be asked there next time.
           </p>
           {/* A path, not a set: a genuinely revisited position appears twice, and each entry
               carries its own turn because an extra combat or cleanup phase revisits a step
               within one turn. Collapsing either would assert game structure the server did
               not state. */}
-          <ol>
+          {/* The ground it covered, under what happened on it. Still a path and not a set: a
+              genuinely revisited position appears twice, because collapsing it would quietly
+              shorten how far the game moved unasked. */}
+          <ol className="side__path">
             {passedRuns(settled).map((run, index) => (
               <li key={`${run.turn}-${index}`}>
                 Turn {run.turn} — {run.steps.map((step) => step.label).join(' → ')}

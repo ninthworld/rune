@@ -758,6 +758,20 @@ main:has(.screen) {
   padding-inline-start: 1.1rem;
 }
 
+/* What happened while you were passed, above the ground it covered. The events read as the
+   log does, because they are the log — the same wording and the same colour per kind, so a
+   player who has learnt to scan one has learnt to scan the other. */
+.side__missed {
+  margin-block: 0.25rem 0.4rem;
+}
+
+/* The path is context for the events above it, so it recedes rather than competing. */
+.side__path {
+  margin-block: 0.25rem 0;
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+
 .side__note {
   margin: 0 0 0.25rem;
   opacity: 0.8;

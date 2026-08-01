@@ -43,11 +43,14 @@ impl Room {
                 self.record_ack(seat, &choose.submission, resolved.is_some());
                 match resolved {
                     Some(action) => {
+                        // Captured before the action, because the action's own log
+                        // events are part of what a passed seat did not see.
+                        let before = self.state.next_log_sequence;
                         self.state = apply_action(&self.state, &action, &self.db);
                         // Auto-pass any idle priority the action left behind (a no-op
                         // when automation is off), then restart the clock for whatever
                         // decision now rests (a no-op when timers are off).
-                        self.settle_auto_passes();
+                        self.settle_auto_passes_from(before);
                         self.arm_deadline();
                         // A terminal result is delivered once by the run loop's final
                         // broadcast; don't re-send the same full-state view here.
@@ -141,8 +144,22 @@ impl Room {
     /// opted to stop at this step; a fixed [`MAX_AUTO_PASSES`] cap is a defensive
     /// backstop so no configuration can hang the task.
     pub(super) fn settle_auto_passes(&mut self) -> bool {
+        self.settle_auto_passes_from(self.state.next_log_sequence)
+    }
+
+    /// The same settle, told where the receiver's unattended stretch began (issue #644).
+    ///
+    /// `from` is a log `sequence`, and callers pass the value from **before the action
+    /// they just applied** — an opponent's spell is logged by their action, so a report
+    /// that started at the settle's first pass would omit the cast a player is trying to
+    /// understand. Callers with no triggering action (room start, a stops change) pass
+    /// the current sequence, which describes the settle alone.
+    pub(super) fn settle_auto_passes_from(&mut self, from: u64) -> bool {
         for steps in &mut self.auto_passed_steps {
             steps.clear();
+        }
+        for mark in &mut self.auto_passed_from {
+            *mark = None;
         }
         if self.auto_pass != AutoPassPolicy::On {
             return false;
@@ -179,6 +196,12 @@ impl Room {
                 break;
             }
             self.state = next;
+            // The stretch is marked on the seat's *first* pass and left alone after: it
+            // began where the caller said, however many windows the settle goes on to
+            // cover for this seat.
+            if let Some(mark) = self.auto_passed_from.get_mut(seat) {
+                mark.get_or_insert(from);
+            }
             if let Some(steps) = self.auto_passed_steps.get_mut(seat) {
                 // Several priority windows inside one step (each stack resolution
                 // opens another) collapse to one entry: the seat was skipped *at*

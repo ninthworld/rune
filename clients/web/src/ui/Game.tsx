@@ -33,6 +33,7 @@ import type { ClientMessage, GameView, Phase, ValidAction } from './../protocol'
 import { list, playerLabel } from './../normalize'
 import { seats, type SeatPile } from './../table'
 import {
+  passedEvents,
   phaseLabel,
   presetOf,
   presetStops,
@@ -477,6 +478,7 @@ export function Game({
         preview={hovering === undefined ? undefined : faces.get(hovering)}
         revealed={revealedFaces}
         settled={list(view.auto_passed_steps)}
+        missed={passedEvents(view)}
         log={list(view.log)}
         label={label}
         surface={surface}

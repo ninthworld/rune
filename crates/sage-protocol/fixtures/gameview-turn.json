@@ -43,6 +43,7 @@
     { "phase": "cleanup", "turn": 3 },
     { "phase": "untap", "turn": 4 }
   ],
+  "auto_passed_from": 42,
   "log": [
     {
       "sequence": 41,

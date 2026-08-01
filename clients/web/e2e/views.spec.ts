@@ -893,11 +893,12 @@ test.describe('making a settle legible', () => {
     await serveFrames(page, [view])
     await page.goto('/')
 
-    const settle = page.getByRole('region', { name: 'Passed for you' })
+    const settle = page.getByRole('region', { name: 'While you were passed' })
     await expect(settle).toBeVisible()
     // One entry per turn the path crossed, and inside it the steps in the order the settle
-    // acted — the repeat preserved rather than collapsed.
-    const runs = settle.getByRole('listitem')
+    // acted — the repeat preserved rather than collapsed. Scoped to the path, since the panel
+    // now leads with the *events* of the stretch and the steps are the context under them.
+    const runs = settle.locator('.side__path').getByRole('listitem')
     await expect(runs).toHaveCount(2)
     await expect(runs.nth(0)).toHaveText('Turn 3 — Begin combat → Declare attackers → Begin combat')
     await expect(runs.nth(1)).toHaveText('Turn 4 — Upkeep')

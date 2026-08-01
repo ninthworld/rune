@@ -451,6 +451,15 @@ export const GameView = z.object({
   own_turn_stops: z.array(Phase).optional(),
   auto_passed: z.boolean().optional(),
   auto_passed_steps: z.array(AutoPassedStep).optional(),
+  /**
+   * Where the receiver's unattended stretch began, as a `log` sequence.
+   *
+   * `auto_passed_steps` says *where* the settle acted and never *what happened there*,
+   * which is the half a player reads: a spell cast, resolved, and killing a creature
+   * inside one settle is three log events and no step anybody recognises. Every entry in
+   * `log` at or after this sequence is something the receiver was not shown.
+   */
+  auto_passed_from: z.number().optional(),
   action_rejected: z.boolean().optional(),
   action_ack: ActionAck.optional(),
   player_names: z.record(PlayerId, z.string()).optional(),

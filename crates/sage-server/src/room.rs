@@ -156,6 +156,19 @@ pub struct Room {
     /// because each entry carries its own turn, where a boundary actually fell.
     /// Not load-bearing state — the authoritative record of a settle is the game log.
     auto_passed_steps: Vec<Vec<AutoPassedStep>>,
+    /// Where each seat's most recent unattended stretch began in the game log, as a
+    /// log `sequence` — the companion to [`Self::auto_passed_steps`] that says *what*
+    /// happened rather than only *where* (issue #644).
+    ///
+    /// Captured **before the action that triggered the settle** rather than at the
+    /// settle's first pass. An opponent's spell is logged by their own action, and a
+    /// report that began after it would omit the event a player is trying to
+    /// understand — which is the whole reason this exists.
+    ///
+    /// Transient and display-only in exactly the way the steps beside it are:
+    /// recomputed on every settle, projected onto the next broadcast, and never read
+    /// by the game.
+    auto_passed_from: Vec<Option<u64>>,
     /// The **acknowledgement** each seat is owed for its most recent correlated
     /// submission (issue #554), indexed by seat. Written when a `ChooseAction`
     /// carrying a [`ChooseAction::submission`](sage_protocol::ChooseAction) is routed
@@ -192,6 +205,7 @@ impl Room {
             stops: vec![None; seat_count],
             stop_policy: StopPolicy::None,
             auto_passed_steps: vec![Vec::new(); seat_count],
+            auto_passed_from: vec![None; seat_count],
             pending_acks: (0..seat_count).map(|_| None).collect(),
             spectators: Vec::new(),
         }

@@ -146,6 +146,7 @@ fn issue_455_the_auto_passed_path_keeps_every_occurrence_and_states_its_turn() {
             phase: Phase::End,
             auto_passed: true,
             auto_passed_steps: path.clone(),
+            auto_passed_from: None,
             ..Default::default()
         };
         let back: GameView = serde_json::from_value(serde_json::to_value(&view).unwrap()).unwrap();
@@ -365,6 +366,7 @@ fn game_view_round_trips_through_json() {
         own_turn_stops: Vec::new(),
         auto_passed: false,
         auto_passed_steps: Vec::new(),
+        auto_passed_from: None,
         action_rejected: false,
         // Submission acknowledgement (issue #554): absent on an ordinary broadcast.
         action_ack: None,

@@ -251,6 +251,7 @@ pub(crate) fn personalized_view(
         own_turn_stops: Vec::new(),
         auto_passed: false,
         auto_passed_steps: Vec::new(),
+        auto_passed_from: None,
         // Rejected-action feedback is likewise a room concern, not engine state (issue
         // #265): only the room knows an action was rejected, and it flags the one
         // re-sent view answering that rejection. Not-rejected here by default, so it

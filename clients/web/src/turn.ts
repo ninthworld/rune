@@ -23,7 +23,13 @@
  * will do next. Those are the server's, and this module has nothing to answer them with.
  */
 import { list } from './normalize'
-import { Phase, type ClientMessage, type AutoPassedStep, type GameView } from './protocol'
+import {
+  Phase,
+  type AutoPassedStep,
+  type ClientMessage,
+  type GameLogEntry,
+  type GameView,
+} from './protocol'
 
 const PHASE_LABELS: Record<string, string> = {
   untap: 'Untap',
@@ -277,6 +283,27 @@ export function statusLine(status: MatchStatus, label: (id: string) => string): 
 export interface PassedRun {
   turn: number
   steps: readonly { phase: Phase; label: string }[]
+}
+
+/**
+ * What happened while the settle was acting for this seat.
+ *
+ * The path of steps says where the room acted; this says what a player *missed* — the spell
+ * that was cast, what it targeted, the creature that died. Those are already in the log, and
+ * the only thing that cannot be worked out from one view is which of them are new to this
+ * receiver, because that depends on when they were last sent anything. The server states it
+ * (`auto_passed_from`), so this is a filter and never an inference.
+ *
+ * Empty whenever the server said nothing was passed. Otherwise it is what the window still
+ * holds from the mark onward, which may be **less** than the whole stretch: the log is bounded
+ * and a long settle can outrun it (`docs/protocol.md`), so a client shows the entries it has
+ * and never fills the gap. Everything it does show was genuinely missed — an entry at or after
+ * the mark is, by definition, one this receiver was never sent.
+ */
+export function passedEvents(view: GameView): readonly GameLogEntry[] {
+  const from = view.auto_passed_from
+  if (from === undefined) return []
+  return list(view.log).filter((entry) => entry.sequence >= from)
 }
 
 /**
