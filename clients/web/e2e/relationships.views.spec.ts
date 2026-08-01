@@ -261,6 +261,7 @@ test.describe('a board with relationships to trace', () => {
       'perm_dreadmaw->perm_ogre',
       'perm_elemental->perm_serra',
       'perm_zombie->perm_ogre',
+      's1->perm_dreadmaw',
       's2->s1',
       's3->perm_gravedigger',
       's4->perm_serra',

@@ -13,6 +13,13 @@
  * The panel opens beside the table rather than over it. A pile is often the thing a player is
  * choosing *from* while the dock asks the question, so covering the board or the controls with
  * it would make the two halves of one decision take turns.
+ *
+ * **The cards are cards.** A pile used to be a column of one-line summaries, which is the right
+ * shape for a list of names and the wrong shape for the question a player actually opens a
+ * graveyard to ask — what is *in* here, scanned by art and frame the way a board is scanned. It
+ * draws the same face the battlefield draws, so a creature in a graveyard looks like the creature
+ * it was, and the column it opens in widens to make room for them rather than shrinking the cards
+ * to fit a rail. The board gives up that width only while a pile is open.
  */
 import type { CardFace } from './../../card-face'
 import { Card } from './../Card'
@@ -54,12 +61,12 @@ export function ZonePanel({
         // closing the panel out from under the player who was reading it.
         <p className="zone__empty">Empty.</p>
       ) : (
-        <ul className="cards cards--compact">
+        <ul className="cards cards--pile">
           {faces.map((face) => (
             <li key={face.id}>
               <Card
                 face={face}
-                variant="compact"
+                variant="battlefield"
                 state={surface.stateOf(face.id)}
                 link={surface.linkOf(face.id)}
                 onActivate={surface.activate}

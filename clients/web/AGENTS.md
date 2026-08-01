@@ -95,6 +95,19 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   knows nothing about being blocked — so the reverse is derived here once rather than by each
   surface scanning the battlefield. Every edge is a stated id; nothing is concluded from rules
   text or the log.
+- `src/menu.ts` — whether an object's own actions belong *at* the object. The dock's list, from
+  the same `actionsFor`, opened by the click that already produced `{kind: 'select'}` — no new
+  gesture, and deliberately **not** a right-click menu: right-click is spent on the inspector,
+  which is what keeps reading free, and it is the one gesture here with no keyboard equivalent.
+  An armed draft, a confirmation, a submission in flight, and an empty selection each outrank it,
+  because in all four something else already owns the next click.
+- `src/motion.ts` — what changed between the last two views: ids the board draws that it did not,
+  and how far a seat's life moved. Pure, so an animation is a *transition between* two
+  reconstructable states and never a third of its own; a reconnect resets it, because a board
+  that moved while the socket was down was not watched. **A card cannot be followed between
+  zones**: `card_`, `perm_`, and `stack_` are three id spaces the view links nowhere, so joining
+  them by name would be the client deciding which of two Forests moved. Arrival is what the wire
+  states; a flight needs the protocol to say two ids are one object.
 - `src/overlay.ts` — the same relationships as geometry: where the line between two objects
   starts and ends, given a box for each. The split from `relations.ts` is the guarantee — what
   decides *what* is related knows nothing about pixels, and what knows where everything is
@@ -173,10 +186,13 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   under the object that carries it, and a line across the board in `RelationOverlay` — a sheet
   that takes no clicks and is hidden from assistive technology, because the trail is the readable
   copy and the picture is what is read at a glance. Every surface tags the objects it draws with
-  `anchorProps`, which is the whole of how a line finds its two ends. Looking at an object
-  emphasises both — tracing follows the *look*, not the click, because the objects most worth
-  tracing own no action and a click on one opens the inspector over the board the relationship
-  crosses. Public piles open beside the table, never
+  `anchorProps`, which is the whole of how a line finds its two ends — and the same anchors place
+  `ObjectMenu` and are what `Arrivals` animates, so a surface gets all three by tagging what it
+  draws. Looking at an object emphasises both — tracing follows the *look*, not the click,
+  because the objects most worth tracing own no action and a click on one opens the inspector
+  over the board the relationship crosses. An object's actions open beside the object as well as
+  in the dock; the dock keeps every one of them, because a subject may be in a collapsed pile or
+  in no rendered zone at all. Public piles open beside the table, never
   over it; a hidden zone is a count with nothing to open. The header carries the whole turn as a
   row of steps, and that row is also where stops are set — a preference divorced from the strip
   it applies to is one nobody edits. The end of a match is the one panel that layers over the

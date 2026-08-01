@@ -113,7 +113,7 @@ main:has(.screen) {
   box-sizing: border-box;
   height: 100dvh;
   display: grid;
-  grid-template-columns: 2.5rem minmax(0, 1fr) 14rem;
+  grid-template-columns: 2.5rem minmax(0, 1fr) var(--side-w, 14rem);
   grid-template-rows: auto minmax(0, 1fr) auto auto;
   grid-template-areas:
     'phases match side'
@@ -123,6 +123,14 @@ main:has(.screen) {
   overflow: hidden;
   background: var(--felt);
   color: var(--ink);
+}
+
+/* A pile is opened to be read, and reading a pile is looking at cards. The column it opens in
+   widens to hold a grid of faces, and the board gives that width back the moment the pile
+   closes — which is the trade a player is making when they open one, made explicit. Driven by
+   what is on the screen rather than by a flag this client would then have to keep in step. */
+.screen:has(.zone) {
+  --side-w: 21rem;
 }
 
 /* The chrome is at the edges and the board is in the middle, which is the whole layout in one
@@ -321,7 +329,14 @@ main:has(.screen) {
   gap: 0.4rem;
   padding: 0.4rem;
   grid-template-columns: minmax(0, 1fr) 13rem;
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  /* The halves are not a fixed 50/50, and the difference is most of the board on a short
+     screen. An even split is only fair when both sides have something to draw: on turn one the
+     opponent has an empty battlefield and a two-line seat panel, and half the table went to the
+     words "No permanents." while the player's own lands were clipped off the bottom of theirs.
+     `fit-content(50%)` gives the far side exactly what it is using, up to half — so an empty
+     board costs nothing, a full one still gets its half, and the remainder always goes to the
+     side the player is actually acting from. */
+  grid-template-rows: fit-content(50%) minmax(0, 1fr);
   grid-template-areas:
     'opponent rail'
     'you      rail';
@@ -656,12 +671,12 @@ main:has(.screen) {
   opacity: 0.75;
 }
 
-/* One column, scrolling. `.cards` wraps by default, which in a container with a capped height
-   means wrapping into a *second column* — straight out of the side of a fixed-width column and
-   off the screen. A pile is a list; it goes down. */
+/* A pile scrolls inside its own block rather than pushing the log off the column, and it is
+   given enough of the screen to be worth opening: at sixteen rem a graveyard was four cards and
+   a scrollbar. The cap is against the viewport as well, so the panel keeps its share of a short
+   screen instead of claiming the same rems whatever the screen is. */
 .zone .cards {
-  flex-wrap: nowrap;
-  max-height: 16rem;
+  max-height: min(34rem, 52vh);
   overflow-y: auto;
 }
 
@@ -694,8 +709,12 @@ main:has(.screen) {
 /* Lands are the row a player scans past, not the row they read, so they take less height and
    sit quieter. Nothing is hidden: a land is the same frame at the same tier, and hovering it
    previews the whole face like anything else. */
+/* Lands are drawn smaller than the permanents doing something, and — the half that was missing —
+   they give ground with the viewport like every other card. A width fixed in `rem` alone kept
+   claiming the same pixels as the screen shrank, until on a short viewport the land row was
+   *taller* than the creature row above it and pushed itself off the bottom of the board. */
 .field__row--lands {
-  --card-field-w: 5.4rem;
+  --card-field-w: min(5.4rem, 8vh);
   opacity: 0.92;
 }
 
@@ -804,9 +823,51 @@ main:has(.screen) {
   justify-content: center;
 }
 
+/* One band, not a stack of blocks. What the game wants, the hint, the global actions, and the
+   disclosure are each one line, and four one-line blocks cost the board four lines of height it
+   needs more than they do. They lay out as a row that wraps only when it has to; the things that
+   are genuinely a panel — a question being drafted, a confirmation, a selected object's actions —
+   take the full width, because those are the moments the dock is the whole task. */
 .dock > section {
   width: 100%;
   max-width: 62rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 1.1rem;
+  row-gap: 0.3rem;
+}
+
+.dock__owed,
+.dock__subject,
+.dock__confirm,
+.dock__pending,
+.dock__rejected,
+.dock > section > .choices {
+  flex-basis: 100%;
+}
+
+/* Sized to what it says instead of to the row, so the buttons sit beside it rather than under
+   it, and the step it restates stays at its own end of the band. */
+.dock > section > .dock__tone {
+  flex: 0 1 auto;
+  margin-block-end: 0;
+}
+
+.dock > section > .dock__tone .dock__where {
+  margin-inline-start: 0.6rem;
+}
+
+.dock > section > .dock__hint,
+.dock > section > .actions {
+  margin-block: 0;
+}
+
+/* The disclosure goes last on the row wherever it falls, so "every action" is never sitting
+   between the state and the buttons that change it. */
+.dock__all {
+  margin-block-start: 0;
+  margin-inline-start: auto;
 }
 
 /* The dock heading earns nothing when the dock is one button, and the board needs the pixels
@@ -1041,4 +1102,107 @@ main:has(.screen) {
   border-color: color-mix(in srgb, var(--tone) 60%, transparent);
   border-radius: 0.3rem;
   background: color-mix(in srgb, var(--tone) 8%, transparent);
+}
+
+/* A pile, as cards. A grid rather than the column the rail's other lists use: a graveyard is
+   scanned, and a column of ten cards is ten scroll positions. The track floor is the card's own
+   width, so the number of columns follows the panel instead of being asserted here. */
+.cards--pile {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5.6rem, 1fr));
+  gap: 0.4rem;
+  align-items: start;
+}
+
+/* Inside a track rather than at its own width: the grid has already decided how wide a column
+   is, and a card that kept its board width would either overflow the track or leave a gap
+   beside every card in the pile. */
+.cards--pile .card--battlefield {
+  width: 100%;
+}
+
+/* The pile's own list items are grid items, not the flex columns the rail's lists are. */
+.cards--pile > li {
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   An object's actions, at the object
+   --------------------------------------------------------------------------- */
+
+/* Beside the card rather than over it, and small enough to leave the board readable: the whole
+   point is that the object and what can be done to it are visible at once. It is fixed to the
+   viewport because it is positioned from the object's own box, which is inside a region that
+   scrolls — anchoring it to the flow would put it in the scroller and clip it against the same
+   edge the card is at. */
+.menu {
+  position: fixed;
+  z-index: 6;
+  min-width: 9rem;
+  max-width: 16rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--panel) 92%, black);
+  box-shadow: 0 0.6rem 1.4rem #0009;
+  font-size: var(--text-sm);
+}
+
+.menu__who {
+  margin: 0 0 0.3rem;
+  color: var(--ink-dim);
+}
+
+.menu__empty {
+  margin: 0 0 0.3rem;
+  color: var(--ink-faint);
+}
+
+.menu__actions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+/* Full width and left-aligned, so a list of abilities reads as a list rather than as a row of
+   pills a player has to scan horizontally to find the one they meant. */
+.menu__actions button {
+  width: 100%;
+  text-align: start;
+}
+
+.menu__reading {
+  margin: 0.35rem 0 0;
+  padding-block-start: 0.35rem;
+  border-block-start: 1px solid var(--line);
+}
+
+/* What the last message did to a life total, beside the total itself. Small, because the number
+   is the thing being played off and this is only the reason it changed; and animated in, because
+   an appearing figure is what makes a player look at it — arriving instantly when the device
+   asked for less motion, which is the same state without the arrival. */
+.seat__delta {
+  margin-inline-start: 0.35rem;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  animation: delta var(--trace-duration) ease;
+}
+
+.seat__delta--down {
+  color: #e07a6b;
+}
+
+.seat__delta--up {
+  color: #7cc08d;
+}
+
+@keyframes delta {
+  from {
+    opacity: 0;
+    transform: translateY(-0.25rem);
+  }
 }

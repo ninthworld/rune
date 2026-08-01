@@ -17,6 +17,7 @@
  */
 import type { Seat, SeatPile } from './../../table'
 import type { RelationLine } from './../../relations'
+import { lifeWording } from './../../motion'
 import { anchorProps } from './../../overlay'
 import { ManaCost } from './../Mana'
 import { RelationTrail } from './RelationTrail'
@@ -40,6 +41,7 @@ const PUBLIC_ZONES = [
 export function PlayerPanel({
   seat,
   lines,
+  life,
   open,
   onOpen,
   surface,
@@ -47,6 +49,15 @@ export function PlayerPanel({
   seat: Seat
   /** What the view relates this seat to — an attack aimed at it, a spell that named it. */
   lines: readonly RelationLine[]
+  /**
+   * How much this seat's life moved in the message that produced this view, if it moved.
+   *
+   * A transition rather than a fact about the game: it is the difference between the last two
+   * `GameView`s (`motion.ts`), it survives no refresh, and the total beside it is the only thing
+   * anybody plays off. It exists because a life total that silently changes from 20 to 17 is a
+   * player wondering whether they missed something, and the log is a column away.
+   */
+  life?: number
   /** The pile of this seat's currently open in the browser, if any. */
   open?: SeatPile['zone']
   onOpen(zone: SeatPile['zone']): void
@@ -117,6 +128,19 @@ export function PlayerPanel({
               life total — and drawing the word beside a figure this size would halve it. */}
           <span className="seat__life-value">{seat.life}</span>
           <span className="visually-hidden"> life</span>
+          {/* What just happened to it, until the next message. The sign carries the direction
+              and the colour only repeats it: a number with no sign says nothing, and a red one
+              says nothing to a player who cannot see red. Announced politely, because a life
+              total changing is worth hearing and is never worth interrupting a sentence for. */}
+          {life !== undefined && (
+            <span className={`seat__delta seat__delta--${life > 0 ? 'up' : 'down'}`} role="status">
+              <span aria-hidden="true">
+                {life > 0 ? '+' : '−'}
+                {Math.abs(life)}
+              </span>
+              <span className="visually-hidden">{lifeWording(life)}</span>
+            </span>
+          )}
         </p>
       )}
 

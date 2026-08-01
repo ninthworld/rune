@@ -72,15 +72,19 @@ import {
   unask,
   type Interaction,
 } from './../interaction'
+import { objectMenu } from './../menu'
+import { changes, NO_CHANGES } from './../motion'
 import { buildChooseAction, type Draft } from './../submission'
 import { CardInspector } from './CardInspector'
 import { ActionDock } from './game/ActionDock'
+import { Arrivals } from './game/Arrivals'
 import { Settings } from './game/Settings'
 import { TurnStrip } from './game/TurnStrip'
 import { Battlefield, type FieldEntry } from './game/Battlefield'
 import { Hand } from './game/Hand'
 import { MatchHeader } from './game/MatchHeader'
 import { MatchResult } from './game/MatchResult'
+import { ObjectMenu } from './game/ObjectMenu'
 import { PlayerPanel } from './game/PlayerPanel'
 import { RelationOverlay } from './game/RelationOverlay'
 import { SidePanel, type OpenZone } from './game/SidePanel'
@@ -130,25 +134,48 @@ export function Game({
   // than about this game, which is why one new view has no opinion about any of it.
   const [settingsOpen, setSettingsOpen] = useState(false)
 
-  // Settled during render rather than in an effect, so the frame that carries a new view is
-  // never painted with the previous view's draft still in the dock.
-  const [seen, setSeen] = useState(view)
-  if (seen !== view) {
-    setSeen(view)
-    // Updated from the current value rather than the one this render closed over, so a view and
-    // a reconnect landing together compose instead of one overwriting the other.
-    setInteraction((current) => settle(current, view.action_ack))
-  }
+  // What the last message changed, held for exactly as long as this view is the current one.
+  // A transition between two reconstructable states and never a third: a refresh loses it and
+  // shows the same board, and nothing anywhere reads it to decide anything (`motion.ts`).
+  const [moved, setMoved] = useState(NO_CHANGES)
+
+  // Whether the next view is one this player is *arriving at* rather than one they watched
+  // arrive. Set by a reconnect and spent by the first view after it, because the two are
+  // separate messages and usually separate renders — the socket comes back first, and the board
+  // that may have moved a whole turn while it was down comes second.
+  const [resuming, setResuming] = useState(false)
+  let arriving = resuming
 
   // A new socket is the end of every correlation this client was holding: the server drops a
   // seat's `action_ack` when it reconnects (`docs/protocol.md`), so an ack that would have
   // answered the click in flight is never coming. Waiting on it forever would leave the dock
   // blocked on a reply that no longer exists, so the wait is released and the fresh view the
   // reconnect brings is the answer to what actually happened.
+  //
+  // Read before the view below rather than after it, so a reconnect and a view landing in the
+  // same render are still a reconnect.
   const [seenEpoch, setSeenEpoch] = useState(epoch)
   if (seenEpoch !== epoch) {
     setSeenEpoch(epoch)
     setInteraction(release)
+    // A reconnect is a state a player is arriving at, not a change they watched: the board may
+    // have moved a whole turn while the socket was down, and a delta across that gap is real
+    // arithmetic and a lie about what the player saw.
+    setMoved(NO_CHANGES)
+    arriving = true
+    setResuming(true)
+  }
+
+  // Settled during render rather than in an effect, so the frame that carries a new view is
+  // never painted with the previous view's draft still in the dock.
+  const [seen, setSeen] = useState(view)
+  if (seen !== view) {
+    setMoved(changes(arriving ? undefined : seen, view))
+    if (resuming) setResuming(false)
+    setSeen(view)
+    // Updated from the current value rather than the one this render closed over, so a view and
+    // a reconnect landing together compose instead of one overwriting the other.
+    setInteraction((current) => settle(current, view.action_ack))
   }
 
   const actions = list(view.valid_actions)
@@ -271,8 +298,12 @@ export function Game({
    * here is sent and nothing is undone in the game — every layer this closes is client-side
    * presentation, which is exactly why it is safe to bind to a key pressed by reflex.
    */
+  // An object's own actions, at the object. The same list the dock is drawing for the same
+  // selection — this decides only *whether* it belongs beside the card too (`menu.ts`).
+  const menu = objectMenu(actions, interaction)
+
   /** Something is layered over the board, so the keyboard belongs to it rather than to the game. */
-  const layered = inspecting !== undefined || settingsOpen
+  const layered = inspecting !== undefined || settingsOpen || menu !== undefined
 
   const back = () => {
     if (inspecting !== undefined) return setInspecting(undefined)
@@ -424,6 +455,7 @@ export function Game({
               <PlayerPanel
                 seat={seat}
                 lines={relationLines(related, seat.id)}
+                life={moved.life.get(seat.id)}
                 open={browsing?.seat === seat.id ? browsing.zone : undefined}
                 onOpen={browse(seat.id)}
                 surface={surface}
@@ -447,6 +479,7 @@ export function Game({
               <PlayerPanel
                 seat={local}
                 lines={relationLines(related, local.id)}
+                life={moved.life.get(local.id)}
                 open={browsing?.seat === local.id ? browsing.zone : undefined}
                 onOpen={browse(local.id)}
                 surface={surface}
@@ -463,6 +496,11 @@ export function Game({
             trails do, so the picture and the words cannot describe combat differently. */}
         <RelationOverlay relations={related.all} traced={traced} />
       </div>
+
+      {/* Nothing this draws; it moves what is already drawn. Anything it touches is already in
+          its final place, so an interrupted animation, a refresh, or a device that asked for no
+          motion at all lands on exactly the board this view describes. */}
+      <Arrivals arrived={moved.arrived} />
 
       <Hand faces={handFaces} surface={surface} />
 
@@ -491,6 +529,22 @@ export function Game({
         label={label}
         surface={surface}
       />
+
+      {/* An object's actions, beside the object. Opened by the click that already selected it,
+          never by a gesture of its own, and taking one goes through the same `take` the dock's
+          button does — the dock keeps the identical list for the subject no surface drew. */}
+      {menu && (
+        <ObjectMenu
+          // Remounted per object, so the focus it takes and the focus it gives back are always
+          // about the same one.
+          key={menu.id}
+          menu={menu}
+          label={surface.labelFor}
+          take={take}
+          inspect={setInspecting}
+          close={() => setInteraction(clear(interaction))}
+        />
+      )}
 
       {/* Last in the tree so they layer over the table without any surface below them needing to
           know they exist. `inspected` is looked up in this frame's faces, so an object that has
