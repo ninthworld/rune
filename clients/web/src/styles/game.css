@@ -112,118 +112,166 @@ main:has(.screen) {
 .screen {
   box-sizing: border-box;
   height: 100dvh;
-  padding: 0.5rem;
   display: grid;
-  gap: 0.4rem;
-  grid-template-columns: minmax(0, 1fr) 19rem;
+  grid-template-columns: 2.5rem minmax(0, 1fr) 14rem;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
   grid-template-areas:
-    'match side'
-    'table side'
-    'hand  side'
-    'dock  side';
+    'phases match side'
+    'phases table side'
+    'phases hand  side'
+    'phases dock  side';
   overflow: hidden;
+  background: var(--felt);
+  color: var(--ink);
 }
 
-/* The grey-box section rule draws a top border on every section; on a table that reads as a
-   stray line through the middle of the board. Regions here are bounded by their own frames. */
+/* The chrome is at the edges and the board is in the middle, which is the whole layout in one
+   sentence. Every band around the table earns its height: the top is one line about the match,
+   the left is the turn, the right is what you opened, and the bottom is your hand and the one
+   button that moves the game. */
 .screen section {
   border-top: none;
 }
 
 .screen h2 {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   margin-block: 0 0.25rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-dim);
 }
 
+/* One line about the match, and nothing else in it. */
 .match {
   grid-area: match;
   min-width: 0;
+  padding: 0.4rem 0.75rem;
+  background: linear-gradient(var(--panel), color-mix(in srgb, var(--panel) 70%, var(--felt)));
+  border-block-end: 1px solid var(--line);
 }
 
 .match__turn {
-  font-size: 1.05rem;
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: -0.01em;
   margin: 0;
 }
 
-/* Turn, seats, and status on one row where the width allows, so the strip below is the second
-   line of the header rather than the fifth. */
 .match__line {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  column-gap: 0.75rem;
+  column-gap: 1rem;
   row-gap: 0.1rem;
 }
 
 .match__state {
-  margin: 0.1rem 0 0;
-  font-size: 0.8rem;
-  opacity: 0.85;
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--ink-faint);
 }
 
 .match__who + .match__who::before {
   content: ' · ';
 }
 
-/* The one line that answers "why is nothing happening". It sits at the end of the header row and
-   is the only text there that is allowed to shout. */
+.match__who strong {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+/* The status is the one line a player checks between every action, so it is the one piece of
+   the band that is allowed to shout — and only when the answer is "you". */
 .match__status {
-  margin: 0.1rem 0 0;
-  font-size: 0.8rem;
+  margin: 0;
   margin-inline-start: auto;
+  font-size: var(--text-sm);
+  color: var(--ink-faint);
 }
 
 .match__status--yours {
+  color: var(--accent);
   font-weight: 700;
 }
 
-.match__status--waiting,
-.match__status--sent {
-  opacity: 0.75;
+.match__clock {
+  font-variant-numeric: tabular-nums;
 }
 
-/* The twelve steps of a turn, in order, each of them also its own stop control. */
+/* Everything about this device, behind one control at the far edge. */
+.match__settings {
+  flex: none;
+  padding: 0.1rem 0.4rem;
+  font-size: var(--text-md);
+  line-height: 1;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 0.25rem;
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+
+.match__settings:hover,
+.match__settings:focus-visible {
+  color: var(--ink);
+  border-color: var(--ink-faint);
+}
+
+/* The turn, down the left edge — a rail the width of a word, so twelve steps cost no band
+   above the board. Each step is still the control that sets a stop there. */
 .strip {
+  grid-area: phases;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.15rem;
+  flex-direction: column;
+  gap: 1px;
   list-style: none;
-  margin: 0.25rem 0 0;
-  padding: 0;
+  margin: 0;
+  padding: 0.35rem 0;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--panel) 60%, var(--felt));
+  border-inline-end: 1px solid var(--line);
+}
+
+.strip > li {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
 }
 
 .strip__step {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.25rem;
-  padding: 0.1rem 0.35rem;
-  font-size: 0.7rem;
-  line-height: 1.5;
-  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-  border-radius: 0.2rem;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0.1rem 0;
+  font-size: 0.55rem;
+  line-height: 1.1;
+  border: 0;
+  border-inline-start: 2px solid transparent;
   background: none;
-  color: inherit;
+  color: var(--ink-faint);
   cursor: pointer;
-  opacity: 0.6;
+  /* The names are long and the rail is narrow, so they turn with it. */
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
 }
 
 .strip__step:hover,
 .strip__step:focus-visible {
-  opacity: 1;
+  color: var(--ink);
+  background: #ffffff0f;
 }
 
 /* Where the game is. Reads first, from across the desk. */
 .strip__step--now {
-  opacity: 1;
+  color: var(--felt);
+  background: var(--accent);
   font-weight: 700;
-  border-color: currentColor;
-  border-width: 2px;
-  padding-block: calc(0.1rem - 1px);
 }
 
-/* Where the settle acted for you, this turn. Underlined rather than filled, so a step can be
-   both passed and stopped-at-next-time without the two marks fighting. */
+/* Where the settle acted for you, this turn. */
 .strip__step--passed {
   text-decoration: underline dotted;
   text-underline-offset: 0.15rem;
@@ -231,134 +279,17 @@ main:has(.screen) {
 
 .strip__step--stop-own,
 .strip__step--stop-always {
-  opacity: 1;
-  border-color: color-mix(in srgb, currentColor 60%, transparent);
+  color: var(--ink-dim);
+  border-inline-start-color: var(--ink-faint);
+}
+
+.strip__step--now.strip__step--stop-own,
+.strip__step--now.strip__step--stop-always {
+  color: var(--felt);
 }
 
 .strip__mark {
-  font-size: 0.6rem;
-  opacity: 0.8;
-}
-
-/* The strip and the pace beside it: one preference at two grains, on one row. The pace wraps
-   under the steps on a narrow window rather than compressing them, because a twelve-step row
-   that has lost its labels has lost the thing it exists for. */
-.match__pacing {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  column-gap: 0.75rem;
-}
-
-.pace {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  margin-block-start: 0.25rem;
-  font-size: 0.7rem;
-}
-
-.pace__label {
-  opacity: 0.6;
-}
-
-.pace__preset,
-.pace__keys {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.1rem 0.35rem;
-  font-size: 0.7rem;
-  line-height: 1.5;
-  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-  border-radius: 0.2rem;
-  background: none;
-  color: inherit;
-  cursor: pointer;
-  opacity: 0.7;
-}
-
-.pace__preset:hover,
-.pace__keys:hover,
-.pace__preset:focus-visible,
-.pace__keys:focus-visible {
-  opacity: 1;
-}
-
-/* The pace the server is actually honouring. Filled rather than outlined, because the controls
-   next to it are already outlined for their stop state and a third border weight would be a
-   third thing to learn. */
-.pace__preset[aria-pressed='true'] {
-  opacity: 1;
-  font-weight: 700;
-  border-color: currentColor;
-  background: color-mix(in srgb, currentColor 12%, transparent);
-}
-
-/* A key, printed on the control that duplicates it — which is how a player finds out there is a
-   keyboard here at all. */
-kbd {
-  padding: 0 0.2rem;
-  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
-  border-radius: 0.2rem;
-  background: color-mix(in srgb, currentColor 8%, transparent);
-  font-family: inherit;
-  font-size: 0.9em;
-  opacity: 0.85;
-}
-
-.shortcuts {
-  max-width: 28rem;
-}
-
-.shortcuts__list {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.shortcuts__row {
-  display: grid;
-  grid-template-columns: 7rem 1fr;
-  gap: 0.5rem;
-  align-items: baseline;
-}
-
-.shortcuts__row dt,
-.shortcuts__row dd {
-  margin: 0;
-}
-
-.shortcuts__note {
-  font-size: 0.8rem;
-  opacity: 0.75;
-}
-
-/* The art panel is a decision, not a toggle, so it is laid out to be read: one paragraph per
-   choice, at full width, rather than a row of labels. */
-.art-settings {
-  max-width: 34rem;
-}
-
-.art-settings__group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-  border-radius: 0.3rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.85rem;
-}
-
-.art-settings__group legend {
-  font-weight: 700;
-  font-size: 0.8rem;
-}
-
-.art-settings__note {
-  font-size: 0.8rem;
-  opacity: 0.75;
+  display: none;
 }
 
 .match__notice {
@@ -383,7 +314,8 @@ kbd {
   min-width: 0;
   display: grid;
   gap: 0.4rem;
-  grid-template-columns: minmax(0, 1fr) 15.5rem;
+  padding: 0.4rem;
+  grid-template-columns: minmax(0, 1fr) 13rem;
   grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-areas:
     'opponent rail'
@@ -423,10 +355,10 @@ kbd {
    because it is the one part that names other objects. */
 .seat {
   flex: none;
-  padding: 0.3rem 0.5rem;
-  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
-  border-radius: 0.3rem;
-  font-size: 0.8rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--panel) 80%, var(--felt));
+  font-size: var(--text-sm);
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -440,10 +372,29 @@ kbd {
 }
 
 .seat__who,
-.seat__stats,
+.seat__life,
+.seat__marks,
 .seat__pool,
 .seat__commander {
   margin: 0;
+}
+
+/* The number a player watches more than any other, at a size that says so. Tabular so it does
+   not jump between 9 and 10 while they are looking at it. */
+.seat__life-value {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Eliminated, disconnected, monarch — facts about the seat rather than about the board. */
+.seat__marks {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
 }
 
 .seat__who {
@@ -489,11 +440,10 @@ kbd {
   cursor: pointer;
 }
 
-.seat__stats,
 .seat__pool,
 .seat__commander {
-  font-size: 0.75rem;
-  opacity: 0.85;
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
 }
 
 /* The zone row. A public pile is a control and a hidden zone is a number, and the two are
@@ -508,13 +458,20 @@ kbd {
 }
 
 .seat__zone {
-  padding: 0.05rem 0.3rem;
-  border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--line);
   border-radius: 0.6rem;
-  background: none;
-  color: inherit;
+  background: #ffffff0d;
+  color: var(--ink-dim);
   font: inherit;
+  font-size: var(--text-xs);
   cursor: pointer;
+}
+
+.seat__zone:hover,
+.seat__zone:focus-visible {
+  color: var(--ink);
+  border-color: var(--ink-faint);
 }
 
 .seat__zone--closed {
@@ -559,24 +516,46 @@ kbd {
   overflow-y: auto;
 }
 
-/* Each half of the board scrolls inside its own track. The two are tinted differently so the
-   controller boundary is visible at a glance rather than read off a label. */
+/* Each half of the board scrolls inside its own track. Two surfaces, one lighter than the
+   other — which is the whole of how a player knows whose permanent they are looking at, and it
+   is answered without reading a single word. Yours is the nearer and brighter one, because a
+   table is lit from where you sit. */
 .field {
   flex: 1;
   min-height: 0;
   min-width: 0;
   overflow-y: auto;
-  padding: 0.35rem;
-  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-  border-radius: 0.3rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.4rem;
+}
+
+/* A row of one kind of permanent. Separated by space rather than by a rule, because a board
+   already has enough lines on it and the grouping is legible from the gap alone. The rows are
+   mirrored across the table (`board.ts`), so both sets of creatures meet at the dividing line. */
+.field__row {
+  margin: 0;
+}
+
+.field__row + .field__row {
+  margin-block-start: 0.5rem;
+  padding-block-start: 0.5rem;
+  border-block-start: 1px dashed color-mix(in srgb, currentColor 14%, transparent);
+}
+
+/* Lands are the row a player scans past, not the row they read, so they take less height and
+   sit quieter. Nothing is hidden: a land is the same frame at the same tier, and hovering it
+   previews the whole face like anything else. */
+.field__row--lands {
+  --card-field-w: 5.4rem;
+  opacity: 0.92;
 }
 
 .field--opponent {
-  background: color-mix(in srgb, currentColor 4%, transparent);
+  background: var(--board);
 }
 
 .field--you {
-  background: color-mix(in srgb, currentColor 9%, transparent);
+  background: var(--board-you);
 }
 
 .field__empty {
@@ -589,6 +568,7 @@ kbd {
   grid-area: rail;
   min-height: 0;
   min-width: 0;
+  overflow-y: auto;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -633,8 +613,9 @@ kbd {
 }
 
 .stack--top {
-  padding-inline-start: 0.3rem;
-  border-inline-start: 3px solid currentColor;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--panel) 75%, var(--felt));
 }
 
 /* The hand scrolls sideways rather than wrapping. A second row would come out of the table's
@@ -642,10 +623,12 @@ kbd {
 .hand {
   grid-area: hand;
   min-width: 0;
-  max-height: 13rem;
+  max-height: 15rem;
   overflow: auto;
-  padding-block-start: 0.25rem;
-  border-top: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  padding: 0.4rem 0.6rem 0;
+  background: linear-gradient(color-mix(in srgb, var(--panel) 55%, var(--felt)), var(--panel));
+  display: flex;
+  justify-content: center;
 }
 
 .hand .cards--hand {
@@ -654,8 +637,8 @@ kbd {
 
 .hand__empty {
   margin: 0;
-  font-size: 0.8rem;
-  opacity: 0.6;
+  font-size: var(--text-sm);
+  color: var(--ink-faint);
 }
 
 /* Pinned. A choice panel with many candidates scrolls the dock, never the page. */
@@ -664,8 +647,26 @@ kbd {
   min-width: 0;
   max-height: 40vh;
   overflow-y: auto;
-  padding-block-start: 0.25rem;
-  border-top: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  padding: 0.35rem 0.6rem 0.5rem;
+  background: var(--panel);
+  display: flex;
+  justify-content: center;
+}
+
+.dock > section {
+  width: 100%;
+  max-width: 62rem;
+}
+
+/* The dock heading earns nothing when the dock is one button, and the board needs the pixels
+   more than the word "Actions" does. It stays in the accessibility tree. */
+.dock h2 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .side {
@@ -676,9 +677,10 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  padding-inline-start: 0.5rem;
-  border-inline-start: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-  font-size: 0.8rem;
+  padding: 0.4rem 0.5rem;
+  background: color-mix(in srgb, var(--panel) 55%, var(--felt));
+  border-inline-start: 1px solid var(--line);
+  font-size: var(--text-sm);
 }
 
 .side__block {
@@ -784,4 +786,31 @@ kbd {
 
 .dock__confirm p:last-child {
   margin-bottom: 0;
+}
+
+/* The global actions are the row a player's hand rests on. `Pass` is pressed more than every
+   other control on the screen put together, so it is a button rather than a link-sized word. */
+.dock .actions button {
+  padding: 0.3rem 0.9rem;
+  font-size: var(--text-md);
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  background: #ffffff12;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.dock .actions button:hover:not(:disabled),
+.dock .actions button:focus-visible:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.dock .actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.dock__hint {
+  color: var(--ink-faint);
 }

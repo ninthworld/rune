@@ -26,9 +26,11 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   container). Never fetch an *unpinned* browser (`playwright@latest`, a caret range, a
   hand-picked revision) and never pin an `executablePath`: either lets a local run and CI
   drive different binaries, which is the failure ADR 0011 is about.
-- One layout: desktop landscape, mouse and keyboard, two players. Plain DOM and CSS, no WebGL.
-  Responsive breakpoints, touch input, and more than two seats are not in scope — adding them
-  early is how the last three layouts happened.
+- One layout: desktop landscape, mouse and keyboard, two players, and **dark**. The scheme is
+  declared rather than followed: a card is an object lying on a surface, it needs a ground darker
+  than itself, and maintaining a light table as well is how neither gets good. Plain DOM and CSS,
+  no WebGL. Responsive breakpoints, touch input, and more than two seats are not in scope —
+  adding them early is how the last three layouts happened.
 
 ## Layout
 
@@ -39,6 +41,13 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   the discriminators are structural and order-sensitive; the rules are the protocol's.
 - `src/normalize.ts` — turns wire absence into values a renderer can use. Every documented
   default lives here, so no component invents its own reading of a missing field.
+- `src/board.ts` — a battlefield, as rows. Groups permanents into creatures, other permanents,
+  and lands from `CardView.card_types`, which the **server** states beside the type line it
+  renders (`docs/protocol.md`) precisely so nothing here parses `"Artifact Creature — Thopter"`.
+  What this module decides is the other question — where to draw a permanent that is more than
+  one thing — and that is presentation with no rules content: a creature-land is drawn with the
+  creatures, because a creature is what a player scans for. Rows mirror across the table so both
+  sets of creatures meet at the dividing line, and inside a row the server's order is kept.
 - `src/mana.ts` — a printed cost as symbols, and the tint a frame is washed in. Tokenizing
   `{2}{G/U}` is presentation of a string the server sent; the tint is **the colours of the pips
   that were printed** and deliberately none of the rules concepts it resembles — not colour, not
@@ -123,7 +132,12 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   `src/ui/game/` holds the table surfaces — header, seat panels, the two battlefields, the
   stack rail, hand, action dock, side panel. `Game.tsx` composes them and derives what they
   need; a surface receives answers, never the view, so none of them can grow a second reading
-  of it. The composition is fixed, full-viewport, and two-player; every region is bounded so a
+  of it. The composition is fixed, full-viewport, and two-player: chrome at the
+  edges and the board in the middle. The turn is a rail down the left, because twelve steps is a
+  lot of band to spend above a board and none of it is spent there; the top is one line about the
+  match; the bottom is your hand and the button that moves the game; and one gear opens
+  everything that is about the *device* rather than the board — pace, keys, card art — because a
+  header carrying each of them separately is a header nobody reads. Every region is bounded so a
   full board scrolls inside its own area and never pushes the action dock off the screen. The
   dock follows the click — the selected object's actions, or the questions an armed action is
   asking — and keeps two lists beside that: the global actions no object owns, and a disclosure

@@ -11,7 +11,14 @@
 @import './styles/lobby.css';
 
 :root {
-  color-scheme: light dark;
+  /* The table is dark, and says so rather than following the system.
+     A card is an object lying on a surface: it needs a surface darker than itself to lie on,
+     it carries its own colour, and card art is made for a dark ground. A page that flipped to
+     white would not be the same design with different values — it would be a different design,
+     and maintaining both is how neither gets good. Declaring the scheme is what keeps the
+     system colours (`Canvas`, `CanvasText`, form controls, scrollbars) in step with it, so
+     nothing has to be repainted by hand. */
+  color-scheme: dark;
   font-family: system-ui, sans-serif;
   line-height: 1.4;
 }
@@ -44,14 +51,39 @@
 
   /* One width per tier; every height follows from the printed 63:88, so a card is a card at
      whatever size the surface can afford. */
-  --card-hand-w: 8.6rem;
-  --card-field-w: 6.8rem;
+  --card-hand-w: 9.4rem;
+  --card-field-w: 7.6rem;
   --card-field-h: calc(var(--card-field-w) * 88 / 63);
 
   /* How long a permanent takes to turn, and the curve it turns on. Named because the slot that
      reserves its rotated footprint has to widen over exactly the same half second. */
   --tap-duration: 500ms;
   --tap-easing: cubic-bezier(0.2, 0.7, 0.3, 1);
+
+  /* The table itself.
+
+     Three depths, and the order matters: the felt is furthest back, a seat's half of the board
+     sits on it, and a card sits on that. Each step is a small lift rather than a border,
+     because a board that separates its regions with lines reads as a form and a board that
+     separates them with depth reads as a table. */
+  --felt: #101416;
+  --board: #171c20;
+  --board-you: #232c36;
+  --panel: #232a30;
+  --line: #ffffff1f;
+  --ink: #e9e7e3;
+  --ink-dim: #e9e7e399;
+  --ink-faint: #e9e7e366;
+  /* The one saturated colour on the screen, spent only on "the game is waiting for you". */
+  --accent: #e0b64a;
+
+  /* A type scale, because the loudest problem with a screen where everything is 0.7rem is that
+     nothing is. Sizes are named for the job, not the number. */
+  --text-xs: 0.66rem;
+  --text-sm: 0.76rem;
+  --text-md: 0.88rem;
+  --text-lg: 1.1rem;
+  --text-xl: 1.5rem;
 }
 
 /* Motion is the one thing here that is not decoration: it says a permanent tapped. Honour the
@@ -65,6 +97,8 @@
 body {
   margin: 0;
   padding: 1.5rem;
+  background: var(--felt);
+  color: var(--ink);
 }
 
 main {

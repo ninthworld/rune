@@ -32,7 +32,7 @@ import { useEffect, useState } from 'react'
 import type { ClientMessage, GameView, Phase, ValidAction } from './../protocol'
 import { list, playerLabel } from './../normalize'
 import { seats, type SeatPile } from './../table'
-import { presetOf, presetStops, withStop, type StopPreset, type StopScope } from './../turn'
+import { presetOf, presetStops, steps, withStop, type StopPreset, type StopScope } from './../turn'
 import { claims, intentFor, type KeyPress } from './../keys'
 import type { ConnectionStatus } from './../socket'
 import {
@@ -64,10 +64,10 @@ import {
   type Interaction,
 } from './../interaction'
 import { buildChooseAction, type Draft } from './../submission'
-import { ArtSettings } from './ArtSettings'
 import { CardInspector } from './CardInspector'
 import { ActionDock } from './game/ActionDock'
-import { Shortcuts } from './game/Shortcuts'
+import { Settings } from './game/Settings'
+import { TurnStrip } from './game/TurnStrip'
 import { Battlefield, type FieldEntry } from './game/Battlefield'
 import { Hand } from './game/Hand'
 import { MatchHeader } from './game/MatchHeader'
@@ -116,11 +116,9 @@ export function Game({
   // presentation, and safe to hold across views: a game ends once, and the header keeps saying
   // so for as long as the view does.
   const [dismissed, setDismissed] = useState(false)
-  // The key list, open or not. It describes this build's own bindings and nothing about the
-  // game, so it is the one panel here that a new view has no opinion about.
-  const [helping, setHelping] = useState(false)
-  // The art panel, likewise: a device preference (ADR 0012), not a fact about this game.
-  const [settingArt, setSettingArt] = useState(false)
+  // The settings panel — pace, keys, card art. Everything in it is about this device rather
+  // than about this game, which is why one new view has no opinion about any of it.
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   // Settled during render rather than in an effect, so the frame that carries a new view is
   // never painted with the previous view's draft still in the dock.
@@ -264,12 +262,11 @@ export function Game({
    * presentation, which is exactly why it is safe to bind to a key pressed by reflex.
    */
   /** Something is layered over the board, so the keyboard belongs to it rather than to the game. */
-  const layered = inspecting !== undefined || helping || settingArt
+  const layered = inspecting !== undefined || settingsOpen
 
   const back = () => {
     if (inspecting !== undefined) return setInspecting(undefined)
-    if (helping) return setHelping(false)
-    if (settingArt) return setSettingArt(false)
+    if (settingsOpen) return setSettingsOpen(false)
     if (browsing) return setBrowsing(undefined)
     if (interaction.confirming) return setInteraction(unask(interaction))
     if (interaction.armed) return setInteraction(disarm(interaction))
@@ -318,7 +315,7 @@ export function Game({
           setPace(intent.preset)
           return
         case 'help':
-          setHelping((open) => !open)
+          setSettingsOpen((open) => !open)
           return
       }
     }
@@ -402,12 +399,13 @@ export function Game({
         sent={interaction.pending?.label}
         eliminated={local?.eliminated === true}
         connection={connection}
-        onStop={setStop}
-        preset={presetOf(view)}
-        onPreset={setPace}
-        onHelp={() => setHelping(true)}
-        onArt={() => setSettingArt(true)}
+        onSettings={() => setSettingsOpen(true)}
       />
+
+      {/* The turn, down the left edge. Twelve steps is a lot of horizontal band to spend above
+          a board, and none of it is spent here: the sequence reads top to bottom in a rail the
+          width of a word, and each step is still the control that sets a stop there. */}
+      <TurnStrip steps={steps(view)} onStop={setStop} />
 
       <div className="table">
         <div className="table__side table__side--opponent">
@@ -480,9 +478,13 @@ export function Game({
           left the view simply stops resolving and the panel closes itself. */}
       {inspected && <CardInspector face={inspected} onClose={() => setInspecting(undefined)} />}
 
-      {helping && <Shortcuts onClose={() => setHelping(false)} />}
-
-      {settingArt && <ArtSettings onClose={() => setSettingArt(false)} />}
+      {settingsOpen && (
+        <Settings
+          preset={presetOf(view)}
+          onPreset={setPace}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
 
       {view.result && !dismissed && (
         <MatchResult
