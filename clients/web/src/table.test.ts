@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { GameView } from './protocol'
-import { seats } from './table'
+import { manaPip, seats } from './table'
 
 const FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -71,8 +71,22 @@ describe('seating the table', () => {
 
   it('gives the mana pool to you and to nobody else', () => {
     // The server sends no one else's floating mana, so no other seat can have one to show.
-    expect(seat('gameview.json', 'p1').manaPool).toEqual(['{G}', '{G}'])
+    expect(seat('gameview.json', 'p1').manaPool).toEqual([
+      { symbol: '{G}', restricted: false },
+      { symbol: '{G}', restricted: false },
+    ])
     expect(seat('gameview.json', 'p2').manaPool).toEqual([])
+  })
+
+  it('reads a restricted pip as a restriction, not as part of the symbol', () => {
+    // `*` is a wire encoding (CR 106.6, `docs/protocol.md`). Left on the string it would reach
+    // a component as an asterisk nobody can explain, and `{G}*` is not a mana symbol.
+    expect(seat('gameview-board.json', 'p1').manaPool).toEqual([
+      { symbol: '{R}', restricted: false },
+      { symbol: '{G}', restricted: true },
+    ])
+    expect(manaPip('{C}')).toEqual({ symbol: '{C}', restricted: false })
+    expect(manaPip('{C}*')).toEqual({ symbol: '{C}', restricted: true })
   })
 
   it('puts each public pile in front of the seat that owns it', () => {

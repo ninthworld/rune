@@ -195,6 +195,14 @@ test.describe('a board with relationships to trace', () => {
       'Creatures you control get +1/+1.',
     )
 
+    // Restricted mana (CR 106.6) rides the pool as a pip suffixed `*`. The suffix is not a mana
+    // symbol, so it reaches the screen as a *marked* pip with the sentence that explains it —
+    // an asterisk on its own is a fact a player has no way to read.
+    const pool = page.getByRole('region', { name: 'Your seat' }).getByText(/^Pool:/)
+    await expect(pool).toContainText('{R}')
+    await expect(pool).toContainText('{G}*')
+    await expect(pool).toContainText('spendable only on what made it')
+
     // None of it grew the page: every region still scrolls inside its own area.
     expect(await pageFits(page)).toEqual({ x: true, y: true })
   })

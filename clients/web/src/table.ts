@@ -19,6 +19,29 @@ import type { GameView } from './protocol'
 import { cardFace, type CardFace } from './card-face'
 import { isConnected, list, playerLabel } from './normalize'
 
+/**
+ * One pip of unspent mana.
+ *
+ * `mana_pool` is a list of pip strings, and a pip suffixed `*` is **restricted** mana (CR 106.6,
+ * `docs/protocol.md`): it may be spent only on whatever produced it. That suffix is a wire
+ * encoding, not part of the symbol, so it is read here once rather than reaching a component as
+ * a bare asterisk nobody can explain.
+ *
+ * What the wire says is *that* a pip is restricted, never what to — so a client can say a pip is
+ * restricted and must not guess at the condition.
+ */
+export interface ManaPip {
+  /** The pip as printed, e.g. `{G}`. */
+  symbol: string
+  restricted: boolean
+}
+
+/** Split one wire pip into its symbol and its restriction. */
+export const manaPip = (pip: string): ManaPip =>
+  pip.endsWith('*')
+    ? { symbol: pip.slice(0, -1), restricted: true }
+    : { symbol: pip, restricted: false }
+
 /** One public pile in front of a seat. The library is a count, so it is not one of these. */
 export interface SeatPile {
   zone: 'graveyard' | 'exile' | 'command'
@@ -43,7 +66,7 @@ export interface Seat {
   ai: boolean
   piles: readonly SeatPile[]
   /** Only ever your own: the server sends no one else's floating mana. */
-  manaPool: readonly string[]
+  manaPool: readonly ManaPip[]
   /** Commander (CR 903). All three are absent outside a Commander game. */
   commanderName?: string
   commanderTax?: number
@@ -94,7 +117,7 @@ export function seats(view: GameView): readonly Seat[] {
       connected: seat === undefined ? true : isConnected(seat),
       ai: seat?.ai === true,
       piles,
-      manaPool: isYou ? list(view.mana_pool) : [],
+      manaPool: isYou ? list(view.mana_pool).map(manaPip) : [],
       commanderName: list(view.commander_identity).find((c) => c.commander === id)?.name,
       commanderTax: list(view.commander_tax).find((c) => c.commander === id)?.tax,
       commanderCasts: list(view.commander_tax).find((c) => c.commander === id)?.casts,

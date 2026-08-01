@@ -45,7 +45,10 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   object. Add a card-presentation rule here, not in a component.
 - `src/table.ts` — joins the seats. Life and library arrive as `me` for you and `opponents[]`
   for everyone else, the piles as three arrays keyed by player, commander state as three more;
-  they become one `Seat[]` here so no panel rebuilds that join or gets its absences wrong.
+  they become one `Seat[]` here so no panel rebuilds that join or gets its absences wrong. A
+  mana pip's `*` suffix is read here too: it is a wire encoding for **restricted** mana (CR
+  106.6), not part of the symbol, and the wire says only *that* a pip is restricted — never what
+  to — so a surface may mark it and must not guess at the condition.
 - `src/relations.ts` — what points at what: attacks, blocks, attachments, targets, and the
   source of an ability, joined from the identifiers the server stated and indexed **both ways**.
   One direction is not enough to draw a board — a blocker knows what it blocks and the attacker
