@@ -475,7 +475,9 @@ Three rules govern these fields:
 - `type` is a free-form category used for presentation and input routing.
 - `label` is server-supplied display text.
 - `subject` names the entities that own the action. An empty subject identifies a global
-  action such as passing priority.
+  action such as passing priority. More than one id is not a list of separate actions: it is
+  the same action reachable from each of them, which is how a trigger waiting to be aimed is
+  offered both where it sits on the stack and from the permanent whose ability it is.
 - `mana_ability` (optional, default `false`) marks the activation of a mana ability
   (CR 605): no targets, no stack, only mana production. Server-computed so a client may
   offer a lighter gesture — one-click tap-for-mana — for exactly these actions without ever
@@ -601,7 +603,9 @@ stack before any player receives priority (CR 603.3b), so play does not continue
 The seat asked is the trigger's *controller*, which is frequently not whoever last acted —
 a creature killed by an opponent's removal spell gives its own controller the choice.
 A trigger with no legal choice for a slot never reaches the stack at all (CR 603.3c), so a
-`choose_targets` is always answerable.
+`choose_targets` is always answerable. Its `subject` names two entities — the trigger's own
+stack object and the permanent whose ability it is — because both are places a player looks
+for it; either id reaches the same action.
 
 `player_choice` answers the **mid-resolution player choice** an effect has posed (issue
 #604): a discard, a scry, a look at the top N, or a library search. Unlike every prompt

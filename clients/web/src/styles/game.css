@@ -59,6 +59,14 @@
   margin-block: 0.4rem;
 }
 
+/* Louder than a selection box on purpose: this is the one thing the player must do, and the
+   game does not move until they do it. */
+.dock__owed {
+  border: 1px solid currentColor;
+  padding: 0.35rem 0.5rem;
+  margin-block: 0.4rem;
+}
+
 .dock__who {
   margin-block-start: 0;
 }

@@ -17,6 +17,7 @@ import {
   highlightFor,
   needsChoices,
   needsConfirmation,
+  owedActions,
   release,
   select,
   settle,
@@ -59,6 +60,43 @@ describe('reading the action list', () => {
 
   it('keeps an action with no subject as a global one', () => {
     expect(globalActions(ACTIONS).map((action) => action.id)).toEqual(['a0'])
+  })
+
+  it('owes nothing while the seat may simply pass', () => {
+    expect(owedActions(ACTIONS)).toEqual([])
+  })
+
+  it('holds out the action the game is blocked on, subject or no subject', () => {
+    // A trigger waiting to be aimed: no pass is offered, because play does not continue around
+    // it. The choice is bound to its source — which is exactly why it needs saying here too.
+    const blocked: ValidAction[] = [
+      {
+        id: 'b0',
+        type: 'choose_targets',
+        label: 'Skymarch Bloodletter: target opponent loses 1 life',
+        subject: ['stack_7', 'perm_3'],
+        token: 't1',
+      },
+      { id: 'b1', type: 'concede', label: 'Concede', subject: [], token: 't2' },
+    ]
+    expect(owedActions(blocked).map((action) => action.id)).toEqual(['b0'])
+    // Conceding is offered in every one of these states and answers none of them; it is already
+    // in the global list and stays there.
+    expect(globalActions(blocked).map((action) => action.id)).toEqual(['b1'])
+  })
+
+  it('leaves an unrecognized category alone rather than hiding it', () => {
+    const blocked: ValidAction[] = [
+      {
+        id: 'b0',
+        type: 'some_future_choice',
+        label: 'Answer it',
+        subject: ['perm_3'],
+        token: 't1',
+      },
+      { id: 'b1', type: 'concede', label: 'Concede', subject: [], token: 't2' },
+    ]
+    expect(owedActions(blocked).map((action) => action.id)).toEqual(['b0'])
   })
 
   it('tells a one-click action from one that asks something first', () => {
