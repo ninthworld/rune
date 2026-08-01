@@ -141,14 +141,22 @@ Applied in order, each step taken only when the one before it is exhausted:
    Name, P/T, and state marks remain.
 4. **Cards overlap within their row**, fanned so the exposed strip is the top-left: the name band.
    A fanned row reads as a column of names. Pitch tightens as the count grows.
-5. **Card faces become chips.** Below a row height of 100px effective a card tile is no longer a
+5. **Rows merge.** Creatures, other permanents, and lands stop being separate rows and become one.
+6. **Card faces become chips.** Below a row height of 100px effective a card tile is no longer a
    card — it is a landscape chip carrying name, P/T, and state marks, with the face one gesture
    away. Rendering a 60px "card" is the current failure mode: it has the shape of information
    without being readable.
-6. **Rows merge.** Creatures, other permanents, and lands stop being separate rows and become one.
 7. **Rails collapse.** The turn strip becomes a single current-step chip; the stack becomes a badge
    carrying the top item's name and a count, expanding on gesture.
 8. **The side column becomes a drawer.** Preview, log, and settle move behind one gesture.
+
+**Merging rows before chipping cards is deliberate**, and it is the one place in this ladder where
+the order is load-bearing rather than merely sensible. A split battlefield is budgeted for two rows
+of cards; merged, the same height buys one row of *twice the size*. So a field that cannot afford
+two 100px rows can very often afford one, and the choice is between a merged row of readable cards
+and two rows of chips. The card wins — losing the split costs the scan by category, and losing the
+face costs the card. It is also what makes §4's Tall band possible: that band promises rows merge
+*and* cards stay cards, and only this order delivers both.
 
 ### What never degrades, at any size
 
@@ -299,12 +307,20 @@ Not scaled copies of one another — each drops what it has no room for, in ladd
 | | Draws |
 | --- | --- |
 | **Full** — preview, inspector | Everything, including complete rules text. |
-| **Designed** — hand, battlefield in the Wide band | Name, cost, art, type line, rules text if it fits at floor, marks. |
-| **Compact** — crowded rows, the Tall band | Name, art, marks. No type line, no rules text; cost only if the width allows. |
+| **Designed** — the hand, and a battlefield with the height to spare | Name, cost, art, type line, rules text if it fits at floor, marks. |
+| **Compact** — most battlefields, crowded rows, the Tall band | Name, art, marks. No type line, no rules text; cost only if the width allows. |
 | **Chip** — below a 100px row | Name, P/T, marks. No art. Landscape. |
 
 Which one is drawn follows from the box available, never from the call site: a battlefield card and
 a hand card of the same size are the same card.
+
+**`compact` is the normal battlefield presentation, not a degradation.** Run §5's numbers against a
+real screen: two rows of 182px cards, for two seats, plus a 217px hand and the chrome, needs more
+than 1080px of height. A 1920×1080 desktop — the most common one there is — therefore draws
+`compact` permanents at roughly 155px, and `designed` first appears around 1440p. That is the right
+answer rather than a shortfall, and it is exactly the density §6 argues for: a battlefield full of
+complete 155px cards beats a battlefield of half as many beautiful ones. `designed` on the
+battlefield is what a very tall screen buys, and the hand is where it is the default.
 
 ### Density
 
