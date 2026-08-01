@@ -109,7 +109,9 @@ export function DeckBuilder({
               <li key={card.functional_id}>
                 <Card
                   face={catalogFace(card)}
-                  variant="hand"
+                  // The same rule as the hand: a catalog is browsed to *choose* from, and a name
+                  // abbreviated in a list of three hundred cards is a list of nothing.
+                  mayAbbreviate={false}
                   onActivate={() => onInspect(card.functional_id)}
                 />
                 <button

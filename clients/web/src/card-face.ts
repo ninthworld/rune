@@ -35,15 +35,6 @@ import type {
 import { list, powerToughness } from './normalize'
 
 /**
- * The surface a face is being drawn on.
- *
- * A variant is a presentation budget, not a different card: the same model backs all five, and
- * each one decides how much of it there is room to show. `inspect` is the only variant that
- * shows everything, which is why every other one must be able to open it.
- */
-export type CardFaceVariant = 'inspect' | 'hand' | 'battlefield' | 'stack' | 'compact'
-
-/**
  * How a face is participating in whatever interaction is in progress.
  *
  * These are presentation states the caller assigns, never conclusions this module draws. The

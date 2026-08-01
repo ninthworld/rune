@@ -66,7 +66,6 @@ export function ZonePanel({
             <li key={face.id}>
               <Card
                 face={face}
-                variant="battlefield"
                 state={surface.stateOf(face.id)}
                 link={surface.linkOf(face.id)}
                 onActivate={surface.activate}

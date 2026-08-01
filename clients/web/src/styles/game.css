@@ -712,7 +712,7 @@ main:has(.screen) {
    claiming the same pixels as the screen shrank, until on a short viewport the land row was
    *taller* than the creature row above it and pushed itself off the bottom of the board. */
 .field__row--lands {
-  --card-field-w: min(5.4rem, 8vh);
+  --card-field-w: clamp(4.5rem, 8vh, 5.4rem);
   opacity: 0.92;
 }
 
@@ -917,8 +917,7 @@ main:has(.screen) {
   pointer-events: none;
 }
 
-.preview .card--inspect {
-  width: 100%;
+.preview > .card {
   box-shadow: 0 0.5rem 1.5rem color-mix(in srgb, CanvasText 45%, transparent);
 }
 
@@ -1110,13 +1109,6 @@ main:has(.screen) {
   grid-template-columns: repeat(auto-fill, minmax(5.6rem, 1fr));
   gap: 0.4rem;
   align-items: start;
-}
-
-/* Inside a track rather than at its own width: the grid has already decided how wide a column
-   is, and a card that kept its board width would either overflow the track or leave a gap
-   beside every card in the pile. */
-.cards--pile .card--battlefield {
-  width: 100%;
 }
 
 /* The pile's own list items are grid items, not the flex columns the rail's lists are. */

@@ -20,7 +20,10 @@ export function Hand({ faces, surface }: { faces: readonly CardFace[]; surface: 
             <li key={face.id}>
               <Card
                 face={face}
-                variant="hand"
+                // The hand is where a player chooses, so a name here is never abbreviated —
+                // `docs/client-design.md` §6. A hand that reads `C…`, `Dis…`, `Sna…` is not a
+                // degraded hand, it is an unusable one.
+                mayAbbreviate={false}
                 state={surface.stateOf(face.id)}
                 link={surface.linkOf(face.id)}
                 onActivate={surface.activate}

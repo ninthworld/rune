@@ -88,6 +88,18 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   `StackItem`, `Emblem`, `CatalogCard`) to one `CardFace`. Every surface renders that and nothing
   else, so the hand, the board, the stack, and the deck builder cannot disagree about the same
   object. Add a card-presentation rule here, not in a component.
+- `src/fit.ts` — what a card has room to say, given the box it was handed. The whole fitting
+  policy of `docs/client-design.md` §6, and pure: no DOM, no measurement, so it is testable
+  without a browser. **Shrink → wrap → abbreviate, floor 9px, and truncation is not a step in
+  it** — a hand may not abbreviate at all, and where the battlefield may it must leave a stem you
+  could still name the card by. A type line degrades by *rule* rather than by ellipsis, a text
+  box is drawn only when what goes in it fits whole, and the art window takes what is left,
+  because it is the one element that degrades to nothing without costing a fact. Which of the
+  four presentations a frame gets is `presentationFor()` reading the box and nothing else, so no
+  surface names its own tier. String widths are *estimated* from a small per-character table and
+  every ratio is rounded up: over-estimating costs a size or a line, under-estimating would clip.
+  Nothing here is a rules judgment — dropping a cost from a small tile is drawing, and the server
+  still states what is playable.
 - `src/table.ts` — joins the seats. Life and library arrive as `me` for you and `opponents[]`
   for everyone else, the piles as three arrays keyed by player, commander state as three more;
   they become one `Seat[]` here so no panel rebuilds that join or gets its absences wrong. A
@@ -166,9 +178,12 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   its `hello` is read, so a lobby frame carrying a different session is routine during a
   reconnect and adopting it would discard the token that owns the seat. Leaving a finished game
   is the deliberate opposite: forget the token, and connect as somebody new.
-- `src/ui/` — the screens. The table is drawn: `Card.tsx` is one frame at five budgets, at a
-  printed card's proportions, with a name band, an art window, a text box, and the stat in the
-  corner; `Mana.tsx` draws a cost as the project's own discs (never an official symbol, never a
+- `src/ui/` — the screens. The table is drawn: `Card.tsx` is one frame at a printed card's
+  proportions — a name band that owns its row, the cost over the art's corner, an art window, a
+  type line, a text box, and the stat in the corner — which **measures its own box and asks
+  `fit.ts` what goes in it**, so there is no variant for a caller to pass and a battlefield card
+  and a hand card of the same size are the same card. Each surface's stylesheet states the box;
+  `Mana.tsx` draws a cost as the project's own discs (never an official symbol, never a
   downloaded one) and hands assistive technology words instead; `CardArt.tsx` fills the window
   with the procedural composition and lays a player-supplied illustration over it; `art.tsx` is
   the provider the whole app is wrapped in, because the preference and the cache belong to the
