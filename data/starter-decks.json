@@ -424,44 +424,44 @@
       ]
     },
     {
-      "id": "green-command",
-      "name": "Verdant Sovereign",
-      "summary": "Mono-green commander: Jedit Ojanen leads a singleton stomp of ramp and fatties.",
-      "commander": "jedit_ojanen",
+      "id": "red-command",
+      "name": "Dragon Sovereign",
+      "summary": "Mono-red commander: Lathliss turns every Dragon that lands into another one.",
+      "commander": "lathliss_dragon_queen",
       "entries": [
         {
-          "identity": "jedit_ojanen",
-          "name": "Jedit Ojanen",
+          "identity": "lathliss_dragon_queen",
+          "name": "Lathliss, Dragon Queen",
           "count": 1
         },
         {
-          "identity": "llanowar_elves",
-          "name": "Llanowar Elves",
+          "identity": "volcanic_dragon",
+          "name": "Volcanic Dragon",
           "count": 1
         },
         {
-          "identity": "druid_of_the_cowl",
-          "name": "Druid of the Cowl",
+          "identity": "sarkhan_fireblood",
+          "name": "Sarkhan, Fireblood",
           "count": 1
         },
         {
-          "identity": "giant_spider",
-          "name": "Giant Spider",
+          "identity": "viashino_pyromancer",
+          "name": "Viashino Pyromancer",
           "count": 1
         },
         {
-          "identity": "colossal_dreadmaw",
-          "name": "Colossal Dreadmaw",
+          "identity": "siegebreaker_giant",
+          "name": "Siegebreaker Giant",
           "count": 1
         },
         {
-          "identity": "gigantosaurus",
-          "name": "Gigantosaurus",
+          "identity": "lightning_strike",
+          "name": "Lightning Strike",
           "count": 1
         },
         {
-          "identity": "titanic_growth",
-          "name": "Titanic Growth",
+          "identity": "shock",
+          "name": "Shock",
           "count": 1
         },
         {
@@ -470,8 +470,8 @@
           "count": 1
         },
         {
-          "identity": "forest",
-          "name": "Forest",
+          "identity": "mountain",
+          "name": "Mountain",
           "count": 92
         }
       ]

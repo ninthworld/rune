@@ -191,8 +191,8 @@ fn issue_620_every_planeswalker_enters_with_its_printed_loyalty() {
     let expected = [
         ("ajani_adversary_of_tyrants", "{2}{W}{W}", 4),
         ("tezzeret_artifice_master", "{3}{U}{U}", 5),
-        ("liliana_untouched_by_death", "{2}{B}{B}", 5),
-        ("sarkhan_fireblood", "{1}{R}{R}", 4),
+        ("liliana_untouched_by_death", "{2}{B}{B}", 4),
+        ("sarkhan_fireblood", "{1}{R}{R}", 3),
         ("vivien_reid", "{3}{G}{G}", 5),
     ];
     for (slug, cost, starting) in expected {
@@ -782,10 +782,14 @@ fn issue_620_sarkhan_plus_one_discards_then_draws_and_draws_nothing_from_an_empt
 }
 
 #[test]
-fn issue_620_sarkhan_plus_one_makes_mana_spendable_only_on_dragon_spells() {
-    // "Add {R}{R}. Spend this mana only to cast Dragon spells." A mana ability, so it
-    // never uses the stack; the restriction rides on the mana, so a Dragon spell can
-    // spend it and an ordinary creature spell cannot.
+fn issue_620_sarkhan_plus_one_asks_for_each_colour_and_restricts_the_mana_to_dragons() {
+    // "Add two mana in any combination of colors. Spend this mana only to cast Dragon
+    // spells." Two mana, so the player is asked twice and may answer differently each
+    // time; the restriction rides on both points, so a Dragon spell can spend them and
+    // an ordinary creature spell cannot.
+    //
+    // It is **not** a mana ability, whatever its effects add: CR 605.1a excludes
+    // loyalty abilities, so it uses the stack like any other loyalty activation.
     let db = db();
     let mut state = main_phase(&db);
     state.players[0].mana_pool = Default::default();
@@ -793,7 +797,7 @@ fn issue_620_sarkhan_plus_one_makes_mana_spendable_only_on_dragon_spells() {
     let dragon = to_hand(&mut state, &db, "volcanic_dragon", PlayerId(0)); // {4}{R}{R} Dragon
     let ogre = to_hand(&mut state, &db, "onakke_ogre", PlayerId(0)); // {2}{R}, not a Dragon
 
-    let mut state = apply_action(
+    let activated = apply_action(
         &state,
         &Action::ActivateAbility {
             permanent: sarkhan,
@@ -802,12 +806,40 @@ fn issue_620_sarkhan_plus_one_makes_mana_spendable_only_on_dragon_spells() {
         },
         &db,
     );
-    assert_eq!(loyalty(&state, sarkhan), 5);
-    assert!(
-        state.stack.is_empty(),
-        "a mana ability never uses the stack"
+    assert_eq!(loyalty(&activated, sarkhan), 5);
+    assert_eq!(
+        activated.stack.len(),
+        1,
+        "a loyalty ability uses the stack even when all it does is add mana (CR 605.1a)"
     );
+    assert!(
+        activated.players[0].mana_pool.total() == 0,
+        "nothing is produced until it resolves"
+    );
+
+    // Both players pass and it resolves into the first of its two questions.
+    let resolving = apply_action(&activated, &Action::PassPriority, &db);
+    let resolving = apply_action(&resolving, &Action::PassPriority, &db);
+    let pending = pending_player_choice(&resolving).expect("the first colour is asked");
+    assert_eq!(pending.chooser, PlayerId(0));
+    assert!(
+        valid_actions(&resolving, &db)
+            .iter()
+            .all(|action| matches!(action, Action::AnswerColor { .. } | Action::Concede)),
+        "answering is the only thing the game will take"
+    );
+
+    // Answer red, and it asks again — the "combination" is a real second decision.
+    let mut state = apply_action(&resolving, &Action::AnswerColor { color: Color::Red }, &db);
+    assert_eq!(state.players[0].mana_pool.total(), 1);
+    assert!(
+        pending_player_choice(&state).is_some(),
+        "one question per point of mana"
+    );
+    state = apply_action(&state, &Action::AnswerColor { color: Color::Red }, &db);
+    assert!(pending_player_choice(&state).is_none());
     assert_eq!(state.players[0].mana_pool.total(), 2);
+
     // Enough colourless for the generic halves of both costs, so the *restriction* is
     // the only thing that can decide which spell is offered.
     state.players[0].mana_pool.add_colorless(4);
@@ -844,7 +876,31 @@ fn issue_620_sarkhan_plus_one_makes_mana_spendable_only_on_dragon_spells() {
 }
 
 #[test]
-fn issue_620_sarkhan_minus_seven_makes_three_flying_dragons() {
+fn a_colour_choice_may_answer_differently_for_each_point_of_mana() {
+    // The whole point of "any combination": two mana need not be two of one colour.
+    let db = db();
+    let mut state = main_phase(&db);
+    state.players[0].mana_pool = Default::default();
+    let sarkhan = place_walker(&mut state, &db, "sarkhan_fireblood", 4);
+
+    let state = activate(&state, &db, sarkhan, 1, Vec::new());
+    let state = apply_action(&state, &Action::AnswerColor { color: Color::Red }, &db);
+    let state = apply_action(&state, &Action::AnswerColor { color: Color::Blue }, &db);
+
+    assert!(pending_player_choice(&state).is_none());
+    assert_eq!(state.players[0].mana_pool.total(), 2);
+    assert_eq!(state.players[0].mana_pool.restricted.len(), 2);
+    let colours: Vec<Color> = state.players[0]
+        .mana_pool
+        .restricted
+        .iter()
+        .map(|mana| mana.color)
+        .collect();
+    assert!(colours.contains(&Color::Red) && colours.contains(&Color::Blue));
+}
+
+#[test]
+fn issue_620_sarkhan_minus_seven_makes_four_flying_dragons() {
     let db = db();
     let mut state = main_phase(&db);
     let sarkhan = place_walker(&mut state, &db, "sarkhan_fireblood", 7);
@@ -852,7 +908,7 @@ fn issue_620_sarkhan_minus_seven_makes_three_flying_dragons() {
     let after = activate(&state, &db, sarkhan, 2, Vec::new());
 
     assert!(!after.battlefield.iter().any(|p| p.id == sarkhan));
-    assert_eq!(count_named(&after, &db, "Dragon"), 3);
+    assert_eq!(count_named(&after, &db, "Dragon"), 4);
     for dragon in after
         .battlefield
         .iter()
@@ -1044,4 +1100,59 @@ fn issue_620_indestructible_survives_a_destroy_effect() {
             .any(|c| c.id == murder.id),
         "the Murder still resolved and reached the graveyard"
     );
+}
+
+#[test]
+fn lava_axe_may_be_aimed_at_a_planeswalker_and_never_at_a_creature() {
+    // "Target player or planeswalker" is its own class, not "any target" with a hole
+    // in it: it names both halves the card prints and no creature at all. Before the
+    // spec existed both burn cards written this way used "target player", so the
+    // planeswalker half of what they say was silently missing.
+    let db = db();
+    let mut state = main_phase(&db);
+    let walker = place(&mut state, &db, "vivien_reid", PlayerId(1));
+    state
+        .battlefield
+        .iter_mut()
+        .find(|p| p.id == walker)
+        .unwrap()
+        .counters
+        .insert(CounterKind::Loyalty, 5);
+    let creature = place(&mut state, &db, "onakke_ogre", PlayerId(1));
+    let axe = to_hand(&mut state, &db, "lava_axe", PlayerId(0));
+
+    let cast = Action::CastSpell {
+        card: axe,
+        targets: Vec::new(),
+    };
+    let requirements = target_requirements(&state, &db, &cast);
+    assert_eq!(requirements.len(), 1, "one damage effect, one slot");
+    let candidates = &requirements[0].candidates;
+    assert!(
+        candidates.contains(&Target::Player(PlayerId(1))),
+        "a player"
+    );
+    assert!(
+        candidates.contains(&Target::Permanent(walker)),
+        "a planeswalker"
+    );
+    assert!(
+        !candidates.contains(&Target::Permanent(creature)),
+        "never a creature — this class does not name one"
+    );
+
+    // Five damage to a five-loyalty planeswalker removes all five (CR 120.3c) and
+    // CR 704.5i then takes it off the battlefield.
+    let after = apply_action(
+        &state,
+        &Action::CastSpell {
+            card: axe,
+            targets: vec![Target::Permanent(walker)],
+        },
+        &db,
+    );
+    let after = apply_action(&after, &Action::PassPriority, &db);
+    let after = apply_action(&after, &Action::PassPriority, &db);
+    assert_eq!(loyalty(&after, walker), 0);
+    assert!(!after.battlefield.iter().any(|p| p.id == walker));
 }

@@ -22,7 +22,7 @@
       "effects": [
         {
           "kind": "deal_damage",
-          "target": "any_player",
+          "target": "any_player_or_planeswalker",
           "amount": 2
         }
       ]

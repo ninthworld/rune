@@ -737,34 +737,34 @@ mod tests {
     /// A legal 100-card mono-green commander deck for the bundled catalog: Jedit
     /// Ojanen (a green legendary creature) as the commander, the catalog's unique
     /// green (and colorless) non-basics, and Forests to fill to 100. Every card is
-    /// within Jedit's green color identity, and every non-basic is a singleton — so
+    /// within Lathliss's red color identity, and every non-basic is a singleton — so
     /// this is the acceptance-path deck the rejection tests each perturb one way.
     fn commander_deck() -> Vec<CardId> {
-        // Jedit Ojanen (the commander) plus the catalog's other in-identity
-        // non-basics: mono-green cards and the colorless Skyscanner (empty identity ⊆
-        // green). Each appears exactly once (singleton, CR 903.5b).
+        // Lathliss (the commander) plus the catalog's other in-identity non-basics:
+        // mono-red cards and the colorless Skyscanner (empty identity ⊆ red). Each
+        // appears exactly once (singleton, CR 903.5b).
         let non_basics = [
-            "jedit_ojanen",
-            "llanowar_elves",
-            "druid_of_the_cowl",
-            "giant_spider",
-            "colossal_dreadmaw",
-            "gigantosaurus",
-            "titanic_growth",
+            "lathliss_dragon_queen",
+            "volcanic_dragon",
+            "viashino_pyromancer",
+            "siegebreaker_giant",
+            "lightning_strike",
+            "shock",
+            "sure_strike",
             "skyscanner",
         ];
         let mut deck: Vec<CardId> = non_basics.iter().map(|slug| fixture(slug)).collect();
-        // Fill to exactly 100 with basic Forests (singleton-exempt, in-identity).
+        // Fill to exactly 100 with basic Mountains (singleton-exempt, in-identity).
         while deck.len() < 100 {
-            deck.push(fixture("forest"));
+            deck.push(fixture("mountain"));
         }
         assert_eq!(deck.len(), 100);
         deck
     }
 
-    /// The commander (Jedit Ojanen) of [`commander_deck`].
+    /// The commander (Lathliss, Dragon Queen) of [`commander_deck`].
     fn commander() -> CardId {
-        fixture("jedit_ojanen")
+        fixture("lathliss_dragon_queen")
     }
 
     #[test]
@@ -801,9 +801,9 @@ mod tests {
 
     #[test]
     fn issue_372_a_non_legendary_creature_commander_is_rejected() {
-        // Llanowar Elves is a green creature but not legendary, so it cannot be the
+        // Volcanic Dragon is a red creature but not legendary, so it cannot be the
         // commander (CR 903.5a). It is already one of the deck's cards.
-        let not_legendary = fixture("llanowar_elves");
+        let not_legendary = fixture("volcanic_dragon");
         assert_eq!(
             Format::commander().validate_deck(&commander_deck(), Some(not_legendary), &db()),
             Err(DeckError::CommanderNotLegendaryCreature {
@@ -815,8 +815,8 @@ mod tests {
     #[test]
     fn issue_372_a_commander_not_in_the_deck_is_rejected() {
         // Designate a legendary creature the deck does not contain. Build a 100-card
-        // deck of Forests only (so the designation, not size, is what is wrong).
-        let deck = vec![fixture("forest"); 100];
+        // deck of Mountains only (so the designation, not size, is what is wrong).
+        let deck = vec![fixture("mountain"); 100];
         assert_eq!(
             Format::commander().validate_deck(&deck, Some(commander()), &db()),
             Err(DeckError::CommanderNotInDeck { card: commander() })
@@ -826,18 +826,18 @@ mod tests {
     #[test]
     fn issue_372_a_duplicate_non_basic_is_rejected() {
         // Two copies of a non-basic breaks the singleton limit (CR 903.5b). Drop one
-        // Forest and add a second Llanowar Elves so the deck is still 100 cards.
+        // Mountain and add a second Volcanic Dragon so the deck is still 100 cards.
         let mut deck = commander_deck();
-        let forest_pos = deck
+        let land_pos = deck
             .iter()
-            .rposition(|&c| c == fixture("forest"))
-            .expect("deck has forests");
-        deck[forest_pos] = fixture("llanowar_elves");
+            .rposition(|&c| c == fixture("mountain"))
+            .expect("deck has mountains");
+        deck[land_pos] = fixture("volcanic_dragon");
         assert_eq!(deck.len(), 100);
         assert_eq!(
             Format::commander().validate_deck(&deck, Some(commander()), &db()),
             Err(DeckError::CopyLimit {
-                card: fixture("llanowar_elves"),
+                card: fixture("volcanic_dragon"),
                 count: 2,
                 limit: 1,
             })
@@ -846,14 +846,14 @@ mod tests {
 
     #[test]
     fn issue_372_an_out_of_identity_card_is_rejected() {
-        // Swap a Forest for a blue card (Snapping Drake): its blue color identity is
-        // not contained in the commander's green identity (CR 903.4). Deck stays 100.
+        // Swap a Mountain for a blue card (Snapping Drake): its blue color identity is
+        // not contained in the commander's red identity (CR 903.4). Deck stays 100.
         let mut deck = commander_deck();
-        let forest_pos = deck
+        let land_pos = deck
             .iter()
-            .rposition(|&c| c == fixture("forest"))
-            .expect("deck has forests");
-        deck[forest_pos] = fixture("snapping_drake");
+            .rposition(|&c| c == fixture("mountain"))
+            .expect("deck has mountains");
+        deck[land_pos] = fixture("snapping_drake");
         assert_eq!(deck.len(), 100);
         assert_eq!(
             Format::commander().validate_deck(&deck, Some(commander()), &db()),
@@ -898,16 +898,16 @@ mod tests {
         // Jedit Ojanen is green (its colored mana-cost pips).
         assert_eq!(
             color_identity(&database, commander()),
-            HashSet::from([Color::Green])
+            HashSet::from([Color::Red])
         );
     }
 
     #[test]
-    fn issue_372_jedit_ojanen_is_a_legendary_creature() {
+    fn issue_372_lathliss_is_a_legendary_creature() {
         // The commander eligibility predicate reads structured supertype + type.
         assert!(is_legendary_creature(&db(), commander()));
         // A non-legendary creature and a legendary-less card are both ineligible.
-        assert!(!is_legendary_creature(&db(), fixture("llanowar_elves")));
+        assert!(!is_legendary_creature(&db(), fixture("volcanic_dragon")));
         assert!(!is_legendary_creature(&db(), fixture("forest")));
     }
 
@@ -987,11 +987,11 @@ mod tests {
 
         // Not in the deck: names the designated commander (Jedit Ojanen).
         let not_in_deck = DeckError::CommanderNotInDeck {
-            card: fixture("jedit_ojanen"),
+            card: fixture("lathliss_dragon_queen"),
         }
         .to_rejection(&db);
         assert_eq!(not_in_deck.code, "commander_not_in_deck");
-        assert_eq!(not_in_deck.card.as_deref(), Some("jedit_ojanen"));
+        assert_eq!(not_in_deck.card.as_deref(), Some("lathliss_dragon_queen"));
 
         // Out of identity: names the offending deck card (Snapping Drake).
         let out = DeckError::OutOfIdentity {

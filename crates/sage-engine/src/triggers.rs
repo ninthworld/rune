@@ -320,6 +320,11 @@ fn observed_matches(
             return false;
         }
     }
+    // "Nontoken": a token's printed face is the effect that made it, not a card
+    // (ADR 0015), so `Printed::card()` answering `None` is the whole of the test.
+    if observes.nontoken_only() && candidate.printed.card().is_none() {
+        return false;
+    }
     match observes {
         ObservedPermanent::CreaturesYouControl { .. } => candidate.controller == source.controller,
         ObservedPermanent::AnyCreature { .. } => true,

@@ -329,8 +329,9 @@ fn issue_604_a_choice_with_no_legal_answer_resolves_without_stalling() {
 
 #[test]
 fn issue_604_a_suspended_spell_finishes_its_remaining_effects_and_reaches_its_graveyard() {
-    // Tormenting Voice discards *then* draws two, and only then goes to the graveyard.
-    // Suspending in the middle must not lose either half.
+    // Sift draws three and *then* discards, so its resolution suspends with a step
+    // still to go. Neither half may be lost: the discard must happen, and the sorcery
+    // itself must still reach the graveyard afterwards (CR 608.3).
     let db = db();
     let mut state = main_phase();
     hand_of(&mut state, &db, PlayerId(0), &["murder"]);
@@ -340,26 +341,27 @@ fn issue_604_a_suspended_spell_finishes_its_remaining_effects_and_reaches_its_gr
         PlayerId(0),
         &["forest", "island", "swamp", "mountain"],
     );
-    let state = cast(&state, &db, "tormenting_voice", Vec::new());
+    let state = cast(&state, &db, "sift", Vec::new());
 
-    let pending = pending_player_choice(&state).expect("its controller discards first");
+    let pending = pending_player_choice(&state).expect("the discard suspends the resolution");
     assert_eq!(pending.chooser, PlayerId(0));
     assert!(
-        state.players[0].hand.len() == 1 && state.players[0].graveyard.is_empty(),
-        "nothing after the discard has happened yet"
+        state.players[0].graveyard.is_empty(),
+        "the spell has not finished resolving yet"
     );
 
+    // Discard the Murder that was already in hand; the three draws stay.
     let after = answer(&state, &db, &[0]);
     assert_eq!(
         hand_names(&after, &db, PlayerId(0)),
-        vec!["Forest", "Island"],
-        "the two draws happened after the discard"
+        vec!["Forest", "Island", "Swamp"],
+        "the draws happened, and the chosen card left"
     );
     assert!(
         after.players[0]
             .graveyard
             .iter()
-            .any(|c| c.card == cid(&db, "tormenting_voice")),
+            .any(|c| c.card == cid(&db, "sift")),
         "the sorcery finished resolving into its graveyard"
     );
     assert!(after.stack.is_empty());

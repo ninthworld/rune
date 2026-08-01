@@ -77,6 +77,18 @@ pub struct CardData {
     /// to CR 704.5i. Current loyalty is the counter count, never this field.
     #[serde(default)]
     pub loyalty: Option<u32>,
+    /// An **additional cost** to cast this card (CR 601.2b) — `As an additional cost
+    /// to cast this spell, discard a card.` `None` for the overwhelming majority of
+    /// cards, which cost only mana.
+    ///
+    /// Kept apart from [`Self::spell_effects`] on purpose: a cost is paid *while the
+    /// spell is cast*, so it gates whether the card may be cast at all
+    /// ([`GameState::additional_cost_is_payable`](crate::GameState)), while an effect
+    /// happens on resolution and cannot gate anything. Authoring one as the other is
+    /// the difference between a spell you cannot cast with an empty hand and a spell
+    /// you can.
+    #[serde(default)]
+    pub additional_cost: Option<super::AdditionalCost>,
     /// The card's abilities as declarative data. Empty for vanilla cards. Cards
     /// whose behavior the data IR cannot express instead register abilities in
     /// [`crate::scripted`]; use [`crate::card::abilities_of`] to read both sources together.

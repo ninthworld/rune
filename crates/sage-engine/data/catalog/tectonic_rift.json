@@ -16,7 +16,9 @@
     },
     {
       "kind": "restrict_all",
-      "affects": "creatures_without_flying",
+      "affects": {
+        "scope": "creatures_without_flying"
+      },
       "restriction": "cant_block"
     }
   ]

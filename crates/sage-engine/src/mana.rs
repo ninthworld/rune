@@ -26,6 +26,13 @@ pub enum Color {
 }
 
 impl Color {
+    /// All five colors (CR 105.1), in the canonical WUBRG order.
+    ///
+    /// The answer set of every "choose a color" question and the set an effect naming
+    /// no particular color ranges over, written once so the two can never disagree
+    /// about how many colors there are.
+    pub const ALL: [Self; 5] = [Self::White, Self::Blue, Self::Black, Self::Red, Self::Green];
+
     /// The pip string for this color, e.g. `"{G}"` for [`Color::Green`].
     #[must_use]
     pub fn pip(self) -> &'static str {

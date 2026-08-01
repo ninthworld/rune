@@ -50,6 +50,10 @@ const CREATURE_TYPE: &str = "creature";
 /// The card type that requires a printed starting loyalty (CR 306.5b).
 const PLANESWALKER_TYPE: &str = "planeswalker";
 
+/// The one card type that is **played** rather than cast (CR 116.2a), and therefore
+/// the one an additional *cast* cost could never apply to.
+const LAND_TYPE: &str = "land";
+
 /// The card types a permanent may have (CR 110.1) — and therefore the only types a
 /// **token** may have, a token existing nowhere but the battlefield (CR 111.7).
 const PERMANENT_TYPES: [&str; 6] = [
@@ -126,6 +130,14 @@ pub enum Violation {
     /// An `aura` grant appears on a card whose `subtypes` do not include `"Aura"`
     /// (CR 303.4).
     AuraOnNonAura {
+        /// The definition at fault.
+        functional_id: String,
+    },
+    /// An `additional_cost` appears on a card that cannot be cast, or names a cost of
+    /// nothing. A land is *played*, not cast (CR 116.2a), so a cast cost on one could
+    /// never be paid or checked; a cost of zero cards is not a cost, and authoring one
+    /// is a way of writing a card that reads as costing something and does not.
+    AdditionalCostIsUnpayable {
         /// The definition at fault.
         functional_id: String,
     },
@@ -269,6 +281,11 @@ impl fmt::Display for Violation {
                 f,
                 "{functional_id} carries an `aura` grant but is not an Aura \
                  (its subtypes do not include `{AURA_SUBTYPE}`)"
+            ),
+            Self::AdditionalCostIsUnpayable { functional_id } => write!(
+                f,
+                "{functional_id} carries an `additional_cost` that could never be paid: \
+                 a land is played rather than cast, and a cost of no cards is no cost"
             ),
             Self::RestrictionsOnNonCreature { functional_id } => write!(
                 f,
@@ -428,6 +445,17 @@ pub(crate) fn validate_definition(
             functional_id,
             planeswalker: is_planeswalker,
         });
+    }
+
+    // An additional cast cost belongs only on a card that is cast, and must actually
+    // cost something. A land is played rather than cast (CR 116.2a), so no cast gate
+    // would ever consult the cost; a zero-count discard is a cost in name only.
+    if let Some(cost) = object.get("additional_cost") {
+        let is_land = types.iter().any(|t| t.as_str() == Some(LAND_TYPE));
+        let count = cost.get("count").and_then(serde_json::Value::as_u64);
+        if is_land || count == Some(0) {
+            return Err(Violation::AdditionalCostIsUnpayable { functional_id });
+        }
     }
 
     // A printed combat restriction only ever restricts attacking or blocking, so it
@@ -994,6 +1022,37 @@ mod tests {
                 creature: false,
             }
         );
+    }
+
+    #[test]
+    fn an_additional_cost_that_could_never_be_paid_is_rejected() {
+        // A land is played, not cast (CR 116.2a), so no cast gate would ever consult
+        // its cost — the field would read as a rule and enforce nothing.
+        let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                       "types": ["land"], "mana_cost": "",
+                       "additional_cost": {"kind": "discard", "count": 1}}"#;
+        let card = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            validate_definition(None, &card).unwrap_err(),
+            Violation::AdditionalCostIsUnpayable {
+                functional_id: "test_card".to_string()
+            }
+        );
+
+        // A cost of no cards is not a cost.
+        let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                       "types": ["sorcery"], "mana_cost": "{R}",
+                       "additional_cost": {"kind": "discard", "count": 0}}"#;
+        let card = serde_json::from_str(json).unwrap();
+        assert!(validate_definition(None, &card).is_err());
+
+        // The shape a real card is authored in passes.
+        let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                       "types": ["sorcery"], "mana_cost": "{1}{R}",
+                       "additional_cost": {"kind": "discard", "count": 1},
+                       "spell_effects": [{"kind": "draw_card", "count": 2}]}"#;
+        let card = serde_json::from_str(json).unwrap();
+        assert!(validate_definition(None, &card).is_ok());
     }
 
     #[test]

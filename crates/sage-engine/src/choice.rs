@@ -1,5 +1,5 @@
-//! Mid-resolution player choices: "choose N cards from this set", and "do you want
-//! this to happen?".
+//! Mid-resolution player choices: "choose N cards from this set", "do you want this to
+//! happen?", and "which color of mana?".
 //!
 //! Every effect before this one resolved without asking anyone anything. A discard, a
 //! scry, a look-at-the-top, a library search, and an optional `you may …` all stop in
@@ -37,6 +37,7 @@
 use crate::ability::{CardFilter, Effect, FoundDestination, Target};
 use crate::card_type::CardType;
 use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
+use crate::mana::Color;
 use crate::rng::SplitMix64;
 use crate::state::{GameEvent, GameState};
 use crate::CardDatabase;
@@ -63,11 +64,11 @@ pub struct PendingChoice {
     pub resume: Option<Resume>,
 }
 
-/// What one [`PendingChoice`] asks — the two shapes of question the engine can pose in
-/// the middle of a resolution.
+/// What one [`PendingChoice`] asks — the shapes of question the engine can pose in the
+/// middle of a resolution.
 ///
-/// One enum rather than two queues, because everything *around* the question is the
-/// same for both: the queue, the routing to a chooser, the priority hand-off through
+/// One enum rather than a queue per shape, because everything *around* the question is
+/// the same for all of them: the queue, the routing to a chooser, the priority hand-off through
 /// the shared [`interrupted_priority`](crate::GameState::interrupted_priority) slot, and
 /// the rule that a question with no legal answer is never posed at all. Only the answer
 /// differs, so only the answer's shape lives here.
@@ -80,28 +81,63 @@ pub enum ChoiceQuestion {
     /// [`Effect::May`] ([`ConfirmRequest`]). Answered with
     /// [`Action::AnswerConfirm`](crate::Action).
     Confirm(ConfirmRequest),
+    /// Which **color** of mana to add — one point's worth of `Add two mana in any
+    /// combination of colors` ([`ColorRequest`]). Answered with
+    /// [`Action::AnswerColor`](crate::Action).
+    ///
+    /// The third shape rather than a special case of the first two because the answer
+    /// is neither a set of cards nor a yes-or-no: it names one of the five colors
+    /// (CR 105.1), and every one of them is always a legal answer. An effect producing
+    /// more than one mana poses one of these per point, so the player really is asked
+    /// "and the second one?" rather than being made to spend all of it on one color.
+    Color(ColorRequest),
 }
 
 impl ChoiceQuestion {
-    /// The card-selection request this question asks, or `None` when it is a
-    /// yes-or-no. Lets a caller that only handles the selection shape — the candidate
-    /// projection, the revealed-cards channel — say so once rather than matching twice.
+    /// The card-selection request this question asks, or `None` when it is not one.
+    /// Lets a caller that only handles the selection shape — the candidate projection,
+    /// the revealed-cards channel — say so once rather than matching every variant.
     #[must_use]
     pub fn cards(&self) -> Option<&ChoiceRequest> {
         match self {
             ChoiceQuestion::Cards(request) => Some(request),
-            ChoiceQuestion::Confirm(_) => None,
+            ChoiceQuestion::Confirm(_) | ChoiceQuestion::Color(_) => None,
         }
     }
 
-    /// The yes-or-no request this question asks, or `None` when it is a card selection.
+    /// The yes-or-no request this question asks, or `None` when it is not one.
     #[must_use]
     pub fn confirm(&self) -> Option<&ConfirmRequest> {
         match self {
             ChoiceQuestion::Confirm(request) => Some(request),
-            ChoiceQuestion::Cards(_) => None,
+            ChoiceQuestion::Cards(_) | ChoiceQuestion::Color(_) => None,
         }
     }
+
+    /// The mana-color request this question asks, or `None` when it is not one.
+    #[must_use]
+    pub fn color(&self) -> Option<&ColorRequest> {
+        match self {
+            ChoiceQuestion::Color(request) => Some(request),
+            ChoiceQuestion::Cards(_) | ChoiceQuestion::Confirm(_) => None,
+        }
+    }
+}
+
+/// The question one point of "mana in any combination of colors" asks: *which color?*
+///
+/// Carries nothing about *who* — the chooser is [`PendingChoice::chooser`], and the
+/// mana goes into that same seat's pool, because an effect that adds mana adds it to
+/// its controller's pool (CR 106.4) and the controller is who is asked.
+///
+/// It carries no candidate list either, for the reason [`ChoiceRequest`] carries none:
+/// the answer set is the five colors (CR 105.1) and is the same at every table in every
+/// game, so there is nothing to compute or to keep fresh.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ColorRequest {
+    /// What the produced mana may be spent on (CR 106.6), or `None` for ordinary mana.
+    /// Copied from the effect so the restriction rides each point as it is chosen.
+    pub restriction: Option<crate::ability::ManaRestriction>,
 }
 
 /// The question an optional effect asks: *do you want this, and will you pay for it?*
@@ -463,6 +499,9 @@ pub(crate) fn pose_choices(
                     continue;
                 }
             }
+            // A color question always has five legal answers, so it is always posed —
+            // the one shape with no "nothing to ask" case at all.
+            ChoiceQuestion::Color(_) => {}
         }
         state.pending_choices.push(PendingChoice {
             chooser,
@@ -767,6 +806,26 @@ pub(crate) fn choices_for_effect(
                 outcome: ChoiceOutcome::TakeAndShuffle(*destination),
             }),
         )]),
+        // One question per point of mana, so a player producing two really is asked
+        // twice and may answer differently each time. They are separate queue entries
+        // rather than one multi-answer question because that is what makes the second
+        // question askable *after* seeing the first answered, and because the resume
+        // machinery already attaches the rest of the resolution to the last of them.
+        Effect::AddManaAnyColor {
+            amount,
+            restriction,
+        } => Some(
+            (0..*amount)
+                .map(|_| {
+                    (
+                        controller,
+                        ChoiceQuestion::Color(ColorRequest {
+                            restriction: restriction.clone(),
+                        }),
+                    )
+                })
+                .collect(),
+        ),
         // The one question the *controller* always answers, whoever else the ability
         // names: an optional effect is theirs to take or leave (CR 608.2).
         Effect::May { cost, effects } => Some(vec![(
@@ -777,6 +836,29 @@ pub(crate) fn choices_for_effect(
             }),
         )]),
         _ => None,
+    }
+}
+
+/// Answer a pending color question: put one mana of `color` into the chooser's pool,
+/// carrying whatever restriction the effect attached to it (CR 106.6).
+///
+/// The whole of the answer's consequence — the queue entry is popped by the caller,
+/// exactly as a card selection's is, and the rest of the resolution rides on the
+/// [`Resume`] attached to the last question of the effect.
+pub(crate) fn add_chosen_color(
+    state: &mut GameState,
+    chooser: PlayerId,
+    request: &ColorRequest,
+    color: Color,
+) {
+    let Some(player) = state.players.get_mut(chooser.0) else {
+        return;
+    };
+    match &request.restriction {
+        Some(restriction) => player
+            .mana_pool
+            .add_restricted(color, 1, restriction.clone()),
+        None => player.mana_pool.add(color, 1),
     }
 }
 

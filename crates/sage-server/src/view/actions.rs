@@ -270,15 +270,18 @@ fn valid_action_view(
         // pick itself rides as a `select_from_zone` prompt (built below) rather than a
         // target requirement: it names cards in a hidden zone, which is a different
         // thing from an object on the battlefield, and it carries a count.
-        // Both shapes of mid-resolution choice ride the same action kind: from the
+        // Every shape of mid-resolution choice rides the same action kind: from the
         // client's side they are one thing — the question the game is waiting on — and
-        // the prompt below says which shape it is.
-        Action::AnswerChoice { .. } | Action::AnswerConfirm { .. } => (
-            "player_choice".to_string(),
-            player_choice_label(state, db),
-            Vec::new(),
-            Vec::new(),
-        ),
+        // the prompt below says which shape it is. A color choice reuses the same
+        // `option` prompt the yes-or-no does, so no client learns a new wire shape.
+        Action::AnswerChoice { .. } | Action::AnswerConfirm { .. } | Action::AnswerColor { .. } => {
+            (
+                "player_choice".to_string(),
+                player_choice_label(state, db),
+                Vec::new(),
+                Vec::new(),
+            )
+        }
         // Labeled with the ability's own rules sentence ("{T}: Add {G}.", ADR 0008
         // text generation), so a permanent offering several activations renders
         // *distinguishable* dock buttons — a generic "Activate ability" collapses
@@ -366,7 +369,7 @@ fn valid_action_view(
     let prompts: Vec<Prompt> = match action {
         Action::OrderCombatDamage { .. } => damage_order_prompts(state, db),
         Action::Keep { .. } => keep_prompts(state, action),
-        Action::AnswerChoice { .. } | Action::AnswerConfirm { .. } => {
+        Action::AnswerChoice { .. } | Action::AnswerConfirm { .. } | Action::AnswerColor { .. } => {
             player_choice_prompts(state, db)
         }
         _ => Vec::new(),

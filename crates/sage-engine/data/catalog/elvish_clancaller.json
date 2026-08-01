@@ -34,7 +34,7 @@
       "cost": [
         {
           "kind": "mana",
-          "mana": "{3}{G}{G}"
+          "mana": "{4}{G}{G}"
         },
         {
           "kind": "tap"

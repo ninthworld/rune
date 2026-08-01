@@ -14,12 +14,10 @@
       "kind": "pump",
       "target": "any_creature",
       "power": 2,
-      "toughness": 2
-    },
-    {
-      "kind": "grant_keyword",
-      "target": "any_creature",
-      "keyword": "flying"
+      "toughness": 2,
+      "keywords": [
+        "flying"
+      ]
     }
   ]
 }

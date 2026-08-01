@@ -9,12 +9,11 @@
   "colors": [
     "red"
   ],
+  "additional_cost": {
+    "kind": "discard",
+    "count": 1
+  },
   "spell_effects": [
-    {
-      "kind": "discard",
-      "player_ref": "controller",
-      "count": 1
-    },
     {
       "kind": "draw_card",
       "count": 2

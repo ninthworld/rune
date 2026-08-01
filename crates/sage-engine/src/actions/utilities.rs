@@ -147,6 +147,24 @@ pub(crate) fn potential_mana_pool(
                         amount,
                         restriction,
                     } => pool.add_restricted(*color, *amount, restriction.clone()),
+                    // The colors are not decided until the ability resolves, so the
+                    // estimate credits the seat with `amount` of *every* color. That
+                    // over-counts on purpose, in the direction this estimate is allowed
+                    // to err: it can only ever offer a decision that turns out
+                    // unaffordable, never withhold one the player could have taken.
+                    Effect::AddManaAnyColor {
+                        amount,
+                        restriction,
+                    } => {
+                        for color in crate::mana::Color::ALL {
+                            match restriction {
+                                Some(restriction) => {
+                                    pool.add_restricted(color, *amount, restriction.clone());
+                                }
+                                None => pool.add(color, *amount),
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }

@@ -25,6 +25,17 @@ pub(crate) const ACCEPT_OPTION: &str = "accept";
 /// legal, which is what keeps an unpayable cost from stalling the game.
 pub(crate) const DECLINE_OPTION: &str = "decline";
 
+/// The five colors of mana (CR 105.1) as `(option id, label)` pairs — the complete,
+/// always-legal answer set of a color choice, in the canonical WUBRG order a player
+/// expects to read them in.
+const COLOR_OPTIONS: [(&str, &str, Color); 5] = [
+    ("white", "White ({W})", Color::White),
+    ("blue", "Blue ({U})", Color::Blue),
+    ("black", "Black ({B})", Color::Black),
+    ("red", "Red ({R})", Color::Red),
+    ("green", "Green ({G})", Color::Green),
+];
+
 /// The single prompt slot for the mid-resolution player choice the game is waiting on,
 /// or an empty list when it is waiting on none.
 ///
@@ -47,6 +58,41 @@ pub(crate) fn player_choice_prompts(state: &GameState, db: &CardDatabase) -> Vec
     match &pending.question {
         ChoiceQuestion::Cards(request) => vec![card_choice_prompt(state, db, request)],
         ChoiceQuestion::Confirm(request) => vec![confirm_prompt(state, request)],
+        ChoiceQuestion::Color(request) => vec![color_prompt(request)],
+    }
+}
+
+/// The color question, as the same `option` slot the yes-or-no already rides on.
+///
+/// All five colors, always, in WUBRG order: there is no state to consult, because a
+/// color is legal by being a color (CR 105.1). The prompt says what the mana may be
+/// spent on when the effect restricted it, since that is the only thing that makes one
+/// answer better than another.
+fn color_prompt(request: &ColorRequest) -> Prompt {
+    Prompt::Option {
+        slot: CHOICE_SLOT.to_string(),
+        prompt: color_question(request),
+        options: COLOR_OPTIONS
+            .iter()
+            .map(|(id, label, _)| PromptOption {
+                id: (*id).to_string(),
+                label: (*label).to_string(),
+                requires: Vec::new(),
+            })
+            .collect(),
+    }
+}
+
+/// The words a color choice is asked in, naming the spend restriction when there is
+/// one — "choose a color" and "choose a color you may only spend on Dragons" are
+/// different decisions.
+fn color_question(request: &ColorRequest) -> String {
+    match &request.restriction {
+        Some(restriction) => format!(
+            "Choose a color of mana to add — you may spend it only to {}",
+            crate::rules_text::restriction_phrase(restriction)
+        ),
+        None => "Choose a color of mana to add".to_string(),
     }
 }
 
@@ -155,6 +201,7 @@ pub(crate) fn player_choice_label(state: &GameState, db: &CardDatabase) -> Strin
         Some(ChoiceQuestion::Confirm(request)) => {
             optional_effect_question(request.cost.as_deref(), &request.effects)
         }
+        Some(ChoiceQuestion::Color(request)) => color_question(request),
         None => "Make a choice".to_string(),
     }
 }
@@ -221,6 +268,30 @@ pub(crate) fn revealed_to(state: &GameState, db: &CardDatabase, viewer: PlayerId
         .into_iter()
         .map(|inst| card_view(card_entity_id(inst.id), inst.card, db))
         .collect()
+}
+
+/// Map a returned answer to a color choice onto [`Action::AnswerColor`].
+///
+/// The same reject-stale discipline the other two answers follow: only an option id the
+/// offer itself listed counts, and the engine is asked whether a color choice is owed at
+/// all before one is built. `None` when no color choice is owed or the answer names
+/// something the offer did not.
+pub(crate) fn bind_player_color(
+    state: &GameState,
+    offered: &ValidAction,
+    targets: &[TargetChoice],
+) -> Option<Action> {
+    let options = offered.prompts.iter().find_map(|prompt| match prompt {
+        Prompt::Option { slot, options, .. } if slot == CHOICE_SLOT => Some(options),
+        _ => None,
+    })?;
+    pending_player_choice(state)?.question.color()?;
+    let answer = chosen_for(targets, CHOICE_SLOT).first()?;
+    if !options.iter().any(|option| &option.id == answer) {
+        return None;
+    }
+    let (_, _, color) = COLOR_OPTIONS.iter().find(|(id, _, _)| id == answer)?;
+    Some(Action::AnswerColor { color: *color })
 }
 
 /// Map a returned answer to the yes-or-no of an optional effect onto

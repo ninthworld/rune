@@ -1647,14 +1647,9 @@ fn plummet_can_be_aimed_at_a_creature_that_was_granted_flying() {
     let db = db();
     let mut state = main_phase(&db);
     let ground = place(&mut state, &db, "sun_sentinel", PlayerId(1));
-    // Mighty Leap grants flying until end of turn (alongside +2/+2), filling one
-    // target slot per effect.
-    let state = cast(
-        &state,
-        &db,
-        "mighty_leap",
-        vec![Target::Permanent(ground), Target::Permanent(ground)],
-    );
+    // Mighty Leap grants flying until end of turn alongside its +2/+2 — one effect,
+    // one target slot, both halves on the creature named.
+    let state = cast(&state, &db, "mighty_leap", vec![Target::Permanent(ground)]);
     assert!(characteristics(&state, ground, &db)
         .keywords
         .contains(&Keyword::Flying));
@@ -1998,4 +1993,85 @@ fn daggerback_basilisk_kills_what_it_blocks() {
         !on_battlefield(&state, attacker),
         "a 10/10 blocked by a deathtouch 2/2 dies"
     );
+}
+
+#[test]
+fn lathliss_makes_a_dragon_for_another_nontoken_dragon_and_never_for_her_own_token() {
+    // "Whenever another **nontoken** Dragon you control enters, create a 5/5 red Dragon
+    // creature token with flying." Three words in that sentence each rule something out,
+    // and this asserts all three: *another* (not herself), *nontoken* (not the token she
+    // just made, which would loop forever), and *you control*.
+    let db = db();
+    let mut state = main_phase(&db);
+    let lathliss = place(&mut state, &db, "lathliss_dragon_queen", PlayerId(0));
+    assert!(on_battlefield(&state, lathliss));
+    assert_eq!(dragons(&state, &db), 1, "only Lathliss so far");
+
+    // A second, nontoken Dragon enters under the same controller: the trigger fires
+    // once and puts a token alongside it.
+    let state = cast(&state, &db, "volcanic_dragon", Vec::new());
+    let mut state = state;
+    for _ in 0..4 {
+        if state.stack.is_empty() {
+            break;
+        }
+        state = advance(&state, &db);
+    }
+    assert_eq!(
+        dragons(&state, &db),
+        3,
+        "Lathliss, the cast Dragon, and the token she made"
+    );
+
+    // And the token's own entry did **not** fire her again: the stack is empty and no
+    // fourth Dragon appeared. This is the whole point of `nontoken` — without it the
+    // token triggers the trigger that made it, forever.
+    assert!(state.stack.is_empty(), "nothing is still resolving");
+    let settled = advance(&state, &db);
+    assert_eq!(dragons(&settled, &db), 3, "no runaway token loop");
+}
+
+#[test]
+fn lathliss_pumps_only_dragons_and_only_the_ones_you_control() {
+    // "{1}{R}: Dragons you control get +1/+0 until end of turn." A subtype-scoped mass
+    // effect: the non-Dragon beside them and the opponent's Dragon are both untouched.
+    let db = db();
+    let mut state = main_phase(&db);
+    let lathliss = place(&mut state, &db, "lathliss_dragon_queen", PlayerId(0));
+    let mine = place(&mut state, &db, "volcanic_dragon", PlayerId(0));
+    let ogre = place(&mut state, &db, "onakke_ogre", PlayerId(0));
+    let theirs = place(&mut state, &db, "volcanic_dragon", PlayerId(1));
+
+    // Ability index 1 is the activated one (index 0 is the enters trigger).
+    let after = activate(&state, &db, lathliss, 1, Vec::new());
+
+    assert_eq!(
+        characteristics(&after, lathliss, &db).power,
+        Some(7),
+        "6 + 1"
+    );
+    assert_eq!(characteristics(&after, mine, &db).power, Some(5), "4 + 1");
+    assert_eq!(
+        characteristics(&after, ogre, &db).power,
+        Some(4),
+        "the Ogre is no Dragon"
+    );
+    assert_eq!(
+        characteristics(&after, theirs, &db).power,
+        Some(4),
+        "and an opponent's Dragon is not one you control"
+    );
+}
+
+/// How many permanents on the battlefield are Dragons, whoever controls them.
+fn dragons(state: &GameState, db: &CardDatabase) -> usize {
+    state
+        .battlefield
+        .iter()
+        .filter(|p| {
+            p.printed
+                .face(db)
+                .is_some_and(|face| face.subtypes().iter().any(|s| s == "Dragon"))
+        })
+        .count()
 }

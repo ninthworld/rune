@@ -316,14 +316,17 @@ mod tests {
             vec![Effect::DrawCard { count: 2 }]
         );
 
-        // Viashino Pyromancer: a creature whose ETB trigger deals 2 to a target player.
+        // Viashino Pyromancer: a creature whose ETB trigger deals 2 to a target
+        // player or planeswalker.
         let pyromancer = crate::card::tests::card_named(&db, "viashino_pyromancer");
         assert_eq!(
             pyromancer.abilities,
             vec![Ability::Triggered {
                 event: TriggerCondition::SelfEntersBattlefield,
                 effects: vec![Effect::DealDamage {
-                    subject: DamageSubject::Target(crate::ability::TargetSpec::AnyPlayer),
+                    subject: DamageSubject::Target(
+                        crate::ability::TargetSpec::AnyPlayerOrPlaneswalker
+                    ),
                     amount: 2,
                 }],
             }]

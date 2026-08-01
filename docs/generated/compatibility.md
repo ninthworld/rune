@@ -72,10 +72,10 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `inspired_charge` | Inspired Charge | functional definition |
 | `invoke_the_divine` | Invoke the Divine | functional definition |
 | `island` | Island | functional definition |
-| `jedit_ojanen` | Jedit Ojanen | functional definition |
 | `knight_of_the_tusk` | Knight of the Tusk | functional definition |
 | `knight_s_pledge` | Knight's Pledge | functional definition |
 | `knightly_valor` | Knightly Valor | functional definition |
+| `lathliss_dragon_queen` | Lathliss, Dragon Queen | functional definition |
 | `lava_axe` | Lava Axe | functional definition |
 | `lich_s_caress` | Lich's Caress | functional definition |
 | `lightning_strike` | Lightning Strike | functional definition |
@@ -163,7 +163,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Combat damage assigned by a value other than power | every attacker and blocker assigns damage equal to its current power |
 | Conditions other than a permanent count, a mill, or a discard | the intervening-if vocabulary names three questions and grows one variant at a time |
 | Cost reduction and cost increase effects | no cost-modification layer |
-| Costs paid by sacrificing or discarding | activation costs model only tapping and mana |
+| Costs paid by sacrificing or discarding | an activation cost models only tapping, mana, and loyalty, and the one additional cast cost is a discard |
 | Damage prevention | no prevention shield or damage-replacement layer |
 | Effects that ask a player to name a colour, type, or card | no player choice recorded on a permanent or spell |
 | Effects that let a player choose the order of cards put back on a library | a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random |
@@ -176,7 +176,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Gaining control of a permanent | no control-change layer |
 | Keyword removal and loses-all-abilities effects | the ability-adding layer only adds abilities |
 | Kicker and other optional additional costs | no optional cost declared on announcement |
-| Mana of any colour, and mana filtering | mana production names one fixed colour or colourless, with or without a spend restriction |
+| Mana filtering | mana is produced and spent, never converted; nothing changes the colour of mana already in a pool |
 | Maximum hand size modification | the cleanup discard uses a fixed hand size |
 | Modal spells that choose one | no mode choice on announcement |
 | Multi-face cards (transform, modal double-faced) | the card model has a single face |
@@ -189,4 +189,4 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Static abilities that affect anything but creatures their controller controls | the continuous-effect selector names one class, so a permanent or an emblem may modify no other |
 | The legend-rule choice among duplicates | CR 704.5j applies, but which copy survives is a deterministic policy (the newest) rather than the controller's choice |
 | Tokens created attacking, or as copies of another permanent | a created token enters untapped or tapped and out of combat; there is no copiable-values model |
-| Trigger selectors that filter by a keyword | observed-permanent selectors filter by subtype and controller only |
+| Trigger selectors that filter by a keyword | observed-permanent selectors filter by subtype, controller, and token-ness only |

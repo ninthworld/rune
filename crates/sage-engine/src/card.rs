@@ -16,6 +16,7 @@
 //! both reject unknown fields, so such a field fails the load instead of being
 //! ignored. The authored schema is documented in `docs/card-schema.md`.
 
+mod additional_cost;
 mod aura;
 mod card_data;
 mod catalog;
@@ -30,6 +31,7 @@ mod restriction;
 mod tests;
 
 pub use crate::catalog::SCHEMA_VERSION;
+pub use additional_cost::AdditionalCost;
 pub use aura::AuraGrant;
 pub use card_data::CardData;
 pub use database::CardDatabase;

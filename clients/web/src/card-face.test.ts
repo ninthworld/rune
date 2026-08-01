@@ -137,10 +137,10 @@ describe('a permanent on the battlefield', () => {
   })
 
   it('marks a commander', () => {
-    const jedit = permanentFace(permanent('gameview-commander.json', 'perm_jedit'))
+    const lathliss = permanentFace(permanent('gameview-commander.json', 'perm_lathliss'))
 
-    expect(jedit.markers).toContain('Commander')
-    expect(jedit.stat?.value).toBe('5/5')
+    expect(lathliss.markers).toContain('Commander')
+    expect(lathliss.stat?.value).toBe('6/6')
   })
 
   it('carries keywords the server computed', () => {

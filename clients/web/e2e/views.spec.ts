@@ -694,7 +694,7 @@ test.describe('the table as a composition', () => {
     await page.goto('/')
 
     await expect(page.getByRole('region', { name: /^Bob .* battlefield/ })).toContainText(
-      'Jedit Ojanen',
+      'Lathliss, Dragon Queen',
     )
     await expect(page.getByRole('region', { name: /^Random .* battlefield/ })).toContainText(
       'Grizzly Bears',
