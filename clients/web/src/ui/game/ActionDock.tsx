@@ -10,9 +10,12 @@
  * that action is asking. Everything a player does still ends in one `choose_action` built from
  * ids the server issued.
  *
- * Two lists survive that contextual path on purpose. **Global actions** — pass, concede, the
- * combat declarations, a mulligan — own no object, so there is nothing on the table to click and
- * the dock is their home. **Every action** is the disclosure below it, and it lists all of them,
+ * Three lists survive that contextual path on purpose. **What the game is waiting on** comes
+ * first and only when the game is in fact waiting: an action a player cannot decline is not a
+ * thing to go looking for, so while one is owed the dock holds it out rather than leaving a
+ * player to guess which card is asking. **Global actions** — pass, concede, the combat
+ * declarations, a mulligan — own no object, so there is nothing on the table to click and the
+ * dock is their home. **Every action** is the disclosure below them, and it lists all of them,
  * including the ones reachable from a card. A subject is not guaranteed to be visible: it may be
  * a card inside a collapsed pile, or an id in no rendered zone at all. Until contextual coverage
  * is *proven* rather than assumed, the flat list stays, and nothing becomes unreachable because
@@ -29,6 +32,7 @@ import {
   disarm,
   focus,
   globalActions,
+  owedActions,
   release,
   unask,
   type Interaction,
@@ -62,6 +66,7 @@ export function ActionDock({
   const selected = interaction.selected
   const owned = selected === undefined ? [] : actionsFor(actions, selected)
   const globals = globalActions(actions)
+  const owed = owedActions(actions)
   const blocked = interaction.pending !== undefined
   // Still offered? An action awaiting confirmation can be withdrawn by the next view like any
   // other, and asking about one the server no longer lists would be asking about nothing.
@@ -134,8 +139,23 @@ export function ActionDock({
           />
         ) : (
           <>
+            {owed.length > 0 && (
+              <div className="dock__owed" role="group" aria-label="Waiting on you">
+                <p className="dock__who">
+                  <strong>The game is waiting on you.</strong>
+                </p>
+                <ul className="actions" aria-label="Actions you owe">
+                  {owed.map(button)}
+                </ul>
+              </div>
+            )}
+
             {selected === undefined ? (
-              <p className="dock__hint">Click a highlighted card or player to act on it.</p>
+              // Suppressed while something is owed: the buttons are already here, and telling a
+              // player to go find a card is the opposite of what this state needs.
+              owed.length === 0 && (
+                <p className="dock__hint">Click a highlighted card or player to act on it.</p>
+              )
             ) : (
               <div className="dock__subject">
                 <p className="dock__who">

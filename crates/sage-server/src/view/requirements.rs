@@ -300,8 +300,15 @@ pub(crate) fn trigger_label(state: &GameState, db: &CardDatabase, ability: Stack
         .unwrap_or_else(|| "Choose targets".to_string())
 }
 
-/// The subject a trigger-aiming action binds to: the permanent whose ability is
-/// asking, so the board highlights the source rather than nothing.
+/// The subjects a trigger-aiming action binds to: the trigger **where it sits on the
+/// stack**, and the permanent whose ability is asking.
+///
+/// Both, because both are places a player looks and neither alone covers the gesture.
+/// The trigger is the object holding the game up and the one named in the column that
+/// says so, which is the first thing anyone clicks; the source is what the ability
+/// belongs to, and naming it is what highlights the card on the board. Listing the two
+/// costs a client nothing — a subject list is already plural, and any id in it reaches
+/// the same action.
 pub(crate) fn trigger_subject(state: &GameState, ability: StackId) -> Vec<String> {
     state
         .stack
@@ -309,10 +316,8 @@ pub(crate) fn trigger_subject(state: &GameState, ability: StackId) -> Vec<String
         .find(|o| o.id == ability)
         .and_then(|o| match &o.kind {
             StackObjectKind::Ability { source, .. } => Some(
-                source
-                    .permanent()
-                    .map(permanent_entity_id)
-                    .into_iter()
+                std::iter::once(stack_entity_id(ability))
+                    .chain(source.permanent().map(permanent_entity_id))
                     .collect(),
             ),
             StackObjectKind::Spell { .. } => None,
@@ -519,6 +524,58 @@ mod tests {
     use super::*;
     use crate::test_support::{fixture, id_in};
     use crate::view::test_support::put_permanent;
+    use sage_engine::{Effect, PlayerRef};
+
+    /// A trigger waiting to be aimed is offered from *both* places a player looks for
+    /// it: the object on the stack that is holding the game up, and the permanent whose
+    /// ability is asking. Binding it to the source alone left the choice reachable only
+    /// by clicking a card on the battlefield, while the thing plainly stuck was sitting
+    /// on the stack.
+    #[test]
+    fn a_trigger_awaiting_targets_is_reachable_from_the_stack_and_from_its_source() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let source = put_permanent(
+            &mut state,
+            fixture("skymarch_bloodletter"),
+            PlayerId(0),
+            false,
+            false,
+        );
+        let ability = StackId(state.mint_id());
+        state.stack.push(sage_engine::StackObject {
+            id: ability,
+            controller: PlayerId(0),
+            kind: StackObjectKind::Ability {
+                source: source.into(),
+                origin: AbilityOrigin::Triggered,
+                effects: vec![Effect::LoseLife {
+                    player_ref: PlayerRef::TargetOpponent,
+                    amount: 1,
+                }],
+            },
+            targets: Vec::new(),
+        });
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let aim = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "choose_targets")
+            .expect("the trigger's controller is asked to aim it");
+        assert_eq!(
+            aim.subject,
+            vec![stack_entity_id(ability), permanent_entity_id(source)],
+            "the stack object first: it is what the player sees waiting",
+        );
+        assert_eq!(aim.requirements.len(), 1, "one slot for the one target");
+        assert_eq!(
+            aim.requirements[0].candidates,
+            vec![player_id(PlayerId(1))],
+            "the only opponent",
+        );
+    }
 
     /// The declare-attackers view advertises the engine's attacker candidates
     /// (CR 508.1a) as a multi-select `requirements` slot, and a returned selection

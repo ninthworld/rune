@@ -585,6 +585,95 @@ test.describe('declaring combat', () => {
   })
 })
 
+test.describe('a choice the game will not proceed past', () => {
+  /**
+   * A trigger on the stack waiting to be aimed (`docs/protocol.md`, `choose_targets`): the seat
+   * is offered this and a concede, and nothing else — no pass, because play does not continue
+   * around it. There is no committed fixture for it, so the view is written out here.
+   */
+  const AIMING = {
+    you: 'p0',
+    phase: 'precombat_main',
+    turn: 4,
+    me: { life: 20, library_size: 40 },
+    opponents: [{ player_id: 'p1', life: 20, hand_size: 5, library_size: 40, graveyard_size: 0 }],
+    seat_order: ['p0', 'p1'],
+    active_player: 'p0',
+    priority_player: 'p0',
+    battlefield: [
+      {
+        id: 'perm_vamp',
+        controller: 'p0',
+        owner: 'p0',
+        card: {
+          id: 'perm_vamp',
+          name: 'Skymarch Bloodletter',
+          type_line: 'Creature — Vampire Soldier',
+          power: '2',
+          toughness: '2',
+        },
+      },
+    ],
+    stack: [
+      {
+        id: 'stack_9',
+        controller: 'p0',
+        kind: 'triggered',
+        source: 'perm_vamp',
+        description: 'Target opponent loses 1 life and you gain 1 life.',
+      },
+    ],
+    valid_actions: [
+      {
+        id: 'aim',
+        type: 'choose_targets',
+        label: 'Target opponent loses 1 life and you gain 1 life.',
+        subject: ['stack_9', 'perm_vamp'],
+        token: 'taim',
+        requirements: [{ slot: 't0', prompt: 'Target opponent', candidates: ['p1'] }],
+      },
+      { id: 'give', type: 'concede', label: 'Concede', token: 'tgive' },
+    ],
+  }
+
+  test('is held out by the dock instead of left to be found on the board', async ({ page }) => {
+    // The failure this exists for: the only thing the player could do was bound to a card, so
+    // the dock offered nothing but a concede and the game read as stuck.
+    await serveFrames(page, [AIMING])
+    await page.goto('/')
+
+    const owed = page.getByRole('list', { name: 'Actions you owe' })
+    await expect(owed.getByRole('button', { name: /Target opponent loses 1 life/ })).toBeVisible()
+    // And the hint that sends a player looking is gone, because there is nothing to look for.
+    await expect(page.getByText('Click a highlighted card or player to act on it.')).toHaveCount(0)
+  })
+
+  test('is reachable from the trigger where it sits on the stack', async ({ page }) => {
+    // Where a player looks first: the stack says something is waiting, so clicking that is the
+    // gesture. Binding the action to its source permanent alone did not answer this click.
+    const { sent } = await serveFrames(page, [AIMING])
+    await page.goto('/')
+
+    const stack = page.getByRole('region', { name: 'Stack' })
+    await expect(stack.getByRole('button').first()).toHaveClass(/card--candidate/)
+    await stack.getByRole('button').first().click()
+
+    await page
+      .getByRole('list', { name: 'Actions for the selected object' })
+      .getByRole('button', { name: /Target opponent loses 1 life/ })
+      .click()
+    await page.getByRole('region', { name: 'p1 seat' }).getByRole('button', { name: 'p1' }).click()
+    await page.getByRole('button', { name: 'Confirm' }).click()
+
+    await expect.poll(() => submissions(sent)).toHaveLength(1)
+    expect(submissions(sent)[0]).toMatchObject({
+      action_id: 'aim',
+      token: 'taim',
+      targets: [{ slot: 't0', chosen: ['p1'] }],
+    })
+  })
+})
+
 test.describe('a submission the server has not answered', () => {
   test('says what is in flight and refuses to send it twice', async ({ page }) => {
     const { sent, push } = await serveFrames(page, [fixture('gameview.json')])

@@ -83,6 +83,29 @@ export function globalActions(actions: readonly ValidAction[]): readonly ValidAc
   return actions.filter((action) => (action.subject ?? []).length === 0)
 }
 
+/**
+ * The actions the game is *waiting on this seat for*, when it is waiting on one.
+ *
+ * A player who holds priority may always pass it, so a view offering no `pass_priority` is not
+ * offering a choice of whether to act: the seat owes one specific answer and play does not
+ * continue until it gives it — a trigger to aim, the cleanup discard, a commander's return. Those
+ * actions are bound to the object that is asking, and that binding is worth keeping: it is what
+ * highlights the source on the board. But the dock lists them too, because a question the game
+ * will not proceed past must never be reachable only by guessing which card to click.
+ *
+ * The judgment is made on the server's own `type`, "a free-form category used for presentation and
+ * input routing" (`docs/protocol.md`) — the same stated classifier `needsConfirmation` reads, and
+ * the same failure direction: a build that does not recognize `pass_priority` shows a few extra
+ * buttons, which is the harmless way to be wrong.
+ *
+ * Global actions are left out, since the dock already lists those; conceding is offered in every
+ * one of these states and answers none of them, so it stays where it lives.
+ */
+export function owedActions(actions: readonly ValidAction[]): readonly ValidAction[] {
+  if (actions.some((action) => action.type === 'pass_priority')) return []
+  return actions.filter((action) => action.type !== 'concede' && (action.subject ?? []).length > 0)
+}
+
 /** Whether taking this action asks the player anything first. */
 export function needsChoices(action: ValidAction): boolean {
   return (action.requirements?.length ?? 0) > 0 || (action.prompts?.length ?? 0) > 0
