@@ -14,9 +14,6 @@
  * Both run against `vite preview` over a real build, never the dev server, so the artifact
  * under test is the one that ships.
  */
-import { existsSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
-
 import { defineConfig, devices } from '@playwright/test'
 
 // One host for the preview server, the page URL, and (via the page's own origin) the socket
@@ -30,30 +27,19 @@ const SERVER_PORT = 9000
 export const BASE_URL = `http://${HOST}:${PREVIEW_PORT}`
 
 /**
- * The browser to drive, resolved from what the image already has.
+ * The browser is **not resolved here**, deliberately.
  *
- * **Never run `playwright install`** — not in CI, not in an agent session. The pinned
- * `@playwright/test` and the image's browser build routinely disagree (this environment ships
- * chromium-1194 while the pinned package expects a later revision), and the fix is to point at
- * what exists rather than to download another copy. Returning `undefined` lets Playwright
- * resolve normally, which is correct inside the official Playwright container where the
- * versions match by construction.
+ * Playwright already resolves its own matched revision, honouring `PLAYWRIGHT_BROWSERS_PATH`
+ * when the environment sets one — which the official container does. `make e2e-browser`
+ * guarantees that revision exists everywhere else, so there is nothing left for this file to
+ * decide and no `executablePath` to pin.
+ *
+ * Pinning one is what this config used to do, and it was wrong in a way worth recording: it
+ * searched for `<root>/chromium-*\/chrome-linux/chrome`, the **headed** binary, while a headless
+ * run launches the **headless shell** (`chromium_headless_shell-*`). In an image carrying both,
+ * that pinned local runs to a different executable than CI used — the exact "silently tests a
+ * different browser" failure the pin existed to prevent. Deleting it is the fix.
  */
-function preinstalledChromium(): string | undefined {
-  const root = process.env.PLAYWRIGHT_BROWSERS_PATH
-  if (!root || !existsSync(root)) return undefined
-  const candidates = readdirSync(root)
-    .filter((entry) => entry.startsWith('chromium-'))
-    .sort()
-    .reverse()
-  for (const candidate of candidates) {
-    const executable = join(root, candidate, 'chrome-linux', 'chrome')
-    if (existsSync(executable)) return executable
-  }
-  return undefined
-}
-
-const executablePath = preinstalledChromium()
 
 export default defineConfig({
   testDir: './e2e',
@@ -69,7 +55,6 @@ export default defineConfig({
     baseURL: BASE_URL,
     trace: 'retain-on-failure',
     ...devices['Desktop Chrome'],
-    ...(executablePath ? { launchOptions: { executablePath } } : {}),
   },
   projects: [
     { name: 'views', testMatch: /views\.spec\.ts/ },
