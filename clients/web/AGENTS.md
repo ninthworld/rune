@@ -43,10 +43,19 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   `StackItem`, `Emblem`) to one `CardFace`. Every surface renders that and nothing else, so the
   hand, the board, and the stack cannot disagree about the same object. Add a card-presentation
   rule here, not in a component.
+- `src/table.ts` — joins the seats. Life and library arrive as `me` for you and `opponents[]`
+  for everyone else, the piles as three arrays keyed by player, commander state as three more;
+  they become one `Seat[]` here so no panel rebuilds that join or gets its absences wrong.
+- `src/game-log.ts` — the wording for one log event. Events carry data, never prose.
 - `src/submission.ts` — composes one `choose_action`. Bookkeeping over slots the server
   advertised, never rules reasoning.
 - `src/socket.ts`, `src/useSession.ts` — the connection, and the latest frame it delivered.
 - `src/ui/` — the screens. Grey-box on purpose: structure and legibility, no visual design.
+  `src/ui/game/` holds the table surfaces — header, seat panels, the two battlefields, the
+  stack rail, hand, action dock, side panel. `Game.tsx` composes them and derives what they
+  need; a surface receives answers, never the view, so none of them can grow a second reading
+  of it. The composition is fixed, full-viewport, and two-player; every region is bounded so a
+  full board scrolls inside its own area and never pushes the action dock off the screen.
 - `e2e/smoke.spec.ts` — the blocking gate: one path against the real server.
 - `e2e/views.spec.ts` — the non-blocking tier: committed fixtures replayed over an
   intercepted socket, no server involved.

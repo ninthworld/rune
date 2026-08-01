@@ -39,7 +39,7 @@ test('two clicks from a fresh page to a played action', async ({ page }) => {
   //    game view, and the screen follows the frame with no client-held phase.
   await expect(page.getByRole('heading', { name: /^Turn \d+ — / })).toBeVisible({ timeout: 20_000 })
   await expect(page.getByRole('region', { name: 'Your hand' })).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Seats' })).toContainText('life')
+  await expect(page.getByRole('region', { name: 'Your seat' })).toContainText('life')
 
   // 5. Take the action the server offers, and see the game move.
   const actions = page.getByRole('region', { name: 'Actions' })
