@@ -158,6 +158,9 @@ button.card:hover {
   display: block;
   font-weight: 600;
   min-inline-size: 0;
+  /* Positioned so the tapped mark can be given a layer to sit *under*. The name is the one
+     element on the frame the mark is not allowed to cost. */
+  position: relative;
 }
 
 /* No `text-overflow`, no `white-space: nowrap`. The size and the line count arrive from `fit.ts`
@@ -266,6 +269,7 @@ button.card:hover {
    So there is nothing here to truncate with. */
 .card__type {
   flex: none;
+  position: relative;
   opacity: 0.85;
   overflow: hidden;
   white-space: nowrap;
@@ -276,6 +280,7 @@ button.card:hover {
    defect; the component draws no box at all in that case and the preview carries the prose. */
 .card__text {
   flex: none;
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -376,10 +381,15 @@ button.card:hover {
   min-inline-size: 0;
 }
 
-/* No picture to lie on, so the marks and the stat take their place in the row. */
+/* No picture to lie on, so the marks and the stat take their place in the row. `relative` rather
+   than `static`: they are back in the flow either way, and staying positioned is what lets the
+   tapped mark be drawn under them here as it is everywhere else. */
 .card--chip .card__badges,
 .card--chip .card__stat {
-  position: static;
+  position: relative;
+  /* The insets the absolute version was pinned by would become offsets from where the flow put
+     it, which is a two-pixel nudge nobody asked for. */
+  inset: auto;
   flex: none;
   padding-inline-end: 0;
   inline-size: auto;
@@ -428,7 +438,8 @@ button.card:hover {
    window to hang the marks on, so they return to the flow under whatever text there is rather
    than being pinned over its last line. */
 .card:not(.card--chip):not(:has(.card__window)) .card__badges {
-  position: static;
+  position: relative;
+  inset: auto;
   margin-block-start: auto;
 }
 
@@ -445,7 +456,7 @@ button.card:hover {
   inline-size: var(--card-hand-w);
 }
 
-.card-slot > .card {
+.cards--battlefield > li > .card {
   inline-size: var(--card-field-w);
 }
 
@@ -471,44 +482,79 @@ button.card:hover {
    Tapping
    --------------------------------------------------------------------------- */
 
-/* A permanent turns, because that is what tapping *is* at a table, and a board is read by which
-   cards are sideways long before it is read by badges. The turn needs a slot that reserves the
-   rotated footprint, so `Battlefield` wraps every permanent in one and the slot — not the card —
-   is what widens: neighbours slide aside over the same half second the card takes to turn, which
-   is exactly what happens when a real card is laid down.
+/* **Tapped is a mark across an upright face, never a rotation** (`docs/client-design.md` §6).
 
-   The badge and the frame's own wash stay, because a turn is invisible to a screen reader and to
-   anyone who has asked for less motion. */
-.card-slot {
-  position: relative;
-  flex: none;
-  width: var(--card-field-w);
-  height: var(--card-field-h);
-  transition: width var(--tap-duration) var(--tap-easing);
-}
+   A quarter turn takes the card's text with it, and SAGE ships no art: the printed name *is* the
+   permanent's identity, so turning it spends the one fact a player cannot infer in order to state
+   one bit they could have been told any other way — in the state a permanent spends most of the
+   game in. It cost a landscape footprint on top of that, which is why every permanent used to be
+   wrapped in a slot wide enough to hold a card lying on its side.
 
-.card-slot:has(.card--tapped) {
-  width: var(--card-field-h);
-}
+   The mark is a hatch, laid over the whole frame and drawn *under* everything that states a fact,
+   so a tapped permanent reads as covered from across the table and reads letter by letter up
+   close. Being a pattern rather than a tint, it survives greyscale and every colour-vision
+   deficiency — the tapped face is textured where an untapped one is smooth, which is a difference
+   of kind and not of hue. Its pitch is absolute rather than a share of the box, because the size
+   this has to survive is the smallest one: four pixels of stripe read on a 72px tile with no art
+   behind it, which is where a mark that scaled with the card would have nothing left to say.
 
-.card-slot > .card {
+   Drawn as the frame's own pseudo-element, so a tapped permanent occupies exactly the box an
+   untapped one does — one shape per tile, whatever the server said about it — and so the fade
+   runs on a class change with no element arriving to run it. Motion here is not decoration: it
+   says a permanent *tapped*, rather than having been drawn already tapped. A device that has
+   asked for less of it reaches the same face at once, through `--tap-duration` (`index.css`). */
+.card::after {
+  content: '';
   position: absolute;
-  inset-block-start: 0;
-  inset-inline-start: 50%;
-  transform: translateX(-50%);
-  transform-origin: center;
-  transition: transform var(--tap-duration) var(--tap-easing);
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in srgb, Canvas 78%, transparent) 0 3px,
+      color-mix(in srgb, CanvasText 7%, transparent) 3px 4px,
+      transparent 4px 8px
+    ),
+    color-mix(in srgb, Canvas 30%, transparent);
+  transition: opacity var(--tap-duration) var(--tap-easing);
 }
 
-.card-slot > .card--tapped {
-  transform: translateX(-50%) rotate(90deg);
+.card--tapped::after {
+  opacity: 1;
 }
 
-/* Everywhere that is not a slot — the inspector, a pile — the card keeps its upright box and
-   says it is tapped in the badge and a slight fade. Rotating there would turn a panel opened to
-   *read* a card on its side. */
-.card--tapped:not(.card-slot > .card--tapped) {
-  opacity: 0.9;
+/* The one place the pitch is not the small tile's: a full face is three times the width the
+   texture was drawn for, and a stripe every four pixels across a card opened to be *read* is
+   noise rather than a mark. It is coarsened instead of dropped — the preview and the inspector
+   are where a player checks a fact, and tapped is one. */
+.card--full::after {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in srgb, Canvas 72%, transparent) 0 7px,
+      color-mix(in srgb, CanvasText 7%, transparent) 7px 9px,
+      transparent 9px 18px
+    ),
+    color-mix(in srgb, Canvas 26%, transparent);
+}
+
+/* **The mark covers the art, never a fact.** Every element that states something — the name, the
+   type line, the rules text, the counters and the marked damage, the P/T, the cost — is lifted
+   above the hatch, so a tapped permanent is read on exactly the terms an untapped one is. What
+   is left under it is the frame's own wash and the art window, which is the one element §6 lets
+   degrade to nothing because it costs no fact to lose. Tapped is a permanent's most common
+   state; a mark that made a board 40% harder to read would be a worse trade than the rotation
+   it replaced. */
+.card--tapped .card__band,
+.card--tapped .card__type,
+.card--tapped .card__text,
+.card--tapped .card__cost,
+.card--tapped .card__badges,
+.card--tapped .card__stat {
+  z-index: 3;
 }
 
 /* ---------------------------------------------------------------------------

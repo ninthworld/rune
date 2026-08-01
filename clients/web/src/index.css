@@ -70,11 +70,12 @@
      one, and §5's answer when a row cannot afford them is to overlap rather than to shrink. */
   --card-hand-w: clamp(6.25rem, 13vh, 8.6rem);
   --card-field-w: clamp(4.5rem, 12vh, 7.6rem);
-  --card-field-h: calc(var(--card-field-w) * 88 / 63);
   --card-hand-h: calc(var(--card-hand-w) * 88 / 63);
 
-  /* How long a permanent takes to turn, and the curve it turns on. Named because the slot that
-     reserves its rotated footprint has to widen over exactly the same half second. */
+  /* How long the mark that says a permanent tapped takes to come up, and the curve it comes up
+     on (`cards.css`). Half a second, because it is the one thing on the board that reports an
+     event rather than a state: a card is drawn already tapped when a player arrives at the
+     board, and *taps* in front of them when it happens. */
   --tap-duration: 500ms;
   --tap-easing: cubic-bezier(0.2, 0.7, 0.3, 1);
 

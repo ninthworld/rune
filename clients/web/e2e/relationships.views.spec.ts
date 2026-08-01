@@ -324,7 +324,12 @@ test.describe('a board with relationships to trace', () => {
     await expect(tile(page, THEIRS, 'Gearsmith Guardian')).toContainText('2 damage')
     await expect(tile(page, THEIRS, 'Gearsmith Guardian')).toContainText('1× -1/-1')
     await expect(tile(page, THEIRS, 'Zombie')).toContainText('Token')
-    await expect(tile(page, MINE, 'Onakke Ogre')).toContainText('Tapped')
+    // Tapped is the one of these that is drawn rather than written (§6), so it is asked for the
+    // way a screen reader gets it — and the pill that used to say it is gone from the board.
+    await expect(
+      tile(page, MINE, 'Onakke Ogre').getByRole('button', { name: /^Onakke Ogre/ }),
+    ).toHaveAccessibleName(/Tapped/)
+    await expect(page.locator('.badge--tapped')).toHaveCount(0)
     await expect(tile(page, MINE, 'Serra Angel')).toContainText('1× +1/+1')
 
     await expect(page.getByRole('region', { name: 'Emblems' })).toContainText(
@@ -368,11 +373,23 @@ test.describe('the board a reduced-motion request reaches', () => {
     await expect(edge).toHaveCSS('transition-duration', '0.001s, 0.001s')
 
     // And the emphasis a look produces still happens — it is a state, not an animation.
-    await page
+    const ogre = page
       .getByRole('region', { name: 'Your battlefield' })
       .getByRole('button', { name: /^Onakke Ogre/ })
-      .hover()
+    await ogre.hover()
     await expect(edge).toHaveClass(/overlay__edge--traced/)
+
+    // The same for the mark that says a permanent tapped: the Ogre is tapped in this fixture,
+    // and the board a player who asked for no motion arrives at is the *same* board — fully
+    // marked, with only the half second it usually takes taken out of it.
+    await expect
+      .poll(() =>
+        ogre.evaluate((card) => {
+          const style = getComputedStyle(card, '::after')
+          return { opacity: style.opacity, duration: style.transitionDuration }
+        }),
+      )
+      .toEqual({ opacity: '1', duration: '0.001s' })
   })
 })
 

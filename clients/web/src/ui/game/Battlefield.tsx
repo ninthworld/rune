@@ -68,21 +68,18 @@ export function Battlefield({
           >
             {group.entries.map(({ permanent, face, lines }) => (
               <li key={permanent.id}>
-                {/* The slot, not the card, is what reserves room for a tapped permanent. A card
-                    that turns 90° is wider than the box it stood in, so the slot widens over the
-                    same half second the card takes to turn and the neighbours slide aside —
-                    which is what happens when a real card is laid down. Without it a tapped
-                    permanent would overlap the one beside it. */}
-                <span className="card-slot">
-                  <Card
-                    face={face}
-                    state={surface.stateOf(face.id)}
-                    link={surface.linkOf(face.id)}
-                    onActivate={surface.activate}
-                    onInspect={surface.inspect}
-                    onTrace={surface.trace}
-                  />
-                </span>
+                {/* One box per permanent, whatever its state. A tapped permanent used to turn a
+                    quarter and needed a slot around it to reserve the landscape footprint; it is
+                    marked upright now (§6), so every tile on the row is the same card-shaped
+                    box and a row has one packing problem instead of two. */}
+                <Card
+                  face={face}
+                  state={surface.stateOf(face.id)}
+                  link={surface.linkOf(face.id)}
+                  onActivate={surface.activate}
+                  onInspect={surface.inspect}
+                  onTrace={surface.trace}
+                />
                 <RelationTrail lines={lines} surface={surface} />
               </li>
             ))}

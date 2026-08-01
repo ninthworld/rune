@@ -106,9 +106,11 @@ test.describe('an object that was not there before', () => {
     await expect(arrival).toBeVisible()
 
     // The animation moves an element that is already in its final place, so what it leaves
-    // behind is nothing at all: no running animation, no scale, no lingering opacity. And the
-    // transform the board itself put on the card — centred in its slot — is untouched, because
-    // an arrival that animated `transform` would replace it and slide every card sideways.
+    // behind is nothing at all: no running animation, no scale, no lingering opacity, and no
+    // transform. It animates `translate` and `scale` rather than `transform` precisely so that
+    // whatever a surface has put on that property survives it — a permanent used to be centred
+    // in a slot and turned when it tapped, and an arrival that replaced its transform slid every
+    // card sideways.
     await expect(async () => {
       const style = await arrival.evaluate((element) => {
         const computed = getComputedStyle(element)
@@ -120,7 +122,7 @@ test.describe('an object that was not there before', () => {
         }
       })
       expect(style).toMatchObject({ opacity: '1', scale: 'none', running: 0 })
-      expect(style.transform).toBe('matrix(1, 0, 0, 1, -54, 0)')
+      expect(style.transform).toBe('none')
     }).toPass()
   })
 
