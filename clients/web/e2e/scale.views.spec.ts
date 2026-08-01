@@ -91,8 +91,8 @@ interface Known {
  *
  * Six of the clipped elements are the same six at every size, and that repetition is the finding
  * rather than noise: a relationship trail's control needs 304px in 192px on a 3440px ultrawide
- * exactly as it does on a phone, and the stack's top item needs 44px of height in 30px
- * everywhere, because none of those numbers is derived from the viewport.
+ * exactly as it does on a phone, because that box is not derived from the viewport. Everything
+ * that *is* derived from it has left this table.
  *
  * First measured against `main` at 9084a1c, which is #667 — the redrawn card. That merge retired
  * more than half of what this gate first reported: clipped elements went from 16–34 per viewport
@@ -101,95 +101,84 @@ interface Known {
  * #659 — the scene, placing every region at a computed box — retired the rest of the type floor
  * (all eight `floor` rows, plus the two `mana__pip` misses of the 9px card floor that those rows
  * had under-counted) and both rows for the unsupported viewport. It did **not** retire a single
- * `scrolls` row, and the reason is worth stating: each of those rows now names exactly two
- * regions, the battlefields and the stack, and both of them overflow because what is *inside*
- * them has no packing yet. Every other region on the board holds its own content at every one of
- * these viewports now. The numbers in the rows below are the pre-#659 measurements and are left
- * as they were measured — a row is deleted, never edited down.
+ * `scrolls` row, and the reason is worth stating: each of those rows named exactly two regions,
+ * the battlefields and the stack, and both of them overflowed because what was *inside* them had
+ * no packing yet.
+ *
+ * #660 — the packed battlefield — took the battlefields out of every one of those rows. **A field
+ * now holds its content at every viewport in this file**, from one permanent to forty: the tiles
+ * are sized from the room and the count, they take a second line before they fan, and below a
+ * 100px row they are chips. What is left in each `scrolls` row is the stack alone, so the rows are
+ * narrowed to it rather than deleted, and each one retires with #662. The `clipped` rows are
+ * narrowed the same way: the type lines a packed box was supposed to give room to are gone, and
+ * what remains is the relationship trails (#663, which moves them off the board) plus, at three
+ * sizes, `fit.ts`'s width estimate coming up two to six pixels short of what the browser draws —
+ * a calibration in the card's fitting, not a box the packing chose.
  */
 const KNOWN: Record<string, Known> = {
   '1920×1080': {
     clipped:
-      '#660/#662/#663 — 9 elements. Six are relationship trails: `Return target creature card…` ' +
-      'needs 328px in 192px, `Equipped creature deals 1 damage…` 304px in 192px (×3), ' +
-      '`Lightning Strike deals 3 damage…` 242px in 192px. Two are type lines a packed box would ' +
-      'give room to — `Creature — Dinosaur` 119px in 116px, `Creature — Ogre Warrior` 118px in ' +
-      '116px — and the last is the stack’s top item, wrapping to 44px of height in a 30px band.',
+      '#663 — 8 elements, six of them relationship trails: `Return target creature card…` needs ' +
+      '328px in 192px, `Equipped creature deals 1 damage…` 304px in 192px (×3), `Lightning ' +
+      'Strike deals 3 damage…` 242px in 192px. The other two are `fit.ts` estimating a drawn ' +
+      'string short on the 75px tile this board’s three rows produce here — `Colossal Dreadmaw` ' +
+      'wrapping to 32px in a 31px band, `Gravedigger` 72px in 67px — which is the card’s ' +
+      'fitting, not the box the packing chose.',
     scrolls:
-      '#659/#660/#662 — `.field--you` holds 690px of content in a 323px box and `.field--opponent` ' +
-      '472px in 329px; the stack’s `div.rail` is 1438px inside 775px. When the board is packed ' +
-      'rather than scrolled these fit.',
+      '#662 — the stack alone: `section.rail__zone` holds 1307px in a 912px box. Both ' +
+      'battlefields hold their own content now (#660), which is what took them out of this row.',
   },
   '1440×900': {
     clipped:
-      '#660/#662/#663 — 8 elements: the same six trails, `Creature — Ogre Warrior` 106px in ' +
-      '102px, and the stack’s top item at 44px of height in 30px.',
-    scrolls:
-      '#659/#660/#662 — `.field--you` holds 633px of content in a 247px box, the single clearest ' +
-      'case in the file: two and a half times what it can show, resolved with a scrollbar instead ' +
-      'of packing. `.field--opponent` 434px in 254px; `div.rail` 1438px in 624px.',
+      '#663 — 7 elements: the same six trails, plus `Creature — Ogre Warrior` needing 130px in ' +
+      'a 124px band on the merged row’s 130px tile — `fit.ts`’s estimate, six pixels short.',
+    scrolls: '#662 — the stack alone: `section.rail__zone` holds 1307px in a 750px box.',
   },
   '1280×720': {
-    clipped:
-      '#660/#662/#663 — 8 elements: the same six trails, `Onakke Ogre` wrapping to 32px of height ' +
-      'in a 16px name band, and the stack’s top item at 44px in 30px.',
-    scrolls:
-      '#659/#660/#662 — `.field--you` holds 706px in a 169px box, `.field--opponent` 373px in ' +
-      '175px, `div.rail` 1438px in 468px.',
+    clipped: '#663 — 7 elements: the same six trails and the same `Creature — Ogre Warrior`.',
+    scrolls: '#662 — the stack alone: `section.rail__zone` holds 1307px in a 589px box.',
   },
   '640×360': {
     clipped:
-      '#660/#662/#663 — 9 elements: the same six trails, `Colossal Dreadmaw` 69px in a 66px name ' +
-      'band, `Gravedigger` 72px in 66px, and the stack’s top item at 44px in 30px.',
-    scrolls:
-      '#659/#660/#662 — both battlefields collapse to a 16px box holding 749px and 1073px; ' +
-      '`.seat--opponent` is 202px wide in 149px; `div.rail` 1438px in 42px.',
+      '#663 — 8 relationship trails and nothing else: four under permanents (up to 328px in ' +
+      '192px) and four in the seat bars, where the band is narrow enough that `Serra Angel` ' +
+      'needs 61px in 48px. Every permanent here is a chip, and no chip cuts its name.',
+    scrolls: '#662 — the stack alone: the collapsed `section.badge-rail` holds 333px in 130px.',
   },
   '390×844': {
     clipped:
-      '#660/#662/#663 — 8 elements: the same six trails, `Marauder’s Axe` wrapping to 32px of ' +
-      'height in a 16px name band, and the stack’s top item at 44px in 30px.',
-    scrolls:
-      '#659/#660/#662 — `.field--you` holds 1359px in a 16px box and `.field--opponent` 985px in ' +
-      '16px; both seats are 202px and 83px wide in 19px; the dock’s section is 117px wide in ' +
-      '107px; `div.rail` 1438px in 320px.',
+      '#663 — 10 elements: eight trails, four of them squeezed into the seat bars of a 390px ' +
+      'screen, plus `Colossal Dreadmaw` and `Gravedigger` missing their 72×100 tile’s name band ' +
+      'by 2px and 6px — `fit.ts`’s estimate at the §5 minimum tile.',
+    scrolls: '#662 — the stack alone: the collapsed `section.badge-rail` holds 333px in 130px.',
   },
   '844×390': {
-    clipped:
-      '#660/#662/#663 — 9 elements: the same six trails, `Colossal Dreadmaw` 69px in a 66px name ' +
-      'band, `Gravedigger` 72px in 66px, and the stack’s top item at 44px in 30px.',
-    scrolls:
-      '#659/#660/#662 — `.field--you` holds 1026px in a 16px box, `.field--opponent` 605px in ' +
-      '16px, `div.rail` 1438px in 115px.',
+    clipped: '#663 — 6 relationship trails, four under permanents and two in the seat bars.',
+    scrolls: '#662 — the stack alone: the collapsed `section.badge-rail` holds 333px in 130px.',
   },
   '3440×1440': {
     clipped:
-      '#660/#662/#663 — 9 elements on 4.9 megapixels of screen, which is the point: the six ' +
-      'trails still need up to 328px in 192px, two type lines 119px in 116px, and the stack’s ' +
-      'top item 44px of height in 30px, because none of those boxes is derived from the room ' +
-      'available.',
+      '#663 — 6 relationship trails on 4.9 megapixels of screen, which is the point: a trail ' +
+      'needs up to 328px in 192px here exactly as it does on a phone, because that box is not ' +
+      'derived from the room available. Nothing a permanent draws is cut at this size.',
     scrolls:
-      '#659/#660/#662 — `.field--you` holds 690px in a 541px box and `div.rail` 1438px in 1135px, ' +
-      'on the largest screen the client supports.',
+      '#662 — the stack alone: `section.rail__zone` holds 1307px in a 1235px box, on the largest ' +
+      'screen the client supports.',
   },
   '320×480': {
     clipped:
-      '#660/#662/#663 — 9 elements: the same six trails, `Colossal Dreadmaw` 69px in a 66px name ' +
-      'band, `Gravedigger` 72px in 66px, and the stack’s top item at 44px in 30px.',
-    scrolls:
-      '#659/#660/#662 — nearly every region: `header.match` 85px wide in 56px, both seats in a ' +
-      '19px box, `.field--you` 1089px in 16px, `section.hand` 150px in 99px, the dock 258px in ' +
-      '106px, and `div.rail` 1438px in **6px**.',
+      '#663 — 6 relationship trails: four under permanents and two in seat bars 40px and 50px ' +
+      'wide. The board itself fits — chips, two lines of them, on the smallest supported screen.',
+    scrolls: '#662 — the stack alone: the collapsed `section.badge-rail` holds 333px in 130px.',
   },
 
   // The one case that is not one of the eight: a pile open changes the numbers.
   '1440×900 with a pile open': {
     scrolls:
-      '#659/#660/#662 — the board behind the pile is the 1440×900 board plus the graveyard’s own ' +
-      'permanents: `.field--you` holds 827px in a 247px box, `.field--opponent` 434px in 254px, ' +
-      '`div.rail` 1438px in 624px. Nothing *inside* the pile is reported, which is the exemption ' +
-      'working; this row is the board beside it.',
-    clipped: '#660/#662/#663 — the same 8 the 1440×900 row describes, unchanged by the pile.',
+      '#662 — the same stack rail the 1440×900 row describes. Nothing *inside* the pile is ' +
+      'reported, which is the exemption working; this row is the board beside it, and the board ' +
+      'beside it now holds its permanents.',
+    clipped: '#663 — the same 7 the 1440×900 row describes, unchanged by the pile.',
   },
 }
 
@@ -537,6 +526,104 @@ for (const viewport of VIEWPORTS) {
     })
   })
 }
+
+/**
+ * The count a field has to absorb, at both ends of the supported range.
+ *
+ * §5's rule is that a region is sized by the viewport and the count is absorbed by the cards, so
+ * the interesting board is the one no committed fixture has: twenty permanents a seat, which is
+ * three times what the field was ever laid out for. Nothing about the field may change — not its
+ * height, not its position, and above all not whether it scrolls. What changes is the tiles: they
+ * shrink to §5's floor, take a second line where the height is going spare, and fan where it is
+ * not.
+ *
+ * Asserted on the battlefields specifically rather than through the whole-board sweep above,
+ * because that sweep is still red for the stack (#662) at both of these sizes and an assertion
+ * that cannot go green says nothing about the thing it is named after.
+ */
+test.describe('a field holding twenty permanents a seat', () => {
+  /** The dense board with its permanents cloned up to twenty a seat, ids and cards distinct. */
+  const crowded = () => {
+    const base = fixture('gameview-board.json')
+    const battlefield = base.battlefield as Record<string, unknown>[]
+    const source = battlefield.filter((permanent) => permanent.controller === 'p1')
+    const extra: Record<string, unknown>[] = []
+    for (const seat of ['p1', 'p2']) {
+      const have = battlefield.filter((permanent) => permanent.controller === seat).length
+      for (let index = 0; index < 20 - have; index++) {
+        const from = source[index % source.length] as Record<string, unknown>
+        const card = { ...(from.card as Record<string, unknown>) }
+        const id = `${seat}_copy_${index}`
+        card.id = id
+        extra.push({
+          ...from,
+          id,
+          card,
+          controller: seat,
+          owner: seat,
+          physical_card: `${String(from.physical_card)}_${id}`,
+          // The clones are plain permanents: a copy of an attacker would state an attack the
+          // rest of the view knows nothing about.
+          attacking: undefined,
+          attacking_player: undefined,
+          blocking: undefined,
+          attached_to: undefined,
+        })
+      }
+    }
+    return { ...base, battlefield: [...battlefield, ...extra] }
+  }
+
+  for (const viewport of [
+    { name: '1920×1080', width: 1920, height: 1080 },
+    { name: '640×360', width: 640, height: 360 },
+  ]) {
+    test(`draws all forty of them, unscrolled, at ${viewport.name}`, async ({ page }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height })
+      await serveFrames(page, [crowded()])
+      await page.goto('/')
+      await expect(page.getByRole('region', { name: 'Actions' })).toBeVisible()
+
+      const fields = page.getByRole('region', { name: /battlefield$/ })
+      await expect(fields).toHaveCount(2)
+
+      // Every permanent has a box — an object with none can be identified by no gesture, and it
+      // is what the relationship overlay looks for (#663).
+      for (const field of await fields.all()) {
+        await expect(field.getByRole('listitem')).toHaveCount(20)
+      }
+
+      // And the field holds them. Not "scrolls to them": there is no scrollable ancestor and no
+      // overflow to reach, at three times the count the box was laid out for.
+      expect(
+        await fields.evaluateAll((roots) =>
+          roots
+            .filter(
+              (root) =>
+                root.scrollWidth > root.clientWidth + 1 ||
+                root.scrollHeight > root.clientHeight + 1,
+            )
+            .map(
+              (root) =>
+                `${root.scrollWidth}×${root.scrollHeight} in ${root.clientWidth}×${root.clientHeight}`,
+            ),
+        ),
+      ).toEqual([])
+
+      // Each of them still says which card it is. The visible name may be abbreviated on the
+      // board (§6) and it may be partly covered by the tile after it; what it may never be is
+      // absent, and the whole name is on the tile for a screen reader either way.
+      const named = await fields
+        .first()
+        .getByRole('listitem')
+        .evaluateAll((tiles) =>
+          tiles.map((tile) => (tile.querySelector('.card__name')?.textContent ?? '').trim()),
+        )
+      expect(named).toHaveLength(20)
+      expect(named.filter((name) => name === '')).toEqual([])
+    })
+  }
+})
 
 /**
  * The one exemption §3 grants, stated where it can be seen rather than left to a selector.

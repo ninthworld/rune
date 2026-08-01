@@ -1120,6 +1120,18 @@ test.describe('the keyboard, and what the frame draws', () => {
 })
 
 test.describe('a battlefield with rows', () => {
+  /**
+   * A viewport whose field can afford a row of card faces per group.
+   *
+   * This board has three — creatures, a planeswalker, and the land added below — and
+   * `docs/client-design.md` §3 merges the rows rather than drawing three that cannot each hold a
+   * face: "the choice is between a merged row of readable cards and two rows of chips. The card
+   * wins." So the *grouping* is asserted where the grouping is what the ladder draws, which is
+   * the question these two tests are about; that it merges when the room runs out is `pack.ts`'s
+   * own suite, and that it never scrolls either way is `scale.views.spec.ts`.
+   */
+  const ROOMY = { width: 1920, height: 1080 }
+
   /** The board fixture, with a land added — no committed board has one to group. */
   const withLand = () => {
     const base = fixture('gameview.json')
@@ -1142,6 +1154,7 @@ test.describe('a battlefield with rows', () => {
   }
 
   test('separates lands from creatures, from the types the server stated', async ({ page }) => {
+    await page.setViewportSize(ROOMY)
     await serveFrames(page, [withLand()])
     await page.goto('/')
 
@@ -1158,6 +1171,7 @@ test.describe('a battlefield with rows', () => {
   test('draws creatures nearest the middle of the table, on both halves', async ({ page }) => {
     // So the two sets of creatures face each other across the dividing line and combat reads as
     // one band rather than two lists that happen to be stacked.
+    await page.setViewportSize(ROOMY)
     await serveFrames(page, [withLand()])
     await page.goto('/')
 

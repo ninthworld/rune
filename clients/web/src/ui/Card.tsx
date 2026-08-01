@@ -28,7 +28,7 @@
 import { useCallback, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
 
 import type { CardFace, CardFaceLink, CardFaceState } from './../card-face'
-import { cardPlan, type Box } from './../fit'
+import { cardPlan, type Box, type Presentation } from './../fit'
 import { costTint } from './../mana'
 import { anchorProps } from './../overlay'
 import { useCardArt } from './art'
@@ -191,7 +191,7 @@ export function Card({
       <span
         className="card__name"
         title={face.name}
-        style={nameStyle(plan.name.size, plan.name.lines)}
+        style={nameStyle(plan.name.size, plan.name.lines, plan.presentation)}
         aria-hidden={plan.name.abbreviated || undefined}
       >
         {plan.name.text}
@@ -356,13 +356,20 @@ export function Card({
 }
 
 /**
- * The name's own type, and the number of lines it was fitted into.
+ * The name's own type, and — on a chip alone — the number of lines it was fitted into.
  *
- * The line count is a *height*, not a clamp: `fit.ts` over-estimates how wide text draws, so a
- * name planned for two lines takes at most two, and a browser that disagrees by a hair loses a
- * pixel of the band rather than the end of a word.
+ * The clamp used to be everywhere, on the reasoning that a browser disagreeing with `fit.ts`'s
+ * estimate by a hair should lose a pixel of the band. What it actually loses is the **line**: an
+ * estimate a percent optimistic makes `Colossal Dreadmaw` wrap where one line was planned, and a
+ * one-line clamp then hides the second line entirely — the card reads `Colossal`, which is the
+ * `C…` defect wearing different clothes. So a card face lets the band take the line it needs and
+ * the art window gives way, which is the trade §6 states outright: art is the one element that
+ * degrades to nothing without costing a fact.
+ *
+ * A chip keeps the clamp, because it has no art window to give and its whole box is one 30px
+ * row: there, a second line has nowhere to come from.
  */
-const nameStyle = (size: number, lines: number): CSSProperties => ({
+const nameStyle = (size: number, lines: number, presentation: Presentation): CSSProperties => ({
   fontSize: `${size}px`,
-  maxHeight: `${Math.ceil(size * 1.2) * lines}px`,
+  ...(presentation === 'chip' ? { maxHeight: `${Math.ceil(size * 1.2) * lines}px` } : {}),
 })

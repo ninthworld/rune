@@ -81,7 +81,10 @@ test.describe('a card says what it is', () => {
   })
 
   test('degrades a type line to a whole word rather than to an ellipsis', async ({ page }) => {
-    await page.setViewportSize(SHORT)
+    // A phone in portrait rather than the Short band: at Short every tile on the board and in
+    // the hand is a chip, and a chip has no type line to degrade (§6). This is the smallest box
+    // that still draws one — the 72×100 tile — which is where the degrading is worth asserting.
+    await page.setViewportSize({ width: 390, height: 844 })
     await serveFrames(page, [fixture('gameview.json')])
     await page.goto('/')
     await expect(page.getByRole('region', { name: 'Your hand' })).toBeVisible()
@@ -116,8 +119,11 @@ test.describe('a card says what it is', () => {
 
   test('fits a complete name, a type line, and a P/T into a 72×100 tile', async ({ page }) => {
     // At this viewport the permanent tile is at the §5 minimum — the box XMage fits all five of
-    // these into, and the bar the whole redraw is measured against.
-    await page.setViewportSize({ width: 960, height: 600 })
+    // these into, and the bar the whole redraw is measured against. A phone in portrait is where
+    // that box now turns up: the tile is packed from the room the field has and the number of
+    // permanents in it (`pack.ts`), so the minimum is reached where the room runs out rather
+    // than wherever a viewport-derived token happened to bottom out.
+    await page.setViewportSize({ width: 390, height: 844 })
     await serveFrames(page, [fixture('gameview.json')])
     await page.goto('/')
 

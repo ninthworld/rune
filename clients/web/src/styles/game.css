@@ -583,43 +583,51 @@ main:has(.screen) {
    board does not watch its own permanents jump to a new size and a new place, and a seat playing
    its first creature does not shove the other half of the table upward. An empty half of the
    table is how "my opponent has nothing" is read — there is no sentence in it saying so, because
-   a sentence would cost a card row's height to state what the empty place already states. */
+   a sentence would cost a card row's height to state what the empty place already states.
+
+   **Nothing in here is laid out by flow.** `pack.ts` decides every row's box and every tile's
+   place inside it from the room the scene gave the field and the number of permanents in it, and
+   both arrive as inline styles — so a count is absorbed by the cards (§5) instead of by a
+   scrollbar, and there is no padding here to eat into the two rows of card floor the scene
+   budgeted. */
 .field {
-  display: flex;
-  flex-direction: column;
+  position: relative;
   min-height: 0;
   min-width: 0;
-  padding: 0.3rem 0.4rem;
   border-radius: 0.4rem;
   overflow: hidden;
 }
 
-/* A row of one kind of permanent. Separated by space rather than by a rule, because a board
-   already has enough lines on it and the grouping is legible from the gap alone. The rows are
-   mirrored across the table (`board.ts`), so both sets of creatures meet at the dividing line.
+/* A row of one kind of permanent, at the box the packing gave it. Separated by space rather than
+   by a rule, because a board already has enough lines on it and the grouping is legible from the
+   gap alone — and because a border inside a placed box is a pixel taken out of the tile it holds.
+   The rows are mirrored across the table (`board.ts`), so both sets of creatures meet at the
+   dividing line.
 
-   `flex: none`, so a row keeps the height its cards need and the *field* is what runs out. A
-   shrinking row is the old defect in miniature: the row gives way, the cards inside it do not,
-   and a creature row ends up drawn over the land row under it. Where there is not enough field
-   for the rows in it the bottom one is cut off — which is what a box with no packing in it yet
-   looks like, and is #660's to make unnecessary. */
+   `isolation`, so the stacking a fanned row needs — each tile over the one before it, exposing
+   the name band (§3, step 4) — stays inside the row. Without it a card would climb over the
+   relationship lines drawn across the whole table. */
 .field__row {
+  position: absolute;
   margin: 0;
-  min-height: 0;
-  flex: none;
+  padding: 0;
+  display: block;
+  isolation: isolate;
 }
 
-.field__row + .field__row {
-  margin-block-start: 0.35rem;
-  padding-block-start: 0.35rem;
-  border-block-start: 1px dashed color-mix(in srgb, currentColor 14%, transparent);
+/* One permanent, placed. `absolute` is what takes the geometry out of the content's hands: a tile
+   is exactly the card, and the trail that used to hang under it — 233px of
+   `blocked by Colossal Dreadmaw Zombie` around a 108px card — is in the document rather than in
+   the layout. */
+.field__row > li {
+  position: absolute;
+  display: block;
 }
 
-/* Lands are the row a player scans past, not the row they read, so they take less height and
-   sit quieter. Nothing is hidden: a land is the same frame at the same tier, and hovering it
-   previews the whole face like anything else. */
+/* Lands are the row a player scans past, not the row they read, so they sit quieter. Nothing is
+   hidden: a land is the same frame at the same tier and the same size, because a row that drew
+   its cards smaller would be a row deciding what a player is looking for. */
 .field__row--lands {
-  --card-field-w: clamp(4.5rem, 8vh, 5.4rem);
   opacity: 0.92;
 }
 
