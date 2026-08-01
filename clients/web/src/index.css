@@ -528,10 +528,98 @@ main:has(.screen) {
   margin: 0;
 }
 
+/* Turn, seats, and status on one row where the width allows, so the strip below is the second
+   line of the header rather than the fifth. */
+.match__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.75rem;
+  row-gap: 0.1rem;
+}
+
 .match__state {
   margin: 0.1rem 0 0;
   font-size: 0.8rem;
   opacity: 0.85;
+}
+
+.match__who + .match__who::before {
+  content: ' · ';
+}
+
+/* The one line that answers "why is nothing happening". It sits at the end of the header row and
+   is the only text there that is allowed to shout. */
+.match__status {
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
+  margin-inline-start: auto;
+}
+
+.match__status--yours {
+  font-weight: 700;
+}
+
+.match__status--waiting,
+.match__status--sent {
+  opacity: 0.75;
+}
+
+/* The twelve steps of a turn, in order, each of them also its own stop control. */
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+}
+
+.strip__step {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 0.2rem;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.strip__step:hover,
+.strip__step:focus-visible {
+  opacity: 1;
+}
+
+/* Where the game is. Reads first, from across the desk. */
+.strip__step--now {
+  opacity: 1;
+  font-weight: 700;
+  border-color: currentColor;
+  border-width: 2px;
+  padding-block: calc(0.1rem - 1px);
+}
+
+/* Where the settle acted for you, this turn. Underlined rather than filled, so a step can be
+   both passed and stopped-at-next-time without the two marks fighting. */
+.strip__step--passed {
+  text-decoration: underline dotted;
+  text-underline-offset: 0.15rem;
+}
+
+.strip__step--stop-own,
+.strip__step--stop-always {
+  opacity: 1;
+  border-color: color-mix(in srgb, currentColor 60%, transparent);
+}
+
+.strip__mark {
+  font-size: 0.6rem;
+  opacity: 0.8;
 }
 
 .match__notice {
@@ -846,4 +934,73 @@ main:has(.screen) {
   max-height: none;
   overflow-y: visible;
   padding-inline-start: 1.1rem;
+}
+
+.side__note {
+  margin: 0 0 0.25rem;
+  opacity: 0.8;
+}
+
+/* A column of sentences is read by scanning, so the classes are about weight and division and
+   nothing else. A step change is where one turn ends and the next begins; a result is the last
+   thing that will ever be said. */
+.log__entry--step {
+  margin-inline-start: -1.1rem;
+  list-style: none;
+  font-weight: 700;
+  padding-block-start: 0.25rem;
+  border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+}
+
+.log__entry--step:first-child {
+  border-top: none;
+  padding-block-start: 0;
+}
+
+.log__entry--life,
+.log__entry--combat {
+  font-weight: 600;
+}
+
+.log__entry--zone,
+.log__entry--choice,
+.log__entry--other {
+  opacity: 0.8;
+}
+
+.log__entry--result {
+  font-weight: 700;
+}
+
+/* The end of the match, over the board it is about. */
+.result__outcome {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.result__reason,
+.result__losers,
+.result__controls,
+.result__note {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.result__note {
+  opacity: 0.7;
+}
+
+.dock__confirm {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid currentColor;
+  border-radius: 0.3rem;
+}
+
+.dock__confirm p {
+  margin: 0 0 0.35rem;
+}
+
+.dock__confirm p:last-child {
+  margin-bottom: 0;
 }

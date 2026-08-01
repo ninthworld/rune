@@ -20,12 +20,20 @@
  *
  * A refresh mid-game therefore produces this same screen from the next frame the server sends,
  * minus an open inspector and minus a click in flight.
+ *
+ * The transport is the second thing that crosses a message boundary, and it crosses in one
+ * direction only: a new socket ends every correlation this screen was holding, because the server
+ * drops a seat's `action_ack` when it reconnects. That is the whole of what reconnection means
+ * here — the view is replaced by the server's, and the wait for an answer that is no longer
+ * coming is dropped.
  */
 import { useState } from 'react'
 
-import type { ClientMessage, GameView, ValidAction } from './../protocol'
+import type { ClientMessage, GameView, Phase, ValidAction } from './../protocol'
 import { list, playerLabel } from './../normalize'
 import { seats, type SeatPile } from './../table'
+import { withStop, type StopScope } from './../turn'
+import type { ConnectionStatus } from './../socket'
 import {
   cardFace,
   emblemFace,
@@ -38,11 +46,14 @@ import { relationLines, relations } from './../relations'
 import {
   IDLE,
   arm,
+  ask,
   fill,
   focus,
   gestureFor,
   highlightFor,
   needsChoices,
+  needsConfirmation,
+  release,
   select,
   settle,
   submitted,
@@ -54,6 +65,7 @@ import { ActionDock } from './game/ActionDock'
 import { Battlefield, type FieldEntry } from './game/Battlefield'
 import { Hand } from './game/Hand'
 import { MatchHeader } from './game/MatchHeader'
+import { MatchResult } from './game/MatchResult'
 import { PlayerPanel } from './game/PlayerPanel'
 import { SidePanel, type OpenZone } from './game/SidePanel'
 import { StackRail } from './game/StackRail'
@@ -63,7 +75,20 @@ import type { Surface } from './game/surface'
 let submissionCounter = 0
 const nextSubmissionId = (): string => `s:${++submissionCounter}`
 
-export function Game({ view, send }: { view: GameView; send(message: ClientMessage): void }) {
+export function Game({
+  view,
+  connection,
+  epoch,
+  send,
+  leave,
+}: {
+  view: GameView
+  connection: ConnectionStatus
+  /** How many sockets this tab has opened; a change means everything in flight was lost. */
+  epoch: number
+  send(message: ClientMessage): void
+  leave(): void
+}) {
   const label = (id: string) => playerLabel(view, id)
 
   // The inspector remembers an **id**, never a face. Faces are rebuilt from whatever view
@@ -81,13 +106,30 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
   // when the next frame paints, and an id that has left the view simply relates to nothing.
   const [hovering, setHovering] = useState<string | undefined>(undefined)
   const [interaction, setInteraction] = useState<Interaction>(IDLE)
+  // Whether the player has pushed the result panel aside to read the final board. Purely
+  // presentation, and safe to hold across views: a game ends once, and the header keeps saying
+  // so for as long as the view does.
+  const [dismissed, setDismissed] = useState(false)
 
   // Settled during render rather than in an effect, so the frame that carries a new view is
   // never painted with the previous view's draft still in the dock.
   const [seen, setSeen] = useState(view)
   if (seen !== view) {
     setSeen(view)
-    setInteraction(settle(interaction, view.action_ack))
+    // Updated from the current value rather than the one this render closed over, so a view and
+    // a reconnect landing together compose instead of one overwriting the other.
+    setInteraction((current) => settle(current, view.action_ack))
+  }
+
+  // A new socket is the end of every correlation this client was holding: the server drops a
+  // seat's `action_ack` when it reconnects (`docs/protocol.md`), so an ack that would have
+  // answered the click in flight is never coming. Waiting on it forever would leave the dock
+  // blocked on a reply that no longer exists, so the wait is released and the fresh view the
+  // reconnect brings is the answer to what actually happened.
+  const [seenEpoch, setSeenEpoch] = useState(epoch)
+  if (seenEpoch !== epoch) {
+    setSeenEpoch(epoch)
+    setInteraction(release)
   }
 
   const actions = list(view.valid_actions)
@@ -148,15 +190,26 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
     )
   }
 
-  /** Start an action: one click when it asks nothing, a draft when it does. */
+  /**
+   * Start an action: one click when it asks nothing, a draft when it does, two when it ends the
+   * game. Reaching an action that wants confirming *while it is the one being confirmed* is the
+   * second click, which is why the same handler both asks and answers.
+   */
   const take = (action: ValidAction) => {
     if (interaction.pending) return
+    if (needsConfirmation(action) && interaction.confirming !== action.id) {
+      setInteraction(ask(interaction, action))
+      return
+    }
     if (needsChoices(action)) {
       setInteraction(arm(interaction, action))
       return
     }
     dispatch(action, {})
   }
+
+  /** Set where the game will hand this seat priority. Server-stored, so nothing is kept here. */
+  const setStop = (phase: Phase, scope: StopScope) => send(withStop(view, phase, scope))
 
   const confirm = () => {
     const current = focus(actions, interaction)
@@ -221,7 +274,14 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
 
   return (
     <div className="screen">
-      <MatchHeader view={view} label={label} />
+      <MatchHeader
+        view={view}
+        label={label}
+        sent={interaction.pending?.label}
+        eliminated={local?.eliminated === true}
+        connection={connection}
+        onStop={setStop}
+      />
 
       <div className="table">
         <div className="table__side table__side--opponent">
@@ -286,10 +346,20 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
         surface={surface}
       />
 
-      {/* Last in the tree so it layers over the table without any surface below it needing to
-          know it exists. `inspected` is looked up in this frame's faces, so an object that has
+      {/* Last in the tree so they layer over the table without any surface below them needing to
+          know they exist. `inspected` is looked up in this frame's faces, so an object that has
           left the view simply stops resolving and the panel closes itself. */}
       {inspected && <CardInspector face={inspected} onClose={() => setInspecting(undefined)} />}
+
+      {view.result && !dismissed && (
+        <MatchResult
+          result={view.result}
+          label={label}
+          you={view.you}
+          onLeave={leave}
+          onDismiss={() => setDismissed(true)}
+        />
+      )}
     </div>
   )
 }

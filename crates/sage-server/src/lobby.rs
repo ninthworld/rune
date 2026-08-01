@@ -661,7 +661,11 @@ impl Lobby {
         session.outbox = fresh.outbox;
         session.generation += 1;
         let generation = session.generation;
-        push_view(&registry, &target);
+        // A seat whose game is still running is handed straight back to it (issue #628); every
+        // other reclaimed session is answered with its lobby view, as it always was.
+        if !push_resume(&registry, &target) {
+            push_view(&registry, &target);
+        }
         info!(token = %target, "connection reclaimed a held seat via session token");
         SessionHandle {
             token: target,

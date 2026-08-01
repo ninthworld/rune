@@ -195,6 +195,46 @@ pub(crate) fn push_view(registry: &Registry, token: &SessionToken) {
     }
 }
 
+/// Put a **reconnecting** seated session back on the in-game contract (issue #628).
+///
+/// A seat is held open across a disconnect, and the game it belongs to keeps playing without
+/// it. So a connection that proves ownership of that seat must be handed back to the room
+/// rather than answered with a lobby view: [`push_view`] deliberately sends nothing to a
+/// started seat, which — before this — left a reconnecting player on a silent socket with no
+/// way back to their own game.
+///
+/// The hand-off is exactly the one the ready gate performs, and it is the only thing that
+/// needs to be the same: the bridge joins the room, the room brings the seat current with a
+/// full [`GameView`](sage_protocol::GameView), and the complete-view principle makes resuming
+/// indistinguishable from arriving. Nothing is replayed and no history is kept.
+///
+/// Returns whether the session was seated in a live game — the caller pushes an ordinary view
+/// when it was not.
+pub(crate) fn push_resume(registry: &Registry, token: &SessionToken) -> bool {
+    let Some(session) = registry.sessions.get(token) else {
+        return false;
+    };
+    let (Some(room_id), Some(seat)) = (session.room.as_ref(), session.seat) else {
+        return false;
+    };
+    // `is_active` and not merely `is_some`: a finished game's task has stopped, so its handle
+    // would accept a join that nothing ever answers. That seat belongs to the lobby again.
+    let Some(handle) = registry
+        .rooms
+        .get(room_id)
+        .and_then(|room| room.game.as_ref())
+        .filter(|handle| handle.is_active())
+    else {
+        return false;
+    };
+    let _ = session.outbox.send(Some(LobbySignal::Start {
+        seat,
+        room: handle.clone(),
+    }));
+    info!(%token, seat, "reconnected seat handed back to its game");
+    true
+}
+
 /// Push a fresh [`LobbyView`] to every occupant of a room (their shared roster
 /// changed).
 pub(crate) fn push_room(registry: &Registry, room_id: &RoomId) {

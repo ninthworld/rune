@@ -52,7 +52,14 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   knows nothing about being blocked — so the reverse is derived here once rather than by each
   surface scanning the battlefield. Every edge is a stated id; nothing is concluded from rules
   text or the log.
-- `src/game-log.ts` — the wording for one log event. Events carry data, never prose.
+- `src/turn.ts` — turn flow: the steps of a turn, who the game is waiting for, where it will
+  stop for this seat next time, and what a settle already did on their behalf. The stop controls
+  read the *effective* lists the server reflects and send back the whole preference, because
+  `set_stops` replaces it and is never a delta — nothing about a stop is stored client-side. A
+  settle's path may cross a turn boundary, so only entries whose `turn` matches the view's may
+  mark a step in it.
+- `src/game-log.ts` — the wording for one log event, and the class of thing it is so a column of
+  sentences can be scanned. Events carry data, never prose.
 - `src/submission.ts` — composes one `choose_action`. Bookkeeping over slots the server
   advertised, never rules reasoning.
 - `src/interaction.ts` — what one click *means*: which objects own an action, which slot a click
@@ -61,7 +68,14 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   subject → inspect), so the hand, the board, and a pile cannot behave differently. A click is
   routed to the slot the server listed that id in, never to a cursor the client advances — that
   is what lets one action ask "who attacks" and "what does each attack" at the same time.
-- `src/socket.ts`, `src/useSession.ts` — the connection, and the latest frame it delivered.
+- `src/socket.ts`, `src/useSession.ts` — the connection, and the latest frame it delivered. A
+  dropped socket retries on its own and says `hello` with the stored token, which is what
+  reclaims a held-open seat; the server answers by putting the connection back on whatever
+  contract that seat is on, so a reconnect mid-game may deliver no `LobbyView` at all. **The
+  token is claimed once and then defended** — a fresh socket is issued its own identity before
+  its `hello` is read, so a lobby frame carrying a different session is routine during a
+  reconnect and adopting it would discard the token that owns the seat. Leaving a finished game
+  is the deliberate opposite: forget the token, and connect as somebody new.
 - `src/ui/` — the screens. Grey-box on purpose: structure and legibility, no visual design.
   `src/ui/game/` holds the table surfaces — header, seat panels, the two battlefields, the
   stack rail, hand, action dock, side panel. `Game.tsx` composes them and derives what they
@@ -75,7 +89,10 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   looking at an object emphasises what it relates to — tracing follows the *look*, not the
   click, because the objects most worth tracing own no action and a click on one opens the
   inspector over the board the relationship crosses. Public piles open beside the table, never
-  over it; a hidden zone is a count with nothing to open.
+  over it; a hidden zone is a count with nothing to open. The header carries the whole turn as a
+  row of steps, and that row is also where stops are set — a preference divorced from the strip
+  it applies to is one nobody edits. The end of a match is the one panel that layers over the
+  board, and the one action asked twice before it is sent.
 - `e2e/smoke.spec.ts` — the blocking gate: one path against the real server.
 - `e2e/*views.spec.ts` — the non-blocking tier: committed fixtures replayed over an
   intercepted socket, no server involved. More than one file, sharing `e2e/frames.ts`; the

@@ -8,6 +8,7 @@ import {
   IDLE,
   actionsFor,
   arm,
+  ask,
   clear,
   fill,
   focus,
@@ -15,12 +16,14 @@ import {
   globalActions,
   highlightFor,
   needsChoices,
+  needsConfirmation,
   release,
   select,
   settle,
   slotsOf,
   submitted,
   subjects,
+  unask,
   type Interaction,
 } from './interaction'
 
@@ -274,5 +277,45 @@ describe('backing out', () => {
   it('clears everything but what is already in flight', () => {
     const waiting = submitted(armed('a2'), { submission: 's:1', actionId: 'a2', label: 'Cast' })
     expect(clear(waiting)).toEqual({ draft: {}, pending: waiting.pending })
+  })
+})
+
+describe('asking twice', () => {
+  const concede: ValidAction = { id: 'a9', type: 'concede', label: 'Concede' }
+
+  it('asks about conceding and about nothing else', () => {
+    expect(needsConfirmation(concede)).toBe(true)
+    for (const action of ACTIONS) expect(needsConfirmation(action)).toBe(false)
+  })
+
+  it('does not qualify a category this build has never heard of', () => {
+    // Failing towards the ordinary path: a newer server's action is taken on one click, as
+    // every action was before this existed, rather than silently becoming unusable.
+    expect(needsConfirmation({ id: 'a9', type: 'ritual_sacrifice', label: 'Something new' })).toBe(
+      false,
+    )
+  })
+
+  it('sends nothing while the question is open', () => {
+    const asked = ask(IDLE, concede)
+    expect(asked.confirming).toBe('a9')
+    expect(asked.draft).toEqual({})
+    expect(asked.pending).toBeUndefined()
+  })
+
+  it('treats every other move as a no', () => {
+    const asked = ask(IDLE, concede)
+    expect(unask(asked).confirming).toBeUndefined()
+    expect(select(asked, 'c_forest').confirming).toBeUndefined()
+    expect(arm(asked, byId('a2')).confirming).toBeUndefined()
+    expect(clear(asked).confirming).toBeUndefined()
+    // And a new view, which withdraws the question along with everything else built against
+    // the view it was asked on.
+    expect(settle(asked, undefined).confirming).toBeUndefined()
+  })
+
+  it('keeps the selection, so backing out lands where the player was', () => {
+    const asked = ask(select(IDLE, 'perm_17'), concede)
+    expect(unask(asked).selected).toBe('perm_17')
   })
 })

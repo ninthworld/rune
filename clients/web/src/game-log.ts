@@ -6,9 +6,57 @@
  * presentation decision — but it means an event kind this build has never heard of has no
  * wording at all. Such an entry says so, rather than being dropped or guessed at: a log with a
  * silent hole in it is worse than one that admits to a gap.
+ *
+ * Each entry also carries a **class** of thing that happened, so a column of sentences can be
+ * scanned rather than read line by line. It is a grouping for the eye and nothing more: a step
+ * change divides the log into turns, and damage, deaths, and the result stand out from the
+ * traffic around them. Nothing downstream may draw a rules conclusion from it.
  */
 import type { GameLogEvent } from './protocol'
-import { phaseLabel } from './table'
+import { phaseLabel } from './turn'
+
+/**
+ * What kind of thing an entry is, for reading the column at a glance.
+ *
+ * `other` is reserved for an event this build has never heard of — every event the mirror
+ * declares gets a real class, which `game-log.test.ts` holds it to.
+ */
+export type LogKind = 'step' | 'spell' | 'combat' | 'life' | 'zone' | 'choice' | 'result' | 'other'
+
+export function kindOf(event: GameLogEvent): LogKind {
+  switch (event.type) {
+    case 'step_changed':
+      return 'step'
+    case 'spell_cast':
+    case 'spell_resolved':
+    case 'spell_countered':
+    case 'spell_fizzled':
+      return 'spell'
+    case 'attackers_declared':
+    case 'blockers_declared':
+      return 'combat'
+    case 'life_changed':
+    case 'damage_dealt':
+      return 'life'
+    case 'cards_drawn':
+    case 'cards_milled':
+    case 'cards_discarded':
+    case 'library_searched':
+    case 'permanent_died':
+    case 'commander_returned_to_command_zone':
+      return 'zone'
+    case 'mulligan':
+    case 'hand_kept':
+    case 'optional_applied':
+    case 'optional_declined':
+      return 'choice'
+    case 'player_eliminated':
+    case 'game_over':
+      return 'result'
+    default:
+      return 'other'
+  }
+}
 
 export function describe(event: GameLogEvent, playerName: (id: string) => string): string {
   switch (event.type) {

@@ -1405,6 +1405,68 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn issue_628_a_reconnect_into_a_live_game_is_handed_back_to_it() {
+        // A seat is held open across a disconnect and its game keeps playing, so the
+        // connection that proves it owns that seat has to be put back on the in-game
+        // contract. Answering it with a lobby view cannot work — `push_view` deliberately
+        // sends a started seat nothing — which left a reconnecting player on a silent socket
+        // with no way back into their own match.
+        let lobby = Lobby::bundled_with_overrides(4, Some(0x5EED), None).expect("bundled cards");
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+            )
+            .await
+            .expect("alice creates");
+        let _ = alice.view().await;
+        submit_valid_deck(&lobby, &alice).await;
+        lobby
+            .command(&alice.token, LobbyCommand::Ready(Ready { ready: true }))
+            .await
+            .expect("alice readies");
+        lobby
+            .command(&alice.token, add_random_ai(1))
+            .await
+            .expect("host seats the AI and the game starts");
+        assert!(alice.started(), "the game started");
+
+        // The socket drops. The seat is held, not vacated.
+        lobby.disconnect(&alice.handle()).await;
+
+        // A new socket presents the token. It is handed the same room and the same seat.
+        let returning = Client::reconnect(&lobby, Some(alice.token.clone())).await;
+        assert_eq!(returning.token, alice.token, "reclaimed the held session");
+        assert!(
+            returning.started(),
+            "a reconnect into a live game is a hand-off, not a lobby view"
+        );
+        assert_eq!(returning.start_seat(), Some(0));
+
+        // And the hand-off is usable: joining brings the seat current with a whole view,
+        // which is the entire content of "resume" (the complete-view principle).
+        let handle = returning.start_handle().expect("the running room");
+        let (tx, mut rx) = watch::channel::<Option<sage_protocol::GameView>>(None);
+        assert!(handle.send(crate::RoomInput::Join {
+            seat: 0,
+            outbox: tx
+        }));
+        let resumed = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                if let Some(view) = rx.borrow_and_update().clone() {
+                    return view;
+                }
+                rx.changed().await.expect("the room answers a join");
+            }
+        })
+        .await
+        .expect("the reconnected seat is brought current");
+        assert_eq!(resumed.you, "p0");
+    }
+
+    #[tokio::test]
     async fn player_names_project_into_the_game_view_at_game_start() {
         // Issue #294: names set in the lobby reach the constructed game, keyed by the
         // `p{N}` player id, so every in-game surface can label players.
