@@ -46,6 +46,12 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   the discriminators are structural and order-sensitive; the rules are the protocol's.
 - `src/normalize.ts` — turns wire absence into values a renderer can use. Every documented
   default lives here, so no component invents its own reading of a missing field.
+- `src/scene.ts` — the arrangement: a viewport and the counts go in, and every region's box comes
+  out, absolutely positioned. It is `docs/client-design.md` as arithmetic — §4's bands, §3's
+  ladder, §5's allocation — and it is pure, so every band is testable without a browser. **No
+  output of it can express overflow**: there is no field for it, and when the regions do not fit
+  the ladder tightens until they do. An empty region is charged nothing, which is how a seat with
+  no permanents hands its height to the seat that has them.
 - `src/board.ts` — a battlefield, as rows. Groups permanents into creatures, other permanents,
   and lands from `CardView.card_types`, which the **server** states beside the type line it
   renders (`docs/protocol.md`) precisely so nothing here parses `"Artifact Creature — Thopter"`.
