@@ -21,9 +21,11 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   client does not know. Parsing strips them rather than failing — which is why the parity test
   asserts a parsed fixture equals the fixture, so a field the mirror is *missing* fails loudly
   instead of vanishing.
-- **Never run `playwright install`.** Consume the preinstalled browser via
-  `PLAYWRIGHT_BROWSERS_PATH` with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`, pinning
-  `executablePath` when the pinned package disagrees with the image (ADR 0011).
+- **One browser, named by the pin.** `make e2e-browser` provisions the revision the pinned
+  `@playwright/test` asks for — idempotent, and a no-op where it already exists (the CI
+  container). Never fetch an *unpinned* browser (`playwright@latest`, a caret range, a
+  hand-picked revision) and never pin an `executablePath`: either lets a local run and CI
+  drive different binaries, which is the failure ADR 0011 is about.
 - One layout: desktop landscape, mouse and keyboard, two players. Plain DOM and CSS, no WebGL.
   Responsive breakpoints, touch input, and more than two seats are not in scope — adding them
   early is how the last three layouts happened.

@@ -1,4 +1,4 @@
-.PHONY: verify check client-check client-install e2e e2e-smoke e2e-views engine-test engine-lint engine-fmt compat deny setup
+.PHONY: verify check client-check client-install e2e e2e-browser e2e-smoke e2e-views engine-test engine-lint engine-fmt compat deny setup
 
 # The complete local pre-merge gate: everything required before a PR merges into
 # `main`. Composes the existing targets 1:1 with the required GitHub checks, so
@@ -40,17 +40,34 @@ client-install:
 client-check: client-install
 	cd clients/web && npm run format:check && npm run lint && npm run typecheck && npm test && npm run build
 
-# Browser end-to-end (ADR 0011). Never runs `playwright install`: the browser is
-# whatever the image already provides, resolved in playwright.config.ts.
+# Browser end-to-end (ADR 0011).
 #
 # `e2e-smoke` is the blocking gate — one thin path against the real server, kept
 # small enough that its runtime is never an argument for deleting it.
 # `e2e-views` is the broad, non-blocking tier: committed fixtures replayed over
 # an intercepted socket, no server involved.
-e2e-smoke: client-install
+
+# The one browser every environment runs, and the whole of how the three stay
+# identical: `playwright install` reads the revision out of the *installed*
+# `playwright-core` and fetches exactly that, so the exactly-pinned
+# `@playwright/test` in package.json decides the browser and nothing else does.
+#
+# It is idempotent and it is a no-op wherever the browser is already present —
+# which includes the official CI container, whose browsers sit at
+# `$PLAYWRIGHT_BROWSERS_PATH` at the revision that same pin names. So CI still
+# downloads nothing, and a laptop or an agent sandbox gets the identical build
+# once and caches it.
+#
+# Never run `playwright install` *unpinned* (`npx playwright@latest`, a caret
+# range, a hand-picked revision): that is what fetches a browser the driver did
+# not ask for, and it is the failure ADR 0011 names.
+e2e-browser: client-install
+	cd clients/web && npx playwright install chromium
+
+e2e-smoke: e2e-browser
 	cd clients/web && npm run build && npm run e2e:smoke
 
-e2e-views: client-install
+e2e-views: e2e-browser
 	cd clients/web && npm run build && npm run e2e:views
 
 e2e: e2e-views e2e-smoke ## Both browser tiers

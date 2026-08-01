@@ -23,9 +23,11 @@ Three specific costs have to be engineered against:
    changes that cannot possibly break the client.
 2. **Iteration time.** If the only way to see a result is a full install-build-serve-run
    cycle, the edit loop is dominated by waiting, and the suite stops being run locally at all.
-3. **Playwright/Chromium version mismatch.** Playwright wants to download a browser matched to
-   its version; the environment already has one. Left alone, this fails in CI or silently
-   tests a different browser than the image provides.
+3. **Playwright/Chromium version mismatch.** Playwright drives one browser revision, named by
+   the driver version. Left alone this fails outright where no browser exists, and — worse —
+   silently tests a *different* browser wherever one exists at another revision. The suite
+   runs in three places (a maintainer's terminal, an agent sandbox, the CI container), and a
+   gate that reports differently in any of them is not a gate.
 
 The project's own rules also constrain the design. The client holds **zero game logic** and
 the entire UI is reconstructable from **one `GameView` plus a pending prompt**, so client
@@ -37,18 +39,37 @@ privileged test seam into client internals is required.
 
 SAGE keeps one browser-level end-to-end suite, designed to be cheap enough to stay.
 
-### Runner: Playwright driving the preinstalled Chromium
+### Runner: Playwright driving the revision its own pin names
 
-Tests are written with **Playwright**, driving the **Chromium already installed in the
-image**. Playwright is the standard for browser automation, has auto-waiting that suppresses
-a large class of timing flakes, and ships a trace viewer for debugging CI failures. One
-pinned browser, no matrix: the value here is integration coverage, not cross-browser
-compatibility.
+Tests are written with **Playwright**. It is the standard for browser automation, has
+auto-waiting that suppresses a large class of timing flakes, and ships a trace viewer for
+debugging CI failures. One browser, no matrix: the value here is integration coverage, not
+cross-browser compatibility.
 
-**Never run `playwright install`** — not in CI, not in an agent session. Consume the
-preinstalled browser via `PLAYWRIGHT_BROWSERS_PATH` with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`,
-and pin an explicit `executablePath` when the pinned `@playwright/test` disagrees with the
-image. This is the mitigation for cost 3 and is not optional.
+**The pin decides the browser, and nothing else does.** `@playwright/test` is pinned exactly
+(no caret) in `clients/web/package.json`; `make e2e-browser` runs `playwright install
+chromium`, which reads the revision out of the *installed* `playwright-core` and fetches
+precisely that. It is idempotent, and a no-op wherever the revision is already present —
+including the official CI container, whose browsers sit at `$PLAYWRIGHT_BROWSERS_PATH` at the
+revision that same pin names. So CI downloads nothing, a laptop and an agent sandbox each
+fetch the identical build once and cache it, and all three drive the same binary. That is the
+mitigation for cost 3 and it is not optional.
+
+Two things stay forbidden, and they are the actual hazard:
+
+- **Fetching an unpinned browser** — `npx playwright@latest install`, a caret range, a
+  hand-picked revision. That is what puts a browser the driver never asked for on disk.
+- **Pinning an `executablePath` in the config.** This was tried first (consume whatever
+  Chromium the image happens to ship) and is recorded here because it failed in an instructive
+  way. It searched for the *headed* `chromium-*/chrome-linux/chrome` while a headless run
+  launches the *headless shell* `chromium_headless_shell-*`, so in an image carrying both it
+  produced exactly the silent divergence it was meant to prevent. It also assumed every
+  environment ships a Chromium; two of the three do not.
+
+The earlier rule — "never run `playwright install`; consume the image's browser" — was correct
+about the danger and wrong about the mechanism. The danger is an *unmatched* browser, not a
+downloaded one; fetching the matched revision everywhere removes the mismatch at its source
+rather than routing around it.
 
 ### What runs under test: the production build, two socket backends
 

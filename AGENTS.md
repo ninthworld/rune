@@ -26,10 +26,12 @@ until the game plays well. Make it good before making it pretty.
 - **The browser e2e suite is a required gate.** The seams this project is made of — socket,
   protocol, view reconstruction, reconnect — produce integration bugs a headless DOM cannot
   see. Keep it cheap enough to stay (ADR 0011): one thin smoke path as the blocking gate with
-  deeper flows non-blocking, the engine gate independent of it, and **never run
-  `playwright install`** — consume the preinstalled browser via `PLAYWRIGHT_BROWSERS_PATH`
-  with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`, pinning `executablePath` if the pinned package
-  disagrees with the image.
+  deeper flows non-blocking, and the engine gate independent of it. **The browser is the one
+  the pinned `@playwright/test` names, in every environment** — `make e2e-browser` provisions
+  exactly that revision and is a no-op where it already exists, including the CI container.
+  Never fetch a browser the driver did not ask for (`playwright@latest`, a caret range, a
+  hand-picked revision), and never pin an `executablePath`: both are how a local run and CI
+  end up driving different binaries.
 - **E2E proves it works; the maintainer judges whether it is good.** Automated coverage cannot
   answer "is this fun to play." When a change can only be assessed by a person playing it, say
   plainly what you could not verify and leave that judgment to them.

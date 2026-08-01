@@ -28,7 +28,24 @@ else
   fail=1
 fi
 
-# --- Full gate: `make verify` adds the cargo-deny surface --------------------
+# --- Full gate: `make verify` adds the browser and the cargo-deny surface ----
+
+# The browser the e2e gate drives. It is *provisioned*, not required up front:
+# `make e2e-*` runs `playwright install chromium`, which fetches the revision the
+# pinned driver names and no other. So this reports rather than fails — a first
+# `make verify` downloads it once, and every later one finds it.
+if [ -n "$PLAYWRIGHT_BROWSERS_PATH" ]; then
+  browsers="$PLAYWRIGHT_BROWSERS_PATH"
+else
+  browsers="$HOME/.cache/ms-playwright"
+fi
+if [ -d "$browsers" ] && ls "$browsers" 2>/dev/null | grep -q '^chromium'; then
+  echo "ok: playwright chromium present in $browsers"
+else
+  echo "note: no playwright chromium in $browsers yet — 'make e2e-browser' (or any 'make e2e-*') fetches the pinned revision once; do not run 'playwright install' unpinned"
+fi
+
+
 
 if command -v cargo-deny > /dev/null 2>&1; then
   echo "ok: cargo-deny $(cargo-deny --version)"

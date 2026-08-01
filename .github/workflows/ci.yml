@@ -57,10 +57,14 @@ jobs:
         run: make client-check
 
   # Both browser jobs run in the official Playwright container, whose browsers are
-  # preinstalled and match the driver by construction. That is how `playwright install` is
-  # never run (root AGENTS.md): the image is the source of the browser. This tag must move
-  # together with the exactly-pinned `@playwright/test` in clients/web/package.json — a
-  # caret range there would silently drift away from this image.
+  # preinstalled at the revision the driver names — so `make e2e-browser` finds them and
+  # downloads nothing here, while a maintainer's terminal and an agent sandbox fetch that
+  # same revision once (ADR 0011). CI is therefore fast *and* identical to local rather
+  # than a different environment that happens to be green.
+  #
+  # This tag must move together with the exactly-pinned `@playwright/test` in
+  # clients/web/package.json — a caret range there would silently drift away from this
+  # image, and the two would stop naming the same browser.
   e2e-smoke:
     name: E2E Smoke
     runs-on: ubuntu-latest
