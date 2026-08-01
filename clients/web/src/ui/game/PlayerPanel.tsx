@@ -17,6 +17,7 @@
  */
 import type { Seat, SeatPile } from './../../table'
 import type { RelationLine } from './../../relations'
+import { anchorProps } from './../../overlay'
 import { ManaCost } from './../Mana'
 import { RelationTrail } from './RelationTrail'
 import type { Surface } from './surface'
@@ -88,13 +89,17 @@ export function PlayerPanel({
           player" name a seat the same way a burn spell names a creature, and a table where the
           creature can be clicked but the person cannot is a table where half of red is
           unplayable without hunting through a list. The state is the server's own answer about
-          this id, exactly as it is for a permanent. */}
+          this id, exactly as it is for a permanent.
+
+          It is anchored for the same reason: an attack aimed at this seat is a relationship the
+          server stated, and the line the board draws for it has to end somewhere. */}
       <p className="seat__who">
         <button
           type="button"
           className={['seat__name', state !== 'idle' && `card--${state}`, link && `card--${link}`]
             .filter(Boolean)
             .join(' ')}
+          {...anchorProps(seat.id)}
           onClick={() => surface.activate(seat.id)}
           onMouseEnter={() => surface.trace(seat.id)}
           onMouseLeave={() => surface.trace(undefined)}

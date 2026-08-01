@@ -24,6 +24,7 @@ import type { MouseEvent } from 'react'
 
 import type { CardFace, CardFaceLink, CardFaceState, CardFaceVariant } from './../card-face'
 import { costTint } from './../mana'
+import { anchorProps } from './../overlay'
 import { useCardArt } from './art'
 import { CardArt } from './CardArt'
 import { ManaCost } from './Mana'
@@ -240,9 +241,14 @@ export function Card({
   // no key handling has to be reinvented. Never `disabled`: the gesture always leads somewhere —
   // at worst to the inspector — and reading an object a player cannot act on is exactly when
   // they most need to.
+  // Where this object *is*, for the sheet drawn over the board (`overlay.ts`). It carries the
+  // server's own id and nothing about the game: a line between two cards is a relationship the
+  // view stated, and this is only how the drawing finds the two ends of it.
+  const anchor = anchorProps(face.id)
+
   if (!onActivate) {
     return (
-      <div className={className} {...looked} {...inspected}>
+      <div className={className} {...anchor} {...looked} {...inspected}>
         {body}
       </div>
     )
@@ -252,6 +258,7 @@ export function Card({
       type="button"
       className={className}
       onClick={() => onActivate(face.id)}
+      {...anchor}
       {...looked}
       {...inspected}
     >

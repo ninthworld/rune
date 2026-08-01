@@ -28,9 +28,15 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   drive different binaries, which is the failure ADR 0011 is about.
 - One layout: desktop landscape, mouse and keyboard, two players, and **dark**. The scheme is
   declared rather than followed: a card is an object lying on a surface, it needs a ground darker
-  than itself, and maintaining a light table as well is how neither gets good. Plain DOM and CSS,
-  no WebGL. Responsive breakpoints, touch input, and more than two seats are not in scope —
-  adding them early is how the last three layouts happened.
+  than itself, and maintaining a light table as well is how neither gets good. Responsive
+  breakpoints, touch input, and more than two seats are not in scope — adding them early is how
+  the last three layouts happened.
+- **DOM and CSS for everything a player reads; inline SVG and canvas for presentational overlays
+  anchored to ids the server stated.** An arrow from an attacker to what it is attacking draws
+  one field of the view, and saying it only in a sentence was a constraint rather than a design.
+  The exception licenses no second source of truth: an overlay renders the join and nothing else,
+  it is `aria-hidden` because a drawn line is not readable, and the text under it stays the copy
+  every player can reach. WebGL stays out until something demonstrates it is needed.
 
 ## Layout
 
@@ -89,6 +95,13 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   knows nothing about being blocked — so the reverse is derived here once rather than by each
   surface scanning the battlefield. Every edge is a stated id; nothing is concluded from rules
   text or the log.
+- `src/overlay.ts` — the same relationships as geometry: where the line between two objects
+  starts and ends, given a box for each. The split from `relations.ts` is the guarantee — what
+  decides *what* is related knows nothing about pixels, and what knows where everything is
+  decides nothing. An edge is drawn when both ends are on the screen and not when either is not:
+  an object in an unopened pile has no box and one its region scrolled away clips to nothing,
+  because an arrow pointing confidently at a card nobody can see is worse than the sentence that
+  still names it.
 - `src/turn.ts` — turn flow: the steps of a turn, who the game is waiting for, where it will
   stop for this seat next time, and what a settle already did on their behalf. The stop controls
   read the *effective* lists the server reflects and send back the whole preference, because
@@ -156,10 +169,14 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   dock follows the click — the selected object's actions, or the questions an armed action is
   asking — and keeps two lists beside that: the global actions no object owns, and a disclosure
   of every action, so a subject no surface happens to draw can still be reached. A relationship
-  the server projected hangs under the object that carries it as a trail of controls, and
-  looking at an object emphasises what it relates to — tracing follows the *look*, not the
-  click, because the objects most worth tracing own no action and a click on one opens the
-  inspector over the board the relationship crosses. Public piles open beside the table, never
+  the server projected is drawn twice and the copies are not alternatives: a trail of controls
+  under the object that carries it, and a line across the board in `RelationOverlay` — a sheet
+  that takes no clicks and is hidden from assistive technology, because the trail is the readable
+  copy and the picture is what is read at a glance. Every surface tags the objects it draws with
+  `anchorProps`, which is the whole of how a line finds its two ends. Looking at an object
+  emphasises both — tracing follows the *look*, not the click, because the objects most worth
+  tracing own no action and a click on one opens the inspector over the board the relationship
+  crosses. Public piles open beside the table, never
   over it; a hidden zone is a count with nothing to open. The header carries the whole turn as a
   row of steps, and that row is also where stops are set — a preference divorced from the strip
   it applies to is one nobody edits. The end of a match is the one panel that layers over the
