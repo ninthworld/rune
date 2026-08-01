@@ -15,7 +15,7 @@
   "colors": [
     "red"
   ],
-  "loyalty": 4,
+  "loyalty": 3,
   "abilities": [
     {
       "type": "activated",
@@ -55,8 +55,7 @@
       ],
       "effects": [
         {
-          "kind": "add_restricted_mana",
-          "color": "red",
+          "kind": "add_mana_any_color",
           "amount": 2,
           "restriction": {
             "kind": "spells_with_subtype",
@@ -76,7 +75,7 @@
       "effects": [
         {
           "kind": "create_token",
-          "count": 3,
+          "count": 4,
           "token": {
             "name": "Dragon",
             "types": [

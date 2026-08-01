@@ -275,9 +275,10 @@ fn issue_611_deal_damage_round_trips_with_a_class_of_players_or_permanents() {
             amount: 2,
         }
     );
-    let permanents: Effect =
-        serde_json::from_str(r#"{"kind":"deal_damage","affects":"each_creature","amount":1}"#)
-            .unwrap();
+    let permanents: Effect = serde_json::from_str(
+        r#"{"kind":"deal_damage","affects":{"scope":"each_creature"},"amount":1}"#,
+    )
+    .unwrap();
     assert_eq!(
         permanents,
         Effect::DealDamage {
@@ -295,7 +296,8 @@ fn issue_611_deal_damage_round_trips_with_a_class_of_players_or_permanents() {
         Some(TargetSpec::AnyOpponent)
     );
     assert_eq!(
-        serde_json::from_str::<MassAffects>(r#""creatures_your_opponents_control""#).unwrap(),
+        serde_json::from_str::<MassAffects>(r#"{"scope":"creatures_your_opponents_control"}"#)
+            .unwrap(),
         MassAffects::CreaturesYourOpponentsControl
     );
 }
@@ -351,9 +353,31 @@ fn issue_150_pump_round_trips_with_its_target_spec() {
             target: TargetSpec::AnyCreature,
             power: 3,
             toughness: 3,
+            keywords: Vec::new(),
         }
     );
     assert_eq!(effect.target_spec(), Some(TargetSpec::AnyCreature));
+
+    // A pump that also grants keywords is still **one** effect with one target slot:
+    // the card says "target creature gets +2/+2 **and** gains flying", and two slots
+    // would let a player pump one creature while a different one gained flying.
+    let json = r#"{"kind":"pump","target":"any_creature","power":2,"toughness":2,
+                   "keywords":["flying"]}"#;
+    let effect: Effect = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        effect,
+        Effect::Pump {
+            target: TargetSpec::AnyCreature,
+            power: 2,
+            toughness: 2,
+            keywords: vec![crate::card::Keyword::Flying],
+        }
+    );
+    assert_eq!(
+        effect.target_group().map(|group| (group.min, group.max)),
+        Some((1, 1)),
+        "one slot, however many keywords ride along"
+    );
 }
 
 #[test]
@@ -456,25 +480,25 @@ fn the_new_effect_verbs_round_trip_with_their_target_or_class() {
     );
 
     // A mass modification names a class, which is not a target (CR 115.1).
-    let pump = r#"{"kind":"pump_all","affects":"creatures_you_control","power":2,"toughness":1}"#;
+    let pump = r#"{"kind":"pump_all","affects":{"scope":"creatures_you_control"},"power":2,"toughness":1}"#;
     let pump: Effect = serde_json::from_str(pump).unwrap();
     assert_eq!(
         pump,
         Effect::PumpAll {
-            affects: MassAffects::CreaturesYouControl,
+            affects: MassAffects::CreaturesYouControl { subtype: None },
             power: 2,
             toughness: 1,
         }
     );
     assert_eq!(pump.target_spec(), None);
 
-    let grant =
-        r#"{"kind":"grant_keyword_all","affects":"creatures_you_control","keyword":"trample"}"#;
+    let grant = r#"{"kind":"grant_keyword_all","affects":{"scope":"creatures_you_control"},
+                     "keyword":"trample"}"#;
     let grant: Effect = serde_json::from_str(grant).unwrap();
     assert_eq!(
         grant,
         Effect::GrantKeywordAll {
-            affects: MassAffects::CreaturesYouControl,
+            affects: MassAffects::CreaturesYouControl { subtype: None },
             keyword: Keyword::Trample,
         }
     );

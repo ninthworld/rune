@@ -126,6 +126,7 @@ pub(crate) fn target_entity_id(target: Target) -> String {
 pub(crate) fn target_spec_prompt(spec: TargetSpec) -> &'static str {
     match spec {
         TargetSpec::AnyPlayer => "Choose target player",
+        TargetSpec::AnyPlayerOrPlaneswalker => "Choose target player or planeswalker",
         TargetSpec::AnyOpponent => "Choose target opponent",
         TargetSpec::AnyPermanent => "Choose target permanent",
         TargetSpec::AnyNonlandPermanent => "Choose target nonland permanent",

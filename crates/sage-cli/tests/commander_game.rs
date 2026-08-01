@@ -50,10 +50,11 @@ const AGGRESSOR: usize = 0;
 /// commander once (forcing the taxed recast, CR 903.8), then never blocks again.
 const VICTIM: usize = 1;
 
-/// The display name of the victim's blocker — a 10/10 that survives blocking the 5/5
-/// commander and kills it, sending it to the graveyard so its owner must return it to
-/// the command zone (CR 903.9a) and recast it at the `{2}` tax.
-const BLOCKER_NAME: &str = "Gigantosaurus";
+/// The display name of the victim's blocker — a reach deathtouch creature, which is
+/// what it takes to block a **flying** 6/6 commander and kill it. Both die in the
+/// trade; the commander's death is the point, sending it to the graveyard so its owner
+/// must return it to the command zone (CR 903.9a) and recast it at the `{2}` tax.
+const BLOCKER_NAME: &str = "Poison-Tip Archer";
 
 /// Resolve `slug` (an authored `functional_id`, ADR 0008 §3) to its catalog [`CardId`].
 fn card(db: &CardDatabase, slug: &str) -> CardId {
@@ -61,30 +62,36 @@ fn card(db: &CardDatabase, slug: &str) -> CardId {
     db.card_id(&id).expect("a bundled card")
 }
 
-/// The aggressor's deck: Jedit Ojanen (a `{4}{G}{G}` 5/5 legendary) as commander, with
-/// nothing but Forests behind it — so the commander is the seat's sole attacker and the
-/// victim only ever takes commander damage. Exactly 100 cards with the commander set
-/// aside (CR 903.5).
+/// The aggressor's deck: Lathliss, Dragon Queen (a `{4}{R}{R}` 6/6 flying legendary) as
+/// commander, with nothing but Mountains behind it — so the commander is the seat's sole
+/// attacker and the victim only ever takes commander damage. Exactly 100 cards with the
+/// commander set aside (CR 903.5). Lathliss's own trigger never fires here: it watches
+/// for *another* Dragon entering, and this deck holds none.
 fn aggressor_deck(db: &CardDatabase) -> Vec<CardId> {
-    let mut deck = vec![card(db, "jedit_ojanen")];
-    deck.extend(std::iter::repeat_n(card(db, "forest"), 99));
+    let mut deck = vec![card(db, "lathliss_dragon_queen")];
+    deck.extend(std::iter::repeat_n(card(db, "mountain"), 99));
     deck
 }
 
-/// The victim's deck: its own Jedit commander, a wall of Gigantosaurus blockers, and
-/// Forests to cast them. This is an **engine fixture**, not a server-validated list
-/// (deck legality is a server concern; `GameState::new` checks only that
-/// ids resolve): the extra blocker copies make "draw and cast a blocker, then block the
-/// commander once" reliable across seeds without pinning the shuffle to a single draw.
+/// The victim's deck: its own Lathliss commander, a wall of blockers, and duals to cast
+/// them. This is an **engine fixture**, not a server-validated list (deck legality is a
+/// server concern; `GameState::new` checks only that ids resolve — which is why the two
+/// seats may share a commander identity and why the colours need not agree): the extra
+/// blocker copies make "draw and cast a blocker, then block the commander once" reliable
+/// across seeds without pinning the shuffle to a single draw.
 fn victim_deck(db: &CardDatabase) -> Vec<CardId> {
-    let mut deck = vec![card(db, "jedit_ojanen")];
+    let mut deck = vec![card(db, "lathliss_dragon_queen")];
     deck.extend(std::iter::repeat_n(card(db, BLOCKER_SLUG), 12));
-    deck.extend(std::iter::repeat_n(card(db, "forest"), 87));
+    // Basics rather than the M19 duals: every dual in the catalog enters tapped, which
+    // costs the victim a turn per land and makes the one block this fixture needs land
+    // too late to matter.
+    deck.extend(std::iter::repeat_n(card(db, "swamp"), 44));
+    deck.extend(std::iter::repeat_n(card(db, "forest"), 43));
     deck
 }
 
 /// The blocker's authored identity (its display name is [`BLOCKER_NAME`]).
-const BLOCKER_SLUG: &str = "gigantosaurus";
+const BLOCKER_SLUG: &str = "poison_tip_archer";
 
 /// The seat index encoded in a `p{N}` player id.
 fn seat_of(player_id: &str) -> usize {
@@ -256,8 +263,10 @@ impl Driver {
                 let targets = fill_answers(view, action).unwrap_or_default();
                 if targets.iter().any(|choice| !choice.chosen.is_empty()) {
                     self.victim_has_blocked = true;
-                    // The profitable blocker (the 10/10) is assigned to the 5/5
-                    // commander: it survives, the commander dies (CR 704.5g).
+                    // The blocker is assigned to the commander: deathtouch kills it
+                    // (CR 702.2b/704.5g) and reach is what let the block happen at all
+                    // against a flyer. Both creatures die; the commander's death is the
+                    // one that matters.
                     return Some(ChooseAction {
                         submission: String::new(),
                         action_id: action.id.clone(),
@@ -318,8 +327,8 @@ struct Outcome {
 async fn play_seeded_commander_game(seed: u64) -> Outcome {
     let db = CardDatabase::bundled().expect("bundled cards");
     let players = vec![
-        PlayerSetup::with_commander(aggressor_deck(&db), card(&db, "jedit_ojanen")),
-        PlayerSetup::with_commander(victim_deck(&db), card(&db, "jedit_ojanen")),
+        PlayerSetup::with_commander(aggressor_deck(&db), card(&db, "lathliss_dragon_queen")),
+        PlayerSetup::with_commander(victim_deck(&db), card(&db, "lathliss_dragon_queen")),
     ];
     let setup = GameSetup {
         players,

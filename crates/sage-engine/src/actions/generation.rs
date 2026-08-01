@@ -64,6 +64,11 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             let mut actions = match &pending.question {
                 ChoiceQuestion::Cards(_) => vec![Action::AnswerChoice { chosen: Vec::new() }],
                 ChoiceQuestion::Confirm(_) => vec![Action::AnswerConfirm { accept: false }],
+                // Every color is always answerable, so the offer is the bare question
+                // — one action, whose submitted form names the color.
+                ChoiceQuestion::Color(_) => vec![Action::AnswerColor {
+                    color: crate::mana::Color::White,
+                }],
             };
             // CR 605.3a: a player asked to pay a cost while something resolves may
             // activate mana abilities to pay it — the one thing the freeze lets
@@ -236,6 +241,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 && player
                     .mana_pool
                     .can_pay_for(&parse_mana_cost(&data.mana_cost), spend_purpose(data))
+                && additional_cost_is_payable(state, priority, data, card.id)
             {
                 // A targeted spell is offered only when *every* target slot has at
                 // least one legal candidate (CR 601.2c — a spell that can't choose
@@ -272,6 +278,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 && player
                     .mana_pool
                     .can_pay_for(&parse_mana_cost(&data.mana_cost), spend_purpose(data))
+                && additional_cost_is_payable(state, priority, data, card.id)
                 && groups_are_fillable(&data.cast_target_groups(), state, priority, db)
             {
                 actions.push(Action::CastSpell {
@@ -300,6 +307,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 let cost = commander_tax_cost(&parse_mana_cost(&data.mana_cost), commander.casts);
                 if timing_ok
                     && player.mana_pool.can_pay_for(&cost, spend_purpose(data))
+                    && additional_cost_is_payable(state, priority, data, card.id)
                     && groups_are_fillable(&data.cast_target_groups(), state, priority, db)
                 {
                     actions.push(Action::CastSpell {
@@ -334,6 +342,23 @@ fn groups_are_fillable(
     groups.iter().all(|group| {
         group.min == 0 || !legal_targets_for_spec(group.spec, state, actor, db).is_empty()
     })
+}
+
+/// Whether `data`'s additional cast cost (CR 601.2b) can be paid by `actor` right now,
+/// casting the instance `casting`. `true` for the overwhelming majority of cards, which
+/// have no additional cost at all.
+///
+/// This is a **gate on the offer**, which is the point of modelling the discard as a
+/// cost rather than an effect: a spell whose additional cost cannot be paid is not
+/// castable (CR 601.2b), rather than castable and then quietly skipping the cost.
+fn additional_cost_is_payable(
+    state: &GameState,
+    actor: crate::id::PlayerId,
+    data: &crate::card::CardData,
+    casting: crate::id::CardInstanceId,
+) -> bool {
+    data.additional_cost
+        .is_none_or(|cost| state.additional_cost_is_payable(actor, cost, casting))
 }
 
 /// The [`SpendPurpose`] a cast of `data` pays under (CR 106.6) — restricted mana asks

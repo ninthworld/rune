@@ -285,7 +285,7 @@ mod tests {
                 player: "p0".into(),
                 card: LogEntity {
                     id: "card_5".into(),
-                    name: "Jedit Ojanen".into(),
+                    name: "Lathliss, Dragon Queen".into(),
                 },
             },
         ] {
@@ -303,7 +303,7 @@ mod tests {
             player: "p1".into(),
             card: LogEntity {
                 id: "card_2".into(),
-                name: "Jedit Ojanen".into(),
+                name: "Lathliss, Dragon Queen".into(),
             },
         };
         assert_eq!(
@@ -311,7 +311,7 @@ mod tests {
             serde_json::json!({
                 "type": "commander_returned_to_command_zone",
                 "player": "p1",
-                "card": { "id": "card_2", "name": "Jedit Ojanen" },
+                "card": { "id": "card_2", "name": "Lathliss, Dragon Queen" },
             })
         );
     }

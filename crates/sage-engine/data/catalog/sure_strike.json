@@ -14,12 +14,10 @@
       "kind": "pump",
       "target": "any_creature",
       "power": 3,
-      "toughness": 0
-    },
-    {
-      "kind": "grant_keyword",
-      "target": "any_creature",
-      "keyword": "first_strike"
+      "toughness": 0,
+      "keywords": [
+        "first_strike"
+      ]
     }
   ]
 }

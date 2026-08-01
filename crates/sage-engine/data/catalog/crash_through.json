@@ -12,7 +12,9 @@
   "spell_effects": [
     {
       "kind": "grant_keyword_all",
-      "affects": "creatures_you_control",
+      "affects": {
+        "scope": "creatures_you_control"
+      },
       "keyword": "trample"
     },
     {

@@ -135,14 +135,14 @@
     "rarity": "common"
   },
   {
-    "functional_id": "tezzeret_artifice_master",
-    "collector_number": "64",
-    "rarity": "mythic"
-  },
-  {
     "functional_id": "snapping_drake",
     "collector_number": "75",
     "rarity": "common"
+  },
+  {
+    "functional_id": "tezzeret_artifice_master",
+    "collector_number": "79",
+    "rarity": "mythic"
   },
   {
     "functional_id": "tolarian_scholar",
@@ -280,6 +280,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "lathliss_dragon_queen",
+    "collector_number": "149",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "lava_axe",
     "collector_number": "150",
     "rarity": "common"
@@ -360,11 +365,6 @@
     "rarity": "common"
   },
   {
-    "functional_id": "vivien_reid",
-    "collector_number": "180",
-    "rarity": "mythic"
-  },
-  {
     "functional_id": "giant_spider",
     "collector_number": "183",
     "rarity": "common"
@@ -433,6 +433,11 @@
     "functional_id": "vine_mare",
     "collector_number": "207",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "vivien_reid",
+    "collector_number": "208",
+    "rarity": "mythic"
   },
   {
     "functional_id": "wall_of_vines",

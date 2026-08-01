@@ -235,6 +235,28 @@ pub enum Effect {
         /// How much colorless mana is produced.
         amount: u8,
     },
+    /// Add `amount` mana **in any combination of colors** — the player chooses each
+    /// point's color as the effect resolves (`Add two mana in any combination of
+    /// colors.`).
+    ///
+    /// The choice is real and it is per point: the player is asked once for each mana,
+    /// so two mana may be two of one color or one each of two. The questions ride the
+    /// ordinary mid-resolution choice queue ([`crate::ChoiceQuestion::Color`]), which
+    /// is why an effect that looks like a variant of [`Effect::AddMana`] is a separate
+    /// verb — the amount is fixed, but the *colors* are not authored at all.
+    ///
+    /// The optional `restriction` rides on every point produced, exactly as
+    /// [`Effect::AddRestrictedMana`]'s does (CR 106.6), so `Add two mana in any
+    /// combination of colors. Spend this mana only to cast Dragon spells.` is one
+    /// effect rather than a colored one repeated five ways.
+    AddManaAnyColor {
+        /// How many mana are produced, and therefore how many colors are chosen.
+        amount: u8,
+        /// What the produced mana may be spent on (CR 106.6). Absent means
+        /// unrestricted.
+        #[serde(default)]
+        restriction: Option<ManaRestriction>,
+    },
     /// The controller draws `count` cards. The subject is implicit (the
     /// controller), so this effect needs no target.
     DrawCard {
@@ -366,6 +388,14 @@ pub enum Effect {
     /// signed, so a negative value is a shrink; the modifier folds into computed
     /// power/toughness on demand (CR 613.7c), after counters and in timestamp
     /// order, so two pumps in a turn stack and both wear off at cleanup.
+    ///
+    /// The optional `keywords` are granted to **that same creature**, which is the
+    /// whole reason they live here rather than in a second [`Effect::GrantKeyword`]
+    /// beside this one: one effect declares one target group, so a combat trick
+    /// printed as `Target creature gets +2/+2 **and** gains flying` must be one
+    /// effect or the engine would offer two independent slots and let a player pump
+    /// one creature while another gained flying. Same shape as an Aura's grant, which
+    /// carries P/T and keywords together for the same reason (CR 613.1f).
     Pump {
         /// What this effect is allowed to target (a creature).
         target: TargetSpec,
@@ -373,6 +403,11 @@ pub enum Effect {
         power: i32,
         /// The signed amount added to the target's toughness until end of turn.
         toughness: i32,
+        /// Keyword abilities granted to the same target until end of turn, applied at
+        /// CR 613 layer 6 exactly as [`Effect::GrantKeyword`] applies one. Empty for
+        /// the ordinary pump that only changes numbers.
+        #[serde(default)]
+        keywords: Vec<Keyword>,
     },
     /// Grant the single creature this effect targets a keyword ability **until end
     /// of turn** — the pump-spell analogue of [`Effect::Pump`] for keywords (e.g.
@@ -1082,16 +1117,22 @@ impl PlayerRef {
 /// [`Effect::GrantKeywordAll`]) applies to.
 ///
 /// Deliberately separate from [`StaticAffects`], which selects for a *continuous*
-/// ability and carries an `except_this` that a one-shot spell has no "this" for. A
-/// closed enum deserialized from a bare `snake_case` tag, e.g.
-/// `{"kind":"pump_all","affects":"creatures_you_control","power":2,"toughness":1}`.
+/// ability and carries an `except_this` that a one-shot spell has no "this" for — but
+/// authored in the same internally tagged shape, so the two selectors read alike:
+/// `{"kind":"pump_all","affects":{"scope":"creatures_you_control"},"power":2,"toughness":1}`.
 /// It grows by adding variants (attacking creatures, tapped creatures, …) as cards
 /// need them.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(tag = "scope", rename_all = "snake_case")]
 pub enum MassAffects {
     /// Every creature the effect's controller controls at the moment it resolves.
-    CreaturesYouControl,
+    CreaturesYouControl {
+        /// Restrict to creatures whose subtypes include this one — the `Dragons` of
+        /// "Dragons you control get +1/+0 until end of turn". Absent means every
+        /// creature its controller controls.
+        #[serde(default)]
+        subtype: Option<String>,
+    },
     /// Every creature on the battlefield at the moment the effect resolves,
     /// whoever controls it — the symmetric class a sweeper names.
     EachCreature,
@@ -1127,9 +1168,9 @@ pub enum MassAffects {
 /// ```json
 /// {"kind": "deal_damage", "target": "any_target", "amount": 2}
 /// {"kind": "deal_damage", "player_ref": "each_opponent", "amount": 2}
-/// {"kind": "deal_damage", "affects": "each_creature", "amount": 1}
+/// {"kind": "deal_damage", "affects": {"scope": "each_creature"}, "amount": 1}
 /// ```
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DamageSubject {
     /// One **chosen target** (CR 115.1): a creature, a player, or — for a burn
@@ -1157,9 +1198,9 @@ impl DamageSubject {
     /// class form out of the slot-filling and fizzle paths without either of them
     /// naming damage specially.
     #[must_use]
-    pub fn target_spec(self) -> Option<TargetSpec> {
+    pub fn target_spec(&self) -> Option<TargetSpec> {
         match self {
-            DamageSubject::Target(spec) => Some(spec),
+            DamageSubject::Target(spec) => Some(*spec),
             DamageSubject::Players(player_ref) => player_ref.target_spec(),
             DamageSubject::Permanents(_) => None,
         }
@@ -1227,6 +1268,9 @@ impl Effect {
             Effect::AddMana { .. }
             | Effect::AddColorlessMana { .. }
             | Effect::AddRestrictedMana { .. }
+            // A color choice names no target: the question is about mana, and the
+            // player answering it is the effect's controller by definition.
+            | Effect::AddManaAnyColor { .. }
             | Effect::DrawCard { .. }
             // An emblem is given to a named player, never a targeted one (CR 114.3 —
             // "you get an emblem"), and a graveyard-casting permission likewise names
@@ -1288,7 +1332,8 @@ impl Effect {
 ///   [`Self::AnyNonlandPermanent`] name permanents, and a planeswalker is one — both
 ///   already accepted one before this issue and still do.
 /// - **Includes them by rule**: [`Self::AnyTarget`], which is CR 115.4's "any target"
-///   and therefore *means* creature, player, or planeswalker.
+///   and therefore *means* creature, player, or planeswalker; and
+///   [`Self::AnyPlayerOrPlaneswalker`], which names them outright.
 /// - **Excludes them**, deliberately and permanently: every creature-shaped spec, the
 ///   artifact/enchantment/land specs, the player specs, and the two spell-on-stack
 ///   specs. A planeswalker is not a creature, an artifact, an enchantment, a land, a
@@ -1298,6 +1343,16 @@ pub enum TargetSpec {
     /// Any player in the game. Never a planeswalker: a planeswalker is a permanent, and
     /// the player who controls one is a separate object (CR 306.1).
     AnyPlayer,
+    /// Any player in the game **or** any planeswalker on the battlefield — the
+    /// "target player or planeswalker" a burn spell that cannot hit creatures names
+    /// (`Lava Axe`, `Viashino Pyromancer`).
+    ///
+    /// Not [`Self::AnyTarget`] with a hole in it: CR 115.4's "any target" is
+    /// creature-or-planeswalker-or-player, and this class deliberately excludes
+    /// creatures, so a spell written this way can never be pointed at one. Not
+    /// [`Self::AnyPlayer`] either — before this spec existed these cards used it, and
+    /// the planeswalker half of what they say was silently missing.
+    AnyPlayerOrPlaneswalker,
     /// Any **opponent** of the object's controller still in the game — "target
     /// opponent". The controller themselves is never a candidate, and neither is a
     /// planeswalker, for [`Self::AnyPlayer`]'s reason.
@@ -1588,6 +1643,12 @@ pub enum ObservedPermanent {
         /// copies of one card do notice each other.
         #[serde(default)]
         except_this: bool,
+        /// Notice only permanents that are **cards** — the "nontoken" of "whenever
+        /// another nontoken Dragon you control enters". A token has no card behind it
+        /// (ADR 0015), which is exactly the distinction this draws, and it is what keeps
+        /// a card that makes a token off an infinite loop with its own trigger.
+        #[serde(default)]
+        nontoken: bool,
     },
     /// Any creature on the battlefield, whoever controls it — "a creature", and with
     /// `except_this`, "another creature".
@@ -1598,6 +1659,9 @@ pub enum ObservedPermanent {
         /// Exclude the watching ability's own source.
         #[serde(default)]
         except_this: bool,
+        /// Notice only permanents that are cards, never tokens.
+        #[serde(default)]
+        nontoken: bool,
     },
 }
 
@@ -1617,6 +1681,16 @@ impl ObservedPermanent {
         match self {
             ObservedPermanent::CreaturesYouControl { subtype, .. }
             | ObservedPermanent::AnyCreature { subtype, .. } => subtype.as_deref(),
+        }
+    }
+
+    /// Whether this selector notices only nontoken permanents (CR 111 — a token is not
+    /// a card).
+    #[must_use]
+    pub fn nontoken_only(&self) -> bool {
+        match self {
+            ObservedPermanent::CreaturesYouControl { nontoken, .. }
+            | ObservedPermanent::AnyCreature { nontoken, .. } => *nontoken,
         }
     }
 }
@@ -1699,11 +1773,12 @@ pub fn group_target_counts(groups: &[TargetGroup], chosen: usize) -> Vec<usize> 
 /// per planeswalker per turn. Derived from the cost, never stored and never a flag on
 /// the card, so an ability cannot claim to be one without paying like one.
 ///
-/// A loyalty ability is never a mana ability: [`is_mana_ability`] looks at the
-/// *effects*, and adding mana is the one thing no printed loyalty ability's whole
-/// effect list is — but were one ever authored, the loyalty gates below would still
-/// apply to it, because they are keyed on this predicate rather than on "uses the
-/// stack".
+/// A loyalty ability is never a mana ability — CR 605.1a says so outright, and
+/// [`is_mana_ability`] enforces it by asking this predicate first. It has to: a
+/// planeswalker ability whose whole effect list adds mana is a real printed card
+/// (`Sarkhan, Fireblood`), so "no loyalty ability could pass the effect test" was never
+/// a safe thing to rely on. The loyalty gates below are keyed on this predicate rather
+/// than on "uses the stack", so they apply either way.
 #[must_use]
 pub fn is_loyalty_ability(ability: &Ability) -> bool {
     matches!(
@@ -1713,19 +1788,27 @@ pub fn is_loyalty_ability(ability: &Ability) -> bool {
 }
 
 /// Whether an ability is a mana ability (CR 605.1a, simplified): an activated
-/// ability whose every effect adds mana. Mana abilities resolve immediately and
-/// do not use the stack (see `crate::apply_action`). Derived, never stored.
+/// ability whose every effect adds mana, **and which is not a loyalty ability**. Mana
+/// abilities resolve immediately and do not use the stack (see `crate::apply_action`).
+/// Derived, never stored.
+///
+/// The loyalty exclusion is CR 605.1a's own, and it is not hypothetical: a
+/// planeswalker's `+1: Add two mana in any combination of colors` adds nothing but
+/// mana, and without this clause it would resolve immediately, off the stack, with no
+/// window for anyone to respond — a loyalty activation nobody could see coming.
 #[must_use]
 pub fn is_mana_ability(ability: &Ability) -> bool {
     matches!(
         ability,
         Ability::Activated { effects, .. }
-            if !effects.is_empty()
+            if !is_loyalty_ability(ability)
+                && !effects.is_empty()
                 && effects.iter().all(|e| matches!(
                     e,
                     Effect::AddMana { .. }
                         | Effect::AddColorlessMana { .. }
                         | Effect::AddRestrictedMana { .. }
+                        | Effect::AddManaAnyColor { .. }
                 ))
     )
 }

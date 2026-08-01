@@ -96,6 +96,23 @@ pub enum Action {
         /// legal whenever the minimum is zero — declining to scry, or failing to find.
         chosen: Vec<CardInstanceId>,
     },
+    /// Answer the **mid-resolution color choice** the game is currently waiting on: one
+    /// point of `Add two mana in any combination of colors` (see
+    /// [`crate::Effect::AddManaAnyColor`]).
+    ///
+    /// The third answer shape beside [`Self::AnswerChoice`] and [`Self::AnswerConfirm`],
+    /// routed identically — offered to the choice's chooser and to no other seat, and
+    /// nothing else happens until it arrives. An effect producing more than one mana
+    /// queues one question per point, so this action is taken once per mana and the
+    /// second answer may name a different color from the first.
+    ///
+    /// Every one of the five colors is always a legal answer (CR 105.1), so unlike the
+    /// other two this action has no payability or candidate gate of any kind.
+    AnswerColor {
+        /// The color of the one mana this answer adds to the chooser's pool. It carries
+        /// whatever spend restriction the producing effect declared (CR 106.6).
+        color: crate::mana::Color,
+    },
     /// Cast a spell from hand, paying its mana cost from the caster's pool.
     CastSpell {
         /// The specific card in the caster's hand to cast. Names the physical
@@ -266,6 +283,7 @@ impl Action {
             Action::PassPriority
             | Action::AnswerChoice { .. }
             | Action::AnswerConfirm { .. }
+            | Action::AnswerColor { .. }
             | Action::PlayLand { .. }
             | Action::Discard { .. }
             | Action::Mulligan
@@ -316,6 +334,13 @@ impl Action {
             // submitted action, so its requirement form is the declining default —
             // never a second offer per possible reply.
             Action::AnswerConfirm { .. } => Action::AnswerConfirm { accept: false },
+            // A color choice is advertised the same way: one bare question, whose
+            // answer names a color in the submitted action rather than five separate
+            // offers. White is the requirement form's arbitrary stand-in, never a
+            // default anyone is charged for.
+            Action::AnswerColor { .. } => Action::AnswerColor {
+                color: crate::mana::Color::White,
+            },
             // The requirement form of a combat declaration is the empty selection —
             // exactly what `valid_actions` advertises during the declare window.
             Action::DeclareAttackers { .. } => Action::DeclareAttackers {

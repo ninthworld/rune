@@ -168,23 +168,23 @@ mod tests {
 
     #[test]
     fn issue_553_commander_identity_round_trips_and_elides_a_colorless_identity() {
-        let jedit = CommanderIdentity {
+        let lathliss = CommanderIdentity {
             commander: "p0".into(),
-            name: "Jedit Ojanen".into(),
-            color_identity: vec![Color::Green],
+            name: "Lathliss, Dragon Queen".into(),
+            color_identity: vec![Color::Red],
         };
-        let json = serde_json::to_value(&jedit).unwrap();
+        let json = serde_json::to_value(&lathliss).unwrap();
         assert_eq!(
             json,
             serde_json::json!({
                 "commander": "p0",
-                "name": "Jedit Ojanen",
-                "color_identity": ["G"]
+                "name": "Lathliss, Dragon Queen",
+                "color_identity": ["R"]
             })
         );
         assert_eq!(
             serde_json::from_value::<CommanderIdentity>(json).unwrap(),
-            jedit
+            lathliss
         );
 
         // A colorless commander has an *empty* identity, which is a real value —

@@ -22,11 +22,11 @@
 //! Legal Considerations).
 
 use sage_engine::{
-    Ability, AuraGrant, CardData, CardFilter, CardType, Chooser, Color, CombatRestriction,
-    Condition, Cost, CountScope, CounterKind, DamageSubject, Effect, FoundDestination, Keyword,
-    ManaRestriction, MassAffects, ObservedPermanent, ObservedSpell, PermanentCount, PlayerRef,
-    StaticAffects, StaticModification, TargetCount, TargetSpec, TokenData, TriggerCondition,
-    TriggerStep, TurnScope,
+    Ability, AdditionalCost, AuraGrant, CardData, CardFilter, CardType, Chooser, Color,
+    CombatRestriction, Condition, Cost, CountScope, CounterKind, DamageSubject, Effect,
+    FoundDestination, Keyword, ManaRestriction, MassAffects, ObservedPermanent, ObservedSpell,
+    PermanentCount, PlayerRef, StaticAffects, StaticModification, TargetCount, TargetSpec,
+    TokenData, TriggerCondition, TriggerStep, TurnScope,
 };
 
 /// Generate the rules text of one card.
@@ -62,6 +62,13 @@ pub(crate) fn rules_text(data: &CardData, scripted: Option<&str>) -> String {
 
     for ability in &data.abilities {
         lines.push(ability_text(source, ability));
+    }
+
+    // An additional cast cost is stated *before* what the spell does, because that is
+    // the order it happens in: it is paid while the spell is cast (CR 601.2b), and a
+    // player who cannot pay it never gets to the sentences below.
+    if let Some(cost) = data.additional_cost {
+        lines.push(additional_cost_text(cost));
     }
 
     for effect in &data.spell_effects {
@@ -187,7 +194,14 @@ fn observed_subject(observes: &ObservedPermanent) -> String {
     } else {
         "a"
     };
-    let noun = observes.subtype().unwrap_or("creature");
+    // "nontoken" is an adjective on the noun, exactly where a card prints it:
+    // "another nontoken Dragon you control".
+    let noun = match (observes.nontoken_only(), observes.subtype()) {
+        (false, Some(subtype)) => subtype.to_string(),
+        (false, None) => "creature".to_string(),
+        (true, Some(subtype)) => format!("nontoken {subtype}"),
+        (true, None) => "nontoken creature".to_string(),
+    };
     match observes {
         ObservedPermanent::CreaturesYouControl { .. } => {
             format!("{article} {noun} you control")
@@ -362,7 +376,7 @@ fn effect_clause(source: &str, effect: &Effect) -> String {
         Effect::DealDamage { subject, amount } => {
             format!(
                 "{source} deals {amount} damage to {}",
-                damage_recipient(*subject)
+                damage_recipient(subject)
             )
         }
         Effect::Destroy { target } => format!("destroy {}", target_noun(*target)),
@@ -387,14 +401,24 @@ fn effect_clause(source: &str, effect: &Effect) -> String {
             counters(*counter, *count),
             target_phrase(*target, *targets)
         ),
+        // One effect, one target, one sentence: the keywords a pump also grants are
+        // granted to the same creature, so they read as a second verb on the same
+        // subject rather than as a sentence with a subject of its own.
         Effect::Pump {
             target,
             power,
             toughness,
-        } => format!(
-            "{} gets {power:+}/{toughness:+} until end of turn",
-            target_noun(*target)
-        ),
+            keywords,
+        } => {
+            let numbers = format!("gets {power:+}/{toughness:+}");
+            let verbs = if keywords.is_empty() {
+                numbers
+            } else {
+                let words: Vec<&str> = keywords.iter().map(|&kw| keyword_word(kw)).collect();
+                format!("{numbers} and gains {}", list_words(&words))
+            };
+            format!("{} {verbs} until end of turn", target_noun(*target))
+        }
         Effect::GrantKeyword { target, keyword } => format!(
             "{} gains {} until end of turn",
             target_noun(*target),
@@ -406,11 +430,11 @@ fn effect_clause(source: &str, effect: &Effect) -> String {
             toughness,
         } => format!(
             "{} get {power:+}/{toughness:+} until end of turn",
-            mass_subject(*affects)
+            mass_subject(affects)
         ),
         Effect::GrantKeywordAll { affects, keyword } => format!(
             "{} gain {} until end of turn",
-            mass_subject(*affects),
+            mass_subject(affects),
             keyword_word(*keyword)
         ),
         // A restriction is already a predicate ("can't be blocked"), so it needs no
@@ -428,7 +452,7 @@ fn effect_clause(source: &str, effect: &Effect) -> String {
             restriction,
         } => format!(
             "{} {} this turn",
-            mass_subject(*affects),
+            mass_subject(affects),
             restriction_predicate(*restriction)
         ),
         // A self-referential effect names the source by name, so the sentence reads
@@ -575,6 +599,28 @@ fn effect_clause(source: &str, effect: &Effect) -> String {
             sign(*toughness_per),
             count_subject(count_of),
         ),
+        // The colors are the player's, so the sentence says how many mana and leaves
+        // the colors to them — exactly what the card says.
+        Effect::AddManaAnyColor {
+            amount,
+            restriction,
+        } => {
+            let mana = if *amount == 1 {
+                "add one mana of any color".to_string()
+            } else {
+                format!(
+                    "add {} mana in any combination of colors",
+                    number(u32::from(*amount))
+                )
+            };
+            match restriction {
+                Some(restriction) => format!(
+                    "{mana}. Spend this mana only to {}",
+                    restriction_phrase(restriction)
+                ),
+                None => mana,
+            }
+        }
         Effect::AddRestrictedMana {
             color,
             amount,
@@ -655,7 +701,11 @@ fn card_type_word(card_type: CardType) -> &'static str {
 }
 
 /// What a mana restriction allows, as the clause following "spend this mana only to".
-fn restriction_phrase(restriction: &ManaRestriction) -> String {
+///
+/// Crate-visible because the *prompt* for a color choice needs the same words the card
+/// is written in: a player choosing a color of Dragon-only mana must be told so, and
+/// two phrasings of one restriction would be two things to keep in step.
+pub(crate) fn restriction_phrase(restriction: &ManaRestriction) -> String {
     match restriction {
         ManaRestriction::SpellsWithSubtype { subtype } => format!("cast {subtype} spells"),
     }
@@ -790,13 +840,20 @@ fn possessive_subject(player_ref: PlayerRef) -> &'static str {
     }
 }
 
-/// The class a mass, non-targeting effect names, as the subject of its sentence.
-fn mass_subject(affects: MassAffects) -> &'static str {
+/// The class a mass, non-targeting effect names, as the subject of its sentence. A
+/// subtype replaces the noun outright — "Dragons you control", never "Dragon creatures
+/// you control", which is not how a card is written.
+fn mass_subject(affects: &MassAffects) -> String {
     match affects {
-        MassAffects::CreaturesYouControl => "creatures you control",
-        MassAffects::EachCreature => "creatures",
-        MassAffects::CreaturesYourOpponentsControl => "creatures your opponents control",
-        MassAffects::CreaturesWithoutFlying => "creatures without flying",
+        MassAffects::CreaturesYouControl { subtype: None } => "creatures you control".to_string(),
+        MassAffects::CreaturesYouControl {
+            subtype: Some(subtype),
+        } => format!("{subtype}s you control"),
+        MassAffects::EachCreature => "creatures".to_string(),
+        MassAffects::CreaturesYourOpponentsControl => {
+            "creatures your opponents control".to_string()
+        }
+        MassAffects::CreaturesWithoutFlying => "creatures without flying".to_string(),
     }
 }
 
@@ -806,12 +863,19 @@ fn mass_subject(affects: MassAffects) -> &'static str {
 /// acts ("creatures you control get +2/+1") and a distributive "each" when it is acted
 /// on ("deals 2 damage to each creature you control"). One function per position keeps
 /// both exhaustive, so a new [`MassAffects`] variant must be given words for each.
-fn mass_recipient(affects: MassAffects) -> &'static str {
+fn mass_recipient(affects: &MassAffects) -> String {
     match affects {
-        MassAffects::CreaturesYouControl => "each creature you control",
-        MassAffects::EachCreature => "each creature",
-        MassAffects::CreaturesYourOpponentsControl => "each creature your opponents control",
-        MassAffects::CreaturesWithoutFlying => "each creature without flying",
+        MassAffects::CreaturesYouControl { subtype: None } => {
+            "each creature you control".to_string()
+        }
+        MassAffects::CreaturesYouControl {
+            subtype: Some(subtype),
+        } => format!("each {subtype} you control"),
+        MassAffects::EachCreature => "each creature".to_string(),
+        MassAffects::CreaturesYourOpponentsControl => {
+            "each creature your opponents control".to_string()
+        }
+        MassAffects::CreaturesWithoutFlying => "each creature without flying".to_string(),
     }
 }
 
@@ -820,10 +884,10 @@ fn mass_recipient(affects: MassAffects) -> &'static str {
 /// The three subjects read as one sentence shape — "deals 2 damage to *any target*",
 /// "…to *each opponent*", "…to *each creature*" — so a player reads a class-damage
 /// effect the same way they read a targeted one, minus the word "target".
-fn damage_recipient(subject: DamageSubject) -> &'static str {
+fn damage_recipient(subject: &DamageSubject) -> String {
     match subject {
-        DamageSubject::Target(spec) => target_noun(spec),
-        DamageSubject::Players(player_ref) => player_noun(player_ref),
+        DamageSubject::Target(spec) => target_noun(*spec).to_string(),
+        DamageSubject::Players(player_ref) => player_noun(*player_ref).to_string(),
         DamageSubject::Permanents(affects) => mass_recipient(affects),
     }
 }
@@ -899,6 +963,7 @@ fn counters(kind: CounterKind, count: u32) -> String {
 fn target_noun(spec: TargetSpec) -> &'static str {
     match spec {
         TargetSpec::AnyPlayer => "target player",
+        TargetSpec::AnyPlayerOrPlaneswalker => "target player or planeswalker",
         TargetSpec::AnyOpponent => "target opponent",
         TargetSpec::AnyPermanent => "target permanent",
         TargetSpec::AnyNonlandPermanent => "target nonland permanent",
@@ -937,6 +1002,7 @@ fn target_noun(spec: TargetSpec) -> &'static str {
 fn object_noun(spec: TargetSpec) -> &'static str {
     match spec {
         TargetSpec::AnyPlayer => "player",
+        TargetSpec::AnyPlayerOrPlaneswalker => "player or planeswalker",
         TargetSpec::AnyOpponent => "opponent",
         TargetSpec::AnyPermanent => "permanent",
         TargetSpec::AnyNonlandPermanent => "nonland permanent",
@@ -1056,6 +1122,20 @@ fn token_noun(token: &TokenData, count: u32) -> String {
         noun.push_str(" with an ability");
     }
     noun
+}
+
+/// An additional cast cost as its own sentence (CR 601.2b). Exhaustive, so a new
+/// [`AdditionalCost`] variant must be given words here.
+fn additional_cost_text(cost: AdditionalCost) -> String {
+    match cost {
+        AdditionalCost::Discard { count: 1 } => {
+            "As an additional cost to cast this spell, discard a card.".to_string()
+        }
+        AdditionalCost::Discard { count } => format!(
+            "As an additional cost to cast this spell, discard {} cards.",
+            number(u32::from(count))
+        ),
+    }
 }
 
 /// A short list of words as English reads it: `"a"`, `"a and b"`, `"a, b, and c"`.

@@ -145,6 +145,9 @@ pub(crate) fn legal_targets_for_spec(
         .collect();
     let universe: Vec<Target> = match spec {
         TargetSpec::AnyPlayer | TargetSpec::AnyOpponent => players,
+        // "Target player or planeswalker": both universes, filtered below to players
+        // still in the game and permanents that are planeswalkers.
+        TargetSpec::AnyPlayerOrPlaneswalker => players.into_iter().chain(permanents).collect(),
         TargetSpec::AnyPermanent
         | TargetSpec::AnyNonlandPermanent
         | TargetSpec::AnyCreature

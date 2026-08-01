@@ -191,8 +191,14 @@ async fn issue_395_above_maximum_commander_deck_is_rejected() {
     let lobby = Lobby::bundled(Lobby::DEFAULT_MAX_ROOMS).expect("bundled cards");
     // 101 cards: one over the exact-100 commander size.
     let mut cards = commander_decklist();
-    cards.push("forest".to_string());
-    let error = rejection_for(&lobby, "commander", cards, Some("jedit_ojanen".to_string())).await;
+    cards.push("mountain".to_string());
+    let error = rejection_for(
+        &lobby,
+        "commander",
+        cards,
+        Some("lathliss_dragon_queen".to_string()),
+    )
+    .await;
     assert_eq!(error["code"], "above_maximum");
     assert_eq!(
         error["reason"],
@@ -212,37 +218,44 @@ async fn issue_395_missing_commander_is_rejected() {
 #[tokio::test]
 async fn issue_395_illegal_commander_is_rejected_naming_the_designation() {
     let lobby = Lobby::bundled(Lobby::DEFAULT_MAX_ROOMS).expect("bundled cards");
-    // Llanowar Elves is in the deck but is not legendary, so it cannot be the commander.
+    // Volcanic Dragon is in the deck but is not legendary, so it cannot be the
+    // commander.
     let error = rejection_for(
         &lobby,
         "commander",
         commander_decklist(),
-        Some("llanowar_elves".to_string()),
+        Some("volcanic_dragon".to_string()),
     )
     .await;
     assert_eq!(error["code"], "commander_not_legendary_creature");
-    assert_eq!(error["card"], "llanowar_elves");
+    assert_eq!(error["card"], "volcanic_dragon");
 
     // A commander the deck does not contain names the designation too.
     let not_in_deck = rejection_for(
         &lobby,
         "commander",
-        vec!["forest".to_string(); 100],
-        Some("jedit_ojanen".to_string()),
+        vec!["mountain".to_string(); 100],
+        Some("lathliss_dragon_queen".to_string()),
     )
     .await;
     assert_eq!(not_in_deck["code"], "commander_not_in_deck");
-    assert_eq!(not_in_deck["card"], "jedit_ojanen");
+    assert_eq!(not_in_deck["card"], "lathliss_dragon_queen");
 }
 
 #[tokio::test]
 async fn issue_395_out_of_identity_card_is_rejected_naming_it() {
     let lobby = Lobby::bundled(Lobby::DEFAULT_MAX_ROOMS).expect("bundled cards");
-    // Swap a Forest for a blue card: outside Jedit Ojanen's green identity.
+    // Swap a Mountain for a blue card: outside Lathliss's red identity.
     let mut cards = commander_decklist();
     let last = cards.len() - 1;
     cards[last] = "snapping_drake".to_string();
-    let error = rejection_for(&lobby, "commander", cards, Some("jedit_ojanen".to_string())).await;
+    let error = rejection_for(
+        &lobby,
+        "commander",
+        cards,
+        Some("lathliss_dragon_queen".to_string()),
+    )
+    .await;
     assert_eq!(error["code"], "out_of_identity");
     assert_eq!(error["card"], "snapping_drake");
 }
@@ -334,24 +347,24 @@ fn decklist() -> Vec<String> {
     (0..40).map(|i| STARTER_CARDS[i % 6].to_string()).collect()
 }
 
-/// A legal 100-card commander decklist (issue #372): Jedit Ojanen (a green
-/// legendary creature) as the commander, the catalog's in-identity green (and
-/// colorless) non-basics as singletons, and Forests to fill to exactly 100 — every
-/// card within Jedit's green color identity.
+/// A legal 100-card commander decklist (issue #372): Lathliss, Dragon Queen (a red
+/// legendary creature) as the commander, the catalog's in-identity red (and colorless)
+/// non-basics as singletons, and Mountains to fill to exactly 100 — every card within
+/// Lathliss's red color identity.
 fn commander_decklist() -> Vec<String> {
     let non_basics = [
-        "jedit_ojanen",
-        "llanowar_elves",
-        "druid_of_the_cowl",
-        "giant_spider",
-        "colossal_dreadmaw",
-        "gigantosaurus",
-        "titanic_growth",
+        "lathliss_dragon_queen",
+        "volcanic_dragon",
+        "viashino_pyromancer",
+        "siegebreaker_giant",
+        "lightning_strike",
+        "shock",
+        "sure_strike",
         "skyscanner",
     ];
     let mut cards: Vec<String> = non_basics.iter().map(|s| s.to_string()).collect();
     while cards.len() < 100 {
-        cards.push("forest".to_string());
+        cards.push("mountain".to_string());
     }
     cards
 }
@@ -463,12 +476,12 @@ async fn issue_372_commander_game_starts_at_forty_life_with_command_zone_visible
     .await;
     let _ = bob.lobby_view_where(|v| v.room.is_some()).await;
 
-    // Each seat submits the same legal commander deck, designating Jedit Ojanen.
+    // Each seat submits the same legal commander deck, designating Lathliss.
     for (client, seat) in [(&mut alice, 0usize), (&mut bob, 1usize)] {
         client
             .send(LobbyCommand::SubmitDeck(SubmitDeck {
                 cards: commander_decklist(),
-                commander: Some("jedit_ojanen".to_string()),
+                commander: Some("lathliss_dragon_queen".to_string()),
             }))
             .await;
         let _ = client
@@ -490,7 +503,7 @@ async fn issue_372_commander_game_starts_at_forty_life_with_command_zone_visible
     assert_eq!(game.command.len(), 2, "both command zones are public");
     for pile in &game.command {
         assert_eq!(pile.cards.len(), 1);
-        assert_eq!(pile.cards[0].name, "Jedit Ojanen");
+        assert_eq!(pile.cards[0].name, "Lathliss, Dragon Queen");
     }
     // The commander tax is public and starts at zero (no casts yet, CR 903.8).
     assert_eq!(game.commander_tax.len(), 2);
