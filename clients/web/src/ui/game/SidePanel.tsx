@@ -41,6 +41,7 @@ export function SidePanel({
   missed,
   log,
   label,
+  onClose,
   surface,
 }: {
   zone?: OpenZone
@@ -53,10 +54,24 @@ export function SidePanel({
   missed: readonly GameLogEntry[]
   log: readonly GameLogEntry[]
   label(id: string): string
+  /**
+   * Present when this column is a drawer over the board rather than a column beside it (§3,
+   * step 8) — and it is the whole of the difference. Nothing about what the column *holds*
+   * changes with the room available; only whether it is standing open.
+   */
+  onClose?(): void
   surface: Surface
 }) {
   return (
-    <aside className="side">
+    <aside className={`side${onClose ? ' side--drawer' : ''}`} aria-label="History">
+      {onClose && (
+        <p className="side__dismiss">
+          <button type="button" onClick={onClose}>
+            Close
+          </button>
+        </p>
+      )}
+
       {/* Over this column rather than in it: a preview that took part in the layout would make
           the log jump every time the pointer crossed a card, and one over the table would hide
           the board being read. */}

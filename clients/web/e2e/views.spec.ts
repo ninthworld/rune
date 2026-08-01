@@ -11,7 +11,15 @@
  */
 import { expect, test } from '@playwright/test'
 
-import { DESKTOP, fixture, messages, pageFits, serveFrames, submissions } from './frames'
+import {
+  DESKTOP,
+  fixture,
+  messages,
+  openHistory,
+  pageFits,
+  serveFrames,
+  submissions,
+} from './frames'
 
 test.describe('the board, from one view', () => {
   test('renders the turn, the hand, and the stack the server sent', async ({ page }) => {
@@ -767,10 +775,14 @@ test.describe('the table as a composition', () => {
     await expect(page.getByRole('region', { name: /^Random .* battlefield/ })).toContainText(
       'Grizzly Bears',
     )
-    // Yours is empty, and says so rather than borrowing someone else's permanents.
-    await expect(page.getByRole('region', { name: 'Your battlefield' })).toContainText(
-      'No permanents',
-    )
+    // Yours is empty — and the way that is said is by *being* empty. §5: "the sentence goes; the
+    // place stays." A half of the table with nothing on it is the most direct statement there is
+    // that a seat controls nothing, and printing "No permanents." over it spent a card row's
+    // height repeating what the empty place already said.
+    const yours = page.getByRole('region', { name: 'Your battlefield' })
+    await expect(yours).toBeVisible()
+    await expect(yours.getByRole('listitem')).toHaveCount(0)
+    await expect(yours).not.toContainText('No permanents')
 
     // Each seat's own totals sit with that seat.
     await expect(page.getByRole('region', { name: 'Your seat' })).toContainText('eliminated')
@@ -799,19 +811,53 @@ test.describe('the table as a composition', () => {
     ])
     await page.goto('/')
 
-    for (const name of ['Your seat', 'p2 seat', 'Your battlefield', 'p2 battlefield', 'Stack']) {
+    for (const name of ['Your seat', 'p2 seat', 'Your battlefield', 'p2 battlefield']) {
       await expect(page.getByRole('region', { name })).toBeVisible()
     }
     await expect(page.getByRole('region', { name: 'Your hand' })).toContainText('empty')
     await expect(page.getByRole('region', { name: 'Actions' })).toBeVisible()
     expect(await pageFits(page)).toEqual({ x: true, y: true })
+
+    // The stack is the one region that is *not* in that list, and §5 says why in as many words:
+    // "the stack is an event, a battlefield is a place." An event that is not happening takes no
+    // room and the board takes the width back; a place at the table does not stop existing
+    // because nobody has put anything on it. This is the assertion that keeps a later change
+    // from quietly reserving a column for an empty stack again.
+    await expect(page.getByRole('region', { name: 'Stack' })).toHaveCount(0)
+  })
+
+  test('draws both halves of the table at the same height, whatever is on them', async ({
+    page,
+  }) => {
+    // §5's rule, as a measurement: "a region's height is a function of the viewport alone." The
+    // opponent controls two permanents here and you control none, which under the old flow
+    // layout meant the empty half collapsed to the height of the words in it and the line across
+    // the middle of the table sat wherever the last board wipe had left it. A seat that plays its
+    // first creature must not shove the other half of the table upward, and a seat whose board
+    // is wiped must not watch its own permanents jump to a new size and a new place.
+    await page.setViewportSize(DESKTOP)
+    await serveFrames(page, [fixture('gameview-commander.json')])
+    await page.goto('/')
+
+    const box = async (name: string | RegExp) => {
+      const rect = await page.getByRole('region', { name }).first().boundingBox()
+      if (!rect) throw new Error(`${String(name)} is not on the screen`)
+      return rect
+    }
+    const mine = await box('Your battlefield')
+    const theirs = await box(/^Bob .* battlefield/)
+
+    expect(mine.height).toBeGreaterThan(0)
+    expect(Math.abs(mine.height - theirs.height)).toBeLessThanOrEqual(1)
+    // And your half is the near one, whichever half has anything on it.
+    expect(mine.y).toBeGreaterThan(theirs.y)
   })
 
   test('keeps the dock reachable under a board and hand that will not fit', async ({ page }) => {
     // The constraint the whole geometry exists for. Sixty permanents, a twenty-card hand, and
-    // a name far longer than any real one: every region scrolls inside its own area, and the
-    // controls that end the turn stay exactly where they were on an empty board. A player who
-    // has to scroll the page to find `Pass` has lost the game to the layout.
+    // a name far longer than any real one: every region is exactly where it was on an empty
+    // board, because every one of them was placed by the viewport rather than by what turned up
+    // in it. A player who has to scroll the page to find `Pass` has lost the game to the layout.
     const base = fixture('gameview.json')
     const bear = (base.battlefield as Record<string, unknown>[])[0]!
     const card = (base.my_hand as Record<string, unknown>[])[0]!
@@ -840,7 +886,8 @@ test.describe('the table as a composition', () => {
     await expect(actions.getByRole('button', { name: 'Pass' })).toBeInViewport()
     await expect(page.getByRole('region', { name: 'Your hand' })).toBeInViewport()
 
-    // Sixty permanents are all rendered — they scroll within the board, they are not dropped.
+    // Sixty permanents are all rendered. Whether the board has learnt to *pack* them yet is
+    // #660's; what this pins is that none of them is dropped and none of them widened the page.
     await expect(
       page.getByRole('region', { name: 'Your battlefield' }).getByRole('listitem'),
     ).toHaveCount(60)
@@ -897,6 +944,7 @@ test.describe('making a settle legible', () => {
     }
     await serveFrames(page, [view])
     await page.goto('/')
+    await openHistory(page)
 
     const settle = page.getByRole('region', { name: 'While you were passed' })
     await expect(settle).toBeVisible()

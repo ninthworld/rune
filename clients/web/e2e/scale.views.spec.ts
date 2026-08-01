@@ -83,12 +83,6 @@ interface Known {
   clipped?: string
   /** §3: a region of the board that scrolls, or that is reached by scrolling. */
   scrolls?: string
-  /** §2: text below its type floor — 9px on a card, 11px on chrome. */
-  floor?: string
-  /** §1: the notice a viewport below the floor is owed. */
-  notice?: string
-  /** §1: *in place of* — no board drawn underneath that notice. */
-  board?: string
 }
 
 /**
@@ -98,14 +92,20 @@ interface Known {
  * Six of the clipped elements are the same six at every size, and that repetition is the finding
  * rather than noise: a relationship trail's control needs 304px in 192px on a 3440px ultrawide
  * exactly as it does on a phone, and the stack's top item needs 44px of height in 30px
- * everywhere, because none of those numbers is derived from the viewport. The floor rows are
- * identical at all eight sizes for the same reason — the sizes are in `rem`, and a `rem` does not
- * shrink with the screen.
+ * everywhere, because none of those numbers is derived from the viewport.
  *
- * Measured against `main` at 9084a1c, which is #667 — the redrawn card. That merge retired more
- * than half of what this gate first reported: clipped elements went from 16–34 per viewport to
- * 8–9, and the nine `span.badge` misses of the 9px card floor are gone entirely. What is left is
- * what #667 was never going to reach.
+ * First measured against `main` at 9084a1c, which is #667 — the redrawn card. That merge retired
+ * more than half of what this gate first reported: clipped elements went from 16–34 per viewport
+ * to 8–9, and the nine `span.badge` misses of the 9px card floor are gone entirely.
+ *
+ * #659 — the scene, placing every region at a computed box — retired the rest of the type floor
+ * (all eight `floor` rows, plus the two `mana__pip` misses of the 9px card floor that those rows
+ * had under-counted) and both rows for the unsupported viewport. It did **not** retire a single
+ * `scrolls` row, and the reason is worth stating: each of those rows now names exactly two
+ * regions, the battlefields and the stack, and both of them overflow because what is *inside*
+ * them has no packing yet. Every other region on the board holds its own content at every one of
+ * these viewports now. The numbers in the rows below are the pre-#659 measurements and are left
+ * as they were measured — a row is deleted, never edited down.
  */
 const KNOWN: Record<string, Known> = {
   '1920×1080': {
@@ -119,9 +119,6 @@ const KNOWN: Record<string, Known> = {
       '#659/#660/#662 — `.field--you` holds 690px of content in a 323px box and `.field--opponent` ' +
       '472px in 329px; the stack’s `div.rail` is 1438px inside 775px. When the board is packed ' +
       'rather than scrolled these fit.',
-    floor:
-      '#659 — 14 elements, all chrome, all against the 11px floor: `span.strip__name` ×12 (the ' +
-      'turn rail’s step names) at 8.8px, `p.seat__pool` and `span.pip--restricted` at 10.56px.',
   },
   '1440×900': {
     clipped:
@@ -131,9 +128,6 @@ const KNOWN: Record<string, Known> = {
       '#659/#660/#662 — `.field--you` holds 633px of content in a 247px box, the single clearest ' +
       'case in the file: two and a half times what it can show, resolved with a scrollbar instead ' +
       'of packing. `.field--opponent` 434px in 254px; `div.rail` 1438px in 624px.',
-    floor:
-      '#659 — the same 14: `span.strip__name` ×12 at 8.8px, `p.seat__pool` and ' +
-      '`span.pip--restricted` at 10.56px, against an 11px chrome floor.',
   },
   '1280×720': {
     clipped:
@@ -142,9 +136,6 @@ const KNOWN: Record<string, Known> = {
     scrolls:
       '#659/#660/#662 — `.field--you` holds 706px in a 169px box, `.field--opponent` 373px in ' +
       '175px, `div.rail` 1438px in 468px.',
-    floor:
-      '#659 — the same 14: `span.strip__name` ×12 at 8.8px, `p.seat__pool` and ' +
-      '`span.pip--restricted` at 10.56px, against an 11px chrome floor.',
   },
   '640×360': {
     clipped:
@@ -153,9 +144,6 @@ const KNOWN: Record<string, Known> = {
     scrolls:
       '#659/#660/#662 — both battlefields collapse to a 16px box holding 749px and 1073px; ' +
       '`.seat--opponent` is 202px wide in 149px; `div.rail` 1438px in 42px.',
-    floor:
-      '#659 — the same 14: `span.strip__name` ×12 at 8.8px, `p.seat__pool` and ' +
-      '`span.pip--restricted` at 10.56px, against an 11px chrome floor.',
   },
   '390×844': {
     clipped:
@@ -165,9 +153,6 @@ const KNOWN: Record<string, Known> = {
       '#659/#660/#662 — `.field--you` holds 1359px in a 16px box and `.field--opponent` 985px in ' +
       '16px; both seats are 202px and 83px wide in 19px; the dock’s section is 117px wide in ' +
       '107px; `div.rail` 1438px in 320px.',
-    floor:
-      '#659 — the same 14: `span.strip__name` ×12 at 8.8px, `p.seat__pool` and ' +
-      '`span.pip--restricted` at 10.56px, against an 11px chrome floor.',
   },
   '844×390': {
     clipped:
@@ -176,9 +161,6 @@ const KNOWN: Record<string, Known> = {
     scrolls:
       '#659/#660/#662 — `.field--you` holds 1026px in a 16px box, `.field--opponent` 605px in ' +
       '16px, `div.rail` 1438px in 115px.',
-    floor:
-      '#659 — the same 14: `span.strip__name` ×12 at 8.8px, `p.seat__pool` and ' +
-      '`span.pip--restricted` at 10.56px, against an 11px chrome floor.',
   },
   '3440×1440': {
     clipped:
@@ -189,9 +171,6 @@ const KNOWN: Record<string, Known> = {
     scrolls:
       '#659/#660/#662 — `.field--you` holds 690px in a 541px box and `div.rail` 1438px in 1135px, ' +
       'on the largest screen the client supports.',
-    floor:
-      '#659 — the same 14: `span.strip__name` ×12 at 8.8px, `p.seat__pool` and ' +
-      '`span.pip--restricted` at 10.56px, against an 11px chrome floor.',
   },
   '320×480': {
     clipped:
@@ -201,13 +180,9 @@ const KNOWN: Record<string, Known> = {
       '#659/#660/#662 — nearly every region: `header.match` 85px wide in 56px, both seats in a ' +
       '19px box, `.field--you` 1089px in 16px, `section.hand` 150px in 99px, the dock 258px in ' +
       '106px, and `div.rail` 1438px in **6px**.',
-    floor:
-      '#659 — the same 14: `span.strip__name` ×12 at 8.8px, `p.seat__pool` and ' +
-      '`span.pip--restricted` at 10.56px, against an 11px chrome floor.',
   },
 
-  // The two cases that are not one of the eight: a pile open changes the numbers, and the
-  // unsupported viewport is below §1's floor on both edges and answers different questions.
+  // The one case that is not one of the eight: a pile open changes the numbers.
   '1440×900 with a pile open': {
     scrolls:
       '#659/#660/#662 — the board behind the pile is the 1440×900 board plus the graveyard’s own ' +
@@ -215,18 +190,6 @@ const KNOWN: Record<string, Known> = {
       '`div.rail` 1438px in 624px. Nothing *inside* the pile is reported, which is the exemption ' +
       'working; this row is the board beside it.',
     clipped: '#660/#662/#663 — the same 8 the 1440×900 row describes, unchanged by the pile.',
-  },
-  '300×400': {
-    notice:
-      '#659 — there is no notice of any kind at 300×400, and `page.getByText(/too small|not ' +
-      'supported|unsupported/i)` finds nothing. `scene.ts` already classifies this viewport as ' +
-      '`unsupported` and returns no regions for it; nothing renders that answer yet. Whichever ' +
-      'surface adds the notice should expect to adjust that regex — the wording is not agreed.',
-    board:
-      '#659 — the whole board is drawn instead, at a size §1 says is unsupported: ' +
-      '`{ battlefields: 2, hands: 1, docks: 1 }` against `{ 0, 0, 0 }`. This is the *in place of* ' +
-      'half, and before the split it sat behind the notice assertion and was never reached — the ' +
-      'ledger would have recorded one defect where there are two.',
   },
 }
 
@@ -569,7 +532,6 @@ for (const viewport of VIEWPORTS) {
      * §3: drop the secondary text, then the face itself becomes a chip.
      */
     test('renders no text below its type floor', async ({ page }) => {
-      known(knownAt(viewport).floor)
       await table(page, viewport)
       expect((await textIn(page)).filter((m) => m.fontSize < m.floor)).toEqual([])
     })
@@ -644,7 +606,6 @@ test.describe('a viewport below the floor', () => {
   // table would satisfy the first and fail the second, and a single test asserting both could
   // not tell anyone which.
   test('says so, plainly', async ({ page }) => {
-    known(KNOWN['300×400']?.notice)
     await belowTheFloor(page)
     await expect(page.getByText(/too small|not supported|unsupported/i)).toBeVisible()
   })
@@ -654,7 +615,6 @@ test.describe('a viewport below the floor', () => {
   // first: the ledger would then record "a battlefield exists" and say nothing about the hand or
   // the dock, and the row would under-report the defect it exists to describe.
   test('draws no board underneath the notice', async ({ page }) => {
-    known(KNOWN['300×400']?.board)
     await belowTheFloor(page)
     await expect
       .poll(async () => ({
