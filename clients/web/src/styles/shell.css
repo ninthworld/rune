@@ -451,9 +451,13 @@ main:has(.app) {
   background: var(--panel);
 }
 
+/* The option in force. A slightly lighter box was not a statement anybody could find on a dark
+   ground at a glance — which is §9.2's second rule failing on the control that *is* the state —
+   so the chosen option carries an accent edge as well, and the edge is the loud part. */
 .choice__option--on {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
   background: var(--board-you);
+  box-shadow: inset 0.15rem 0 0 var(--accent);
 }
 
 .choice__label {
