@@ -83,7 +83,15 @@ battlefield that means, at minimum:
 Rules text, type line, mana cost, and art are *not* in this list. They are tier 2.
 
 **The type rule: fit the text by shrinking it, and only remove it when it hits the floor. Never
-truncate it to fit.** The order is shrink → wrap → remove, and truncation is not a step in it.
+truncate it to fit.** Truncation is not a step in it.
+
+The order is what gets *sacrificed*, and it is: type size, then line count, then completeness. But
+"shrink then wrap" must not be read as *shrink all the way to the floor before considering a second
+line* — that produces a wider card with smaller text than a narrow one, which is indefensible.
+**Wrapping is one of the ways text fits at a given size, not a step after shrinking.** Stated
+operationally: take the largest size at which the text fits within the lines the box can afford,
+preferring fewer lines at equal size. Shrink only when no line count works at that size, and
+abbreviate only at the floor.
 
 The floor is **9px effective** for text on a card and 11px for chrome. That is deliberately small,
 and it is what XMage proves: at roughly 9px it fits a card's name, cost, type line, keyword
@@ -308,11 +316,17 @@ Not scaled copies of one another — each drops what it has no room for, in ladd
 | --- | --- |
 | **Full** — preview, inspector | Everything, including complete rules text. |
 | **Designed** — the hand, and a battlefield with the height to spare | Name, cost, art, type line, rules text if it fits at floor, marks. |
-| **Compact** — most battlefields, crowded rows, the Tall band | Name, art, marks. No type line, no rules text; cost only if the width allows. |
+| **Compact** — most battlefields, crowded rows, the Tall band | Name, marks, and the type line where it fits. No rules text; art and cost only if what is left allows. |
 | **Chip** — below a 100px row | Name, P/T, marks. No art. Landscape. |
 
 Which one is drawn follows from the box available, never from the call site: a battlefield card and
 a hand card of the same size are the same card.
+
+The type line survives into `compact` because §5's 72×100 target is measured off a tile that has
+one, and dropping it to protect the art window would be backwards — art is the element that
+degrades to nothing without costing a fact. What a presentation names is the *order* things leave
+in, not a fixed manifest: below the name and the marks, everything is drawn while it fits and
+dropped whole when it does not.
 
 **`compact` is the normal battlefield presentation, not a degradation.** Run §5's numbers against a
 real screen: two rows of 182px cards, for two seats, plus a 217px hand and the chrome, needs more
