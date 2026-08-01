@@ -11,12 +11,25 @@
  *
  *   1. **Fill** the slot being drafted, if the server listed this id among its candidates.
  *   2. **Inspect**, if this object is already selected — clicking again looks closer.
- *   3. **Select**, if the server named this object as the subject of an action.
- *   4. **Inspect**, because there is nothing else the client can offer for it.
+ *   3. **Take**, if the server offered exactly one action for this object. One click casts the
+ *      spell, plays the land, taps for the mana.
+ *   4. **Select**, if it offered more than one — the dock asks which.
+ *   5. **Inspect**, because there is nothing else the client can offer for it.
  *
- * That order is why a card the server did not name still opens the inspector on one click, and
- * why reading a card is never lost behind an action: an object with actions gives up its
- * inspector to the second click and to the dock, never to nothing.
+ * Rule 3 is the one worth defending. A card the server offered a single action for has an
+ * unambiguous meaning for a click, and routing it through a selection and then a button in the
+ * dock is two clicks and a change of focus to say something the view already said. Where the
+ * server offered a *choice* — a creature that can attack and also activate — the click cannot
+ * mean one thing, so it opens the list and the player picks. The client is still not deciding
+ * anything: the count of actions the server attached to an object is the whole of the rule.
+ *
+ * Reading is not a click at all, which is what makes rule 3 safe. Looking at an object previews
+ * its full face, and a right-click opens the inspector over any object at any time — so an
+ * object whose single action now fires on one click did not become harder to read, it became
+ * readable without spending a click on it.
+ *
+ * That order is also why a card the server did not name still opens the inspector on one click:
+ * an object gives its first click to an action only where the server offered one.
  *
  * Nothing here survives a message. A new view rebuilds every derivation from that view, and the
  * only thing carried across the boundary is the submission the client is still waiting on —
@@ -285,7 +298,11 @@ function slotFor(slots: readonly Slot[], id: string): Slot | undefined {
   )
 }
 
-export type Gesture = { kind: 'fill'; slot: string } | { kind: 'select' } | { kind: 'inspect' }
+export type Gesture =
+  | { kind: 'fill'; slot: string }
+  | { kind: 'take'; action: string }
+  | { kind: 'select' }
+  | { kind: 'inspect' }
 
 /** What one click on the object `id` means right now. The order is this module's whole rule. */
 export function gestureFor(
@@ -296,8 +313,13 @@ export function gestureFor(
   const open = slotFor(focus(actions, interaction).slots, id)
   if (open) return { kind: 'fill', slot: open.slot }
   if (interaction.selected === id) return { kind: 'inspect' }
-  if (subjects(actions).has(id)) return { kind: 'select' }
-  return { kind: 'inspect' }
+
+  // One action means the click has one meaning, so it is that meaning. More than one means the
+  // click has no single meaning, and inventing one — a "primary" action ranked by a type this
+  // client would have to interpret — is exactly the rules reasoning that does not live here.
+  const [only, ...rest] = actionsFor(actions, id)
+  if (!only) return { kind: 'inspect' }
+  return rest.length === 0 ? { kind: 'take', action: only.id } : { kind: 'select' }
 }
 
 /**

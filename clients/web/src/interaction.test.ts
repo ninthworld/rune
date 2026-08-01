@@ -215,8 +215,21 @@ describe('what one click means', () => {
     expect(gestureFor(ACTIONS, IDLE, 'perm_bear')).toEqual({ kind: 'inspect' })
   })
 
-  it('selects an object that owns an action', () => {
-    expect(gestureFor(ACTIONS, IDLE, 'c_fireball')).toEqual({ kind: 'select' })
+  it('takes the one action the server offered for an object', () => {
+    // One action is one meaning, so the click is that meaning: casting the fireball. Routing it
+    // through a selection and a button in the dock would be two clicks to say what the view
+    // already said.
+    expect(gestureFor(ACTIONS, IDLE, 'c_fireball')).toEqual({ kind: 'take', action: 'a2' })
+  })
+
+  it('opens the list when the server offered more than one', () => {
+    // A click cannot mean two things, and choosing a "primary" would be this client ranking
+    // actions by a type it would have to interpret. The count is the whole rule.
+    const both: ValidAction[] = [
+      { id: 'x1', type: 'attack', label: 'Attack', subject: ['perm_bear'] },
+      { id: 'x2', type: 'activate', label: '{T}: Draw a card', subject: ['perm_bear'] },
+    ]
+    expect(gestureFor(both, IDLE, 'perm_bear')).toEqual({ kind: 'select' })
   })
 
   it('inspects the selected object on a second click', () => {

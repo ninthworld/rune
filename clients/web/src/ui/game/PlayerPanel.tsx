@@ -17,6 +17,7 @@
  */
 import type { Seat, SeatPile } from './../../table'
 import type { RelationLine } from './../../relations'
+import { ManaCost } from './../Mana'
 import { RelationTrail } from './RelationTrail'
 import type { Surface } from './surface'
 
@@ -136,7 +137,10 @@ export function PlayerPanel({
               // can see, and the word a screen reader hears. Colour alone would say neither.
               title={pip.restricted ? 'Restricted mana' : undefined}
             >
-              {pip.symbol}
+              {/* The same disc the cost on a card is drawn with. Floating mana and the cost it
+                  is about to pay are the same symbols, and a pool that spelled them differently
+                  would make the one comparison a player makes constantly harder than it is. */}
+              <ManaCost cost={pip.symbol} />
               {pip.restricted && (
                 <>
                   *<span className="visually-hidden"> restricted</span>

@@ -1,0 +1,73 @@
+/**
+ * Where a player's card art comes from, as a device preference.
+ *
+ * ADR 0012 is the whole of the policy this implements, and two of its rules are the reason this
+ * is a *preference* rather than a feature:
+ *
+ * - **The project ships imageless.** Nothing is bundled, nothing is served, nothing is proxied.
+ *   What the third-party source means is that the *player's own browser* fetches images, at that
+ *   player's own request, and caches them on that player's own device.
+ * - **It is opt-in, and off until chosen.** `procedural` is the default and the only value a
+ *   fresh device has. Turning on a source is a deliberate act taken in front of a plain
+ *   description of what it does — which is what the ADR's consent step is, and why nothing here
+ *   infers consent from anything else.
+ *
+ * The preference is stored per device and is not game state. It survives nothing being sent to
+ * any server, it is never part of a `GameView`, and a client whose storage is empty or unreadable
+ * simply draws procedurally — which is the same screen, with a different picture in one window.
+ */
+
+/** Which source resolves an illustration. `procedural` fetches nothing. */
+export type ArtSourceId = 'procedural' | 'scryfall'
+
+/**
+ * How a resolved image is presented.
+ *
+ * - `window`: only the illustration is drawn, inside SAGE's own frame. The name band, the pips,
+ *   the type line, and the stat are still SAGE's.
+ * - `full`: the whole card image is the face. The printed text is suppressed because it is on
+ *   the image — but every server-computed overlay stays on top of it, so a buffed 4/4 never
+ *   reads as its printed 2/2.
+ */
+export type ArtStyle = 'window' | 'full'
+
+export interface ArtPreference {
+  source: ArtSourceId
+  style: ArtStyle
+}
+
+/** What a device with no stored preference has: nothing downloads, and offline play is normal. */
+export const DEFAULT_ART: ArtPreference = { source: 'procedural', style: 'window' }
+
+const KEY = 'sage.art.preference.v1'
+
+/**
+ * Read the stored preference, or the default.
+ *
+ * Every failure lands on the default: no storage (a private window with it disabled), unparseable
+ * contents, a value from a build that offered a source this one does not. Art is cache and never
+ * state, so falling back is always correct and never loses anything a player cannot re-choose.
+ */
+export function readArtPreference(storage: Storage | undefined): ArtPreference {
+  if (!storage) return DEFAULT_ART
+  try {
+    const raw: unknown = JSON.parse(storage.getItem(KEY) ?? 'null')
+    if (typeof raw !== 'object' || raw === null) return DEFAULT_ART
+    const stored = raw as Partial<ArtPreference>
+    return {
+      source: stored.source === 'scryfall' ? 'scryfall' : 'procedural',
+      style: stored.style === 'full' ? 'full' : 'window',
+    }
+  } catch {
+    return DEFAULT_ART
+  }
+}
+
+/** Store the preference, or carry on without storing it. A device that cannot remember still plays. */
+export function writeArtPreference(storage: Storage | undefined, preference: ArtPreference): void {
+  try {
+    storage?.setItem(KEY, JSON.stringify(preference))
+  } catch {
+    // Full, disabled, or denied. The preference still applies to this session.
+  }
+}

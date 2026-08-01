@@ -15,8 +15,16 @@
 import { useEffect, useState } from 'react'
 
 import type { GameView, Phase } from './../../protocol'
-import { matchStatus, phaseLabel, statusLine, steps, type StopScope } from './../../turn'
+import {
+  matchStatus,
+  phaseLabel,
+  statusLine,
+  steps,
+  type StopPreset,
+  type StopScope,
+} from './../../turn'
 import type { ConnectionStatus } from './../../socket'
+import { PacePresets } from './PacePresets'
 import { TurnStrip } from './TurnStrip'
 
 export function MatchHeader({
@@ -26,6 +34,10 @@ export function MatchHeader({
   eliminated,
   connection,
   onStop,
+  preset,
+  onPreset,
+  onHelp,
+  onArt,
 }: {
   view: GameView
   label(id: string): string
@@ -35,6 +47,11 @@ export function MatchHeader({
   eliminated: boolean
   connection: ConnectionStatus
   onStop(phase: Phase, scope: StopScope): void
+  /** Which whole-preference pace the server's effective lists match, if any. */
+  preset?: StopPreset
+  onPreset(preset: StopPreset): void
+  onHelp(): void
+  onArt(): void
 }) {
   const status = matchStatus(view, sent)
   const remaining = useDeadline(view)
@@ -71,7 +88,12 @@ export function MatchHeader({
         </p>
       </div>
 
-      <TurnStrip steps={steps(view)} onStop={onStop} />
+      {/* The same preference at two grains, on the same row it applies to: a step at a time on
+          the strip, and the whole of it as a pace beside it. */}
+      <div className="match__pacing">
+        <TurnStrip steps={steps(view)} onStop={onStop} />
+        <PacePresets current={preset} onPreset={onPreset} onHelp={onHelp} onArt={onArt} />
+      </div>
 
       {connection !== 'open' && (
         <p role="status" className="notice match__notice">

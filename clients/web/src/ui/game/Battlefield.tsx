@@ -52,14 +52,22 @@ export function Battlefield({
         <ul className="cards cards--battlefield">
           {entries.map(({ permanent, face, lines }) => (
             <li key={permanent.id}>
-              <Card
-                face={face}
-                variant="battlefield"
-                state={surface.stateOf(face.id)}
-                link={surface.linkOf(face.id)}
-                onActivate={surface.activate}
-                onTrace={surface.trace}
-              />
+              {/* The slot, not the card, is what reserves room for a tapped permanent. A card
+                  that turns 90° is wider than the box it stood in, so the slot widens over the
+                  same half second the card takes to turn and the neighbours slide aside —
+                  which is what happens when a real card is laid down. Without it a tapped
+                  permanent would overlap the one beside it. */}
+              <span className="card-slot">
+                <Card
+                  face={face}
+                  variant="battlefield"
+                  state={surface.stateOf(face.id)}
+                  link={surface.linkOf(face.id)}
+                  onActivate={surface.activate}
+                  onInspect={surface.inspect}
+                  onTrace={surface.trace}
+                />
+              </span>
               <RelationTrail lines={lines} surface={surface} />
             </li>
           ))}

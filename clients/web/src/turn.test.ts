@@ -19,6 +19,8 @@ import {
   nextScope,
   passedRuns,
   phaseLabel,
+  presetOf,
+  presetStops,
   statusLine,
   steps,
   withStop,
@@ -219,5 +221,39 @@ describe('what the settle did on your behalf', () => {
       { turn: 4, phase: 'end' },
     ])
     expect(runs.map((run) => run.turn)).toEqual([4, 5, 4])
+  })
+})
+
+describe('the whole preference, as a pace', () => {
+  it('clears both lists to stop nowhere, which is what a bare message means', () => {
+    // `docs/protocol.md`: the first `set_stops` a seat sends replaces the whole preference, and
+    // a bare one means "stop nowhere". So the minimal message is the whole of this preset.
+    expect(presetStops('nowhere')).toEqual({ type: 'set_stops' })
+  })
+
+  it('stops at the two main phases of your own turn, as the server seeds a human seat', () => {
+    expect(presetStops('mains')).toEqual({
+      type: 'set_stops',
+      own_turn: ['precombat_main', 'postcombat_main'],
+    })
+  })
+
+  it('claims every step, on every turn, as the way back from a skip', () => {
+    const message = presetStops('everywhere')
+    expect(message).toMatchObject({ type: 'set_stops', stops: PHASES })
+    expect(message).not.toHaveProperty('own_turn')
+  })
+
+  it('reads the pace off the effective lists the server reflected', () => {
+    expect(presetOf(view())).toBe('nowhere')
+    expect(presetOf(view({ own_turn_stops: ['postcombat_main', 'precombat_main'] }))).toBe('mains')
+    expect(presetOf(view({ stops: [...PHASES] }))).toBe('everywhere')
+  })
+
+  it('claims no pace at all for a preference edited step by step', () => {
+    // Which is the honest answer: there is no client-held idea of a current pace, so a
+    // preference that is none of the three simply matches none of them.
+    expect(presetOf(view({ stops: ['end'] }))).toBeUndefined()
+    expect(presetOf(view({ own_turn_stops: ['precombat_main'] }))).toBeUndefined()
   })
 })

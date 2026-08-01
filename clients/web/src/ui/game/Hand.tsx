@@ -24,6 +24,7 @@ export function Hand({ faces, surface }: { faces: readonly CardFace[]; surface: 
                 state={surface.stateOf(face.id)}
                 link={surface.linkOf(face.id)}
                 onActivate={surface.activate}
+                onInspect={surface.inspect}
                 onTrace={surface.trace}
               />
             </li>

@@ -34,6 +34,16 @@ export interface Surface {
   /** This object was clicked. What that means is decided centrally, never here. */
   activate(id: string): void
   /**
+   * Open this object's full face.
+   *
+   * A separate entry point from `activate` because reading is not acting and must never queue
+   * behind it. A click on an object the server offered a single action for now *takes* that
+   * action, so the way to read that object has to be a gesture that costs nothing and works the
+   * same everywhere — the right-click every surface hands to this, and the preview that follows
+   * the pointer without any gesture at all.
+   */
+  inspect(id: string): void
+  /**
    * The player is looking at this object, or has looked away (`undefined`).
    *
    * Purely a look: it submits nothing, selects nothing, and is thrown away the moment the

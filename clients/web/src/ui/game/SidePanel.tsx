@@ -21,6 +21,7 @@ import type { GameLogEntry, AutoPassedStep } from './../../protocol'
 import type { CardFace } from './../../card-face'
 import { describe, kindOf } from './../../game-log'
 import { passedRuns } from './../../turn'
+import { CardPreview } from './CardPreview'
 import type { Surface } from './surface'
 import { ZonePanel } from './ZonePanel'
 
@@ -34,6 +35,7 @@ export interface OpenZone {
 export function SidePanel({
   zone,
   closeZone,
+  preview,
   revealed,
   settled,
   log,
@@ -42,6 +44,8 @@ export function SidePanel({
 }: {
   zone?: OpenZone
   closeZone(): void
+  /** The face of whatever the player is currently looking at, if anything. */
+  preview?: CardFace
   revealed: readonly CardFace[]
   settled: readonly AutoPassedStep[]
   log: readonly GameLogEntry[]
@@ -50,6 +54,11 @@ export function SidePanel({
 }) {
   return (
     <aside className="side">
+      {/* Over this column rather than in it: a preview that took part in the layout would make
+          the log jump every time the pointer crossed a card, and one over the table would hide
+          the board being read. */}
+      {preview && <CardPreview face={preview} />}
+
       {zone && (
         <ZonePanel
           label={zone.label}
