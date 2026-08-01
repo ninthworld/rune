@@ -28,9 +28,9 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   drive different binaries, which is the failure ADR 0011 is about.
 - **[`docs/client-design.md`](../../docs/client-design.md) is the layout authority.** Read it
   before changing anything that occupies space. Its one-line summary: *zoom, resolution, and
-  aspect are the same problem; the board never scrolls; text is fitted, never truncated.* Geometry
-  is computed from the viewport and the counts, never inherited from whatever content happens to
-  be in a box.
+  aspect are the same problem; the board never scrolls; text is fitted, never truncated.* A
+  region's geometry is computed from the **viewport alone**, never inherited from whatever content
+  happens to be in a box; a count is absorbed by the things inside the region.
 - **Dark, declared rather than followed.** A card is an object lying on a surface, it needs a
   ground darker than itself, and maintaining a light table as well is how neither gets good.
 - **An overlay renders the join and nothing else.** It is `aria-hidden`, because a drawn line is
@@ -46,12 +46,17 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   the discriminators are structural and order-sensitive; the rules are the protocol's.
 - `src/normalize.ts` — turns wire absence into values a renderer can use. Every documented
   default lives here, so no component invents its own reading of a missing field.
-- `src/scene.ts` — the arrangement: a viewport and the counts go in, and every region's box comes
-  out, absolutely positioned. It is `docs/client-design.md` as arithmetic — §4's bands, §3's
-  ladder, §5's allocation — and it is pure, so every band is testable without a browser. **No
-  output of it can express overflow**: there is no field for it, and when the regions do not fit
-  the ladder tightens until they do. An empty region is charged nothing, which is how a seat with
-  no permanents hands its height to the seat that has them.
+- `src/scene.ts` — the arrangement: a viewport goes in, and every region's box comes out,
+  absolutely positioned. It is `docs/client-design.md` as arithmetic — §4's bands, §3's ladder,
+  §5's allocation — and it is pure, so every band is testable without a browser. **No output of it
+  can express overflow**: there is no field for it, and when the regions do not fit the ladder
+  tightens until they do. **A region's height and position are a function of the viewport alone**
+  (§5): its only inputs about the table are whether the stack is empty and whether the game is
+  asking something, both of which are *what is happening* rather than *how much there is*. Both
+  battlefields are therefore always the same height and the line across the middle of the table
+  does not move for any game event; a count is absorbed by the cards getting smaller and then
+  overlapping. `ui/game/frame.tsx` is the other half — one `ResizeObserver` on the root feeding
+  one `scene()` call, and every region placed at the box it returned.
 - `src/board.ts` — a battlefield, as rows. Groups permanents into creatures, other permanents,
   and lands from `CardView.card_types`, which the **server** states beside the type line it
   renders (`docs/protocol.md`) precisely so nothing here parses `"Artifact Creature — Thopter"`.

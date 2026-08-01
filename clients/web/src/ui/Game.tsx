@@ -5,11 +5,27 @@
  * `./game/`, and everything those surfaces need is worked out once here — the faces, what the
  * server named, what an id is called — so no surface holds a second reading of the view.
  *
- * The composition is fixed and two-player by design: opponent across from you, your side
+ * The reading order is fixed and two-player by design: opponent across from you, your side
  * nearest you, the stack between them, your hand along the bottom edge, and the controls that
  * move the game pinned below that. A permanent's controller is answered by *where the card is*
  * rather than by a heading above a list, which is the difference between a table and a state
- * dump. Three to six seats are a different composition and are not this one.
+ * dump. That order does not rearrange for any viewport (§4): density changes, the spatial
+ * metaphor does not, so what a player learns on a desktop still holds on a phone.
+ *
+ * **The arrangement is computed, not composed.** Every region below is placed at a box `scene()`
+ * returned for this viewport — absolutely, in scene coordinates — rather than flowing after
+ * whatever came before it. That is the whole of #659 and it is a change of substrate rather than
+ * of style: flow layout answers "how big is this?" with "however big its contents are", which is
+ * exactly the question §5 forbids asking, and every scrollbar the table used to grow was that
+ * answer arriving. A region that cannot hold what is in it now tightens the ladder — cards toward
+ * their floor, rows merged, faces to chips, rails collapsed — and there is no `overflow: auto`
+ * anywhere inside the board for it to fall through to instead.
+ *
+ * Two departures from "the box never responds to the game", both §5's and both about *what is
+ * happening* rather than *how much there is*: an empty stack has no box, because an event that is
+ * not happening takes no room while a place at the table keeps its box whether or not anybody has
+ * put anything on it; and the hand yields the bottom band to the controls while the game is
+ * asking something, which is a change of mode. Neither reads a count.
  *
  * It also owns the one piece of interaction state, and routes every click through
  * `interaction.ts` so the rule is written once. What it holds is presentation and nothing else:
@@ -31,7 +47,7 @@ import { useEffect, useState } from 'react'
 
 import type { ClientMessage, GameView, Phase, ValidAction } from './../protocol'
 import { list, playerLabel } from './../normalize'
-import { seats, type SeatPile } from './../table'
+import { seats, type Seat, type SeatPile } from './../table'
 import {
   passedEvents,
   phaseLabel,
@@ -74,14 +90,18 @@ import {
 } from './../interaction'
 import { objectMenu } from './../menu'
 import { changes, NO_CHANGES } from './../motion'
+import { dockTone } from './../dock'
+import { scene } from './../scene'
 import { buildChooseAction, type Draft } from './../submission'
 import { CardInspector } from './CardInspector'
 import { ActionDock } from './game/ActionDock'
 import { Motion } from './game/Motion'
 import { Settings } from './game/Settings'
-import { TurnStrip } from './game/TurnStrip'
+import { TurnStrip, type TurnLayout } from './game/TurnStrip'
 import { Battlefield, type FieldEntry } from './game/Battlefield'
-import { Hand } from './game/Hand'
+import { CardPreview } from './game/CardPreview'
+import { Region, share, useViewport } from './game/frame'
+import { Hand, RaisedHand } from './game/Hand'
 import { MatchHeader } from './game/MatchHeader'
 import { MatchResult } from './game/MatchResult'
 import { ObjectMenu } from './game/ObjectMenu'
@@ -89,6 +109,7 @@ import { PlayerPanel } from './game/PlayerPanel'
 import { RelationOverlay } from './game/RelationOverlay'
 import { SidePanel, type OpenZone } from './game/SidePanel'
 import { StackRail } from './game/StackRail'
+import { TooSmall } from './game/TooSmall'
 import type { Surface } from './game/surface'
 
 // Opaque and client-generated: the server echoes it back verbatim and derives nothing from it.
@@ -133,6 +154,12 @@ export function Game({
   // The settings panel — pace, keys, card art. Everything in it is about this device rather
   // than about this game, which is why one new view has no opinion about any of it.
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // Whether the player has pulled open the drawer the side column becomes when there is no room
+  // for a column (§3, step 8), and whether they have raised the hand over its peek strip (§2).
+  // Both are about *this device's* current shape rather than about the game, which is why the
+  // view has nothing to say about either and a new one changes neither.
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [handRaised, setHandRaised] = useState(false)
 
   // What the last message changed, held for exactly as long as this view is the current one.
   // A transition between two reconstructable states and never a third: a refresh loses it and
@@ -308,7 +335,9 @@ export function Game({
   const back = () => {
     if (inspecting !== undefined) return setInspecting(undefined)
     if (settingsOpen) return setSettingsOpen(false)
+    if (handRaised) return setHandRaised(false)
     if (browsing) return setBrowsing(undefined)
+    if (drawerOpen) return setDrawerOpen(false)
     if (interaction.confirming) return setInteraction(unask(interaction))
     if (interaction.armed) return setInteraction(disarm(interaction))
     if (interaction.selected) return setInteraction(clear(interaction))
@@ -432,70 +461,191 @@ export function Game({
       current?.seat === seat && current.zone === zone ? undefined : { seat, zone },
     )
 
+  // The arrangement, for the window this tab currently is. Derived every render from the
+  // viewport and two facts about the table, and stored nowhere: a refresh produces the same
+  // boxes from the same window, and no message can leave a region remembering a size.
+  //
+  // The stack's box is decided by whether the rail has anything in it at all — an object on the
+  // stack, or an emblem beside it — and never by how much: a seven-deep stack and a one-deep
+  // stack get the same rail, and the depth is absorbed by the items in it exactly as a permanent
+  // count is (§5).
+  const viewport = useViewport()
+  const tone = dockTone(actions, interaction, view.result)
+  const asking = tone === 'asking' || tone === 'confirm'
+  const { band, regions, ladder } = scene(viewport, {
+    stackDepth: stackEntries.length + emblemEntries.length,
+    asking,
+  })
+
+  // §1's one commitment for a screen below the floor: say so plainly, **in place of** a broken
+  // board. Not layered over one — a notice over a table that is still being drawn costs the same
+  // layout, leaves a player poking at something that half works, and makes "unsupported" a
+  // decoration rather than a decision.
+  if (band === 'unsupported') {
+    return <TooSmall width={viewport.width} height={viewport.height} onLeave={leave} />
+  }
+
+  const collapsed = ladder.rails === 'collapsed'
+  const turnLayout: TurnLayout = collapsed ? 'chip' : band === 'square' ? 'strip' : 'rail'
+  const drawer = ladder.sidePanel === 'drawer'
+  // A pile the player opened and cards the server put in front of them are both things somebody
+  // asked for, so the drawer they live in is already open when they arrive.
+  const sideOpen = !drawer || drawerOpen || openZone !== undefined || revealedFaces.length > 0
+  // §2's trade, in the same terms `scene.ts` allocated the height by: the hand keeps the bottom
+  // band while nothing is pending, and yields it the moment there is something to answer — always
+  // at Short, where height is the scarce resource and the strip is the resting state.
+  const peek = band === 'short' || (band === 'tall' && asking)
+  // The look, at full size. Resolved out of this frame's faces like everything else, so an object
+  // that leaves the view stops previewing rather than pinning a card that is gone.
+  const preview = hovering === undefined ? undefined : faces.get(hovering)
+
+  const seatPanel = (seat: Seat) => (
+    <PlayerPanel
+      seat={seat}
+      lines={relationLines(related, seat.id)}
+      life={moved.life.get(seat.id)}
+      folded={collapsed}
+      open={browsing?.seat === seat.id ? browsing.zone : undefined}
+      onOpen={browse(seat.id)}
+      surface={surface}
+    />
+  )
+
+  const field = (seat: Seat) => (
+    <Battlefield
+      entries={fieldFor(seat.id)}
+      name={seat.name}
+      isYou={seat.isYou}
+      rows={ladder.rows}
+      cardTier={ladder.cardTier}
+      surface={surface}
+    />
+  )
+
+  const sidePanel = (
+    <SidePanel
+      zone={openZone}
+      closeZone={() => setBrowsing(undefined)}
+      // Over the board rather than in the column, when there is no column: the preview is the
+      // one thing here a player did not ask for, so it cannot wait behind a gesture.
+      preview={drawer ? undefined : preview}
+      revealed={revealedFaces}
+      settled={list(view.auto_passed_steps)}
+      missed={passedEvents(view)}
+      log={list(view.log)}
+      label={label}
+      onClose={
+        drawer
+          ? () => {
+              setDrawerOpen(false)
+              setBrowsing(undefined)
+            }
+          : undefined
+      }
+      surface={surface}
+    />
+  )
+
   return (
-    <div className="screen">
-      <MatchHeader
-        view={view}
-        label={label}
-        sent={interaction.pending?.label}
-        eliminated={local?.eliminated === true}
-        connection={connection}
-        onSettings={() => setSettingsOpen(true)}
-      />
+    <div className="screen" data-band={band}>
+      <Region name="header" rect={regions.header}>
+        <MatchHeader
+          view={view}
+          label={label}
+          sent={interaction.pending?.label}
+          eliminated={local?.eliminated === true}
+          connection={connection}
+          onHistory={drawer ? () => setDrawerOpen((open) => !open) : undefined}
+          onSettings={() => setSettingsOpen(true)}
+        />
+      </Region>
 
-      {/* The turn, down the left edge. Twelve steps is a lot of horizontal band to spend above
-          a board, and none of it is spent here: the sequence reads top to bottom in a rail the
-          width of a word, and each step is still the control that sets a stop there. */}
-      <TurnStrip steps={steps(view)} onStop={setStop} />
+      {/* The turn. Twelve steps is a lot of horizontal band to spend above a board, so where
+          there is width it reads top to bottom in a rail down the left edge; where the viewport
+          is square it lies under the header instead; and where neither fits it is the current
+          step alone (§3, step 7). Each step is still the control that sets a stop there. */}
+      <Region name="turn" rect={regions.turn}>
+        <TurnStrip steps={steps(view)} layout={turnLayout} onStop={setStop} />
+      </Region>
 
-      <div className="table">
-        <div className="table__side table__side--opponent">
-          {opponents.map((seat) => (
-            <div key={seat.id} className="table__seat">
-              <PlayerPanel
-                seat={seat}
-                lines={relationLines(related, seat.id)}
-                life={moved.life.get(seat.id)}
-                open={browsing?.seat === seat.id ? browsing.zone : undefined}
-                onOpen={browse(seat.id)}
-                surface={surface}
-              />
-              <Battlefield
-                entries={fieldFor(seat.id)}
-                name={seat.name}
-                isYou={false}
-                surface={surface}
-              />
-            </div>
-          ))}
-        </div>
+      {opponents.map((seat, index) => (
+        <Region
+          key={`seat:${seat.id}`}
+          name="opponent-seat"
+          rect={share(regions.opponentSeat, index, opponents.length)}
+        >
+          {seatPanel(seat)}
+        </Region>
+      ))}
 
-        <StackRail stack={stackEntries} emblems={emblemEntries} label={label} surface={surface} />
+      {opponents.map((seat, index) => (
+        <Region
+          key={`field:${seat.id}`}
+          name="opponent-field"
+          rect={share(regions.opponentField, index, opponents.length)}
+        >
+          {field(seat)}
+        </Region>
+      ))}
 
-        <div className="table__side table__side--you">
-          {local && (
-            <div className="table__seat">
-              <Battlefield entries={fieldFor(local.id)} name={local.name} isYou surface={surface} />
-              <PlayerPanel
-                seat={local}
-                lines={relationLines(related, local.id)}
-                life={moved.life.get(local.id)}
-                open={browsing?.seat === local.id ? browsing.zone : undefined}
-                onOpen={browse(local.id)}
-                surface={surface}
-              />
-            </div>
-          )}
-          {!local && <p className="field__empty">You are watching this table.</p>}
-        </div>
+      <Region name="stack" rect={regions.stack}>
+        <StackRail
+          stack={stackEntries}
+          emblems={emblemEntries}
+          collapsed={collapsed}
+          label={label}
+          surface={surface}
+        />
+      </Region>
 
-        {/* Over the whole table and under nothing: the relationships the server stated, drawn
-            between the objects that carry them. Last in the table so it paints above the cards,
-            and it takes no clicks — everything under it stays reachable, and every line it draws
-            is also a sentence in the trail beneath the card. It draws from the same join the
-            trails do, so the picture and the words cannot describe combat differently. */}
-        <RelationOverlay relations={related.all} traced={traced} />
-      </div>
+      {/* Your half. Its box is the opponent's box, always — the line across the middle of the
+          table is drawn once by the viewport and does not move for any game event. */}
+      <Region name="your-field" rect={regions.yourField}>
+        {local ? field(local) : <p className="field__empty">You are watching this table.</p>}
+      </Region>
+
+      {local && (
+        <Region name="your-seat" rect={regions.yourSeat}>
+          {seatPanel(local)}
+        </Region>
+      )}
+
+      <Region name="dock" rect={regions.dock}>
+        <ActionDock
+          actions={actions}
+          interaction={interaction}
+          result={view.result}
+          where={`Turn ${view.turn ?? 0} · ${phaseLabel(view.phase)}`}
+          labelFor={surface.labelFor}
+          take={take}
+          update={setInteraction}
+          confirm={confirm}
+          inspect={setInspecting}
+        />
+      </Region>
+
+      <Region name="hand" rect={regions.hand}>
+        <Hand
+          faces={handFaces}
+          peek={peek}
+          raised={handRaised}
+          onRaise={setHandRaised}
+          surface={surface}
+        />
+      </Region>
+
+      {!drawer && (
+        <Region name="side" rect={regions.side}>
+          {sidePanel}
+        </Region>
+      )}
+
+      {/* Over the whole table and under nothing: the relationships the server stated, drawn
+          between the objects that carry them. Last of the regions so it paints above the cards,
+          and it takes no clicks — everything under it stays reachable, and every line it draws
+          is also a sentence in the trail beneath the card. It draws from the same join the
+          trails do, so the picture and the words cannot describe combat differently. */}
+      <RelationOverlay relations={related.all} traced={traced} />
 
       {/* Nothing this draws; it moves what is already drawn — an object appearing, and a card
           travelling between the two zones the server said it was drawn in. Anything it touches is
@@ -503,33 +653,20 @@ export function Game({
           asked for no motion at all lands on exactly the board this view describes. */}
       <Motion changes={moved} />
 
-      <Hand faces={handFaces} surface={surface} />
+      {/* The look, over the board, where there is no column to put it beside. Suppressed while
+          the drawer is standing open, because the drawer is already on that edge and two panels
+          fighting for it is one panel too many. */}
+      {drawer && !sideOpen && preview && (
+        <aside className="preview-over" aria-label="Card preview">
+          <CardPreview face={preview} />
+        </aside>
+      )}
 
-      <ActionDock
-        actions={actions}
-        interaction={interaction}
-        result={view.result}
-        where={`Turn ${view.turn ?? 0} · ${phaseLabel(view.phase)}`}
-        labelFor={surface.labelFor}
-        take={take}
-        update={setInteraction}
-        confirm={confirm}
-        inspect={setInspecting}
-      />
+      {drawer && sideOpen && <div className="drawer">{sidePanel}</div>}
 
-      <SidePanel
-        zone={openZone}
-        closeZone={() => setBrowsing(undefined)}
-        // The look, at full size. Resolved out of this frame's faces like everything else, so an
-        // object that leaves the view stops previewing rather than pinning a card that is gone.
-        preview={hovering === undefined ? undefined : faces.get(hovering)}
-        revealed={revealedFaces}
-        settled={list(view.auto_passed_steps)}
-        missed={passedEvents(view)}
-        log={list(view.log)}
-        label={label}
-        surface={surface}
-      />
+      {handRaised && peek && (
+        <RaisedHand faces={handFaces} onLower={() => setHandRaised(false)} surface={surface} />
+      )}
 
       {/* An object's actions, beside the object. Opened by the click that already selected it,
           never by a gesture of its own, and taking one goes through the same `take` the dock's
