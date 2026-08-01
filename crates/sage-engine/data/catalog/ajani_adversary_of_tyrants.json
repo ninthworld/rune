@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "functional_id": "ajani_adversary_of_tyrants",
+  "name": "Ajani, Adversary of Tyrants",
+  "supertypes": [
+    "legendary"
+  ],
+  "types": [
+    "planeswalker"
+  ],
+  "subtypes": [
+    "Ajani"
+  ],
+  "mana_cost": "{2}{W}{W}",
+  "colors": [
+    "white"
+  ],
+  "loyalty": 4,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": 1
+        }
+      ],
+      "effects": [
+        {
+          "kind": "put_counters",
+          "target": "any_creature",
+          "targets": {
+            "up_to": 2
+          },
+          "counter": "plus_one_plus_one",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": -2
+        }
+      ],
+      "effects": [
+        {
+          "kind": "return_card_to_battlefield",
+          "target": {
+            "creature_card_in_your_graveyard": {
+              "max_mana_value": 2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": -7
+        }
+      ],
+      "effects": [
+        {
+          "kind": "create_emblem",
+          "abilities": [
+            {
+              "type": "triggered",
+              "event": {
+                "beginning_of_step": {
+                  "step": "end_step",
+                  "whose_turn": "yours"
+                }
+              },
+              "effects": [
+                {
+                  "kind": "create_token",
+                  "count": 3,
+                  "token": {
+                    "name": "Cat",
+                    "types": [
+                      "creature"
+                    ],
+                    "subtypes": [
+                      "Cat"
+                    ],
+                    "colors": [
+                      "white"
+                    ],
+                    "power": 1,
+                    "toughness": 1,
+                    "keywords": [
+                      "lifelink"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

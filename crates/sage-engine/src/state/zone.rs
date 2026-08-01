@@ -231,7 +231,7 @@ impl GameState {
     /// keeps that distinction from being re-derived (and got wrong) per effect. Returns the
     /// number of cards moved.
     pub(crate) fn mill(&mut self, player: PlayerId, count: u32) -> u32 {
-        let mut milled = 0;
+        let mut milled = Vec::new();
         for _ in 0..count {
             let Some(p) = self.players.get_mut(player.0) else {
                 break;
@@ -240,15 +240,20 @@ impl GameState {
                 break;
             };
             p.graveyard.push(card);
-            milled += 1;
+            milled.push(card);
         }
-        if milled > 0 {
+        let moved = u32::try_from(milled.len()).unwrap_or(u32::MAX);
+        if moved > 0 {
             self.record_event(GameEvent::CardsMilled {
                 player,
-                count: milled,
+                count: moved,
+                // Which cards moved, so an `if at least one Zombie card was milled this
+                // way` condition has something to read. A graveyard is public, so this
+                // reveals nothing the board does not already show.
+                cards: milled,
             });
         }
-        milled
+        moved
     }
 
     /// Move `id` to its owner's graveyard and, if it was a **creature**, record a

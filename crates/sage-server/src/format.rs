@@ -304,19 +304,24 @@ pub(crate) fn color_identity(db: &CardDatabase, card: CardId) -> HashSet<Color> 
             identity.insert(color);
         }
     }
-    // 3. Colored mana symbols in the card's rules (its abilities), from the IR.
+    // 3. Colored mana symbols in the card's rules (its abilities), from the IR. A
+    //    *restricted* mana symbol (CR 106.6) is still a coloured mana symbol printed in
+    //    the rules, so it counts exactly as an unrestricted one does.
     for ability in abilities_of(db, card) {
         if let Ability::Activated { effects, .. } | Ability::Triggered { effects, .. } = ability {
             for effect in effects {
-                if let Effect::AddMana { color, .. } = effect {
-                    identity.insert(color);
+                match effect {
+                    Effect::AddMana { color, .. } | Effect::AddRestrictedMana { color, .. } => {
+                        identity.insert(color);
+                    }
+                    _ => {}
                 }
             }
         }
     }
     // A spell ability that itself mints colored mana counts too (CR 903.4).
     for effect in &data.spell_effects {
-        if let Effect::AddMana { color, .. } = effect {
+        if let Effect::AddMana { color, .. } | Effect::AddRestrictedMana { color, .. } = effect {
             identity.insert(*color);
         }
     }

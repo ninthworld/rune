@@ -180,6 +180,23 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
         ))}
       </section>
 
+      {list(view.emblems).length > 0 && (
+        <section aria-labelledby="emblems-heading">
+          <h2 id="emblems-heading">Emblems</h2>
+          {/* An emblem (CR 114) is in no zone and is never removed, so it sits beside the
+              battlefield rather than in it. Its abilities arrive as server-composed
+              sentences; the client renders them and computes nothing. */}
+          <ul>
+            {list(view.emblems).map((emblem) => (
+              <li key={emblem.id}>
+                {label(emblem.controller)}
+                {list(emblem.abilities).length > 0 && <> — {list(emblem.abilities).join(' ')}</>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {list(view.revealed).length > 0 && (
         <section aria-labelledby="revealed-heading">
           <h2 id="revealed-heading">Shown to you</h2>

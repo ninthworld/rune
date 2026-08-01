@@ -188,6 +188,23 @@ export const Permanent = z.object({
 })
 export type Permanent = z.infer<typeof Permanent>
 
+/**
+ * An **emblem** (CR 114): a marker one player has, whose only characteristics are its
+ * abilities. It is in no zone, is never a permanent, and nothing in the game removes it —
+ * so it is carried beside the battlefield rather than inside it, and none of a
+ * `Permanent`'s fields would mean anything on one.
+ *
+ * Public information: every seat and every spectator sees the same list. The abilities
+ * arrive as server-composed rules sentences, exactly as a card's do; the client renders
+ * them and derives nothing.
+ */
+export const Emblem = z.object({
+  id: EntityId,
+  controller: PlayerId,
+  abilities: z.array(z.string()).optional(),
+})
+export type Emblem = z.infer<typeof Emblem>
+
 export const StackItemKind = z.enum(['spell', 'ability', 'activated', 'triggered'])
 export type StackItemKind = z.infer<typeof StackItemKind>
 
@@ -237,6 +254,14 @@ export type ActionAck = z.infer<typeof ActionAck>
 export const TargetRequirement = z.object({
   slot: z.string(),
   prompt: z.string(),
+  /**
+   * Whether this slot may be left **unanswered** — the "up to" of "put a +1/+1 counter on
+   * each of up to two target creatures". Absent (and read as `false`) for every slot of
+   * an ordinary targeted spell or ability, which must be filled or the submission is
+   * rejected. The client omits an optional slot from its answer, or sends it empty; the
+   * server accepts either.
+   */
+  optional: z.boolean().optional(),
   candidates: z.array(EntityId).optional(),
 })
 export type TargetRequirement = z.infer<typeof TargetRequirement>
@@ -380,6 +405,8 @@ export const GameView = z.object({
   me: SelfView.optional(),
   opponents: z.array(OpponentView).optional(),
   battlefield: z.array(Permanent).optional(),
+  /** The emblems in the game (CR 114) — public, in no zone, and never removed. */
+  emblems: z.array(Emblem).optional(),
   stack: z.array(StackItem).optional(),
   graveyards: z.array(ZonePile).optional(),
   exile: z.array(ZonePile).optional(),
@@ -411,6 +438,8 @@ export type GameView = z.infer<typeof GameView>
 export const SpectatorView = z.object({
   players: z.array(OpponentView).optional(),
   battlefield: z.array(Permanent).optional(),
+  /** The same public emblem list a seated view carries. */
+  emblems: z.array(Emblem).optional(),
   stack: z.array(StackItem).optional(),
   graveyards: z.array(ZonePile).optional(),
   exile: z.array(ZonePile).optional(),

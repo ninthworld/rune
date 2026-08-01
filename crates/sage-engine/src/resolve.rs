@@ -5,7 +5,7 @@
 //! re-checks the object's chosen targets against current state (CR 608.2b), then
 //! routes a spell by its card types and applies an ability's effects.
 
-use crate::ability::{Effect, Target, TargetSpec};
+use crate::ability::{Effect, Target, TargetGroup, TargetSpec};
 use crate::apply::{apply_effect, apply_targeted_effect};
 use crate::card::{spell_effects_of, CardData, Keyword};
 use crate::card_type::CardType;
@@ -150,6 +150,31 @@ pub(crate) fn target_is_legal(
         (TargetSpec::AnyLand, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| has_type(p, CardType::Land, db))
         }
+        // One slot accepting any of three classes (CR 601.2c), not three slots: Vivien
+        // Reid's `-3` names a single target that may be an artifact, an enchantment, or
+        // a creature with flying. Flying is read through the computed keywords
+        // (CR 613.1f), so a granted flyer is as legal a target as a printed one.
+        (TargetSpec::AnyArtifactEnchantmentOrCreatureWithFlying, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| {
+                has_type(p, CardType::Artifact, db) || has_type(p, CardType::Enchantment, db)
+            }) || (permanent_matches(state, id, |p| has_type(p, CardType::Creature, db))
+                && permanent_has_keyword(state, id, Keyword::Flying, db))
+        }
+        // A card in the object controller's own graveyard (CR 400.7). The only spec that
+        // names a card rather than a battlefield object, so it is the only one a
+        // `Target::Card` satisfies — and it is scoped to *your* graveyard, so an
+        // opponent's identically-named creature card is never a candidate.
+        (TargetSpec::CreatureCardInYourGraveyard { max_mana_value }, Target::Card(instance)) => {
+            state
+                .players
+                .get(controller.0)
+                .and_then(|player| player.graveyard.iter().find(|card| card.id == instance))
+                .and_then(|card| db.card(card.card))
+                .is_some_and(|data| {
+                    data.has_type(CardType::Creature)
+                        && max_mana_value.is_none_or(|cap| data.mana_value() <= cap)
+                })
+        }
         // "Any target" (CR 115.4): legal against a player still in the game, a creature
         // still on the battlefield, or a **planeswalker** still on the battlefield —
         // the union of the AnyPlayer and AnyCreature checks above plus the planeswalker
@@ -198,25 +223,43 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         StackObjectKind::Ability { effects, .. } => effects.clone(),
         StackObjectKind::Spell { card } => spell_effects_of(db, card.card),
     };
-    // The specs the stored targets were chosen for (CR 601.2c), in slot order.
-    // An ability's specs come from its effects; a spell's include any spell-effect
+    // The groups the stored targets were chosen for (CR 601.2c), in slot order.
+    // An ability's groups come from its effects; a spell's include any spell-effect
     // targets **and** an Aura's enchant restriction (CR 303.4a), which is chosen as
     // a target at cast though it produces no `Effect` — so a fizzled Aura target is
     // re-checked on the same path as any other (CR 608.2b).
-    let specs: Vec<TargetSpec> = match &object.kind {
-        StackObjectKind::Ability { .. } => effects.iter().filter_map(Effect::target_spec).collect(),
+    let groups: Vec<TargetGroup> = match &object.kind {
+        StackObjectKind::Ability { .. } => {
+            effects.iter().filter_map(Effect::target_group).collect()
+        }
         StackObjectKind::Spell { card } => db
             .card(card.card)
-            .map(CardData::cast_target_specs)
+            .map(CardData::cast_target_groups)
             .unwrap_or_default(),
     };
+    // The spec each stored target was chosen for, flattened out of the groups in the
+    // order the announcement filled them — the pairing the fizzle check needs, and the
+    // only place an "up to two" group's second target has to be told apart from a second
+    // group's first.
+    let chosen_specs: Vec<TargetSpec> = groups
+        .iter()
+        .zip(crate::ability::group_target_counts(
+            &groups,
+            object.targets.len(),
+        ))
+        .flat_map(|(group, count)| std::iter::repeat_n(group.spec, count))
+        .collect();
 
     // CR 608.2b: if the object chose targets and *every* one is now illegal, it
     // is removed from the stack without resolving — none of its effects occur. A
     // fizzled *spell* still leaves the stack for its owner's graveyard (it is a
     // card that failed to resolve); a fizzled ability simply ceases to exist.
-    if !specs.is_empty()
-        && specs
+    //
+    // An object that chose **no** targets never fizzles, and that stays true of one
+    // whose only group was an "up to N" the player filled with nothing: it did not lose
+    // its targets, it never had any (CR 608.2b speaks of the targets an object *has*).
+    if !object.targets.is_empty()
+        && chosen_specs
             .iter()
             .zip(&object.targets)
             .all(|(&spec, &target)| !target_is_legal(spec, target, state, object.controller, db))
@@ -251,8 +294,10 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
     // resolve. Effects with an implicit subject apply unconditionally.
     // An ability carries the permanent it is on; a spell has no source permanent, so a
     // self-referential effect on one would modify nothing.
+    // An emblem's ability has no source permanent, which is the same answer a spell
+    // gives: a self-referential effect finds nothing to modify and does nothing.
     let source = match &object.kind {
-        StackObjectKind::Ability { source, .. } => Some(*source),
+        StackObjectKind::Ability { source, .. } => source.permanent(),
         StackObjectKind::Spell { .. } => None,
     };
     // A spell still owes its card a final zone (CR 608.3) after its effects. Carried
@@ -266,6 +311,12 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         }),
         StackObjectKind::Ability { .. } => None,
     };
+    // The point in the event log this resolution begins at — the window an intervening
+    // condition about what *this* resolution did reads over
+    // ([`Condition::MilledThisWay`](crate::Condition)). Captured before any effect runs
+    // and carried through a suspension, so a mill that stops to ask a question still
+    // answers the question about itself correctly when it resumes.
+    let resolution_start = state.next_log_sequence;
     let suspended = apply_effects_with_targets(
         state,
         &effects,
@@ -273,6 +324,7 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         object.controller,
         source,
         spell.clone(),
+        resolution_start,
         db,
     );
     if suspended {
@@ -340,6 +392,7 @@ pub(crate) fn put_resolved_spell_in_its_final_zone(
 /// [`Resume`](crate::Resume), and stops. Everything after the suspending effect happens
 /// when the choice is answered, not here — which is what lets one card discard, then
 /// draw, and still reach its graveyard in the right order.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn apply_effects_with_targets(
     state: &mut GameState,
     effects: &[Effect],
@@ -347,6 +400,7 @@ pub(crate) fn apply_effects_with_targets(
     controller: crate::id::PlayerId,
     source: Option<PermanentId>,
     spell: Option<SuspendedSpell>,
+    resolution_start: u64,
     db: &CardDatabase,
 ) -> bool {
     // The printed card a `same_name_as_source` filter compares against, resolved now
@@ -360,30 +414,79 @@ pub(crate) fn apply_effects_with_targets(
             .find(|perm| perm.id == id)
             .and_then(|perm| perm.printed.card())
     });
-    let mut targets = stored.iter();
-    for (index, effect) in effects.iter().enumerate() {
-        let spec = effect.target_spec();
-        let chosen = if spec.is_some() {
-            targets.next().copied()
-        } else {
-            None
+    // A work queue rather than a walk over a fixed list, because a conditional's chosen
+    // branch is *spliced in front of what is left*: the branch then travels through the
+    // same targeting, choice-posing, and suspension machinery every other effect does,
+    // instead of a second, parallel application path that would have to reimplement all
+    // three.
+    let mut queue: std::collections::VecDeque<Effect> = effects.iter().cloned().collect();
+    let mut targets: std::collections::VecDeque<Target> = stored.iter().copied().collect();
+    while let Some(effect) = queue.pop_front() {
+        // CR 608.2: an intervening condition is judged as the effect is reached, so it
+        // sees everything the effects before it did — including a mill or a discard this
+        // same resolution performed.
+        if let Effect::Conditional {
+            condition,
+            then,
+            otherwise,
+        } = &effect
+        {
+            let branch = if crate::condition::condition_holds(
+                state,
+                condition,
+                controller,
+                resolution_start,
+                db,
+            ) {
+                then
+            } else {
+                otherwise
+            };
+            for nested in branch.iter().rev() {
+                queue.push_front(nested.clone());
+            }
+            continue;
+        }
+
+        // A group takes as many stored targets as the announcement gave it (CR 601.2c),
+        // which for every effect but one is exactly one.
+        let group = effect.target_group();
+        let taken: Vec<Target> = match group {
+            Some(group) => {
+                // The remaining queue's other groups still owe their minimums; whatever
+                // is left over belongs to this one, up to its maximum.
+                let later: usize = queue
+                    .iter()
+                    .filter_map(Effect::target_group)
+                    .map(|g| usize::from(g.min))
+                    .sum();
+                let available = targets.len().saturating_sub(later);
+                let take = available.min(usize::from(group.max));
+                (0..take).filter_map(|_| targets.pop_front()).collect()
+            }
+            None => Vec::new(),
         };
 
         // A choice-posing effect (CR 701.8 discard, 701.17 scry, 701.19 search) stops
         // here. Choices whose clamped maximum is zero are applied outright inside
         // `pose_choices`, so an empty hand or an empty library never suspends anything.
-        if let Some(choices) =
-            crate::choice::choices_for_effect(state, effect, controller, source_card, chosen)
-        {
+        if let Some(choices) = crate::choice::choices_for_effect(
+            state,
+            &effect,
+            controller,
+            source_card,
+            taken.first().copied(),
+        ) {
             if crate::choice::pose_choices(state, choices, db) {
                 crate::choice::attach_resume(
                     state,
                     crate::choice::Resume {
                         controller,
                         source,
-                        effects: effects[index + 1..].to_vec(),
-                        targets: targets.copied().collect(),
+                        effects: queue.into_iter().collect(),
+                        targets: targets.into_iter().collect(),
                         spell,
+                        resolution_start,
                     },
                 );
                 return true;
@@ -391,15 +494,19 @@ pub(crate) fn apply_effects_with_targets(
             continue;
         }
 
-        match spec {
-            Some(spec) => {
-                if let Some(target) = chosen {
-                    if target_is_legal(spec, target, state, controller, db) {
-                        apply_targeted_effect(state, effect, target, controller, db);
+        match group {
+            // CR 608.2c: each chosen target is re-checked on its own, and an
+            // individually-illegal one is skipped while its legal siblings resolve. For
+            // an "up to two" effect that is the difference between one dead target
+            // wasting the whole ability and it doing half its work.
+            Some(group) => {
+                for target in taken {
+                    if target_is_legal(group.spec, target, state, controller, db) {
+                        apply_targeted_effect(state, &effect, target, controller, db);
                     }
                 }
             }
-            None => apply_effect(state, effect, controller, source, db),
+            None => apply_effect(state, &effect, controller, source, db),
         }
     }
     false
@@ -420,6 +527,7 @@ pub(crate) fn resume_after_choice(state: &mut GameState, resume: Resume, db: &Ca
         resume.controller,
         resume.source,
         resume.spell.clone(),
+        resume.resolution_start,
         db,
     );
     if suspended {

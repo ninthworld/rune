@@ -9,11 +9,12 @@
 //! whose cost is that resource, damage that removes loyalty instead of being marked,
 //! and death at zero.
 //!
-//! **The cards are inline definitions** (ADR 0009), not M19 planeswalkers. All five
-//! M19 planeswalkers need an emblem, which is an explicit non-goal of this issue, and
-//! four of them need a second unmodeled subsystem besides — so none of them is
-//! authorable here, and pretending otherwise would test the emblem gap rather than the
-//! loyalty one. These definitions are the shape the bundled set cannot represent.
+//! **The cards are inline definitions** (ADR 0009), not M19 planeswalkers. When this file
+//! was written none of the five was authorable — each needs an emblem, and four need a
+//! second subsystem besides — and the definitions here are the loyalty mechanism reduced
+//! to itself. They stay that way now that the five are authored (issue #620,
+//! `tests/m19_planeswalkers.rs`): a test of the mechanism should fail for one reason, and
+//! a shipped card would drag its emblem, its tokens, and its choice prompts in with it.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use sage_engine::{

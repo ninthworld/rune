@@ -166,6 +166,41 @@ pub enum Violation {
         /// The definition at fault.
         functional_id: String,
     },
+    /// A conditional effect (`{"kind":"conditional"}`) has a branch that chooses a
+    /// target.
+    ///
+    /// The same rule — and the same reason — as [`Self::TargetInsideOptional`]: one
+    /// effect declares at most one target group, so a wrapper cannot declare the groups
+    /// of what it wraps. A branch that targeted would have its slot filled by nobody at
+    /// announcement (CR 601.2c) and silently do nothing.
+    TargetInsideConditional {
+        /// The definition at fault.
+        functional_id: String,
+    },
+    /// A `create_emblem` effect gives the emblem an ability an emblem cannot have
+    /// (CR 114.1–114.4) — anything but a static or triggered ability.
+    ///
+    /// An emblem is in no zone and is never an object a player acts on, so an activated
+    /// ability would have no way to be activated and an enters-the-battlefield
+    /// self-replacement would have no entry to replace. Either is an emblem with a dead
+    /// ability, which is worth failing the build over.
+    EmblemAbilityIsNotStaticOrTriggered {
+        /// The definition at fault.
+        functional_id: String,
+    },
+    /// One ability or spell declares **two** variable-arity target groups (two effects
+    /// each taking "up to N" targets).
+    ///
+    /// Targets are stored as one flat list per stack object, and the pairing back onto
+    /// effects works by giving every fixed group its size and the slack to the one
+    /// variable group ([`target_counts`](crate::target_counts)). With two variable
+    /// groups the split is ambiguous — six targets could be four and two or two and four
+    /// — and no announcement could say which. One card wants this shape and none wants
+    /// two, so the ambiguity is rejected rather than guessed at.
+    TwoVariableTargetGroups {
+        /// The definition at fault.
+        functional_id: String,
+    },
     /// Two printings in one set claim the same collector number, so one would shadow
     /// the other.
     DuplicatePrinting {
@@ -265,6 +300,20 @@ impl fmt::Display for Violation {
                 f,
                 "{functional_id} has a `may` effect wrapping an effect that targets; \
                  an optional effect's contents may not choose a target"
+            ),
+            Self::TargetInsideConditional { functional_id } => write!(
+                f,
+                "{functional_id}: a conditional effect's branch may not choose a target"
+            ),
+            Self::EmblemAbilityIsNotStaticOrTriggered { functional_id } => write!(
+                f,
+                "{functional_id}: an emblem may carry only static and triggered \
+                 abilities (CR 114.1)"
+            ),
+            Self::TwoVariableTargetGroups { functional_id } => write!(
+                f,
+                "{functional_id}: one ability or spell may declare at most one \
+                 variable-arity (`up_to`) target group"
             ),
             Self::DuplicatePrinting {
                 set_code,
@@ -395,6 +444,31 @@ pub(crate) fn validate_definition(
         return Err(Violation::TargetInsideOptional { functional_id });
     }
 
+    // A conditional's branches are wrapped effects and follow the optional effect's rule
+    // for the same reason: a wrapper cannot honestly declare the target groups of what it
+    // wraps.
+    if every_effect(object)
+        .into_iter()
+        .any(conditional_wraps_a_target)
+    {
+        return Err(Violation::TargetInsideConditional { functional_id });
+    }
+
+    // CR 114.1: an emblem has no characteristics but its abilities, and only the two
+    // kinds that need neither an activation nor an entry event can function on one.
+    if every_effect(object).into_iter().any(emblem_ability_is_bad) {
+        return Err(Violation::EmblemAbilityIsNotStaticOrTriggered { functional_id });
+    }
+
+    // At most one "up to N" target group per ability or spell, so the flat stored target
+    // list pairs back onto effects unambiguously.
+    if effect_lists(object)
+        .into_iter()
+        .any(|effects| variable_target_groups(&effects) > 1)
+    {
+        return Err(Violation::TwoVariableTargetGroups { functional_id });
+    }
+
     // Every token a definition creates must be an object that could exist: a permanent
     // (CR 110.1/111.7), with power and toughness exactly when it is a creature. Walked
     // to any depth, so a `create_token` nested inside a `may` is checked too.
@@ -470,12 +544,7 @@ fn validate_token(functional_id: &str, token: Option<&serde_json::Value>) -> Res
 fn every_effect(object: &serde_json::Map<String, serde_json::Value>) -> Vec<&serde_json::Value> {
     fn walk<'a>(effect: &'a serde_json::Value, out: &mut Vec<&'a serde_json::Value>) {
         out.push(effect);
-        for nested in effect
-            .get("effects")
-            .and_then(serde_json::Value::as_array)
-            .map(Vec::as_slice)
-            .unwrap_or_default()
-        {
+        for nested in nested_effects(effect) {
             walk(nested, out);
         }
     }
@@ -484,6 +553,129 @@ fn every_effect(object: &serde_json::Map<String, serde_json::Value>) -> Vec<&ser
         walk(effect, &mut out);
     }
     out
+}
+
+/// The effects nested inside `effect`, whatever key they hang off: a `may`'s `effects`,
+/// a `conditional`'s `then` and `otherwise`, and the effect lists of the abilities a
+/// `create_emblem` hands out.
+///
+/// One function so a rule stated about "every effect a definition authors" cannot be
+/// true of one wrapper and quietly false of the next one added.
+fn nested_effects(effect: &serde_json::Value) -> Vec<&serde_json::Value> {
+    let mut out = Vec::new();
+    for key in ["effects", "then", "otherwise"] {
+        out.extend(
+            effect
+                .get(key)
+                .and_then(serde_json::Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default(),
+        );
+    }
+    for ability in effect
+        .get("abilities")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+    {
+        out.extend(
+            ability
+                .get("effects")
+                .and_then(serde_json::Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default(),
+        );
+    }
+    out
+}
+
+/// Every **list** of effects a definition authors as one announcement's worth: each
+/// ability's `effects`, the card's `spell_effects`, and each ability an emblem is created
+/// with.
+///
+/// Distinct from [`every_effect`], which flattens: the variable-arity rule is about what
+/// one *object on the stack* declares together, so it has to see the lists rather than
+/// the effects.
+fn effect_lists(
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> Vec<Vec<&serde_json::Value>> {
+    let mut lists: Vec<Vec<&serde_json::Value>> = Vec::new();
+    for ability in object
+        .get("abilities")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+    {
+        if let Some(effects) = ability.get("effects").and_then(serde_json::Value::as_array) {
+            lists.push(effects.iter().collect());
+        }
+    }
+    if let Some(effects) = object
+        .get("spell_effects")
+        .and_then(serde_json::Value::as_array)
+    {
+        lists.push(effects.iter().collect());
+    }
+    for effect in every_effect(object) {
+        for ability in effect
+            .get("abilities")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+        {
+            if let Some(effects) = ability.get("effects").and_then(serde_json::Value::as_array) {
+                lists.push(effects.iter().collect());
+            }
+        }
+    }
+    lists
+}
+
+/// How many of `effects` declare an `"up_to"` target count — the variable-arity groups
+/// one announcement would have to split its flat target list between.
+fn variable_target_groups(effects: &[&serde_json::Value]) -> usize {
+    effects
+        .iter()
+        .filter(|effect| {
+            effect
+                .get("targets")
+                .and_then(serde_json::Value::as_object)
+                .is_some_and(|count| count.contains_key("up_to"))
+        })
+        .count()
+}
+
+/// Whether `effect` is a `conditional` whose branches would choose a target.
+fn conditional_wraps_a_target(effect: &serde_json::Value) -> bool {
+    if effect.get("kind").and_then(serde_json::Value::as_str) != Some("conditional") {
+        return false;
+    }
+    ["then", "otherwise"].into_iter().any(|key| {
+        effect
+            .get(key)
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|branch| branch.iter().any(effect_chooses_a_target))
+    })
+}
+
+/// Whether `effect` is a `create_emblem` handing out an ability an emblem cannot carry
+/// (CR 114.1) — anything but `static` or `triggered`.
+fn emblem_ability_is_bad(effect: &serde_json::Value) -> bool {
+    if effect.get("kind").and_then(serde_json::Value::as_str) != Some("create_emblem") {
+        return false;
+    }
+    effect
+        .get("abilities")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter()
+        .any(|ability| {
+            !matches!(
+                ability.get("type").and_then(serde_json::Value::as_str),
+                Some("static" | "triggered")
+            )
+        })
 }
 
 /// Every effect a definition authors at the top level of an ability or of its spell
@@ -522,15 +714,11 @@ fn optional_wraps_a_target(effect: &serde_json::Value) -> bool {
     let Some(kind) = effect.get("kind").and_then(serde_json::Value::as_str) else {
         return false;
     };
-    let nested = effect
-        .get("effects")
-        .and_then(serde_json::Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or_default();
+    let nested = nested_effects(effect);
     if kind == "may" {
-        return nested.iter().any(effect_chooses_a_target);
+        return nested.iter().any(|e| effect_chooses_a_target(e));
     }
-    nested.iter().any(optional_wraps_a_target)
+    nested.iter().any(|e| optional_wraps_a_target(e))
 }
 
 /// Whether `effect`, or anything nested inside it, chooses a target (CR 115.1).
@@ -548,10 +736,9 @@ fn effect_chooses_a_target(effect: &serde_json::Value) -> bool {
     ) {
         return true;
     }
-    effect
-        .get("effects")
-        .and_then(serde_json::Value::as_array)
-        .is_some_and(|nested| nested.iter().any(effect_chooses_a_target))
+    nested_effects(effect)
+        .into_iter()
+        .any(effect_chooses_a_target)
 }
 
 /// Reject two printings in one set claiming the same collector number.

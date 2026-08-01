@@ -416,16 +416,20 @@ fn ordered_pt_modifiers(
 /// Every continuous effect a **printed static ability** (CR 604.3) currently
 /// contributes to `perm` — the anthem and lord shape.
 ///
-/// Synthesized from the battlefield on every call, never stored (ADR 0005 §1). A
-/// static ability functions exactly while its source is on the battlefield, and that
-/// is a fact about the current state, so pushing an entry into
-/// [`GameState::static_effects`] on entry and pruning it on departure would be
-/// bookkeeping that can desync. Deriving it cannot: the source is either on the
-/// battlefield when this runs, or it is not.
+/// Synthesized on every call, never stored (ADR 0005 §1). A static ability functions
+/// exactly while its source is in force, and that is a fact about the current state, so
+/// pushing an entry into [`GameState::static_effects`] on entry and pruning it on
+/// departure would be bookkeeping that can desync. Deriving it cannot.
 ///
-/// Each contribution is keyed to `perm` by [`EffectAffects::SpecificPermanent`] and
-/// timestamped by its **source's** object id (CR 613.7), so it folds through the
-/// existing ordering path unchanged — an older anthem applies before a newer one.
+/// **Two source lists, not one.** The battlefield is where a printed static ability
+/// almost always lives, but an [`Emblem`] (CR 114) is a source of continuous effects
+/// that is on no battlefield and never will be — so this walks both, in that order.
+/// Ordering between the two lists does not decide anything on its own: every
+/// contribution is timestamped by its **source's** object id (CR 613.7) and the caller
+/// sorts by that, so an emblem created before an anthem entered applies before it,
+/// exactly as two anthems do. Each contribution is keyed to `perm` by
+/// [`EffectAffects::SpecificPermanent`], so both fold through the existing ordering path
+/// unchanged.
 fn static_ability_effects(
     state: &GameState,
     perm: &Permanent,
@@ -433,8 +437,8 @@ fn static_ability_effects(
     db: &CardDatabase,
 ) -> Vec<StaticEffect> {
     let mut effects = Vec::new();
-    for source in &state.battlefield {
-        for ability in abilities_of_permanent(db, source) {
+    let mut collect = |source: StaticSource, abilities: Vec<Ability>| {
+        for ability in abilities {
             let Ability::Static {
                 affects,
                 modification,
@@ -446,14 +450,54 @@ fn static_ability_effects(
                 continue;
             }
             effects.push(StaticEffect {
-                source: source.id.0,
+                source: source.timestamp,
                 affects: EffectAffects::SpecificPermanent(perm.id),
                 modification: modification.to_modification(),
                 duration: Duration::WhileOnBattlefield,
             });
         }
+    };
+    for source in &state.battlefield {
+        collect(
+            StaticSource {
+                timestamp: source.id.0,
+                controller: source.controller,
+                permanent: Some(source.id),
+            },
+            abilities_of_permanent(db, source),
+        );
+    }
+    // CR 114.1: an emblem's abilities function from nowhere — it is in no zone, so the
+    // battlefield walk above can never see it. This is the second list, and the whole of
+    // what makes an emblem's static ability real.
+    for emblem in &state.emblems {
+        collect(
+            StaticSource {
+                timestamp: emblem.id,
+                controller: emblem.controller,
+                permanent: None,
+            },
+            emblem.abilities.clone(),
+        );
     }
     effects
+}
+
+/// The object a printed [`Ability::Static`] is on, reduced to the three facts the
+/// selector needs: its CR 613.7 timestamp, whose "you" it speaks in, and — only if it
+/// is a permanent — which one, for the "other" of a lord.
+///
+/// A plain struct rather than an enum over permanent/emblem because the difference is
+/// exactly one `Option`: an emblem is not a permanent, so it can never be the "this" an
+/// `except_this` excludes, and answering `None` says so without a match arm.
+#[derive(Clone, Copy)]
+struct StaticSource {
+    /// The source's object id, which is its CR 613.7 timestamp.
+    timestamp: u64,
+    /// The source's controller — the "you" of "creatures you control".
+    controller: crate::id::PlayerId,
+    /// The source permanent, or `None` for an emblem.
+    permanent: Option<PermanentId>,
 }
 
 /// Whether a printed static ability on `source` applies to `perm`.
@@ -466,7 +510,7 @@ fn static_ability_effects(
 /// reading a computed value — through a seam that cannot recurse.
 fn static_affects_match(
     affects: &StaticAffects,
-    source: &Permanent,
+    source: StaticSource,
     perm: &Permanent,
     is_creature: bool,
     db: &CardDatabase,
@@ -481,8 +525,9 @@ fn static_affects_match(
             }
             // "Other …" excludes the source itself. `PermanentId` is minted fresh on
             // every battlefield entry, so this compares the specific object, not the
-            // card — two copies of one lord do pump each other.
-            if *except_this && perm.id == source.id {
+            // card — two copies of one lord do pump each other. An emblem is not a
+            // permanent and so is never the excluded "this".
+            if *except_this && source.permanent == Some(perm.id) {
                 return false;
             }
             match subtype {

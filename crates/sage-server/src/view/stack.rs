@@ -6,6 +6,7 @@
 //! tests sit together.
 
 use super::*;
+use sage_engine::AbilitySource;
 
 /// Project one engine [`StackObject`] onto its wire [`StackItem`].
 ///
@@ -45,7 +46,7 @@ pub(crate) fn stack_item(state: &GameState, object: &StackObject, db: &CardDatab
             id: stack_entity_id(object.id),
             controller: player_id(object.controller),
             description: effects_description(&source_name(state, *source, db), effects),
-            source: Some(permanent_entity_id(*source)),
+            source: source.permanent().map(permanent_entity_id),
             // The engine records which push site put this here (issue #579), so the
             // projection states the finer kind rather than the coarse `ability` it
             // was limited to under #550. Still proof, not inference: the value comes
@@ -102,16 +103,22 @@ fn stack_target(target: &Target) -> StackTarget {
 
 /// The permanent an ability on the stack came from, while it is still on the
 /// battlefield. `None` once it has left — its ability outlives it there (CR 608.2).
-fn source_permanent(state: &GameState, source: PermanentId) -> Option<&sage_engine::Permanent> {
-    state.battlefield.iter().find(|perm| perm.id == source)
+fn source_permanent(state: &GameState, source: AbilitySource) -> Option<&sage_engine::Permanent> {
+    let id = source.permanent()?;
+    state.battlefield.iter().find(|perm| perm.id == id)
 }
 
 /// The name of the permanent an ability on the stack came from — what its sentences
 /// call themselves. A permanent that has already left the battlefield (its ability
 /// outlives it on the stack, CR 608.2) has no name left to give.
-fn source_name(state: &GameState, source: PermanentId, db: &CardDatabase) -> String {
+fn source_name(state: &GameState, source: AbilitySource, db: &CardDatabase) -> String {
     source_permanent(state, source).map_or_else(
-        || "This ability's source".to_string(),
+        || match source {
+            // An emblem (CR 114) has no name of its own — it has only its abilities —
+            // so its sentences say what it is rather than inventing a title for it.
+            AbilitySource::Emblem(_) => "An emblem".to_string(),
+            AbilitySource::Permanent(_) => "This ability's source".to_string(),
+        },
         |perm| permanent_name(perm, db),
     )
 }
@@ -196,7 +203,7 @@ mod tests {
             &mut state,
             PlayerId(0),
             StackObjectKind::Ability {
-                source: elves,
+                source: sage_engine::AbilitySource::Permanent(elves),
                 origin: AbilityOrigin::Activated,
                 effects: vec![Effect::DrawCard { count: 1 }],
             },
@@ -328,7 +335,7 @@ mod tests {
             &mut state,
             PlayerId(0),
             StackObjectKind::Ability {
-                source: ghost,
+                source: sage_engine::AbilitySource::Permanent(ghost),
                 origin: AbilityOrigin::Triggered,
                 effects: vec![Effect::DealDamage {
                     subject: DamageSubject::Target(TargetSpec::AnyTarget),
@@ -449,7 +456,7 @@ mod tests {
             &mut state,
             PlayerId(0),
             StackObjectKind::Ability {
-                source: elves,
+                source: sage_engine::AbilitySource::Permanent(elves),
                 origin: AbilityOrigin::Activated,
                 effects: effects.clone(),
             },
@@ -459,7 +466,7 @@ mod tests {
             &mut state,
             PlayerId(0),
             StackObjectKind::Ability {
-                source: elves,
+                source: sage_engine::AbilitySource::Permanent(elves),
                 origin: AbilityOrigin::Triggered,
                 effects,
             },

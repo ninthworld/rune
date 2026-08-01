@@ -606,6 +606,7 @@ mod tests {
         };
         let attackers = ValidAction {
             requirements: vec![TargetRequirement {
+                optional: false,
                 slot: "attackers".into(),
                 prompt: "Choose which creatures attack".into(),
                 candidates: vec!["perm_a".into(), "perm_b".into()],
@@ -614,6 +615,7 @@ mod tests {
         };
         let blockers = ValidAction {
             requirements: vec![TargetRequirement {
+                optional: false,
                 slot: "block_1".into(),
                 prompt: "Choose blockers".into(),
                 candidates: vec!["perm_x".into()],

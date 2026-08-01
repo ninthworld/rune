@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    CommanderDamage, CommanderIdentity, CommanderTax, GameLogEntry, GameResult, MatchFormat,
-    OpponentView, Permanent, Phase, PlayerId, StackItem, ZonePile,
+    CommanderDamage, CommanderIdentity, CommanderTax, Emblem, GameLogEntry, GameResult,
+    MatchFormat, OpponentView, Permanent, Phase, PlayerId, StackItem, ZonePile,
 };
 
 /// The state a **spectator** connection receives (issue #351): a
@@ -37,6 +37,10 @@ pub struct SpectatorView {
     /// All permanents in play (the same public projection seated views share).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub battlefield: Vec<Permanent>,
+    /// The emblems in the game (CR 114, issue #620) — the same public list seated views
+    /// carry (see [`GameView::emblems`]). Omitted while there are none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub emblems: Vec<Emblem>,
     /// The stack, bottom first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stack: Vec<StackItem>,
@@ -117,6 +121,9 @@ mod tests {
         // A populated, live spectator view over a three-player game with one seat
         // eliminated. Every seat is an OpponentView (public counts only).
         let view = SpectatorView {
+            // An emblem is public, so a spectator sees it; none is in force here, so it
+            // elides from the wire exactly as the other additive lists do.
+            emblems: Vec::new(),
             players: vec![
                 OpponentView {
                     player_id: "p0".into(),

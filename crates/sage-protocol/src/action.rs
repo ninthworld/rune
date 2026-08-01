@@ -98,6 +98,20 @@ pub struct TargetRequirement {
     pub slot: String,
     /// Human-readable prompt describing what to choose, e.g. `"target creature"`.
     pub prompt: String,
+    /// Whether this slot may be left **unanswered** — the "up to" of "put a +1/+1
+    /// counter on each of up to two target creatures" (CR 601.2c).
+    ///
+    /// `false` for every slot of an ordinary targeted spell or ability, which must be
+    /// filled or the submission is rejected. An effect that may name fewer targets than
+    /// it allows is advertised as its maximum number of slots, of which the ones past its
+    /// minimum carry this; the client omits them from its answer, or sends them empty,
+    /// and the server accepts either.
+    ///
+    /// Additive: omitted from the wire when `false`, so an older client that ignores it
+    /// sees exactly the contract it always saw — and a server that never sets it is
+    /// indistinguishable from the one before this field existed.
+    #[serde(default, skip_serializing_if = "crate::is_false")]
+    pub optional: bool,
     /// The legal candidate entity ids for this slot — the **only** choices the
     /// client may offer. Enumerated O(N) per slot, never the cartesian product of
     /// combinations across slots (docs/decisions/0004-targeting-model.md
@@ -306,6 +320,9 @@ mod tests {
             requirements: vec![TargetRequirement {
                 slot: "t0".into(),
                 prompt: "target creature or player".into(),
+                // A bolt's one slot is mandatory, so the flag elides from the wire —
+                // the assertion below is the proof that an older client sees no change.
+                optional: false,
                 candidates: vec!["perm_bear".into(), "p1".into(), "p2".into()],
             }],
             prompts: vec![],

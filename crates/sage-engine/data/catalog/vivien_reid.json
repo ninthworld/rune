@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "functional_id": "vivien_reid",
+  "name": "Vivien Reid",
+  "supertypes": [
+    "legendary"
+  ],
+  "types": [
+    "planeswalker"
+  ],
+  "subtypes": [
+    "Vivien"
+  ],
+  "mana_cost": "{3}{G}{G}",
+  "colors": [
+    "green"
+  ],
+  "loyalty": 5,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": 1
+        }
+      ],
+      "effects": [
+        {
+          "kind": "look_at_top",
+          "count": 4,
+          "take": 1,
+          "filter": {
+            "kind": "creature_or_land"
+          },
+          "destination": "hand"
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": -3
+        }
+      ],
+      "effects": [
+        {
+          "kind": "destroy",
+          "target": "any_artifact_enchantment_or_creature_with_flying"
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": -8
+        }
+      ],
+      "effects": [
+        {
+          "kind": "create_emblem",
+          "abilities": [
+            {
+              "type": "static",
+              "affects": {
+                "scope": "creatures_you_control"
+              },
+              "modification": {
+                "kind": "power_toughness",
+                "power": 2,
+                "toughness": 2
+              }
+            },
+            {
+              "type": "static",
+              "affects": {
+                "scope": "creatures_you_control"
+              },
+              "modification": {
+                "kind": "grant_keyword",
+                "keyword": "vigilance"
+              }
+            },
+            {
+              "type": "static",
+              "affects": {
+                "scope": "creatures_you_control"
+              },
+              "modification": {
+                "kind": "grant_keyword",
+                "keyword": "trample"
+              }
+            },
+            {
+              "type": "static",
+              "affects": {
+                "scope": "creatures_you_control"
+              },
+              "modification": {
+                "kind": "grant_keyword",
+                "keyword": "indestructible"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -13,6 +13,7 @@
 use serde::Deserialize;
 
 use crate::card::{CombatRestriction, Keyword};
+use crate::card_type::CardType;
 use crate::id::{CardInstanceId, PermanentId, PlayerId};
 use crate::mana::Color;
 use crate::stack::StackId;
@@ -336,14 +337,23 @@ pub enum Effect {
     ///
     /// Like [`Effect::Tap`] the subject is an explicit target, chosen at cast
     /// (CR 601.2c) and re-checked on resolution (CR 608.2b).
+    ///
+    /// The one effect in the IR that may name **more than one** target: `put a +1/+1
+    /// counter on each of up to two target creatures` is one effect with a two-slot
+    /// group ([`targets`](Self::PutCounters::targets)), applied once per target that is
+    /// still legal. Omitting the field leaves it at one target, which is what every
+    /// other card that uses this effect says.
     PutCounters {
-        /// What this effect is allowed to target (a permanent that can bear
-        /// counters).
+        /// What each of this effect's slots is allowed to target (a permanent that can
+        /// bear counters).
         target: TargetSpec,
+        /// How many targets are chosen. Defaults to exactly one.
+        #[serde(default)]
+        targets: TargetCount,
         /// The kind of counter to place. Named `counter` on the wire because the
         /// effect enum already reserves the `kind` tag for its own discriminant.
         counter: CounterKind,
-        /// How many counters of that kind to place.
+        /// How many counters of that kind to place on each target.
         count: u32,
     },
     /// Give the single creature this effect targets `+power`/`+toughness`
@@ -648,6 +658,281 @@ pub enum Effect {
         /// enclosing effects resolve in.
         effects: Vec<Effect>,
     },
+    /// **You get an emblem with** `abilities` (CR 114) — the planeswalker ultimate's
+    /// verb, and the only way an [`Emblem`](crate::Emblem) is ever created.
+    ///
+    /// An emblem is a zoneless object with no characteristics but its abilities
+    /// (CR 114.1–114.4). It is not a permanent, has no [`PermanentId`], is in no zone,
+    /// and nothing in the game removes it — so unlike every other object the effect IR
+    /// creates, this one is permanent in the strongest sense: the planeswalker that
+    /// made it may die in the same turn and the emblem keeps going for the rest of the
+    /// game.
+    ///
+    /// The abilities are authored inline, exactly as an [`Effect::CreateToken`]'s
+    /// [`TokenData`] is, for the same reason: an emblem is not a card, so there is no
+    /// catalog entry to point at. Only [`Ability::Static`] and [`Ability::Triggered`]
+    /// reach it — an activated ability would need a way to be activated and a
+    /// self-replacement would need an entry event to replace, neither of which an
+    /// object outside every zone has. The catalog validator rejects the others.
+    CreateEmblem {
+        /// The abilities the emblem has, and its only characteristics (CR 114.1).
+        abilities: Vec<Ability>,
+        /// Who gets it, and therefore whose "you" its abilities are written from.
+        /// Defaults to the effect's controller ("you get an emblem …").
+        #[serde(default = "PlayerRef::controller")]
+        player_ref: PlayerRef,
+    },
+    /// Apply `then` when `condition` holds as this effect is reached, `otherwise`
+    /// when it does not — the *if* clause of `Draw a card. If you control three or
+    /// more artifacts, draw two cards instead.`
+    ///
+    /// The condition is evaluated **at the moment this effect resolves**, not when the
+    /// object was put on the stack, so it sees everything the effects before it did.
+    /// That is what makes `Mill three cards. If at least one Zombie card was milled
+    /// this way, …` expressible: the mill happens, then the condition reads what the
+    /// mill recorded ([`Condition::MilledThisWay`]).
+    ///
+    /// The branch is **spliced into the remaining effect list** rather than applied
+    /// here, so a branch may itself pose a player choice, suspend, and resume through
+    /// the one path every other effect uses. Like [`Effect::May`], a branch may not
+    /// choose a target — one effect declares at most one target slot, and a wrapper
+    /// cannot honestly declare the slots of what it wraps ([`Effect::target_group`]);
+    /// the catalog validator rejects one that tries.
+    Conditional {
+        /// What has to be true.
+        condition: Condition,
+        /// The effects applied when it is, in order.
+        then: Vec<Effect>,
+        /// The effects applied when it is not. Empty for a plain "if …, then …".
+        #[serde(default)]
+        otherwise: Vec<Effect>,
+    },
+    /// Return the single **card in a graveyard** this effect targets to the
+    /// battlefield under the effect's controller (`Return target creature card with
+    /// mana value 2 or less from your graveyard to the battlefield.`).
+    ///
+    /// The first effect whose target is a [`Target::Card`] rather than a permanent or
+    /// a player: a card in a graveyard is a public object with an identity but no
+    /// [`PermanentId`], so its spec ([`TargetSpec::CreatureCardInYourGraveyard`])
+    /// selects over that zone. It enters through the one card→battlefield seam
+    /// ([`GameState::put_card_onto_battlefield`](crate::GameState)), so it mints a
+    /// fresh id and fires its enters-the-battlefield replacements and triggers exactly
+    /// as a resolving permanent spell does.
+    ReturnCardToBattlefield {
+        /// What this effect is allowed to target (a card in a graveyard).
+        target: TargetSpec,
+    },
+    /// Give the single creature this effect targets `power_per`/`toughness_per` **per
+    /// permanent** matching `count_of`, until end of turn — the count-derived
+    /// counterpart of [`Effect::Pump`] (`Target creature gets -X/-X until end of turn,
+    /// where X is the number of Zombies you control.`).
+    ///
+    /// X is computed **on resolution** (CR 608.2), once, and the resulting fixed
+    /// modifier is what the layer system folds in: a Zombie that dies later in the turn
+    /// does not give the shrunk creature its toughness back, which is what the printed
+    /// card means and what a re-evaluated selector would get wrong.
+    PumpByCount {
+        /// What this effect is allowed to target (a creature).
+        target: TargetSpec,
+        /// The signed power change contributed by each counted permanent.
+        power_per: i32,
+        /// The signed toughness change contributed by each counted permanent.
+        toughness_per: i32,
+        /// Which permanents are counted, relative to the effect's controller.
+        count_of: PermanentCount,
+    },
+    /// Add `amount` mana of `color` to the controller's pool that may be spent only as
+    /// `restriction` allows (`Add {R}{R}. Spend this mana only to cast Dragon
+    /// spells.`).
+    ///
+    /// The restricted counterpart of [`Effect::AddMana`], and a mana effect in exactly
+    /// the same sense — an activated ability whose every effect is one of the three
+    /// mana verbs is a mana ability ([`is_mana_ability`]) and never uses the stack
+    /// (CR 605.1a). The restriction rides on the mana itself
+    /// ([`RestrictedMana`](crate::RestrictedMana)) rather than on the pool, so it
+    /// survives beside ordinary mana and empties with it at the end of the step
+    /// (CR 500.4).
+    AddRestrictedMana {
+        /// The color of mana produced.
+        color: Color,
+        /// How much of it is produced.
+        amount: u8,
+        /// What that mana may be spent on.
+        restriction: ManaRestriction,
+    },
+    /// Let the referenced player cast cards matching `filter` **from their graveyard**
+    /// for the rest of the turn (`You may cast Zombie creature spells from your
+    /// graveyard this turn.`).
+    ///
+    /// A permission, not a movement: the cards stay in the graveyard and are offered
+    /// by [`valid_actions`](crate::valid_actions) alongside the hand, cast through the
+    /// same [`Action::CastSpell`](crate::Action) and the same stack object. It lapses
+    /// when the turn ends, so it is recorded with the turn it was granted on
+    /// ([`GraveyardCasting`](crate::GraveyardCasting)) rather than with a duration to
+    /// tick down.
+    AllowCastingFromGraveyard {
+        /// Whose graveyard becomes castable. Defaults to the effect's controller.
+        #[serde(default = "PlayerRef::controller")]
+        player_ref: PlayerRef,
+        /// Which of that graveyard's cards may be cast. Defaults to any of them.
+        #[serde(default)]
+        filter: CardFilter,
+    },
+}
+
+/// What has to be true for an [`Effect::Conditional`] to take its `then` branch.
+///
+/// A closed, plain-data predicate evaluated against the state as the conditional is
+/// reached, deliberately separate from [`TargetSpec`] and [`CardFilter`]: those select
+/// *objects*, this answers a *question about the game*. Two of the three are about what
+/// the resolution itself has already done, which is the whole reason a condition is a
+/// thing rather than an inline count.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Condition {
+    /// The effect's controller controls at least `count` permanents matching
+    /// `permanents` — `if you control three or more artifacts`.
+    ControlsAtLeast {
+        /// Which permanents are counted, relative to the effect's controller.
+        permanents: PermanentCount,
+        /// The threshold, inclusive.
+        count: u32,
+    },
+    /// At least one card matching `filter` was **milled by this resolution** — the
+    /// `if at least one Zombie card was milled this way` of a self-mill payoff.
+    ///
+    /// Read from the [`GameEvent::CardsMilled`](crate::GameEvent) entries recorded
+    /// since this object began resolving, not from the graveyard: a Zombie that was
+    /// already there was not milled this way, and a graveyard scan could never tell the
+    /// two apart. The window survives a suspension, so a mill that stops to ask a
+    /// question still answers this correctly when it resumes.
+    MilledThisWay {
+        /// Which milled cards satisfy it. Defaults to any of them.
+        #[serde(default)]
+        filter: CardFilter,
+    },
+    /// The effect's controller **discarded a card during this resolution** — the `if a
+    /// card is discarded this way` that stops a discard-then-draw from drawing off an
+    /// empty hand. Read from the recorded events over the same window
+    /// [`Self::MilledThisWay`] uses.
+    DiscardedThisWay,
+}
+
+/// A class of permanents to **count**, relative to an effect's controller.
+///
+/// Deliberately a small product of three independent filters rather than a closed list
+/// of named classes like [`MassAffects`]: a count is asked about an open-ended variety
+/// of things ("artifacts you control", "Zombies you control"), and enumerating each as
+/// its own variant would grow the vocabulary once per card. Nothing here selects
+/// permanents to *modify*, so the `except_this` and creature-only assumptions the
+/// selectors carry do not apply.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+pub struct PermanentCount {
+    /// Whose permanents are counted. Defaults to the controller's own.
+    #[serde(default)]
+    pub scope: CountScope,
+    /// Restrict to permanents with this printed card type. Absent counts every type.
+    #[serde(default)]
+    pub card_type: Option<CardType>,
+    /// Restrict to permanents with this printed subtype. Absent counts every subtype.
+    #[serde(default)]
+    pub subtype: Option<String>,
+}
+
+/// Whose permanents a [`PermanentCount`] counts, relative to the effect's controller.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CountScope {
+    /// The controller's own — "you control".
+    #[default]
+    YouControl,
+    /// Every opponent's, and none of the controller's.
+    OpponentsControl,
+    /// Every permanent on the battlefield, whoever controls it.
+    Any,
+}
+
+/// What a piece of restricted mana may be spent on (CR 106.6).
+///
+/// A closed set with one member today, which is the one the currently authorable cards
+/// need. It grows by adding variants; a restriction nothing matches simply makes the
+/// mana unspendable, which is the safe direction.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ManaRestriction {
+    /// Only to cast a spell whose card has this subtype — "spend this mana only to
+    /// cast **Dragon** spells".
+    SpellsWithSubtype {
+        /// The subtype the spell must have, as printed.
+        subtype: String,
+    },
+}
+
+/// How many targets one [`Effect`]'s slot group takes (CR 601.2c).
+///
+/// Almost every effect in the IR takes exactly one target, and says so by leaving this
+/// at its default. The exception is the "up to N target …" shape, where the *player*
+/// decides how many of the slots to fill — including none — which is a fact about the
+/// effect rather than about any one slot, so it lives here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TargetCount {
+    /// Exactly this many targets, all of which must be chosen and legal.
+    Exactly(u8),
+    /// **Up to** this many — the player may choose fewer, or none at all, and the
+    /// effect applies once per target actually chosen.
+    UpTo(u8),
+}
+
+impl Default for TargetCount {
+    /// One target, the shape every effect but the "up to N" one has.
+    fn default() -> Self {
+        Self::Exactly(1)
+    }
+}
+
+/// One [`Effect`]'s target requirement: what it may target, and how many of them.
+///
+/// The unit the whole targeting pipeline works in since a variable-arity effect
+/// exists — announcement (CR 601.2c), the per-slot candidate enumeration
+/// ([`crate::target_requirements`]), the legality gate, and the CR 608.2b resolution
+/// re-check. A group with `min == max == 1` is the ordinary single-target effect and
+/// behaves exactly as it always did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TargetGroup {
+    /// What each of this group's slots may target.
+    pub spec: TargetSpec,
+    /// The fewest targets a legal announcement may choose. `0` for an "up to N".
+    pub min: u8,
+    /// The most it may choose.
+    pub max: u8,
+}
+
+impl TargetGroup {
+    /// The ordinary one-target group.
+    fn single(spec: TargetSpec) -> Self {
+        Self {
+            spec,
+            min: 1,
+            max: 1,
+        }
+    }
+
+    /// The group `count` describes for `spec`.
+    fn counted(spec: TargetSpec, count: TargetCount) -> Self {
+        match count {
+            TargetCount::Exactly(n) => Self {
+                spec,
+                min: n,
+                max: n,
+            },
+            TargetCount::UpTo(n) => Self {
+                spec,
+                min: 0,
+                max: n,
+            },
+        }
+    }
 }
 
 /// Who picks the cards for an [`Effect::Discard`] — the discarding player, or the
@@ -703,15 +988,35 @@ pub enum CardFilter {
     Any,
     /// A land card.
     Land,
-    /// A creature card, optionally capped at a printed power — the "creature card with
-    /// power 2 or less" of a look-and-take.
+    /// A creature card, optionally capped at a printed power and/or narrowed to a
+    /// printed subtype — the "creature card with power 2 or less" of a look-and-take,
+    /// and the "Zombie creature" of a graveyard-casting permission.
     Creature {
         /// The greatest printed power a matching creature may have. Absent means any.
         #[serde(default)]
         max_power: Option<i32>,
+        /// The printed subtype a matching creature must have. Absent means any.
+        #[serde(default)]
+        subtype: Option<String>,
     },
     /// A card that is neither a creature nor a land — the class a hand-attack names.
     NoncreatureNonland,
+    /// A creature **or** land card — the class a look-at-the-top-four names as one
+    /// choice rather than two (`you may reveal a creature or land card from among
+    /// them`).
+    CreatureOrLand,
+    /// A **permanent** card (CR 110.1): one that would enter the battlefield when it
+    /// resolves. The class a search that puts its find directly onto the battlefield
+    /// names, because nothing else could go there.
+    Permanent,
+    /// A card with this printed subtype, whatever its card type — "a **Zombie** card",
+    /// which is a Zombie creature, a Zombie artifact, or anything else printed with the
+    /// subtype. Distinct from [`Self::Creature`]'s `subtype`, which also demands the
+    /// creature type.
+    Subtype {
+        /// The printed subtype, as printed.
+        subtype: String,
+    },
     /// A card with the same printed identity as the effect's own source — "a card named
     /// *this card*". Matched on the functional card, so two copies of one printing do
     /// find each other and a differently-named card never does.
@@ -862,7 +1167,17 @@ impl DamageSubject {
 }
 
 impl Effect {
-    /// The [`TargetSpec`] this effect must be given a chosen target for, or
+    /// The [`TargetSpec`] this effect's slot group names, or `None` for an effect with
+    /// an implicit subject ([`Effect::AddMana`], [`Effect::DrawCard`]).
+    ///
+    /// The convenience over [`Self::target_group`] for the great majority of callers,
+    /// which care what may be targeted and not how many.
+    #[must_use]
+    pub fn target_spec(&self) -> Option<TargetSpec> {
+        self.target_group().map(|group| group.spec)
+    }
+
+    /// The [`TargetGroup`] this effect must be given chosen targets for, or
     /// `None` for an effect with an implicit subject ([`Effect::AddMana`],
     /// [`Effect::DrawCard`]).
     ///
@@ -871,17 +1186,24 @@ impl Effect {
     /// target's legality (CR 608.2b). Kept exhaustive so a new targeting
     /// [`Effect`] variant must declare its spec here.
     #[must_use]
-    pub fn target_spec(&self) -> Option<TargetSpec> {
+    pub fn target_group(&self) -> Option<TargetGroup> {
         match self {
+            // The one variable-arity effect: `put a +1/+1 counter on each of up to two
+            // target creatures` chooses between zero and two, and every other authoring
+            // of the same effect leaves the count at its default of one.
+            Effect::PutCounters {
+                target, targets, ..
+            } => Some(TargetGroup::counted(*target, *targets)),
             Effect::Tap { target }
             | Effect::CounterSpell { target }
             | Effect::Destroy { target }
             | Effect::Exile { target }
-            | Effect::PutCounters { target, .. }
             | Effect::Pump { target, .. }
+            | Effect::PumpByCount { target, .. }
             | Effect::GrantKeyword { target, .. }
             | Effect::Restrict { target, .. }
-            | Effect::ReturnToHand { target } => Some(*target),
+            | Effect::ReturnCardToBattlefield { target }
+            | Effect::ReturnToHand { target } => Some(TargetGroup::single(*target)),
             // A player-subject effect targets exactly when its reference does
             // (CR 115.1) — "target opponent loses 2 life" fills a slot, "each
             // opponent loses 2 life" fills none. One answer, from the reference.
@@ -894,13 +1216,23 @@ impl Effect {
             | Effect::Discard { player_ref, .. }
             // And a token creation names its creator the same way: "create a 2/4 white
             // Ox token" is made by you, "target player creates …" fills a slot.
-            | Effect::CreateToken { player_ref, .. } => player_ref.target_spec(),
+            | Effect::CreateToken { player_ref, .. } => {
+                player_ref.target_spec().map(TargetGroup::single)
+            }
             // Damage asks its subject the same question: "any target" fills a slot,
             // "each opponent" and "each creature" fill none (CR 115.1).
-            Effect::DealDamage { subject, .. } => subject.target_spec(),
+            Effect::DealDamage { subject, .. } => {
+                subject.target_spec().map(TargetGroup::single)
+            }
             Effect::AddMana { .. }
             | Effect::AddColorlessMana { .. }
+            | Effect::AddRestrictedMana { .. }
             | Effect::DrawCard { .. }
+            // An emblem is given to a named player, never a targeted one (CR 114.3 —
+            // "you get an emblem"), and a graveyard-casting permission likewise names
+            // its player without targeting.
+            | Effect::CreateEmblem { .. }
+            | Effect::AllowCastingFromGraveyard { .. }
             // A choice over the controller's own library names no target: the library
             // is theirs by definition (CR 115.1).
             | Effect::Scry { .. }
@@ -909,8 +1241,10 @@ impl Effect {
             // An optional effect declares no slot of its own, and its nested effects
             // may not declare one either: one effect fills at most one slot, so a
             // wrapper could not honestly speak for what it wraps. The catalog
-            // validator enforces it at authoring time.
+            // validator enforces it at authoring time. A conditional's branches are
+            // wrapped effects for exactly the same reason and follow the same rule.
             | Effect::May { .. }
+            | Effect::Conditional { .. }
             // A class of permanents is not a target (CR 115.1), and neither is the
             // ability's own source.
             | Effect::PumpAll { .. }
@@ -1030,6 +1364,27 @@ pub enum TargetSpec {
     /// loyalty (CR 120.3c) rather than being marked. Battles remain unmodeled and are
     /// still absent from the set.
     AnyTarget,
+    /// Any artifact, enchantment, **or creature with flying** — the single slot of
+    /// Vivien Reid's `-3`, which is one target of any of three classes rather than
+    /// three slots. Flying is read through the computed keywords (CR 613.1f), exactly
+    /// as [`Self::AnyCreatureWithFlying`] reads it. Never a planeswalker: none of the
+    /// three classes it names is one.
+    AnyArtifactEnchantmentOrCreatureWithFlying,
+    /// A **creature card in the object controller's graveyard**, optionally capped at a
+    /// mana value — `target creature card with mana value 2 or less from your
+    /// graveyard`.
+    ///
+    /// The only spec that names a card in a zone rather than an object on the
+    /// battlefield or the stack, so it is the only one a [`Target::Card`] satisfies.
+    /// A graveyard is public, so there is no hidden information to protect and the
+    /// candidate set is enumerable exactly as a battlefield one is. Never a
+    /// planeswalker: it names a *creature* card, and the two types are disjoint on
+    /// every card the schema can express.
+    CreatureCardInYourGraveyard {
+        /// The greatest mana value (CR 202.3) a matching card may have. Absent means
+        /// any.
+        max_mana_value: Option<u32>,
+    },
 }
 
 /// A **chosen target**: a resolved reference to one specific game object the
@@ -1280,6 +1635,63 @@ pub enum ObservedSpell {
     InstantOrSorcery,
 }
 
+/// The **fewest** targets a legal announcement of `effects` must choose (CR 601.2c) —
+/// the sum of every declared group's minimum.
+///
+/// Equal to [`maximum_targets`] for every object but one that declares an "up to N"
+/// group, which is the whole reason the two are separate functions.
+#[must_use]
+pub fn minimum_targets(effects: &[Effect]) -> usize {
+    effects
+        .iter()
+        .filter_map(Effect::target_group)
+        .map(|group| usize::from(group.min))
+        .sum()
+}
+
+/// The **most** targets a legal announcement of `effects` may choose (CR 601.2c) — the
+/// sum of every declared group's maximum.
+#[must_use]
+pub fn maximum_targets(effects: &[Effect]) -> usize {
+    effects
+        .iter()
+        .filter_map(Effect::target_group)
+        .map(|group| usize::from(group.max))
+        .sum()
+}
+
+/// How many of an object's `chosen` targets each of `effects`' target groups consumes,
+/// in effect order — the pairing every path that walks stored targets alongside effects
+/// needs (announcement, the CR 608.2b resolution re-check, the legality gate).
+///
+/// Fixed groups take exactly their size. The slack — the targets chosen beyond every
+/// group's minimum — all belongs to the **one** variable-arity group an object may
+/// declare, a limit the catalog validator enforces
+/// ([`Violation::TwoVariableTargetGroups`](crate::Violation)) precisely so this pairing
+/// is exact rather than a guess. With no variable group the slack is zero and every
+/// group takes its fixed size, which is what every object authored before "up to two
+/// target creatures" existed does.
+#[must_use]
+pub fn target_counts(effects: &[Effect], chosen: usize) -> Vec<usize> {
+    let groups: Vec<TargetGroup> = effects.iter().filter_map(Effect::target_group).collect();
+    group_target_counts(&groups, chosen)
+}
+
+/// [`target_counts`] over groups a caller already has in hand.
+#[must_use]
+pub fn group_target_counts(groups: &[TargetGroup], chosen: usize) -> Vec<usize> {
+    let minimum: usize = groups.iter().map(|g| usize::from(g.min)).sum();
+    let mut slack = chosen.saturating_sub(minimum);
+    groups
+        .iter()
+        .map(|group| {
+            let extra = slack.min(usize::from(group.max) - usize::from(group.min));
+            slack -= extra;
+            usize::from(group.min) + extra
+        })
+        .collect()
+}
+
 /// Whether an ability is a **loyalty ability** (CR 606.1): an activated ability whose
 /// cost includes a loyalty symbol ([`Cost::Loyalty`]).
 ///
@@ -1311,9 +1723,26 @@ pub fn is_mana_ability(ability: &Ability) -> bool {
             if !effects.is_empty()
                 && effects.iter().all(|e| matches!(
                     e,
-                    Effect::AddMana { .. } | Effect::AddColorlessMana { .. }
+                    Effect::AddMana { .. }
+                        | Effect::AddColorlessMana { .. }
+                        | Effect::AddRestrictedMana { .. }
                 ))
     )
+}
+
+/// Whether `ability` is one an [`Emblem`](crate::Emblem) may carry (CR 114.1–114.4).
+///
+/// An emblem has no characteristics but its abilities, is in no zone, and is never an
+/// object a player can act on — so only the two ability kinds that need neither an
+/// activation nor an entry event apply to it. An activated ability would have to be
+/// activated from somewhere, and an enters-the-battlefield self-replacement would have
+/// to replace an entry that never happens.
+///
+/// Enforced by the catalog validator at authoring time, so a card that writes one of
+/// the others fails the build rather than creating an emblem with a dead ability.
+#[must_use]
+pub fn is_emblem_ability(ability: &Ability) -> bool {
+    matches!(ability, Ability::Static { .. } | Ability::Triggered { .. })
 }
 
 #[cfg(test)]

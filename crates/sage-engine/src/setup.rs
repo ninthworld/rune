@@ -229,6 +229,8 @@ impl GameState {
             step: Step::Untap,
             players: Vec::with_capacity(setup.players.len()),
             battlefield: Vec::new(),
+            emblems: Vec::new(),
+            graveyard_casting: Vec::new(),
             stack: Vec::new(),
             static_effects: Vec::new(),
             next_object_id: 1,

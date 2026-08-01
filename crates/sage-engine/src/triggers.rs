@@ -8,7 +8,7 @@ use crate::ability::{Ability, ObservedPermanent, ObservedSpell, TriggerCondition
 use crate::card::abilities_of_permanent;
 use crate::card_type::CardType;
 use crate::id::{CardInstanceId, PermanentId, PlayerId};
-use crate::stack::{StackId, StackObjectKind};
+use crate::stack::{AbilitySource, StackId, StackObjectKind};
 use crate::state::{GameEvent, GameState, Permanent};
 use crate::{CardDatabase, Effect};
 
@@ -19,12 +19,57 @@ use crate::{CardDatabase, Effect};
 /// A collected trigger carries everything needed to put the ability on the stack.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Trigger {
-    /// The permanent whose ability triggered.
-    pub source: PermanentId,
+    /// The object whose ability triggered — a permanent, or an emblem (CR 114).
+    pub source: AbilitySource,
     /// The player who controls the triggered ability (its source's controller).
     pub controller: PlayerId,
     /// The effects the ability produces when it resolves.
     pub effects: Vec<Effect>,
+}
+
+/// The object a trigger condition is being evaluated for, reduced to what the
+/// conditions actually read: the source permanent when there is one, and the
+/// controller whose "you" and whose turn the scoped conditions mean.
+///
+/// An [`Emblem`](crate::Emblem) is the case that makes this a type rather than a bare
+/// `&Permanent`. Every self-condition (`self_enters_battlefield`, `self_dies`,
+/// `self_attacks`) is about a battlefield object and can never be satisfied by one that
+/// is in no zone; every watching condition additionally requires its source to *still be
+/// on the battlefield*, a precondition an emblem can never meet and never needs to,
+/// because it never leaves. Both facts follow from `permanent` being `None`, so neither
+/// is a special case written out per condition.
+#[derive(Clone, Copy)]
+struct Watcher<'a> {
+    /// The source permanent, or `None` for an emblem.
+    permanent: Option<&'a Permanent>,
+    /// The source's controller.
+    controller: PlayerId,
+}
+
+impl<'a> Watcher<'a> {
+    /// Whether the source is still there to trigger after the transition.
+    ///
+    /// A permanent must still be on the battlefield — an ability that has left is not
+    /// watching the board it is no longer on. An emblem always is: nothing removes one
+    /// (CR 114.5), so the question has one answer and it is `true`.
+    fn still_present(self, after: &GameState) -> bool {
+        match self.permanent {
+            Some(perm) => after.battlefield.iter().any(|p| p.id == perm.id),
+            None => true,
+        }
+    }
+
+    /// This watcher as the [`AbilitySource`] a collected trigger records, given the
+    /// emblem id to fall back to.
+    fn source(self, emblem: Option<u64>) -> AbilitySource {
+        match (self.permanent, emblem) {
+            (Some(perm), _) => AbilitySource::Permanent(perm.id),
+            (None, Some(id)) => AbilitySource::Emblem(id),
+            // Unreachable in practice: a watcher is built from a permanent or an
+            // emblem, so one of the two is always present.
+            (None, None) => AbilitySource::Emblem(0),
+        }
+    }
 }
 
 /// Collect the triggers that should now exist by diffing `before` against
@@ -54,7 +99,18 @@ pub fn collect_triggers(before: &GameState, after: &GameState, db: &CardDatabase
     let mut triggers = Vec::new();
     // Enter-the-battlefield direction: observe permanents present in `after`.
     for perm in &after.battlefield {
-        collect_from(perm, before, after, db, &mut triggers);
+        collect_from(
+            Watcher {
+                permanent: Some(perm),
+                controller: perm.controller,
+            },
+            None,
+            abilities_of_permanent(db, perm),
+            before,
+            after,
+            db,
+            &mut triggers,
+        );
     }
     // Leave-the-battlefield ("dies") direction: observe permanents that were in
     // `before` but are gone from `after`. Iterating `before.battlefield` keeps the
@@ -63,7 +119,38 @@ pub fn collect_triggers(before: &GameState, after: &GameState, db: &CardDatabase
         if after.battlefield.iter().any(|p| p.id == perm.id) {
             continue;
         }
-        collect_from(perm, before, after, db, &mut triggers);
+        collect_from(
+            Watcher {
+                permanent: Some(perm),
+                controller: perm.controller,
+            },
+            None,
+            abilities_of_permanent(db, perm),
+            before,
+            after,
+            db,
+            &mut triggers,
+        );
+    }
+    // The second source list (CR 114.1): an emblem's triggered abilities. Read from
+    // `before`, not `after`, which is the whole of "an ability only triggers for events
+    // that happen after its source exists" (CR 603.6) — an emblem created by this very
+    // transition must not fire on an end step the same transition already crossed.
+    // Ordered after the battlefield so simultaneous triggers keep a deterministic stack
+    // order, the same guarantee the two passes above give.
+    for emblem in &before.emblems {
+        collect_from(
+            Watcher {
+                permanent: None,
+                controller: emblem.controller,
+            },
+            Some(emblem.id),
+            emblem.abilities.clone(),
+            before,
+            after,
+            db,
+            &mut triggers,
+        );
     }
     triggers
 }
@@ -87,8 +174,12 @@ pub fn pending_trigger_target_choice(state: &GameState) -> Option<StackId> {
         .iter()
         .rev()
         .find(|object| match &object.kind {
+            // "Owes targets" is *carries fewer than its groups demand*. Reading the
+            // groups' minimums rather than counting slots is what keeps an "up to N"
+            // group — which is satisfied by nothing at all — from leaving a trigger
+            // permanently unaimed and the game frozen on a question with no answer.
             StackObjectKind::Ability { effects, .. } => {
-                effects.iter().filter_map(Effect::target_spec).count() > object.targets.len()
+                crate::ability::minimum_targets(effects) > object.targets.len()
             }
             StackObjectKind::Spell { .. } => false,
         })
@@ -105,26 +196,31 @@ pub(crate) fn controller_of_stack_object(state: &GameState, id: StackId) -> Opti
         .map(|o| o.controller)
 }
 
-/// Push a [`Trigger`] for every triggered ability of `perm` whose condition holds
-/// across the diff. `perm` is read from whichever snapshot still has it (the
-/// `after` battlefield for enters, the `before` battlefield for deaths).
+/// Push a [`Trigger`] for every triggered ability in `abilities` whose condition holds
+/// across the diff, for the object `watcher` describes.
+///
+/// The source object is read from whichever snapshot still has it (the `after`
+/// battlefield for enters, the `before` battlefield for deaths, and `before` for an
+/// emblem, which is in neither).
 fn collect_from(
-    perm: &Permanent,
+    watcher: Watcher<'_>,
+    emblem: Option<u64>,
+    abilities: Vec<Ability>,
     before: &GameState,
     after: &GameState,
     db: &CardDatabase,
     out: &mut Vec<Trigger>,
 ) {
-    for ability in abilities_of_permanent(db, perm) {
+    for ability in abilities {
         if let Ability::Triggered { event, effects } = ability {
             // A condition reports *how many times* it was met, not whether: an ability
             // watching the rest of the board sees one event per qualifying object, and
             // two creatures dying at once must trigger it twice (CR 603.2). The
             // self-conditions can only ever answer 0 or 1.
-            for _ in 0..fire_count(&event, perm, before, after, db) {
+            for _ in 0..fire_count(&event, watcher, before, after, db) {
                 out.push(Trigger {
-                    source: perm.id,
-                    controller: perm.controller,
+                    source: watcher.source(emblem),
+                    controller: watcher.controller,
                     effects: effects.clone(),
                 });
             }
@@ -205,10 +301,12 @@ fn events_in<'a>(before: &GameState, after: &'a GameState) -> impl Iterator<Item
 fn observed_matches(
     observes: &ObservedPermanent,
     candidate: &Permanent,
-    source: &Permanent,
+    source: Watcher<'_>,
     db: &CardDatabase,
 ) -> bool {
-    if observes.excludes_source() && candidate.id == source.id {
+    // An emblem is not a permanent, so it is never the "this" an `except_this`
+    // excludes — `map` answering `None` says so without an arm of its own.
+    if observes.excludes_source() && source.permanent.map(|p| p.id) == Some(candidate.id) {
         return false;
     }
     let Some(face) = candidate.printed.face(db) else {
@@ -226,6 +324,11 @@ fn observed_matches(
         ObservedPermanent::CreaturesYouControl { .. } => candidate.controller == source.controller,
         ObservedPermanent::AnyCreature { .. } => true,
     }
+}
+
+/// Whether the permanent `perm` is present on `state`'s battlefield.
+fn on_battlefield(state: &GameState, perm: &Permanent) -> bool {
+    state.battlefield.iter().any(|p| p.id == perm.id)
 }
 
 /// Whether the spell `card` is one `observes` notices.
@@ -253,73 +356,77 @@ fn observed_spell_matches(
 /// death-watcher once per creature rather than once.
 fn fire_count(
     condition: &TriggerCondition,
-    perm: &Permanent,
+    watcher: Watcher<'_>,
     before: &GameState,
     after: &GameState,
     db: &CardDatabase,
 ) -> usize {
-    usize::from(match condition {
-        TriggerCondition::SelfEntersBattlefield => {
-            after.battlefield.iter().any(|p| p.id == perm.id)
-                && !before.battlefield.iter().any(|p| p.id == perm.id)
-        }
+    match condition {
+        // The three *self* conditions are about a battlefield object, so an emblem —
+        // which is in no zone — can never satisfy any of them. `watcher.permanent`
+        // answering `None` is what says so, once, rather than three arms each carrying
+        // the same caveat.
+        TriggerCondition::SelfEntersBattlefield => usize::from(
+            watcher
+                .permanent
+                .is_some_and(|perm| on_battlefield(after, perm) && !on_battlefield(before, perm)),
+        ),
         // CR 700.4 / 603.6c: the permanent died — it left the battlefield for a
         // graveyard. Observed purely by diff: its id is gone from the battlefield
         // and its physical instance is now in some graveyard where it was not
         // before. Requiring the *graveyard* destination is what stops a leave to a
         // non-graveyard zone (a future bounce or exile) from firing this.
-        TriggerCondition::SelfDies => {
-            let left = before.battlefield.iter().any(|p| p.id == perm.id)
-                && !after.battlefield.iter().any(|p| p.id == perm.id);
-            left && death_of(perm, before, after)
-        }
+        TriggerCondition::SelfDies => usize::from(watcher.permanent.is_some_and(|perm| {
+            on_battlefield(before, perm)
+                && !on_battlefield(after, perm)
+                && death_of(perm, before, after)
+        })),
         // CR 508.1 / 603.6d: the permanent was declared as an attacker this
         // transition. Observed by diff on the one field the declaration writes —
         // `attacking` is set after and was not before — so it fires once, from the
         // declare-attackers action, and never from a creature that was merely tapped
         // or that is still attacking from an earlier check.
-        TriggerCondition::SelfAttacks => {
-            let attacking_now = after
-                .battlefield
-                .iter()
-                .any(|p| p.id == perm.id && p.attacking.is_some());
-            let attacking_before = before
-                .battlefield
-                .iter()
-                .any(|p| p.id == perm.id && p.attacking.is_some());
-            attacking_now && !attacking_before
-        }
-        // The watching conditions count rather than answer, so each returns early.
+        TriggerCondition::SelfAttacks => usize::from(watcher.permanent.is_some_and(|perm| {
+            let attacking_in = |state: &GameState| {
+                state
+                    .battlefield
+                    .iter()
+                    .any(|p| p.id == perm.id && p.attacking.is_some())
+            };
+            attacking_in(after) && !attacking_in(before)
+        })),
+        // The watching conditions count rather than answer. Each first asks whether its
+        // source is still there to watch — a permanent must still be on the battlefield,
+        // and an emblem always is (CR 114.5: nothing removes one), which
+        // [`Watcher::still_present`] answers for both.
         TriggerCondition::PermanentEnters(observes) => {
             // An ability that is no longer on the battlefield is not watching it. A
             // death-watcher is the deliberate exception below: a creature that died
             // alongside another still observed that death.
-            if !after.battlefield.iter().any(|p| p.id == perm.id) {
+            if !watcher.still_present(after) {
                 return 0;
             }
-            return entered(before, after)
-                .filter(|candidate| observed_matches(observes, candidate, perm, db))
-                .count();
+            entered(before, after)
+                .filter(|candidate| observed_matches(observes, candidate, watcher, db))
+                .count()
         }
-        TriggerCondition::PermanentDies(observes) => {
-            return died(before, after)
-                .into_iter()
-                .filter(|candidate| observed_matches(observes, candidate, perm, db))
-                .count();
-        }
+        TriggerCondition::PermanentDies(observes) => died(before, after)
+            .into_iter()
+            .filter(|candidate| observed_matches(observes, candidate, watcher, db))
+            .count(),
         TriggerCondition::YouGainLife => {
-            if !after.battlefield.iter().any(|p| p.id == perm.id) {
+            if !watcher.still_present(after) {
                 return 0;
             }
             // A *gain*, not a net change: the recorded delta is signed, and only a
             // positive one is life gained (CR 118.3). Damage to a player is recorded as
             // damage rather than as a life change, so it never reaches here.
-            return events_in(before, after)
+            events_in(before, after)
                 .filter(|event| {
                     matches!(event, GameEvent::LifeChanged { player, amount }
-                        if *player == perm.controller && *amount > 0)
+                        if *player == watcher.controller && *amount > 0)
                 })
-                .count();
+                .count()
         }
         // CR 603.6a: the ability triggers as the step begins. Counted over the
         // `StepChanged` entries this transition recorded rather than by comparing
@@ -328,34 +435,34 @@ fn fire_count(
         // comparison both misses crossings and fires on transitions that crossed
         // nothing. One event per crossing makes this exactly once per crossing.
         TriggerCondition::BeginningOfStep { step, whose_turn } => {
-            if !after.battlefield.iter().any(|p| p.id == perm.id) {
+            if !watcher.still_present(after) {
                 return 0;
             }
             let watched = step.step();
-            return events_in(before, after)
+            events_in(before, after)
                 .filter(|event| {
                     matches!(event, GameEvent::StepChanged { step, active_player, .. }
                     if *step == watched
                         && match whose_turn {
-                            TurnScope::Yours => *active_player == perm.controller,
+                            TurnScope::Yours => *active_player == watcher.controller,
                             TurnScope::Each => true,
                         })
                 })
-                .count();
+                .count()
         }
         TriggerCondition::YouCastSpell(spell) => {
-            if !after.battlefield.iter().any(|p| p.id == perm.id) {
+            if !watcher.still_present(after) {
                 return 0;
             }
-            return events_in(before, after)
+            events_in(before, after)
                 .filter(|event| {
                     matches!(event, GameEvent::SpellCast { player, card }
-                        if *player == perm.controller
+                        if *player == watcher.controller
                             && observed_spell_matches(*spell, card.card, db))
                 })
-                .count();
+                .count()
         }
-    })
+    }
 }
 
 /// Whether the physical card `instance` is in any player's graveyard in `state`.
@@ -418,7 +525,7 @@ mod tests {
         });
         let triggers = collect_triggers(&before, &after, &db);
         assert_eq!(triggers.len(), 1);
-        assert_eq!(triggers[0].source, PermanentId(1));
+        assert_eq!(triggers[0].source, AbilitySource::Permanent(PermanentId(1)));
         assert_eq!(triggers[0].effects, vec![Effect::DrawCard { count: 1 }]);
     }
 
@@ -461,7 +568,7 @@ mod tests {
 
         let triggers = collect_triggers(&before, &after, &db);
         assert_eq!(triggers.len(), 1);
-        assert_eq!(triggers[0].source, id);
+        assert_eq!(triggers[0].source, AbilitySource::Permanent(id));
         assert_eq!(triggers[0].controller, PlayerId(0));
         assert_eq!(triggers[0].effects, vec![Effect::DrawCard { count: 1 }]);
     }

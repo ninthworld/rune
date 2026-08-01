@@ -345,6 +345,7 @@ mod tests {
     fn attackers_selection_declares_every_damaging_creature() {
         let mut view = view_with_actions(vec![ValidAction {
             requirements: vec![TargetRequirement {
+                optional: false,
                 slot: "attackers".into(),
                 prompt: "Choose which creatures attack".into(),
                 candidates: vec!["perm_a".into(), "perm_b".into(), "perm_wall".into()],
@@ -373,11 +374,13 @@ mod tests {
         let mut view = view_with_actions(vec![ValidAction {
             requirements: vec![
                 TargetRequirement {
+                    optional: false,
                     slot: format!("block_{}", "atk_big"),
                     prompt: "Choose blockers for Big".into(),
                     candidates: vec!["perm_blk_good".into(), "perm_blk_weak".into()],
                 },
                 TargetRequirement {
+                    optional: false,
                     slot: format!("block_{}", "atk_small"),
                     prompt: "Choose blockers for Small".into(),
                     candidates: vec!["perm_blk_good".into(), "perm_blk_weak".into()],
@@ -434,6 +437,7 @@ mod tests {
 
         let block_action = |candidates: Vec<&str>| ValidAction {
             requirements: vec![TargetRequirement {
+                optional: false,
                 slot: "block_atk".into(),
                 prompt: "Choose blockers".into(),
                 candidates: candidates.into_iter().map(str::to_string).collect(),
@@ -547,6 +551,7 @@ mod tests {
         }];
         let act = ValidAction {
             requirements: vec![TargetRequirement {
+                optional: false,
                 slot: "t0".into(),
                 prompt: "Choose target player".into(),
                 candidates: vec!["p0".into(), "p1".into()],
@@ -562,6 +567,7 @@ mod tests {
         let view = view_with_actions(vec![]);
         let act = ValidAction {
             requirements: vec![TargetRequirement {
+                optional: false,
                 slot: "t0".into(),
                 prompt: "Choose target creature".into(),
                 candidates: vec![],

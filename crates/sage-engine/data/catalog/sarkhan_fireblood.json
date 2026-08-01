@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "functional_id": "sarkhan_fireblood",
+  "name": "Sarkhan, Fireblood",
+  "supertypes": [
+    "legendary"
+  ],
+  "types": [
+    "planeswalker"
+  ],
+  "subtypes": [
+    "Sarkhan"
+  ],
+  "mana_cost": "{1}{R}{R}",
+  "colors": [
+    "red"
+  ],
+  "loyalty": 4,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": 1
+        }
+      ],
+      "effects": [
+        {
+          "kind": "discard",
+          "player_ref": "controller",
+          "count": 1
+        },
+        {
+          "kind": "conditional",
+          "condition": {
+            "kind": "discarded_this_way"
+          },
+          "then": [
+            {
+              "kind": "draw_card",
+              "count": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": 1
+        }
+      ],
+      "effects": [
+        {
+          "kind": "add_restricted_mana",
+          "color": "red",
+          "amount": 2,
+          "restriction": {
+            "kind": "spells_with_subtype",
+            "subtype": "Dragon"
+          }
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": -7
+        }
+      ],
+      "effects": [
+        {
+          "kind": "create_token",
+          "count": 3,
+          "token": {
+            "name": "Dragon",
+            "types": [
+              "creature"
+            ],
+            "subtypes": [
+              "Dragon"
+            ],
+            "colors": [
+              "red"
+            ],
+            "power": 5,
+            "toughness": 5,
+            "keywords": [
+              "flying"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 //! Action generation — enumeration of legal actions from game state.
 
-use crate::ability::{is_loyalty_ability, is_mana_ability, Ability};
+use crate::ability::{is_loyalty_ability, is_mana_ability, Ability, Effect};
 use crate::card_type::CardType;
 use crate::choice::ChoiceQuestion;
 use crate::commander::commander_tax_cost;
@@ -232,23 +232,52 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             // CR 117.1a: an instant ignores the sorcery-speed gate; every other
             // spell is bound by it.
             let timing_ok = data.has_type(CardType::Instant) || sorcery_speed;
-            if timing_ok && player.mana_pool.can_pay(&parse_mana_cost(&data.mana_cost)) {
+            if timing_ok
+                && player
+                    .mana_pool
+                    .can_pay_for(&parse_mana_cost(&data.mana_cost), spend_purpose(data))
+            {
                 // A targeted spell is offered only when *every* target slot has at
                 // least one legal candidate (CR 601.2c — a spell that can't choose
                 // legal targets can't be cast; for an Aura this is the CR 303.4c
                 // "no legal object to enchant" rule). A slot's candidates come from
                 // the same per-slot enumeration abilities use, so this stays O(N)
                 // per slot and never forms the cartesian product.
-                let castable = data
-                    .cast_target_specs()
-                    .into_iter()
-                    .all(|spec| !legal_targets_for_spec(spec, state, priority, db).is_empty());
-                if castable {
+                if groups_are_fillable(&data.cast_target_groups(), state, priority, db) {
                     actions.push(Action::CastSpell {
                         card,
                         targets: Vec::new(),
                     });
                 }
+            }
+        }
+
+        // Cast a card from the **graveyard**, while a permission granted this turn says
+        // it may be ([`Effect::AllowCastingFromGraveyard`]). Offered as an ordinary
+        // [`Action::CastSpell`] naming the graveyard copy — the same stack object, the
+        // same timing gates, the same cost — so nothing downstream has a second casting
+        // pipeline to learn about; only the zone the card leaves differs.
+        for &card in &player.graveyard {
+            let Some(data) = db.card(card.card) else {
+                continue;
+            };
+            if !is_castable_spell(data) {
+                continue;
+            }
+            if !graveyard_casting_allows(state, priority, card.card, db) {
+                continue;
+            }
+            let timing_ok = data.has_type(CardType::Instant) || sorcery_speed;
+            if timing_ok
+                && player
+                    .mana_pool
+                    .can_pay_for(&parse_mana_cost(&data.mana_cost), spend_purpose(data))
+                && groups_are_fillable(&data.cast_target_groups(), state, priority, db)
+            {
+                actions.push(Action::CastSpell {
+                    card,
+                    targets: Vec::new(),
+                });
             }
         }
 
@@ -269,17 +298,14 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 }
                 let timing_ok = data.has_type(CardType::Instant) || sorcery_speed;
                 let cost = commander_tax_cost(&parse_mana_cost(&data.mana_cost), commander.casts);
-                if timing_ok && player.mana_pool.can_pay(&cost) {
-                    let castable = data
-                        .cast_target_specs()
-                        .into_iter()
-                        .all(|spec| !legal_targets_for_spec(spec, state, priority, db).is_empty());
-                    if castable {
-                        actions.push(Action::CastSpell {
-                            card,
-                            targets: Vec::new(),
-                        });
-                    }
+                if timing_ok
+                    && player.mana_pool.can_pay_for(&cost, spend_purpose(data))
+                    && groups_are_fillable(&data.cast_target_groups(), state, priority, db)
+                {
+                    actions.push(Action::CastSpell {
+                        card,
+                        targets: Vec::new(),
+                    });
                 }
             }
         }
@@ -290,6 +316,52 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
 
     offer_concede(&mut actions);
     actions
+}
+
+/// Whether every **required** slot of `groups` has at least one legal candidate — the
+/// CR 601.2c gate on offering a targeted spell or ability at all.
+///
+/// A group whose minimum is zero is never a reason to withhold the offer: "up to two
+/// target creatures" is a legal announcement with no creatures on the board, choosing
+/// none. That is the whole difference an arity-aware gate makes, and it is why this asks
+/// the group rather than the spec.
+fn groups_are_fillable(
+    groups: &[crate::ability::TargetGroup],
+    state: &GameState,
+    actor: crate::id::PlayerId,
+    db: &CardDatabase,
+) -> bool {
+    groups.iter().all(|group| {
+        group.min == 0 || !legal_targets_for_spec(group.spec, state, actor, db).is_empty()
+    })
+}
+
+/// The [`SpendPurpose`] a cast of `data` pays under (CR 106.6) — restricted mana asks
+/// what it is being spent on, and casting a spell is the one answer that can satisfy a
+/// "spend this mana only to cast Dragon spells" restriction.
+fn spend_purpose(data: &crate::card::CardData) -> crate::mana::SpendPurpose<'_> {
+    crate::mana::SpendPurpose::CastingSpell {
+        subtypes: &data.subtypes,
+    }
+}
+
+/// Whether a permission granted **this turn** lets `seat` cast `card` from their
+/// graveyard ([`Effect::AllowCastingFromGraveyard`]).
+///
+/// The turn comparison is belt-and-braces: the turn boundary clears the list, so an
+/// entry from an earlier turn should never be here at all. Checking anyway means a
+/// permission can never outlive its turn even if some future path forgets to clear it.
+fn graveyard_casting_allows(
+    state: &GameState,
+    seat: crate::id::PlayerId,
+    card: crate::id::CardId,
+    db: &CardDatabase,
+) -> bool {
+    state.graveyard_casting.iter().any(|permission| {
+        permission.player == seat
+            && permission.turn == state.turn
+            && crate::choice::card_matches_filter(db, card, &permission.filter, None)
+    })
 }
 
 /// Whether an activation offer is restricted to mana abilities — the difference between
@@ -347,7 +419,19 @@ fn offer_activations(
                 if is_loyalty_ability(ability) && !loyalty_timing_allows(state, perm) {
                     continue;
                 }
-                if cost_payable(state, cost, perm) {
+                // CR 601.2c via CR 602.2b: an ability whose required target slots have
+                // no legal candidate can't be activated. Without this gate an ability
+                // could be activated, charge its cost — including a planeswalker's
+                // loyalty and its one activation for the turn — and then fizzle for want
+                // of anything to aim at.
+                let groups: Vec<crate::ability::TargetGroup> = match ability {
+                    Ability::Activated { effects, .. } => {
+                        effects.iter().filter_map(Effect::target_group).collect()
+                    }
+                    _ => Vec::new(),
+                };
+                if cost_payable(state, cost, perm) && groups_are_fillable(&groups, state, seat, db)
+                {
                     actions.push(Action::ActivateAbility {
                         permanent: perm.id,
                         index,

@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "functional_id": "tezzeret_artifice_master",
+  "name": "Tezzeret, Artifice Master",
+  "supertypes": [
+    "legendary"
+  ],
+  "types": [
+    "planeswalker"
+  ],
+  "subtypes": [
+    "Tezzeret"
+  ],
+  "mana_cost": "{3}{U}{U}",
+  "colors": [
+    "blue"
+  ],
+  "loyalty": 5,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": 1
+        }
+      ],
+      "effects": [
+        {
+          "kind": "create_token",
+          "token": {
+            "name": "Thopter",
+            "types": [
+              "artifact",
+              "creature"
+            ],
+            "subtypes": [
+              "Thopter"
+            ],
+            "colors": [],
+            "power": 1,
+            "toughness": 1,
+            "keywords": [
+              "flying"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": 0
+        }
+      ],
+      "effects": [
+        {
+          "kind": "conditional",
+          "condition": {
+            "kind": "controls_at_least",
+            "permanents": {
+              "card_type": "artifact"
+            },
+            "count": 3
+          },
+          "then": [
+            {
+              "kind": "draw_card",
+              "count": 2
+            }
+          ],
+          "otherwise": [
+            {
+              "kind": "draw_card",
+              "count": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": -9
+        }
+      ],
+      "effects": [
+        {
+          "kind": "create_emblem",
+          "abilities": [
+            {
+              "type": "triggered",
+              "event": {
+                "beginning_of_step": {
+                  "step": "end_step",
+                  "whose_turn": "yours"
+                }
+              },
+              "effects": [
+                {
+                  "kind": "search_library",
+                  "take": 1,
+                  "filter": {
+                    "kind": "permanent"
+                  },
+                  "destination": "battlefield"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

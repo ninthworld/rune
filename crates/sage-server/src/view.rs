@@ -29,10 +29,10 @@ use crate::rules_text::{
 use sage_protocol::{
     ActionDestination, CardView, ChooseAction, Color as ColorView,
     CommanderDamage as CommanderDamageView, CommanderIdentity as CommanderIdentityView,
-    CommanderTax as CommanderTaxView, Counter, GameLogEntry, GameLogEvent, GameOverReason,
-    GameResult as GameResultView, GameView, LogBlock, LogDamageTarget, LogEntity, OpponentView,
-    Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, SpectatorView, StackItem,
-    StackItemKind, StackTarget, TargetChoice, TargetRequirement, ValidAction, ZonePile,
+    CommanderTax as CommanderTaxView, Counter, Emblem as EmblemView, GameLogEntry, GameLogEvent,
+    GameOverReason, GameResult as GameResultView, GameView, LogBlock, LogDamageTarget, LogEntity,
+    OpponentView, Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, SpectatorView,
+    StackItem, StackItemKind, StackTarget, TargetChoice, TargetRequirement, ValidAction, ZonePile,
 };
 
 mod actions;
@@ -162,6 +162,8 @@ pub(crate) fn personalized_view(
         })
         .collect();
 
+    let emblems = emblem_views(state);
+
     let stack = state
         .stack
         .iter()
@@ -216,6 +218,7 @@ pub(crate) fn personalized_view(
         me,
         opponents,
         battlefield,
+        emblems,
         stack,
         graveyards,
         exile,
@@ -361,6 +364,9 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
     SpectatorView {
         players,
         battlefield,
+        // An emblem is public information, so a spectator sees exactly what every seat
+        // sees (CR 114 — there is nothing about one to redact).
+        emblems: emblem_views(state),
         stack,
         graveyards: zone_piles(state, |p| &p.graveyard, db),
         exile: zone_piles(state, |p| &p.exile, db),
@@ -488,6 +494,30 @@ pub(crate) fn resolve_action(
             }
         },
     }
+}
+
+/// Project the game's emblems (CR 114) onto the wire.
+///
+/// An emblem has no characteristics but its abilities, so the projection is exactly
+/// those: each rendered through the same [`ability_text`] the card catalog and the stack
+/// entries use, so an emblem's granted anthem reads in the words an anthem always reads
+/// in. It is named "this emblem" rather than by a title, because an emblem has no name.
+///
+/// Public information, so this is the same list for every viewer and for spectators.
+fn emblem_views(state: &GameState) -> Vec<EmblemView> {
+    state
+        .emblems
+        .iter()
+        .map(|emblem| EmblemView {
+            id: emblem_entity_id(emblem.id),
+            controller: player_id(emblem.controller),
+            abilities: emblem
+                .abilities
+                .iter()
+                .map(|ability| ability_text("this emblem", ability))
+                .collect(),
+        })
+        .collect()
 }
 
 #[cfg(test)]

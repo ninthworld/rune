@@ -242,6 +242,13 @@ fn issue_345_multiplayer_combat_and_elimination_fields_round_trip_and_elide() {
 fn game_view_round_trips_through_json() {
     let view = GameView {
         you: "p1".into(),
+        // An emblem (CR 114, issue #620): public, in no zone, and nothing but its
+        // abilities — so the round trip carries one to prove the shape survives.
+        emblems: vec![Emblem {
+            id: "emblem_41".into(),
+            controller: "p1".into(),
+            abilities: vec!["Creatures you control get +2/+2.".into()],
+        }],
         // Cards from a hidden zone this seat alone is being shown (issue #604); empty
         // in the ordinary case, so it elides from the wire.
         revealed: Vec::new(),
@@ -483,6 +490,58 @@ fn mana_pool_is_omitted_when_empty_and_round_trips_when_present() {
     view.mana_pool = vec!["{G}".into(), "{G}".into()];
     let back: GameView = serde_json::from_str(&serde_json::to_string(&view).unwrap()).unwrap();
     assert_eq!(back.mana_pool, vec!["{G}".to_string(), "{G}".to_string()]);
+}
+
+#[test]
+fn issue_620_emblem_fixture_round_trips_with_its_emblem_and_optional_target_slots() {
+    // The cross-language contract fixture for the two shapes issue #620 added: an
+    // **emblem** beside the battlefield (CR 114 — public, in no zone, nothing but its
+    // abilities), and a target requirement whose slots are **optional**, which is how
+    // "up to two target creatures" reaches a client that knows no rules.
+    //
+    // Consumed verbatim by the web client's mirror-parity suite, so a field renamed here
+    // and not there fails on one side or the other rather than drifting quietly.
+    let json = include_str!("../../fixtures/gameview-emblem.json");
+    let view: GameView = serde_json::from_str(json).unwrap();
+
+    let reencoded = serde_json::to_string(&view).unwrap();
+    let back: GameView = serde_json::from_str(&reencoded).unwrap();
+    assert_eq!(back, view);
+
+    assert_eq!(view.emblems.len(), 1);
+    assert_eq!(view.emblems[0].id, "emblem_41");
+    assert_eq!(view.emblems[0].controller, "p0");
+    assert_eq!(view.emblems[0].abilities.len(), 4);
+    // An emblem carries no card, no zone, and no counters — there are no such fields to
+    // carry, which is the shape rather than an omission.
+
+    let Some(ability) = view
+        .valid_actions
+        .iter()
+        .find(|action| action.kind == "activate_ability")
+    else {
+        panic!("the loyalty ability is offered")
+    };
+    assert_eq!(
+        ability.requirements.len(),
+        2,
+        "up to two targets, two slots"
+    );
+    assert!(
+        ability.requirements.iter().all(|slot| slot.optional),
+        "both slots of an 'up to' group may be left empty"
+    );
+
+    // The flag elides when false, so an ordinary mandatory slot is byte-for-byte what it
+    // was before the field existed.
+    let mandatory = serde_json::to_value(TargetRequirement {
+        slot: "t0".to_string(),
+        prompt: "Choose target creature".to_string(),
+        optional: false,
+        candidates: vec!["perm_ogre".to_string()],
+    })
+    .unwrap();
+    assert!(mandatory.get("optional").is_none());
 }
 
 #[test]
@@ -919,6 +978,13 @@ fn game_view_result_is_omitted_while_live_and_round_trips_when_over() {
 fn game_view_serializes_you_on_the_wire() {
     let view = GameView {
         you: "p1".into(),
+        // An emblem (CR 114, issue #620): public, in no zone, and nothing but its
+        // abilities — so the round trip carries one to prove the shape survives.
+        emblems: vec![Emblem {
+            id: "emblem_41".into(),
+            controller: "p1".into(),
+            abilities: vec!["Creatures you control get +2/+2.".into()],
+        }],
         phase: Phase::Upkeep,
         ..Default::default()
     };
@@ -1039,6 +1105,7 @@ fn issue_604_revealed_cards_ride_the_view_only_while_something_is_showing_them()
             && serde_json::to_value(SpectatorView {
                 players: Vec::new(),
                 battlefield: Vec::new(),
+                emblems: Vec::new(),
                 stack: Vec::new(),
                 graveyards: Vec::new(),
                 exile: Vec::new(),

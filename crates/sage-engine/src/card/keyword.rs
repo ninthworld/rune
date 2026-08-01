@@ -70,6 +70,18 @@ pub enum Keyword {
     /// controller may target it freely, which is what makes a pump spell on one's own
     /// hexproof creature legal.
     Hexproof,
+    /// Indestructible (CR 702.12): this permanent is not destroyed by lethal damage or
+    /// by an effect that says "destroy".
+    ///
+    /// Like [`Self::Hexproof`] it is not a combat gate, and unlike hexproof it is not a
+    /// targeting one either: it is an exception to *destruction*, so it is enforced at
+    /// the two places destruction happens — the CR 704.5g/704.5h state-based actions and
+    /// the [`Effect::Destroy`](crate::Effect) verb. It is deliberately **not** an
+    /// exception to anything else: a creature with 0 or less toughness is put into its
+    /// owner's graveyard by CR 704.5f, which is not destruction, and an indestructible
+    /// planeswalker at zero loyalty still leaves under CR 704.5i for the same reason.
+    /// Sacrifice, exile, and bounce are likewise untouched.
+    Indestructible,
 }
 
 #[cfg(test)]

@@ -22,6 +22,15 @@ pub(crate) fn permanent_entity_id(id: PermanentId) -> String {
     format!("perm_{}", id.0)
 }
 
+/// The opaque protocol id for an emblem (CR 114).
+///
+/// Minted from the same monotonic object counter a permanent's id is, so it can never
+/// collide with one — but prefixed distinctly anyway, because an emblem is not a
+/// permanent and a client must never treat the two ids as interchangeable.
+pub(crate) fn emblem_entity_id(id: u64) -> String {
+    format!("emblem_{id}")
+}
+
 /// The wire name for an engine [`CounterKind`], as the client expects it in
 /// [`Counter::kind`] (e.g. `"+1/+1"`). Kept exhaustive so a new engine variant
 /// forces a matching wire string here rather than silently going unnamed.

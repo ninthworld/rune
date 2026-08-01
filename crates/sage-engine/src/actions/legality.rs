@@ -14,7 +14,7 @@ use crate::CardDatabase;
 
 use super::definition::{Action, Attack, Block, DamageOrder};
 use super::generation::valid_actions;
-use super::targeting::action_target_specs;
+use super::targeting::action_target_groups;
 use super::utilities::{
     all_unique, loyalty_cost_is_payable, loyalty_timing_allows, tap_cost_is_summoning_sick,
 };
@@ -111,14 +111,54 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
     //    filters by, so "in the freshly computed legal set" and "passes the check"
     //    are one and the same — we test membership directly, without building the
     //    set (and certainly without the cartesian product).
-    let specs = action_target_specs(state, db, action);
+    let groups = action_target_groups(state, db, action);
     let actor = super::targeting::acting_player(state, action);
     let chosen = action.targets();
-    chosen.len() == specs.len()
-        && specs
+    targets_fill_groups(&groups, chosen, state, actor, db)
+}
+
+/// Whether `chosen` is a legal filling of `groups` against current state (CR 601.2c).
+///
+/// Three things, and each of them is a rule a single-target-per-effect engine never had
+/// to state:
+///
+/// - the **count** falls between the groups' summed minimum and maximum, so "up to two
+///   target creatures" accepts none, one, or two and nothing accepts three;
+/// - every chosen target is **legal now** for the group whose slot it fills, paired by
+///   [`target_counts`](crate::ability::target_counts);
+/// - the targets within one group are **distinct** — one object cannot be chosen for two
+///   instances of the word "target" in the same group (CR 601.2c). Across groups it may:
+///   a spell that names two different target words may aim both at one creature.
+fn targets_fill_groups(
+    groups: &[crate::ability::TargetGroup],
+    chosen: &[crate::ability::Target],
+    state: &GameState,
+    actor: crate::id::PlayerId,
+    db: &CardDatabase,
+) -> bool {
+    let minimum: usize = groups.iter().map(|g| usize::from(g.min)).sum();
+    let maximum: usize = groups.iter().map(|g| usize::from(g.max)).sum();
+    if chosen.len() < minimum || chosen.len() > maximum {
+        return false;
+    }
+    let mut rest = chosen;
+    for (group, take) in groups
+        .iter()
+        .zip(crate::ability::group_target_counts(groups, chosen.len()))
+    {
+        let (slice, remaining) = rest.split_at(take.min(rest.len()));
+        rest = remaining;
+        if !all_unique(slice) {
+            return false;
+        }
+        if !slice
             .iter()
-            .zip(chosen)
-            .all(|(&spec, &target)| target_is_legal(spec, target, state, actor, db))
+            .all(|&target| target_is_legal(group.spec, target, state, actor, db))
+        {
+            return false;
+        }
+    }
+    true
 }
 
 /// Whether activating ability `index` of `permanent` clears the CR 302.6

@@ -49,8 +49,8 @@ Edit [`crates/sage-engine/data/exclusions.json`](../crates/sage-engine/data/excl
 
 ```json
 {
-  "name": "Emblems",
-  "blocker": "no zoneless, controller-scoped continuous object"
+  "name": "Emblems with an activated ability",
+  "blocker": "an emblem carries static and triggered abilities only; nothing offers a way to activate one"
 }
 ```
 

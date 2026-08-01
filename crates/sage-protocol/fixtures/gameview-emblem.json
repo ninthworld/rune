@@ -1,0 +1,97 @@
+{
+  "you": "p0",
+  "me": {
+    "life": 20,
+    "library_size": 48
+  },
+  "opponents": [
+    {
+      "player_id": "p1",
+      "hand_size": 5,
+      "life": 20,
+      "library_size": 49,
+      "graveyard_size": 0
+    }
+  ],
+  "battlefield": [
+    {
+      "id": "perm_ogre",
+      "controller": "p0",
+      "owner": "p0",
+      "card": {
+        "id": "perm_ogre",
+        "name": "Onakke Ogre",
+        "type_line": "Creature — Ogre Warrior",
+        "mana_cost": "{2}{R}",
+        "power": "6",
+        "toughness": "4",
+        "functional_id": "onakke_ogre",
+        "keywords": ["vigilance", "trample", "indestructible"]
+      }
+    },
+    {
+      "id": "perm_ajani",
+      "controller": "p0",
+      "owner": "p0",
+      "card": {
+        "id": "perm_ajani",
+        "name": "Ajani, Adversary of Tyrants",
+        "type_line": "Legendary Planeswalker — Ajani",
+        "mana_cost": "{2}{W}{W}",
+        "loyalty": "4",
+        "functional_id": "ajani_adversary_of_tyrants"
+      },
+      "counters": [
+        {
+          "kind": "loyalty",
+          "count": 4
+        }
+      ]
+    }
+  ],
+  "emblems": [
+    {
+      "id": "emblem_41",
+      "controller": "p0",
+      "abilities": [
+        "Creatures you control get +2/+2.",
+        "Creatures you control have vigilance.",
+        "Creatures you control have trample.",
+        "Creatures you control have indestructible."
+      ]
+    }
+  ],
+  "phase": "precombat_main",
+  "turn": 9,
+  "active_player": "p0",
+  "seat_order": ["p0", "p1"],
+  "priority_player": "p0",
+  "valid_actions": [
+    {
+      "id": "a0",
+      "type": "pass_priority",
+      "label": "Resolve"
+    },
+    {
+      "id": "a1",
+      "type": "activate_ability",
+      "label": "+1: put a +1/+1 counter on each of up to two target creatures.",
+      "subject": ["perm_ajani"],
+      "requirements": [
+        {
+          "slot": "t0",
+          "prompt": "Choose target creature",
+          "optional": true,
+          "candidates": ["perm_ogre"]
+        },
+        {
+          "slot": "t1",
+          "prompt": "Choose target creature",
+          "optional": true,
+          "candidates": ["perm_ogre"]
+        }
+      ],
+      "token": "t0000000000000a1"
+    }
+  ]
+}

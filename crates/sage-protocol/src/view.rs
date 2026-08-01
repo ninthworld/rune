@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ActionAck, CardView, CommanderDamage, CommanderIdentity, CommanderTax, GameLogEntry,
+    ActionAck, CardView, CommanderDamage, CommanderIdentity, CommanderTax, Emblem, GameLogEntry,
     GameResult, MatchFormat, OpponentView, Permanent, Phase, PlayerId, SelfView, StackItem,
     ValidAction, ZonePile,
 };
@@ -64,6 +64,14 @@ pub struct GameView {
     /// All permanents in play.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub battlefield: Vec<Permanent>,
+    /// The **emblems** in the game (CR 114, issue #620) — see [`Emblem`].
+    ///
+    /// Public information, so the list is the same in every seat's view and in the
+    /// spectator's. Additive: omitted (and defaults to empty) in the overwhelming
+    /// majority of games, where no planeswalker ultimate has resolved, so a client that
+    /// ignores it sees no change.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub emblems: Vec<Emblem>,
     /// The stack, bottom first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stack: Vec<StackItem>,

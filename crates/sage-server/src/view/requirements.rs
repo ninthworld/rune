@@ -104,6 +104,9 @@ pub(crate) fn attacker_requirements(
     let mut reqs = vec![TargetRequirement {
         slot: "attackers".to_string(),
         prompt: "Choose which creatures attack".to_string(),
+        // A combat multi-select is answered as one slot holding any number of ids,
+        // including none, so it is never an *optional slot* in the target-arity sense.
+        optional: false,
         candidates: candidates
             .iter()
             .copied()
@@ -122,6 +125,7 @@ pub(crate) fn attacker_requirements(
         for attacker in candidates {
             reqs.push(TargetRequirement {
                 slot: defender_slot(attacker),
+                optional: false,
                 prompt: format!(
                     "Choose what {} attacks",
                     permanent_card_name(state, attacker, db)
@@ -177,6 +181,7 @@ pub(crate) fn blocker_requirements(state: &GameState, db: &CardDatabase) -> Vec<
             }
             Some(TargetRequirement {
                 slot: blocker_slot(attacker),
+                optional: false,
                 prompt: blocker_prompt(state, attacker, db),
                 candidates,
             })
@@ -235,6 +240,9 @@ pub(crate) fn ability_requirements(
         .map(|(index, req)| TargetRequirement {
             slot: format!("t{index}"),
             prompt: target_spec_prompt(req.spec).to_string(),
+            // The slots past a group's minimum may be left empty ("up to two target
+            // creatures"). The engine decides which; the projection only carries it.
+            optional: req.optional,
             candidates: req.candidates.into_iter().map(target_entity_id).collect(),
         })
         .collect()
@@ -278,10 +286,9 @@ pub(crate) fn trigger_label(state: &GameState, db: &CardDatabase, ability: Stack
             StackObjectKind::Ability {
                 source, effects, ..
             } => Some(effects_description(
-                &state
-                    .battlefield
-                    .iter()
-                    .find(|p| p.id == *source)
+                &source
+                    .permanent()
+                    .and_then(|id| state.battlefield.iter().find(|p| p.id == id))
                     .map_or_else(
                         || "This ability's source".to_string(),
                         |p| permanent_name(p, db),
@@ -301,7 +308,13 @@ pub(crate) fn trigger_subject(state: &GameState, ability: StackId) -> Vec<String
         .iter()
         .find(|o| o.id == ability)
         .and_then(|o| match &o.kind {
-            StackObjectKind::Ability { source, .. } => Some(vec![permanent_entity_id(*source)]),
+            StackObjectKind::Ability { source, .. } => Some(
+                source
+                    .permanent()
+                    .map(permanent_entity_id)
+                    .into_iter()
+                    .collect(),
+            ),
             StackObjectKind::Spell { .. } => None,
         })
         .unwrap_or_default()
