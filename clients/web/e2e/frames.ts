@@ -88,5 +88,9 @@ export const pageFits = (page: Page) =>
     return { x: window.scrollX === 0, y: window.scrollY === 0 }
   })
 
-/** The one layout this client has (`clients/web/AGENTS.md`): desktop landscape. */
+/**
+ * A representative desktop viewport — the Wide band of `docs/client-design.md` §4, comfortably
+ * inside the Optimized class. It is one sample, not the layout: a test asserting behaviour that
+ * must hold *at every* supported size belongs in `scale.views.spec.ts`, which sweeps the bands.
+ */
 export const DESKTOP = { width: 1440, height: 900 }

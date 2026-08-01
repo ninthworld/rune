@@ -26,17 +26,16 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   container). Never fetch an *unpinned* browser (`playwright@latest`, a caret range, a
   hand-picked revision) and never pin an `executablePath`: either lets a local run and CI
   drive different binaries, which is the failure ADR 0011 is about.
-- One layout: desktop landscape, mouse and keyboard, two players, and **dark**. The scheme is
-  declared rather than followed: a card is an object lying on a surface, it needs a ground darker
-  than itself, and maintaining a light table as well is how neither gets good. Responsive
-  breakpoints, touch input, and more than two seats are not in scope — adding them early is how
-  the last three layouts happened.
-- **DOM and CSS for everything a player reads; inline SVG and canvas for presentational overlays
-  anchored to ids the server stated.** An arrow from an attacker to what it is attacking draws
-  one field of the view, and saying it only in a sentence was a constraint rather than a design.
-  The exception licenses no second source of truth: an overlay renders the join and nothing else,
-  it is `aria-hidden` because a drawn line is not readable, and the text under it stays the copy
-  every player can reach. WebGL stays out until something demonstrates it is needed.
+- **[`docs/client-design.md`](../../docs/client-design.md) is the layout authority.** Read it
+  before changing anything that occupies space. Its one-line summary: *zoom, resolution, and
+  aspect are the same problem; the board never scrolls; text is fitted, never truncated.* Geometry
+  is computed from the viewport and the counts, never inherited from whatever content happens to
+  be in a box.
+- **Dark, declared rather than followed.** A card is an object lying on a surface, it needs a
+  ground darker than itself, and maintaining a light table as well is how neither gets good.
+- **An overlay renders the join and nothing else.** It is `aria-hidden`, because a drawn line is
+  not readable, and the text under it stays the copy every player can reach. No fact may be
+  available only as a drawn line. WebGL stays out until something demonstrates it is needed.
 
 ## Layout
 
@@ -114,9 +113,9 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   starts and ends, given a box for each. The split from `relations.ts` is the guarantee — what
   decides *what* is related knows nothing about pixels, and what knows where everything is
   decides nothing. An edge is drawn when both ends are on the screen and not when either is not:
-  an object in an unopened pile has no box and one its region scrolled away clips to nothing,
-  because an arrow pointing confidently at a card nobody can see is worse than the sentence that
-  still names it.
+  an object in an unopened pile has no box, and one collapsed into a chip or a count clips to
+  nothing, because an arrow pointing confidently at a card nobody can see is worse than the
+  sentence that still names it.
 - `src/turn.ts` — turn flow: the steps of a turn, who the game is waiting for, where it will
   stop for this seat next time, and what a settle already did on their behalf. The stop controls
   read the *effective* lists the server reflects and send back the whole preference, because
@@ -167,20 +166,21 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   downloaded one) and hands assistive technology words instead; `CardArt.tsx` fills the window
   with the procedural composition and lays a player-supplied illustration over it; `art.tsx` is
   the provider the whole app is wrapped in, because the preference and the cache belong to the
-  *device* and a lobby, a builder, and a table all draw the same card. The lobby is still grey
-  box.
+  *device* and a lobby, a builder, and a table all draw the same card.
   `src/ui/game/` holds the table surfaces — header, seat panels, the two battlefields, the
   stack rail, hand, action dock, side panel. `Game.tsx` composes them and derives what they
   need; a surface receives answers, never the view, so none of them can grow a second reading
-  of it. The composition is fixed, full-viewport, and two-player: chrome at the
-  edges and the board in the middle. The turn is a rail down the left, because twelve steps is a
-  lot of band to spend above a board and none of it is spent there; the top is one line about the
-  match; the bottom is your hand, with the controls *above* it rather than below —
-  between the board a player is looking at and the cards they are reaching for, where XMage puts
-  them and where a panel at the very bottom edge of the screen is not; and one gear opens
-  everything that is about the *device* rather than the board — pace, keys, card art — because a
-  header carrying each of them separately is a header nobody reads. Every region is bounded so a
-  full board scrolls inside its own area and never pushes the action dock off the screen. The
+  of it. **The composition is chosen, not fixed** — `docs/client-design.md` §4 arranges the same
+  regions differently per band, and a surface is handed its box rather than claiming one. Chrome
+  is at the edges and the board is in the middle; where there is width the turn is a rail down the
+  left, because twelve steps is a lot of band to spend above a board and none of it is spent
+  there; the top is one line about the match; the bottom is your hand, with the controls *above*
+  it rather than below — between the board a player is looking at and the cards they are reaching
+  for, where XMage puts them and where a panel at the very bottom edge of the screen is not; and
+  one gear opens everything that is about the *device* rather than the board — pace, keys, card
+  art — because a header carrying each of them separately is a header nobody reads. Every region
+  is bounded, and what a region does when its content exceeds the box is **pack tighter and then
+  degrade** (§3), never scroll — a board a player has to scroll is a board they cannot read. The
   dock follows the click — the selected object's actions, or the questions an armed action is
   asking — and keeps two lists beside that: the global actions no object owns, and a disclosure
   of every action, so a subject no surface happens to draw can still be reached. A relationship
@@ -213,7 +213,7 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   is requested per socket and is the reason nothing here hardcodes a `game_setup` id. The builder
   draws catalog cards through the same `Card` the table does. Submit is offered whenever
   `submit_deck` is advertised and is never gated on the client's own arithmetic.
-- `src/index.css`, `src/styles/` — the grey box, split along the surfaces it dresses: the page
+- `src/index.css`, `src/styles/` — the dressing, split along the surfaces it covers: the page
   itself, then `cards.css`, `game.css`, `lobby.css`. Imports come first, as the cascade requires.
 - `e2e/smoke.spec.ts` — the blocking gate: one path against the real server.
 - `e2e/*views.spec.ts` — the non-blocking tier: committed fixtures replayed over an
