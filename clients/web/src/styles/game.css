@@ -118,8 +118,8 @@ main:has(.screen) {
   grid-template-areas:
     'phases match side'
     'phases table side'
-    'phases hand  side'
-    'phases dock  side';
+    'phases dock  side'
+    'phases hand  side';
   overflow: hidden;
   background: var(--felt);
   color: var(--ink);
@@ -420,6 +420,21 @@ main:has(.screen) {
 .pip--restricted {
   outline: 1px dotted currentColor;
   outline-offset: 1px;
+  border-radius: 50%;
+}
+
+/* Unspent mana is compared against a cost dozens of times a turn, so it is drawn at the size a
+   cost is drawn at rather than at the size of the sentence it sits in. */
+.seat__pool {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: var(--text-sm);
+}
+
+.seat__pool .mana {
+  font-size: 0.95rem;
 }
 
 .seat__pool-note {
@@ -472,6 +487,28 @@ main:has(.screen) {
 .seat__zone:focus-visible {
   color: var(--ink);
   border-color: var(--ink-faint);
+}
+
+.seat__zone[aria-pressed='true'] {
+  color: var(--felt);
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+/* The counts a player checks constantly — library, graveyard, exile, the opponent's hand — read
+   as numbers rather than as parenthetical asides in a sentence. */
+.seat__zones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.seat__zone,
+.seat__zone--closed {
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 .seat__zone--closed {
@@ -623,7 +660,9 @@ main:has(.screen) {
 .hand {
   grid-area: hand;
   min-width: 0;
-  max-height: 15rem;
+  /* Exactly one card tall plus its own padding. A fixed cap in `rem` is the other half of the
+     bug the card tokens fix: it would keep claiming the same height as the viewport shrank. */
+  max-height: calc(var(--card-hand-h) + 1.1rem);
   overflow: auto;
   padding: 0.4rem 0.6rem 0;
   background: linear-gradient(color-mix(in srgb, var(--panel) 55%, var(--felt)), var(--panel));
@@ -645,7 +684,7 @@ main:has(.screen) {
 .dock {
   grid-area: dock;
   min-width: 0;
-  max-height: 40vh;
+  max-height: 38vh;
   overflow-y: auto;
   padding: 0.35rem 0.6rem 0.5rem;
   background: var(--panel);
@@ -813,4 +852,67 @@ main:has(.screen) {
 
 .dock__hint {
   color: var(--ink-faint);
+}
+
+/* The band that says what the game wants. Sits at the top of the dock — which is now directly
+   under the board — so it is between the thing a player is looking at and the controls they are
+   reaching for, rather than at the bottom edge of the screen where neither is. */
+.dock {
+  --tone: var(--tone-waiting);
+  border-block-start: 2px solid var(--tone);
+}
+
+.dock--yours {
+  --tone: var(--tone-yours);
+}
+.dock--asking {
+  --tone: var(--tone-asking);
+}
+.dock--sent {
+  --tone: var(--tone-sent);
+}
+.dock--confirm {
+  --tone: var(--tone-confirm);
+}
+.dock--waiting {
+  --tone: var(--tone-waiting);
+}
+.dock--over {
+  --tone: var(--tone-over);
+}
+
+.dock__tone {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0 0 0.35rem;
+  font-size: var(--text-sm);
+}
+
+.dock__tone strong {
+  color: color-mix(in srgb, var(--tone) 55%, var(--ink));
+  font-weight: 700;
+}
+
+/* A second channel for the same fact, for anyone the hue does not reach. */
+.dock__tone-mark {
+  flex: none;
+  inline-size: 0.6rem;
+  block-size: 0.6rem;
+  border-radius: 50%;
+  background: var(--tone);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone) 25%, transparent);
+}
+
+.dock__where {
+  margin-inline-start: auto;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The draft panel takes the tone too, because it *is* the question the band is announcing. */
+.dock .choices {
+  border-color: color-mix(in srgb, var(--tone) 60%, transparent);
+  border-radius: 0.3rem;
+  background: color-mix(in srgb, var(--tone) 8%, transparent);
 }

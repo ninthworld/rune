@@ -12,6 +12,7 @@
  * path to a candidate the table cannot show, such as a card still in a library.
  */
 import type { Interaction, Slot } from './../../interaction'
+import { RulesText } from './../RulesText'
 import { answer, fill } from './../../interaction'
 import type { ValidAction } from './../../protocol'
 
@@ -62,14 +63,18 @@ export function ActionDraft({
 }: DraftProps) {
   return (
     <section className="choices" aria-label="Choices">
-      <h3 className="choices__what">{action.label}</h3>
+      {/* Server text, drawn with its symbols like every other piece of it: the question a
+          player is answering must not be the one place `{1}` is spelled out. */}
+      <h3 className="choices__what">
+        <RulesText text={action.label} />
+      </h3>
 
       {slots.map((slot) => {
         const status = tally(slot)
         return (
           <fieldset key={slot.slot} className="slot">
             <legend>
-              {slot.prompt}
+              <RulesText text={slot.prompt} />
               {status && <span className="slot__tally"> — {status}</span>}
             </legend>
 
@@ -116,7 +121,7 @@ export function ActionDraft({
                           {/* An order is a permutation, so where a thing sits in it is the
                               answer and has to be readable from the control itself. */}
                           {slot.kind === 'order' && position >= 0 && `${position + 1}. `}
-                          {candidate.label}
+                          <RulesText text={candidate.label} />
                         </button>
                       </li>
                     )

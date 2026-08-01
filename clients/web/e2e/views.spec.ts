@@ -124,10 +124,12 @@ test.describe('the board, from one view', () => {
     // the card. An object the server did not name never costs a player a second click.
     await page.getByRole('region', { name: 'Your hand' }).getByRole('button').first().click()
 
-    // Everything the hand tile clamps or drops is here, in full.
+    // Everything the hand tile clamps or drops is here, in full — with the wire's `{T}` and
+    // `{G}` drawn as the pips a player reads, so the sentence between them is what remains.
     const inspector = page.getByRole('dialog')
     await expect(inspector).toContainText('Llanowar Elves')
-    await expect(inspector).toContainText('{T}: Add {G}.')
+    await expect(inspector).toContainText(': Add')
+    await expect(inspector.getByRole('img', { name: /tap/ })).toBeVisible()
 
     // Inspecting is not a game action. Asserted against what was *sent* rather than a message
     // count, because the client's own `hello` races the click and would count as traffic.
@@ -411,9 +413,11 @@ test.describe('the shapes a prompt comes in', () => {
     const { sent } = await serveFrames(page, [fixture('gameview-optional.json')])
     await page.goto('/')
 
-    await page.getByRole('button', { name: 'Pay {1} to draw a card?' }).click()
+    // The braces are pips now, in an action's label as much as in a card's text, so the name
+    // this control answers to is the sentence with the symbol read aloud in it.
+    await page.getByRole('button', { name: 'Pay 1 to draw a card?' }).click()
     const choices = page.getByRole('region', { name: 'Choices' })
-    await expect(choices.getByRole('button', { name: 'Pay {1}' })).toBeVisible()
+    await expect(choices.getByRole('button', { name: 'Pay 1' })).toBeVisible()
     await choices.getByRole('button', { name: 'Decline' }).click()
     await page.getByRole('button', { name: 'Confirm' }).click()
 
@@ -1092,4 +1096,105 @@ test.describe('a battlefield with rows', () => {
     // Your half is below the divider, so your creatures are the row nearer the top of it.
     expect(creatures && lands ? creatures.y < lands.y : false).toBe(true)
   })
+})
+
+test.describe('the band that says what the game wants', () => {
+  test('names the state in words as well as in colour, with the step beside it', async ({
+    page,
+  }) => {
+    await serveFrames(page, [fixture('gameview.json')])
+    await page.goto('/')
+
+    // Colour is the shortcut; the words are what make it answerable at all, because a colour
+    // nobody has learnt yet and a colour a screen reader cannot see both say nothing.
+    const dock = page.getByRole('region', { name: 'Actions' })
+    await expect(dock).toContainText('Your move')
+    // The step, restated where the controls are — the header is a screen away from them.
+    await expect(dock).toContainText('Turn 3 · Precombat main')
+    await expect(page.locator('.dock')).toHaveClass(/dock--yours/)
+  })
+
+  test('turns to the confirming state before a match-ending action is sent', async ({ page }) => {
+    const base = fixture('gameview.json')
+    const conceding = {
+      ...base,
+      valid_actions: [
+        ...(base.valid_actions as Record<string, unknown>[]),
+        { id: 'a9', type: 'concede', label: 'Concede', subject: [] },
+      ],
+    }
+    const { sent } = await serveFrames(page, [conceding])
+    await page.goto('/')
+
+    await page.getByRole('list', { name: 'Global actions' }).getByText('Concede').click()
+
+    await expect(page.locator('.dock')).toHaveClass(/dock--confirm/)
+    await expect(page.getByRole('region', { name: 'Actions' })).toContainText('cannot be undone')
+    expect(submissions(sent)).toEqual([])
+  })
+})
+
+test.describe('symbols where the wire writes braces', () => {
+  test('draws a rules-text symbol as a pip a player can read', async ({ page }) => {
+    await serveFrames(page, [fixture('gameview.json')])
+    await page.goto('/')
+
+    // `{T}: Add {G}.` is how the wire writes it; a card is not a debug dump.
+    const elves = page
+      .getByRole('region', { name: 'Your hand' })
+      .getByRole('button', { name: /^Llanowar Elves/ })
+
+    const rules = elves.locator('.card__rules')
+    await expect(rules.getByRole('img', { name: /tap/ })).toBeVisible()
+    await expect(rules.getByRole('img', { name: /green/ })).toBeVisible()
+    // And the cost is still its own labelled row of pips, separately from the sentence.
+    await expect(elves.locator('.card__cost')).toHaveAttribute('aria-label', 'green mana')
+    // A pip in a sentence is a word in that sentence, so the sentence still reads as one.
+    await expect(elves).toContainText(': Add')
+  })
+})
+
+test.describe('the table at any size', () => {
+  /**
+   * A browser zoom shrinks the CSS viewport without shrinking a `rem`, so these are the same
+   * screen at 100%, 120%, and 150%.
+   *
+   * The regression this pins: the hand was capped in `rem` and its cards were sized in `rem`,
+   * so zooming in kept the hand claiming the same height out of a viewport that had less of it
+   * to give — and the board lost the difference, with a land row disappearing under the hand.
+   * Card sizes are now the smaller of a reading size and a share of the viewport, which is what
+   * makes a card give ground when there is less screen to have.
+   */
+  for (const [zoom, size] of [
+    ['100%', { width: 1440, height: 900 }],
+    ['120%', { width: 1200, height: 750 }],
+    ['150%', { width: 960, height: 600 }],
+  ] as const) {
+    test(`stacks the board, the controls, and the hand without overlap at ${zoom}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(size)
+      await serveFrames(page, [fixture('gameview.json')])
+      await page.goto('/')
+      await expect(page.getByRole('region', { name: 'Your hand' })).toBeVisible()
+
+      const edges = async (selector: string) => {
+        const box = await page.locator(selector).first().boundingBox()
+        if (!box) throw new Error(`${selector} is not on the screen`)
+        return { top: box.y, bottom: box.y + box.height }
+      }
+      const field = await edges('.field--you')
+      const dock = await edges('.dock')
+      const hand = await edges('.hand')
+
+      // Each band ends where the next begins, and the last one ends at the bottom of the screen.
+      expect(field.bottom).toBeLessThanOrEqual(dock.top + 1)
+      expect(dock.bottom).toBeLessThanOrEqual(hand.top + 1)
+      expect(hand.bottom).toBeLessThanOrEqual(size.height + 1)
+
+      // And the board still has room to be a board rather than a sliver above the controls.
+      expect(field.bottom - field.top).toBeGreaterThan(size.height * 0.1)
+      expect(await pageFits(page)).toEqual({ x: true, y: true })
+    })
+  }
 })

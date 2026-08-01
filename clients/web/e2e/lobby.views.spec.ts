@@ -385,8 +385,9 @@ test.describe('building a deck', () => {
 
     await builder.getByRole('button', { name: /^Add/ }).first().click()
     await builder.getByRole('button', { name: 'Llanowar Elves', exact: true }).click()
-    await expect(page.getByRole('dialog', { name: /Llanowar Elves/ })).toContainText(
-      '{T}: Add {G}.',
-    )
+    // The same face the table draws, symbols and all.
+    const opened = page.getByRole('dialog', { name: /Llanowar Elves/ })
+    await expect(opened).toContainText(': Add')
+    await expect(opened.getByRole('img', { name: /tap/ })).toBeVisible()
   })
 })

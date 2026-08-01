@@ -203,6 +203,21 @@ button.card:hover {
   border-radius: inherit;
 }
 
+/* The name, over the picture. SAGE keeps drawing it because the image's own title is set at a
+   size and in a typeface the image chose, at whatever scale a battlefield tile happens to be —
+   frequently unreadable, and never in the place a player's eye has learnt to look on this
+   board. Dark-to-transparent so it reads over any illustration without hiding one. */
+.card--full .card__band--over {
+  position: absolute;
+  z-index: 1;
+  inset-inline: 0;
+  inset-block-start: 0;
+  padding: 0.2rem 0.4rem 0.5rem;
+  background: linear-gradient(#000000d9, #00000094 60%, transparent);
+  color: #f4f2ee;
+  text-shadow: 0 1px 2px #000000cc;
+}
+
 /* Without the frame's padding the overlays would sit on the image's own rounded corner. */
 .card--full .card__badges {
   inset-inline: 0.35rem;
@@ -312,6 +327,13 @@ button.card:hover {
   width: var(--card-hand-w);
 }
 
+/* A card in hand is the one a player is deciding whether they can afford, so its cost is drawn
+   larger than the same cost on the board — where it is being counted, not paid. */
+.card--hand .card__cost,
+.card--inspect .card__cost {
+  font-size: 1rem;
+}
+
 .card--battlefield {
   width: var(--card-field-w);
 }
@@ -327,6 +349,16 @@ button.card:hover {
   inset-block-end: 0.25rem;
   /* Clear of the corner stat, which never moves. */
   padding-inline-end: 2.6rem;
+}
+
+/* The strip is out of the flow, so the text box has to leave it room. Without this the last
+   line of a card's rules runs underneath the badges — which is invisible at a comfortable size
+   and unreadable at a small one, because the box shrinks with the card while the strip does
+   not. Reserved rather than conditional: a card with no badges loses one line it would have
+   clamped away anyway, and a card that gains one mid-game must not reflow its own text. */
+.card--hand .card__text,
+.card--battlefield .card__text {
+  padding-block-end: 1.05rem;
 }
 
 .card--battlefield .card__band {
@@ -604,4 +636,15 @@ button.card:hover {
   border: 1px solid currentColor;
   border-radius: 0.5rem;
   background: Canvas;
+}
+
+/* A symbol standing in a sentence (`RulesText`). Sized from the page rather than from the line
+   it is in, so a rules box at 0.68rem does not shrink its pips below reading size, and nudged
+   onto the text baseline so a line of prose does not visibly step around it. */
+.card__rules .mana__pip,
+.cards__aside .mana__pip {
+  font-size: 0.58rem;
+  inline-size: 1.25em;
+  block-size: 1.25em;
+  vertical-align: -0.15em;
 }

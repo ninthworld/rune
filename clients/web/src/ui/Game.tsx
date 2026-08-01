@@ -32,7 +32,15 @@ import { useEffect, useState } from 'react'
 import type { ClientMessage, GameView, Phase, ValidAction } from './../protocol'
 import { list, playerLabel } from './../normalize'
 import { seats, type SeatPile } from './../table'
-import { presetOf, presetStops, steps, withStop, type StopPreset, type StopScope } from './../turn'
+import {
+  phaseLabel,
+  presetOf,
+  presetStops,
+  steps,
+  withStop,
+  type StopPreset,
+  type StopScope,
+} from './../turn'
 import { claims, intentFor, type KeyPress } from './../keys'
 import type { ConnectionStatus } from './../socket'
 import {
@@ -453,6 +461,7 @@ export function Game({
         actions={actions}
         interaction={interaction}
         result={view.result}
+        where={`Turn ${view.turn ?? 0} · ${phaseLabel(view.phase)}`}
         labelFor={surface.labelFor}
         take={take}
         update={setInteraction}
