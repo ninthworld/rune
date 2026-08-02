@@ -7,13 +7,26 @@
  * be under-filled says so in as many words, because "you may pick fewer" is invisible otherwise
  * and a player who cannot tell will sit on a finished answer waiting for a button to light up.
  *
- * Every slot that takes objects is answerable twice over: by clicking the highlighted object on
- * the table, or by clicking its name here. The list is not a fallback for taste — it is the only
- * path to a candidate the table cannot show, such as a card still in a library.
+ * **The board answers, and this carries what the board cannot** (`docs/client-design.md` §6.5).
+ * A slot's candidates are highlighted where they lie and a click on one answers the slot the
+ * server listed it in, so a subject that is drawn is not *also* a button here — that second copy
+ * is what made a question with twenty legal blockers twenty controls tall, in a band that is
+ * 44px on half the viewports this client supports. What is left is what a board cannot state: a
+ * tally of chosen against needed, the way to commit, the way to cancel, and a control for every
+ * subject no surface drew (`dockCandidates`).
+ *
+ * **A question is asked once** (§2.1 rule 5, §6.5 rule 1). This used to draw the action's label
+ * as a heading *and* each slot's prompt as a legend *and* the options underneath both, which is
+ * one question written three times. The heading is gone; the prompt is drawn where the controls
+ * do not already state it, and where they do — a set of options whose own labels are the answers
+ * — the options are the question. The action's label stays in the accessible name of the panel,
+ * because a screen reader has no height problem and asking "what am I answering" costs it a
+ * gesture otherwise.
  */
 import type { Interaction, Slot } from './../../interaction'
 import { RulesText } from './../RulesText'
 import { answer, fill } from './../../interaction'
+import { dockCandidates } from './../../dock'
 import type { ValidAction } from './../../protocol'
 
 export interface DraftProps {
@@ -23,6 +36,8 @@ export interface DraftProps {
   /** A submission is in flight, so nothing may be sent. */
   blocked: boolean
   interaction: Interaction
+  /** The ids the table is currently drawing, so this carries only the ones it is not. */
+  drawn: ReadonlySet<string>
   labelFor(id: string): string
   update(next: Interaction): void
   confirm(): void
@@ -50,33 +65,51 @@ function tally(slot: Slot): string {
   }
 }
 
+/**
+ * Whether this slot's own controls already say what it is asking.
+ *
+ * The server's options are the answers written out — *Keep this hand*, *Mulligan*, *Pay 1* — so a
+ * sentence above them saying "keep this hand or take a mulligan?" is the same question a second
+ * time. Every other slot has nothing on screen that names what it wants, so it says it, once.
+ */
+const statesItself = (slot: Slot): boolean => slot.kind === 'option'
+
 export function ActionDraft({
   action,
   slots,
   ready,
   blocked,
   interaction,
+  drawn,
   labelFor,
   update,
   confirm,
   cancel,
 }: DraftProps) {
   return (
-    <section className="choices" aria-label="Choices">
-      {/* Server text, drawn with its symbols like every other piece of it: the question a
-          player is answering must not be the one place `{1}` is spelled out. */}
-      <h3 className="choices__what">
-        <RulesText text={action.label} />
-      </h3>
-
+    // The label carries the question for anyone who is not looking at the highlighted subject.
+    // Named "Choices" first so the panel keeps one stable handle whatever is being asked.
+    <section className="choices" aria-label={`Choices: ${action.label}`}>
       {slots.map((slot) => {
         const status = tally(slot)
+        const asked = status ? `${slot.prompt} — ${status}` : slot.prompt
+        // Options are the server's own; everything else is an id, and the ones the table drew are
+        // answered on the table.
+        const candidates =
+          slot.kind === 'option'
+            ? slot.options
+            : dockCandidates(slot, drawn).map((id) => ({ id, label: labelFor(id) }))
+
         return (
-          <fieldset key={slot.slot} className="slot">
-            <legend>
-              <RulesText text={slot.prompt} />
-              {status && <span className="slot__tally"> — {status}</span>}
-            </legend>
+          <div key={slot.slot} className="slot" role="group" aria-label={asked}>
+            {/* The tally is a live region: it is the one thing that changes as the board is
+                clicked, and a player answering on the table is not looking here when it does. */}
+            {!statesItself(slot) && (
+              <p className="slot__ask" role="status">
+                <RulesText text={slot.prompt} />
+                {status && <span className="slot__tally"> — {status}</span>}
+              </p>
+            )}
 
             {slot.kind === 'number' ? (
               // The bounds are the server's, computed from mana, the source's text, and the
@@ -100,15 +133,9 @@ export function ActionDraft({
                 />
               </label>
             ) : (
-              <>
-                {slot.byEntity && (
-                  <p className="slot__hint">Click a highlighted object, or choose one here.</p>
-                )}
+              candidates.length > 0 && (
                 <ul className="actions">
-                  {(slot.kind === 'option'
-                    ? slot.options
-                    : slot.candidates.map((id) => ({ id, label: labelFor(id) }))
-                  ).map((candidate) => {
+                  {candidates.map((candidate) => {
                     const position = slot.chosen.indexOf(candidate.id)
                     return (
                       <li key={candidate.id}>
@@ -127,9 +154,9 @@ export function ActionDraft({
                     )
                   })}
                 </ul>
-              </>
+              )
             )}
-          </fieldset>
+          </div>
         )
       })}
 
