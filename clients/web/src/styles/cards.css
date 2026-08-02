@@ -1,7 +1,7 @@
 /* Cards.
 
-   One frame, four presentations, and a real card's anatomy: a name band that owns its row, a cost
-   over the art's corner, an art window that takes what is left, a type line, a text box, and a
+   One frame, four presentations, and a real card's anatomy: a name band the name leads and the
+   cost follows, an art window that takes what is left, a type line, a text box, and a
    stat in the corner — at the proportions a card is actually printed at. What that buys is
    scanning: a board of forty permanents is read by shape, colour, and position long before it is
    read by text, and a grid of same-coloured rectangles gives a player none of those.
@@ -149,13 +149,19 @@ button.card:hover {
   border-color: var(--tint);
 }
 
-/* **The name owns its band. Nothing shares that row.** SAGE ships no card art and ADR 0012's is
-   opt-in and may be absent, so the printed name is the only thing that identifies a card —
-   anything competing with it for horizontal space is competing with the card's identity, and the
-   cost used to win that fight. It is over the picture now. */
+/* **The name leads the band; the cost follows it.** SAGE ships no card art and ADR 0012's is
+   opt-in and may be absent, so the printed name is the only thing that identifies a card — and
+   the cost is where a printed card puts it, at the band's trailing edge, which is where a
+   player's eye already goes. Which of the two gives way is decided in `fit.ts` and always the
+   same one: the cost is drawn in the width the name did not use, or not at all.
+
+   `flex-start` rather than a shared baseline: a name on two lines keeps the pips beside its
+   first line, where a printed cost sits. */
 .card__band {
   flex: none;
-  display: block;
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
   font-weight: 600;
   min-inline-size: 0;
   /* Positioned so the tapped mark can be given a layer to sit *under*. The name is the one
@@ -169,17 +175,16 @@ button.card:hover {
    fitting policy. */
 .card__name {
   display: block;
+  flex: 1 1 auto;
+  min-inline-size: 0;
   overflow: hidden;
 }
 
-/* The cost, over the art's top-right corner and out of the name's row. Pips are graphic: they
-   read at sizes text does not — no baseline, no wrapping, no hyphenation — which is exactly why
-   this is the element that can be moved off the band and shrunk. */
+/* The cost, at the band's trailing edge. Pips are graphic: they read at sizes text does not — no
+   baseline, no wrapping, no hyphenation — which is why this is the element that can be shrunk a
+   step, and dropped, without the row it is in losing a line. */
 .card__cost {
-  position: absolute;
-  z-index: 1;
-  inset-block-start: 2px;
-  inset-inline-end: 2px;
+  flex: none;
 }
 
 /* The art window, and everything that lies on it: the cost, the state marks, the stat. It takes
@@ -520,27 +525,54 @@ button.card:hover {
    Tapping
    --------------------------------------------------------------------------- */
 
-/* **Tapped is a mark across an upright face, never a rotation** (`docs/client-design.md` §6).
+/* **Tapped is a quarter turn** (`docs/client-design.md` §6).
 
-   A quarter turn takes the card's text with it, and SAGE ships no art: the printed name *is* the
-   permanent's identity, so turning it spends the one fact a player cannot infer in order to state
-   one bit they could have been told any other way — in the state a permanent spends most of the
-   game in. It cost a landscape footprint on top of that, which is why every permanent used to be
-   wrapped in a slot wide enough to hold a card lying on its side.
+   It is the most universal convention the game has — every player and every client already shares
+   it — and a pattern laid over an upright card is a private language nobody has learnt. The cost
+   is real: a turned card takes its text sideways, and SAGE ships no art, so the name a player
+   identifies a permanent by goes with it. It is outweighed. **A tapped permanent is one you are
+   not currently reading**: you know what it is, and the one bit you want from it at a glance is
+   exactly what the turn says better than anything else can.
 
-   The mark is a hatch, laid over the whole frame and drawn *under* everything that states a fact,
-   so a tapped permanent reads as covered from across the table and reads letter by letter up
-   close. Being a pattern rather than a tint, it survives greyscale and every colour-vision
-   deficiency — the tapped face is textured where an untapped one is smooth, which is a difference
-   of kind and not of hue. Its pitch is absolute rather than a share of the box, because the size
-   this has to survive is the smallest one: four pixels of stripe read on a 72px tile with no art
-   behind it, which is where a mark that scaled with the card would have nothing left to say.
+   The turn is a `transform`, so it changes nothing about the layout — the tile keeps the box
+   `pack.ts` gave it, `Card.tsx` keeps measuring the same box, and the presentation a permanent
+   gets is the same tapped or untapped. What reserves the room it turns into is the *row*, which
+   charges every tile its turned footprint whether or not anything is tapped (`pack.ts`); a
+   reservation that appeared when a creature attacked would slide the whole board, which §5
+   forbids.
 
-   Drawn as the frame's own pseudo-element, so a tapped permanent occupies exactly the box an
-   untapped one does — one shape per tile, whatever the server said about it — and so the fade
-   runs on a class change with no element arriving to run it. Motion here is not decoration: it
-   says a permanent *tapped*, rather than having been drawn already tapped. A device that has
-   asked for less of it reaches the same face at once, through `--tap-duration` (`index.css`). */
+   Motion here is not decoration: it says a permanent *tapped*, rather than having been drawn
+   already tapped. A device that has asked for less of it reaches the same face at once, through
+   `--tap-duration` (`index.css`). `transform` and not `translate`/`scale`, which is what
+   `Motion.tsx` animates an arrival with — the two compose instead of replacing each other.
+
+   Scoped by the *field's* tier and not only by the frame's own class, because the frame's is
+   measured: a card renders once against §5's designed tile before its `ResizeObserver` has
+   answered, so a chip row would draw one frame of rotated cards and then animate them back
+   upright. The field states its tier from the packing, synchronously, in the first render there
+   is. */
+.field:not(.field--tier-chip) .cards--battlefield > li > .card {
+  transform-origin: center;
+  transition: transform var(--tap-duration) var(--tap-easing);
+}
+
+.field:not(.field--tier-chip) .cards--battlefield > li > .card--tapped:not(.card--chip) {
+  transform: rotate(90deg);
+}
+
+/* **At the chip tier there is no turn**, and there only, tapped is a mark: a 96×30 chip is
+   already lying down, so rotating it says nothing. The same mark answers for every surface that
+   is not the board — the inspector and the pointer's preview, which are panels opened to *read* a
+   card and would be turned on their side by a rotation.
+
+   A hatch rather than a wash, because every fact here has to survive greyscale and every
+   colour-vision deficiency: a marked face is textured where an unmarked one is smooth, which is a
+   difference of kind and not of hue. Its pitch is absolute rather than a share of the box, because
+   the size it has to survive is the smallest one — four pixels of stripe read on a 96px chip,
+   which is where a mark that scaled with the tile would have nothing left to say.
+
+   Drawn as the frame's own pseudo-element, so a marked tile occupies exactly the box an unmarked
+   one does and the fade runs on a class change with no element arriving to run it. */
 .card::after {
   content: '';
   position: absolute;
@@ -564,6 +596,12 @@ button.card:hover {
   opacity: 1;
 }
 
+/* And the two are never both: a permanent that turned has said it, and a hatch over the turned
+   card would be the same fact twice (§2.1) laid over the face it just made harder to read. */
+.field:not(.field--tier-chip) .cards--battlefield > li > .card--tapped:not(.card--chip)::after {
+  opacity: 0;
+}
+
 /* The one place the pitch is not the small tile's: a full face is three times the width the
    texture was drawn for, and a stripe every four pixels across a card opened to be *read* is
    noise rather than a mark. It is coarsened instead of dropped — the preview and the inspector
@@ -581,11 +619,9 @@ button.card:hover {
 
 /* **The mark covers the art, never a fact.** Every element that states something — the name, the
    type line, the rules text, the counters and the marked damage, the P/T, the cost — is lifted
-   above the hatch, so a tapped permanent is read on exactly the terms an untapped one is. What
-   is left under it is the frame's own wash and the art window, which is the one element §6 lets
-   degrade to nothing because it costs no fact to lose. Tapped is a permanent's most common
-   state; a mark that made a board 40% harder to read would be a worse trade than the rotation
-   it replaced. */
+   above the hatch, so a marked tile is read on exactly the terms an unmarked one is. What is left
+   under it is the frame's own wash and the art window, which is the one element §6 lets degrade
+   to nothing because it costs no fact to lose. */
 .card--tapped .card__band,
 .card--tapped .card__type,
 .card--tapped .card__text,

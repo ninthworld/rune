@@ -379,17 +379,20 @@ test.describe('the board a reduced-motion request reaches', () => {
     await ogre.hover()
     await expect(edge).toHaveClass(/overlay__edge--traced/)
 
-    // The same for the mark that says a permanent tapped: the Ogre is tapped in this fixture,
-    // and the board a player who asked for no motion arrives at is the *same* board — fully
-    // marked, with only the half second it usually takes taken out of it.
+    // The same for the turn that says a permanent tapped: the Ogre is tapped in this fixture, and
+    // the board a player who asked for no motion arrives at is the *same* board — fully turned,
+    // with only the half second it usually takes taken out of it.
     await expect
       .poll(() =>
         ogre.evaluate((card) => {
-          const style = getComputedStyle(card, '::after')
-          return { opacity: style.opacity, duration: style.transitionDuration }
+          const style = getComputedStyle(card)
+          return {
+            turned: style.transform.startsWith('matrix(0, 1, -1, 0'),
+            duration: style.transitionDuration,
+          }
         }),
       )
-      .toEqual({ opacity: '1', duration: '0.001s' })
+      .toEqual({ turned: true, duration: '0.001s' })
   })
 })
 

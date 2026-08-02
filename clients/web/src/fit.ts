@@ -57,6 +57,9 @@ export const BODY_DESIGNED = 12
 export const STAT_FLOOR = 9
 export const STAT_DESIGNED = 14
 
+/** The gap between the name and the cost sharing the band (`cards.css`). */
+const BAND_GAP = 2
+
 /**
  * The shortest abbreviation that is still a card.
  *
@@ -155,6 +158,31 @@ export function wrapText(text: string, width: number, size: number): readonly st
 function wraps(text: string, width: number, size: number, lines: number): boolean {
   const laid = wrapText(text, width, size)
   return laid.length <= lines && laid.every((line) => textWidth(line, size) <= width)
+}
+
+/**
+ * The narrowest band the text still lays out in, at a size it has already been granted.
+ *
+ * This is what makes a shared band answerable rather than negotiable: once the name has been
+ * fitted, *this* is the width it needs, and everything past it is width the name is not using.
+ * `width` is returned unchanged when the text does not fit at all, so a name that is already
+ * overflowing its band leaves nothing for anything else — which is §6's "if that would push the
+ * name below its floor, the cost goes" falling out of the arithmetic rather than being a case.
+ *
+ * Bisected because `wraps` is monotone in the width: greedy wrapping never produces more lines in
+ * a wider box, so there is exactly one crossing to find.
+ */
+function narrowest(text: string, size: number, lines: number, width: number): number {
+  const most = Math.max(0, Math.ceil(width))
+  if (!wraps(text, most, size, lines)) return most
+  let low = 0
+  let high = most
+  while (high - low > 1) {
+    const mid = Math.floor((low + high) / 2)
+    if (wraps(text, mid, size, lines)) high = mid
+    else low = mid
+  }
+  return high
 }
 
 // ---------------------------------------------------------------------------
@@ -348,19 +376,59 @@ export interface CardText {
   keywords: readonly string[]
 }
 
+// ---------------------------------------------------------------------------
+// Saying it once
+// ---------------------------------------------------------------------------
+
+/** Escaped for use inside a pattern — a keyword is data, not a regular expression. */
+const literal = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+
+/** Whether a piece of prose already says this keyword, as a whole word and in any case. */
+const states = (rulesText: string, keyword: string): boolean =>
+  keyword.trim() !== '' &&
+  new RegExp(`(^|[^\\p{L}\\p{N}])${literal(keyword.trim())}([^\\p{L}\\p{N}]|$)`, 'iu').test(
+    rulesText,
+  )
+
+/**
+ * The keywords a card's own drawn text does **not** already state.
+ *
+ * §6's "Density": everything on a card is written once. Where the server's prose says `Flying`,
+ * the prose is the statement and a separate italic line repeating it is one fact twice (§2.1) —
+ * costing a line of exactly the space the art window is being taken for. The separate line exists
+ * for the card whose keywords are not in its drawn text, which is most of them.
+ *
+ * Given no rules text — because the card has none, or because the presentation is not drawing it —
+ * every keyword is unstated and the line carries them all.
+ */
+export const unstatedKeywords = (
+  keywords: readonly string[],
+  rulesText: string | undefined,
+): readonly string[] =>
+  rulesText ? keywords.filter((keyword) => !states(rulesText, keyword)) : keywords
+
+/** The keyword line as one string, so the separator is decided once rather than per surface. */
+export const keywordLine = (keywords: readonly string[]): string => keywords.join(' · ')
+
 /** What to draw, and how big. Anything omitted is one gesture away in the preview or inspector. */
 export interface CardPlan {
   presentation: Presentation
   name: Fitted
-  /** The cost, over the art's top-right corner. `0` when there is no room for it. */
+  /** The cost, at the name band's trailing edge. `0` when there is no room for it. */
   costSize: number
   /** Whether an art window is drawn at all. It takes what is left, and may be left nothing. */
   art: boolean
   /** The type line as it will be drawn — `''` when it did not fit and is dropped. */
   typeLine: string
   typeSize: number
-  /** The text box, or nothing at all. **An empty one is never drawn.** */
-  text: { size: number; rulesText: boolean; keywords: boolean } | undefined
+  /**
+   * The text box, or nothing at all. **An empty one is never drawn.**
+   *
+   * `keywords` is the keyword line as it will be drawn, which is the keywords the drawn prose does
+   * not already state (§6, Density) — empty where the prose says all of them, and the whole list
+   * where there is no prose on the face.
+   */
+  text: { size: number; rulesText: boolean; keywords: readonly string[] } | undefined
   statSize: number
 }
 
@@ -373,10 +441,27 @@ const GAP = 2
 const MIN_ART = 20
 /** The text box's own inset. */
 const TEXT_PAD = 3
-/** A pip is about this many times its font size wide, gap included (`cards.css`). */
-const PIP_ADVANCE = 1.3
-/** Pips are graphic rather than text, but a disc smaller than this states nothing either. */
-const MIN_PIP = 7
+/**
+ * A pip's own box and the gap after it, as `cards.css` draws them: `1.15em` and `0.12em`, with the
+ * disc floored at 12px absolute because a 9px glyph needs more than a 10px circle.
+ *
+ * The floor is the reason this is not one multiplier: below about 10px of type the row stops
+ * scaling with its font and a share-of-the-font estimate comes out *narrower* than the browser
+ * draws, which is the one direction this module is not allowed to be wrong in.
+ */
+const PIP_BOX = 1.15
+const PIP_MIN_BOX = 12
+const PIP_GAP = 0.12
+/** How wide a row of `pips` draws at `size`, gap included and rounded up by one gap. */
+const pipRow = (pips: number, size: number): number =>
+  pips * (Math.max(PIP_MIN_BOX, PIP_BOX * size) + PIP_GAP * size)
+/**
+ * Pips are graphic rather than text, but the glyph inside one is text, and §7 floors that at 9px
+ * like everything else on a card. Below it the cost is not a smaller cost, it is a row of discs
+ * with something illegible in them — so the cost goes instead, which is a drawing decision about
+ * a string the server sent and concludes nothing about affordability.
+ */
+const MIN_PIP = 9
 
 const lineHeight = (size: number): number => Math.ceil(size * 1.2)
 
@@ -431,22 +516,26 @@ export function cardPlan(content: CardText, box: Box, opts: PlanOptions = {}): C
   }
 
   // The inspector and the preview are where everything the table clamps is redeemed, so nothing
-  // is fitted against a height there: the panel grows instead.
+  // is fitted against a height there: the panel grows instead. The band is fitted by the same
+  // rule as everywhere else — no surface names its own tier (§6) — with the one difference the
+  // panel earns, which is a larger designed size for the name.
   if (presentation === 'full') {
+    const band = fitBand(content, inner.width, {
+      floor: NAME_FLOOR,
+      designed: 17,
+      mayAbbreviate: false,
+    })
+    const keywords = unstatedKeywords(content.keywords, content.rulesText)
     return {
       presentation,
-      name: fitName(content.name, inner, {
-        floor: NAME_FLOOR,
-        designed: 17,
-        mayAbbreviate: false,
-      }),
-      costSize: 13,
+      name: band.name,
+      costSize: band.costSize,
       art: true,
       typeLine: content.typeLine?.trim() ?? '',
       typeSize: BODY_DESIGNED,
       text:
-        content.rulesText || content.keywords.length > 0
-          ? { size: BODY_DESIGNED, rulesText: true, keywords: true }
+        content.rulesText || keywords.length > 0
+          ? { size: BODY_DESIGNED, rulesText: true, keywords }
           : undefined,
       statSize: STAT_DESIGNED,
     }
@@ -463,11 +552,12 @@ function fitTable(
   statSize: number,
   mayAbbreviate: boolean,
 ): CardPlan {
-  const name = fitName(content.name, inner, {
+  const band = fitBand(content, inner.width, {
     floor: NAME_FLOOR,
     designed: NAME_DESIGNED,
     mayAbbreviate,
   })
+  const name = band.name
   let left = inner.height - lineHeight(name.size) * name.lines - GAP
 
   // The type line never outgrows the name above it, and never the body's designed size.
@@ -493,7 +583,7 @@ function fitTable(
   return {
     presentation,
     name,
-    costSize: costSizeFor(content.manaCost, inner.width, name.size),
+    costSize: band.costSize,
     art: left >= MIN_ART,
     typeLine,
     typeSize,
@@ -510,6 +600,10 @@ function fitTable(
  * So the box is offered the rules and the keywords together, then the keywords alone — the
  * keyword line — and then nothing at all. That last case is the defect this replaces: a blank
  * black band where the text did not fit, a container outliving its content.
+ *
+ * **The keywords offered depend on which candidate it is**, which is §6's "Density" rule and not a
+ * fitting decision: beside the prose, only the keywords the prose does not already say; in the
+ * keyword line's own right, all of them, because there is then no other copy on the face.
  */
 function fitTextBox(
   content: CardText,
@@ -517,14 +611,19 @@ function fitTextBox(
   available: number,
   designed: number,
   allowRules: boolean,
-): { size: number; height: number; rulesText: boolean; keywords: boolean } | undefined {
-  const keywords = content.keywords.length > 0 ? content.keywords.join(' · ') : ''
+): { size: number; height: number; rulesText: boolean; keywords: readonly string[] } | undefined {
   const rules = allowRules ? content.rulesText : undefined
+  const beside = unstatedKeywords(content.keywords, rules)
   if (available <= GAP) return undefined
 
-  const candidates: { rulesText: boolean; keywords: boolean; parts: string[] }[] = []
-  if (rules) candidates.push({ rulesText: true, keywords: !!keywords, parts: [rules, keywords] })
-  if (keywords) candidates.push({ rulesText: false, keywords: true, parts: [keywords] })
+  const candidates: { rulesText: boolean; keywords: readonly string[]; parts: string[] }[] = []
+  if (rules) {
+    candidates.push({ rulesText: true, keywords: beside, parts: [rules, keywordLine(beside)] })
+  }
+  if (content.keywords.length > 0) {
+    const all = content.keywords
+    candidates.push({ rulesText: false, keywords: all, parts: [keywordLine(all)] })
+  }
 
   const top = Math.max(BODY_FLOOR, Math.min(designed, BODY_DESIGNED))
   for (const candidate of candidates) {
@@ -552,18 +651,50 @@ function fitTextBox(
   return undefined
 }
 
+/** The name and the cost, sharing one band. */
+interface Band {
+  name: Fitted
+  /** The pips' own type size, at the band's trailing edge. `0` where the cost is not drawn. */
+  costSize: number
+}
+
 /**
- * The cost, as a row of pips over the art's top-right corner.
+ * The name band: **the name first, the cost at its trailing edge, and never the other way round.**
  *
- * Out of the name's row entirely, which is the point: pips are graphic and read at sizes text
- * does not, so they can be small where a name cannot. When even a small row would take more than
- * half the width the cost drops — the server already states what is playable through
- * `valid_actions`, so a cost is reference rather than a decision input, and dropping it is a
- * drawing decision that concludes nothing about affordability.
+ * §6 puts the cost back where a printed card puts it and where a player's eye already goes, and
+ * states the priority the shared band is divided by: identity outranks reference. That is
+ * implemented here as an order rather than as a split — the name is fitted against the whole band
+ * and takes the size it earns, and the cost is then drawn at the largest size that fits in the
+ * width **the name did not use**. `narrowest` is what makes "did not use" a number: a name fitted
+ * at 13px on two lines needs the width of its longer line, not the width of the box it was
+ * offered.
+ *
+ * Read the other way — the cost claiming its designed width first and the name fitted in the
+ * remainder — the band is not monotone in the box, and §3 says that property is not negotiable
+ * against any other rule here. The cost's claim vanishes at a threshold, so a card one pixel wider
+ * than the threshold hands the name a *narrower* band and draws its name a size smaller. There is
+ * no ordering of a two-part band that keeps both the name and the cost monotone; the one that is
+ * sacrificed is the one §6 already ranks second, which is why the cost is what may come and go
+ * across sizes and the name never is.
+ *
+ * §6's stated escape hatch falls out rather than being a case: a name that needs its whole band —
+ * which is every name at the floor, and every name being abbreviated — leaves nothing, so the cost
+ * goes. It is never the name.
  */
-function costSizeFor(manaCost: string | undefined, width: number, nameSize: number): number {
-  const pips = manaSymbols(manaCost).length
-  if (pips === 0) return 0
-  const size = Math.floor(Math.min(nameSize, (width * 0.55) / (pips * PIP_ADVANCE)))
-  return size >= MIN_PIP ? size : 0
+function fitBand(content: CardText, width: number, opts: NameOptions): Band {
+  const name = fitName(content.name, { width }, opts)
+  const pips = manaSymbols(content.manaCost).length
+  if (pips === 0) return { name, costSize: 0 }
+
+  const spare = width - narrowest(content.name, name.size, opts.maxLines ?? 2, width) - BAND_GAP
+  // Never taller than the name beside it: a cost that towers over the card's identity is the
+  // fight §6 is settling, wearing the other hat.
+  for (let size = Math.min(NAME_DESIGNED, name.size); size >= MIN_PIP; size--) {
+    if (pipRow(pips, size) > spare) continue
+    // Re-fitted against what is actually left, so the name may spend the room the cost did not
+    // take — on one line instead of two, most often.
+    const reserve = Math.ceil(pipRow(pips, size)) + BAND_GAP
+    return { name: fitName(content.name, { width: width - reserve }, opts), costSize: size }
+  }
+  return { name, costSize: 0 }
 }

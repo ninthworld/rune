@@ -9,6 +9,7 @@ import {
   NAME_FLOOR,
   presentationFor,
   textWidth,
+  unstatedKeywords,
   wrapText,
   type CardText,
 } from './fit'
@@ -333,6 +334,182 @@ describe('a wider box never draws smaller text', () => {
   })
 })
 
+/**
+ * §6's name band, and the priority it is divided by.
+ *
+ * The cost is back where a printed card puts it and the band is shared, so the question this whole
+ * block asks is the one §6 answers: **what does the cost cost the name?** The answer has to be
+ * "nothing", and it has to be nothing at *every* width rather than at the sizes somebody checked —
+ * a band divided before either part is fitted is exactly how a hand of `C…` happened once already.
+ */
+describe('the name band: the name leads, the cost follows', () => {
+  const banded = (over: Partial<CardText>, box: { width: number; height: number }, may = true) =>
+    cardPlan(face({ typeLine: 'Creature — Bear', ...over }), box, { mayAbbreviate: may })
+
+  /** Names long enough to be a fight, and one that is not. */
+  const NAMES = [
+    'Forest',
+    'Grizzly Bears',
+    'Llanowar Elves',
+    'Onakke Ogre',
+    'Gravedigger',
+    'Colossal Dreadmaw',
+    'Sword of Feast and Famine',
+    'Nissa, Who Shakes the World',
+  ]
+  /** One pip, two, and the six-pip cost that is the worst case a printed card reaches. */
+  const COSTS = ['{G}', '{1}{G}', '{3}{B}', '{4}{G}{G}', '{2}{W}{U}{B}{R}{G}']
+  /** Every width from the 72px tile to the inspector, at 1px — the resolution zoom moves in. */
+  const WIDTHS = Array.from({ length: 269 }, (_, index) => index + 72)
+  const boxAt = (width: number) => ({ width, height: Math.round((width * 88) / 63) })
+
+  it('draws the cost in the band at every presentation that has room for it', () => {
+    for (const box of [HAND_MIN, DESIGNED, { width: 336, height: 470 }]) {
+      const plan = banded({ name: 'Grizzly Bears', manaCost: '{1}{G}' }, box)
+      expect(plan.costSize, `${box.width}px`).toBeGreaterThanOrEqual(NAME_FLOOR)
+      expect(plan.name.text).toBe('Grizzly Bears')
+    }
+  })
+
+  /**
+   * **The whole of the priority, as one property: a cost changes nothing about the name.**
+   *
+   * Not "the name is usually fine" — the size and the completeness are *identical* to the same
+   * name planned with no cost at all, at every width and both in the hand and on the board. That
+   * is what "identity outranks reference" has to mean if it is to mean anything, and it is what
+   * makes the drop rule §6 states unnecessary as a special case: a name that needs its whole band
+   * leaves nothing, so the cost is already gone.
+   */
+  it('costs the name neither a size nor a character, at any width', () => {
+    const found: string[] = []
+    for (const may of [true, false]) {
+      for (const name of NAMES) {
+        for (const width of WIDTHS) {
+          const bare = banded({ name }, boxAt(width), may)
+          for (const manaCost of COSTS) {
+            const priced = banded({ name, manaCost }, boxAt(width), may)
+            if (priced.name.size !== bare.name.size || priced.name.text !== bare.name.text) {
+              found.push(
+                `${name} ${manaCost} at ${width}px: ${bare.name.size}px "${bare.name.text}" ` +
+                  `became ${priced.name.size}px "${priced.name.text}"`,
+              )
+            }
+          }
+        }
+      }
+    }
+    expect(found.slice(0, 8), `${found.length} names paid for a cost`).toEqual([])
+  })
+
+  /**
+   * And the same sweep the `fitName` regression was caught by, run over the whole band.
+   *
+   * `fitName` was non-monotonic once — a 130px card drew a name at 9px on one line while a 100px
+   * one drew it at 13px on two — and every individual answer was defensible; only the relation
+   * between them was wrong. A shared band is a second place that failure can come from, so the
+   * property is asserted over the band rather than over the name alone.
+   */
+  it('never draws a smaller name on a wider card', () => {
+    const found: string[] = []
+    for (const may of [true, false]) {
+      for (const name of NAMES) {
+        for (const manaCost of COSTS) {
+          let previous = 0
+          for (const width of WIDTHS) {
+            const plan = banded({ name, manaCost }, boxAt(width), may)
+            if (plan.presentation === 'chip') continue
+            if (plan.name.size < previous) {
+              found.push(
+                `${name} ${manaCost} at ${width}px: ${previous}px became ${plan.name.size}px`,
+              )
+            }
+            previous = plan.name.size
+          }
+        }
+      }
+    }
+    expect(found.slice(0, 8), `${found.length} inversions in the band`).toEqual([])
+  })
+
+  /** A pip is never taller than the name it sits beside, and never under §7's floor. */
+  it('keeps the cost within the type scale', () => {
+    for (const name of NAMES) {
+      for (const manaCost of COSTS) {
+        for (const width of WIDTHS) {
+          const plan = banded({ name, manaCost }, boxAt(width))
+          if (plan.costSize === 0) continue
+          expect(plan.costSize, `${name} ${manaCost} at ${width}px`).toBeGreaterThanOrEqual(
+            NAME_FLOOR,
+          )
+          expect(plan.costSize).toBeLessThanOrEqual(plan.name.size)
+        }
+      }
+    }
+  })
+
+  /** Below the chip threshold the cost is gone regardless (§6) — a chip is a name and its marks. */
+  it('gives a chip no cost at all', () => {
+    expect(banded({ manaCost: '{G}' }, { width: 190, height: 34 }).costSize).toBe(0)
+  })
+})
+
+/**
+ * §6's "Density": everything on a card is written once.
+ *
+ * A keyword the server's own prose already states, printed again as an italic line, is one fact
+ * twice — and it costs a line of exactly the space the art window is being taken for.
+ */
+describe('a keyword is written once', () => {
+  const flying = (rulesText: string | undefined) =>
+    cardPlan(
+      face({
+        name: 'Serra Angel',
+        typeLine: 'Creature — Angel',
+        keywords: ['Flying', 'Vigilance'],
+        ...(rulesText === undefined ? {} : { rulesText }),
+      }),
+      { width: 336, height: 470 },
+    )
+
+  it('leaves a keyword out of the line when the drawn prose says it', () => {
+    expect(flying('Flying, vigilance').text?.keywords).toEqual([])
+    expect(flying('Flying').text?.keywords).toEqual(['Vigilance'])
+  })
+
+  it('keeps the line for a keyword the prose does not say', () => {
+    expect(flying(undefined).text?.keywords).toEqual(['Flying', 'Vigilance'])
+    expect(flying('When this creature dies, draw a card.').text?.keywords).toEqual([
+      'Flying',
+      'Vigilance',
+    ])
+  })
+
+  it('matches a whole word and nothing less', () => {
+    expect(unstatedKeywords(['Flying'], 'Flyingfish are not a keyword.')).toEqual(['Flying'])
+    expect(unstatedKeywords(['Flying'], 'This creature has flying.')).toEqual([])
+    expect(unstatedKeywords(['First strike'], 'First strike, deathtouch')).toEqual([])
+  })
+
+  /**
+   * The keyword line in its own right is the other case, and it keeps every keyword: where the
+   * rules text is not drawn there is no other copy on the face, and §6 says the separate line
+   * exists for exactly that card.
+   */
+  it('keeps every keyword where the prose is not drawn', () => {
+    const plan = cardPlan(
+      face({
+        name: 'Serra Angel',
+        typeLine: 'Creature — Angel',
+        keywords: ['Flying', 'Vigilance'],
+        rulesText: `Flying, vigilance. ${'Whenever this creature attacks, '.repeat(12)}`,
+      }),
+      DESIGNED,
+    )
+    expect(plan.text?.rulesText).toBe(false)
+    expect(plan.text?.keywords).toEqual(['Flying', 'Vigilance'])
+  })
+})
+
 describe('degrading a type line by rule rather than by ellipsis', () => {
   it('keeps the whole line where it fits', () => {
     expect(fitTypeLine('Creature — Bear', { width: 200 }, 9)).toBe('Creature — Bear')
@@ -436,7 +613,11 @@ describe('planning a whole card', () => {
       }),
       DESIGNED,
     )
-    expect(plan.text).toEqual({ size: expect.any(Number), rulesText: false, keywords: true })
+    expect(plan.text).toEqual({
+      size: expect.any(Number),
+      rulesText: false,
+      keywords: ['Flying', 'Vigilance'],
+    })
   })
 
   it('gives a chip the name and the marks and nothing else', () => {
@@ -496,6 +677,10 @@ describe('planning a whole card', () => {
     expect(plan.presentation).toBe('full')
     expect(plan.name.abbreviated).toBe(false)
     expect(plan.typeLine).toBe('Legendary Planeswalker — Nissa')
-    expect(plan.text).toEqual({ size: expect.any(Number), rulesText: true, keywords: true })
+    expect(plan.text).toEqual({
+      size: expect.any(Number),
+      rulesText: true,
+      keywords: ['Flying'],
+    })
   })
 })
