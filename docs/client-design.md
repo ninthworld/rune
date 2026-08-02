@@ -230,6 +230,13 @@ It is stated separately because it is what catches a ladder applied as a checkli
 threshold upward must never take something away — not a row, not the art window, not a line of rules
 text. If more screen ever produces less board, the arrangement is wrong, not the screen.
 
+**Where two things share one box, the property is held for the higher-ranked one.** No ordering of a
+two-part box leaves both parts non-decreasing, so one of them gives, and which one is settled by
+§2's tiers rather than case by case. The card's name band is the instance (§6): the name is fitted
+against the whole band and the cost takes what the name did not use, so a wider card can carry a
+smaller cost. That is the only admitted exception, and it never runs the other way — the part §2
+ranks higher is never the part that gives.
+
 ### What never degrades, at any size
 
 - Whose priority it is, and what is being asked.
@@ -254,32 +261,55 @@ still holds on a phone. Everything else about an arrangement is negotiable.
 ### One arrangement, varied only under duress
 
 **A thing is in the same place at every size unless it cannot be.** Sameness is the default, and
-every difference between bands has to be paid for by a stated constraint — a region that will not
-fit, a gesture that does not exist on the device. A difference introduced for any other reason is a
-second layout to learn, and it is why the client currently puts the turn in three different places
-depending on the window.
+every difference between one screen's arrangement and another's has to be paid for by a stated
+constraint — a region that will not fit, a gesture that does not exist on the device. A difference
+introduced for any other reason is a second layout to learn, and it is why the client currently puts
+the turn in three different places depending on the window.
 
-The test to apply to any per-band difference: *name the thing that does not fit.* If nothing does,
-the arrangement is the same.
+The test to apply to any such difference: *name the thing that does not fit.* If nothing does, the
+arrangement is the same.
 
 This mostly replaces per-band arrangement with **per-band density**, which was always the intent of
 §3 — the ladder changes how much is drawn, not where it is.
 
 ### Bands
 
-Chosen by the shape of the viewport, not by device. Note how little differs between them.
+Chosen by the shape of the viewport, not by device. Note how little differs between them — and note
+that naming a shape and licensing a difference are two separate jobs.
 
-| Band | Shape | What differs |
+**A band names a shape. An absolute constraint licenses an arrangement.** An earlier draft ran both
+off the same ratio, and a ratio cannot be read as geometry. Take a viewport whose width is fixed and
+whose height grows: it crosses from Wide into Square without gaining a pixel of width, so any
+difference between those two bands that is sized by width would hand a screen that only got *taller*
+a worse board — which §3 forbids outright. This section's own test is the resolution: *name the
+thing that does not fit.* What makes a seat column, a rail, or a stack undrawable is a count of
+pixels in one named dimension, never a proportion. So the shapes below are for talking about
+screens; the constraints under them are the only things that move anything.
+
+| Band | The shape it names |
+| --- | --- |
+| **Wide** | ratio ≥ 1.3 — the reference shape |
+| **Ultrawide** | ratio ≥ 2.0 |
+| **Square** | ratio 0.8–1.3 |
+| **Tall** | ratio < 0.8 — phone portrait |
+| **Short** | already named by an absolute: height < 480 — phone landscape, a small desktop at 200% zoom |
+
+**The reference arrangement is what every shape draws**: seat columns at the leading edge, board
+beside them, phase strip on the midline, stack at the trailing edge, side panel as a drawer. Two
+constraints take something out of it, and nothing else does.
+
+| What differs | The constraint that licenses it | Where the number comes from |
 | --- | --- | --- |
-| **Wide** | ratio ≥ 1.3, height ≥ 640 | The reference arrangement. Seat columns at the leading edge, board beside them, phase strip on the midline, stack at the trailing edge, side panel as a drawer. |
-| **Ultrawide** | ratio ≥ 2.0 | Nothing moves. The extra width goes to the board rows — more cards at full size before they overlap. |
-| **Square** | ratio 0.8–1.3 | Nothing moves. Ladder steps 1–4 as needed. |
-| **Tall** | ratio < 0.8 (phone portrait) | Seat columns become seat bars above and below their own half — a column cannot hold life *and* five counts at 390px wide, and that is the stated constraint. Rows merge, cards overlap early. Cards stay cards. |
-| **Short** | height < 480 (phone landscape, 200% zoom on a small desktop) | As Tall, plus: height is the scarce resource, so the full ladder including chips, and the hand is a peek strip that expands on gesture. |
+| The seat's column becomes a **bar** above and below its own half, and §2's fold applies (§4.2). | **width < 640**, or **height < 480** — the column's own two dimensions, and both are scarce on the same screens. | A column carries life above five labelled counts, so it needs about the 112px §4.1 freed at the leading edge, and half a table's height to stack them in. 640 is that column plus the trailing rail plus a board still wide enough for five minimum-width tiles and their gaps (§5); it is also the layout width a 1280px desktop has at 200% zoom (§1). Under 480px of height a half-table cannot stack the labels at all. |
+| The hand and the dock **trade the bottom band** by mode, as §2 describes: full-height hand while nothing is pending, peek strip the moment something is. | **Height.** After the tier-1 minimums and both fields are satisfied in §5's contract order, what is left will not seat a full-height hand *and* a permanent dock above it. | An evaluable allocation rather than a constant, so it needs no new one. `height < 480` never seats both; a phone portrait does not in practice. |
 
-At the Tall and Short bands the hand and the dock trade the bottom band as §2 describes: hand full
-height while nothing is pending, peek strip the moment something is. At Wide, Ultrawide, and Square
-there is room for both and the dock sits above the hand permanently, as it does today.
+Where neither bites, the dock sits above the hand permanently, as it does today.
+
+Everything else that gets called a band difference is not one. More cards at full size on an
+ultrawide, overlap on a crowded row, a smaller card in a short row, a chip below the name floor,
+rows merging when a field cannot give each of them a drawable tile: those are §5's geometry
+answering the room it was given, by the same formula at every band. A band does not decide them and
+must not be written as though it does.
 
 ### 4.1 The turn is not a rail
 
@@ -321,13 +351,21 @@ in it. The zone counts are a labelled stack, plainly readable, not a row of glyp
 The reading order of §4's invariant is unchanged — opponent, board, you, hand, top to bottom. A seat
 column belongs to the half it sits beside, so the vertical order still reads the same way.
 
-At Tall and Short a column cannot hold life *and* five counts at 390px wide, so there the seat
-becomes a bar above and below its own half, and §2's fold applies. **That is the stated constraint
-that licenses the difference**, per §4's rule above.
+Under 640px of width, or under 480px of height, a column cannot hold life *and* five counts — a
+phone portrait is 390px wide, and half of a 480px table is shorter than the stack of labels — so
+there the seat becomes a bar above and below its own half, and §2's fold applies. **Those are the
+stated constraints that license the difference**, per §4's rule above, and each names the dimension
+that ran out.
 
-**Height, not width, decides whether a permanent is a card.** Card faces survive while their row
-is at least 100px tall. That is why portrait phones keep cards and short-landscape does not — and
-it is a rule that can be evaluated, not a judgment call per screen.
+**What a seat column costs is width. What decides whether a permanent is still a card is height —
+but at a far lower threshold than this section used to claim.** An earlier draft put a hard floor
+under it, *"card faces survive while their row is at least 100px tall"*, and §5 has since removed
+that floor: a short row draws a *smaller* card rather than a different thing, and a tile stops being
+a card only where its name band can no longer set a name at §2's 9px floor. The sizes and the
+threshold live in §5's "The floor is soft downward and hard sideways" and are not repeated here — a
+constant stated in two places drifts. What survives from that draft is the property it was reaching
+for, and it survives intact: whether a screen keeps card faces is settled by evaluating a row's
+height against a stated threshold, not judged per screen.
 
 ---
 
@@ -344,7 +382,7 @@ rather than merely discouraged.
 **Card width within a row** — given the row's width `W`, a count `N`, minimum gap `g`:
 
 ```
-ideal   = the band's designed card width
+ideal   = the designed card width for the region (the sizes table below)
 fitted  = (W - (N-1)·g) / N
 width   = clamp(FLOOR, fitted, ideal)
 ```
@@ -503,12 +541,22 @@ a 100px card spends 45px on `{1}{U}{U}` and leaves 20px for the name.
    either part was fitted, and the fix for that is the fitting policy — not moving the cost somewhere
    nobody looks, over art it tints against, in a corner that means nothing.
 
-   **The band is fitted in priority order: the name first, against the width the cost would leave;
-   and if that would push the name below its floor, the cost goes — never the name.** Identity
-   outranks reference, which is §2's tier ordering applied inside one band instead of across the
-   screen. Below the chip threshold (§3) the cost is gone regardless: the server already states what
-   is playable through `valid_actions`, so cost is reference rather than a decision input. Dropping
-   it is a presentation judgment and not a rules one — the client still computes no affordability.
+   **The band is fitted in priority order, and priority means the name is fitted against the whole
+   band: it takes the largest size that fits the full width, and the cost then takes the largest
+   size that fits in the width the name did not use.** Identity outranks reference, which is §2's
+   tier ordering applied inside one band instead of across the screen.
+
+   The reading this replaced was that the cost claims its width first, the name is fitted against
+   the remainder, and the cost drops once the name would fall below its floor. That is not monotone
+   in the box, and §3 forbids that outright: one pixel of extra width can carry the cost over a
+   threshold and hand the name a *narrower* band than it had before, so a bigger card draws a
+   smaller name. Measured across the supported range it inverted 14 names outright and made 4,415
+   more pay width for a cost that the name-first order keeps for free. No ordering of a two-part
+   band leaves both parts monotone, so the part that gives is the one this section already ranks
+   second (§3, "Where two things share one box"). Below the chip threshold (§3) the cost is gone
+   regardless: the server already states what is playable through `valid_actions`, so cost is
+   reference rather than a decision input. Dropping it is a presentation judgment and not a rules
+   one — the client still computes no affordability.
 3. **Art window.** Fixed proportion, the largest single element. Procedural composition by default,
    a player-supplied illustration over it when one is present.
 4. **Type line.** Degrades **by rule, not by ellipsis**: drop the subtype after the em-dash first,
@@ -558,7 +606,7 @@ Not scaled copies of one another — each drops what it has no room for, in ladd
 | --- | --- |
 | **Full** — preview, inspector | Everything, including complete rules text. |
 | **Designed** — the hand, and a battlefield with the height to spare | Name, cost, art, type line, rules text if it fits at floor, marks. |
-| **Compact** — most battlefields, crowded rows, the Tall band | Name, marks, and the type line where it fits. No rules text; art and cost only if what is left allows. |
+| **Compact** — most battlefields, crowded rows, a phone portrait | Name, marks, and the type line where it fits. No rules text; art and cost only if what is left allows. |
 | **Chip** — below the row height at which a name can be set at 9px | Name, P/T, marks. No art. Landscape. |
 
 Which one is drawn follows from the box available, never from the call site: a battlefield card and
