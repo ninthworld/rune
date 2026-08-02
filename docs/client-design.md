@@ -350,8 +350,44 @@ width   = clamp(FLOOR, fitted, ideal)
 ```
 
 When `fitted < FLOOR`, the row switches from spacing to overlap and pitch becomes
-`(W - width) / (N - 1)`, bounded below by the width of a legible name strip. Cards never shrink
-below `FLOOR` — they overlap instead.
+`(W - width) / (N - 1)`, bounded below by the width of a legible name strip.
+
+### The floor is soft downward and hard sideways
+
+The two directions a row runs out of room are not the same problem, and `FLOOR` answers them
+differently.
+
+**Too many cards for the width: the row overlaps, and the cards keep their size.** Thirty
+permanents shrunk to fit are thirty cards unreadable everywhere at once; thirty fanned are
+unreadable only where they are covered, and what stays exposed is the top-left strip — the name
+band. A fanned row is read as its names. This is the ladder's step 3 and it is unchanged.
+
+**Too short a row for a 100px card: the card gets smaller, and stays a card.** Here `FLOOR` is
+§3's *review threshold*, not a switch. A 90px row draws a 64×90 card with everything on it set
+smaller; an 80px row draws 57×80. Nothing is given up to hold 72×100, because giving something up
+is what §3 exists to forbid.
+
+An earlier draft said `FLOOR` was hard in both directions — *"cards never shrink below `FLOOR`"* —
+and paired it with a chip at any row under 100px tall. That is what made the split unaffordable:
+three rows in a field means three short rows, three short rows meant three rows of chips, and a
+packer told to maximise card size merged them to escape it. Softening the floor downward is what
+lets the split simply cost less card, which is the trade §3 asks for.
+
+**A permanent stops being a card when its name band can no longer set a legible name**, at §2's 9px
+floor — roughly a 70px row. That is derived from the type floor rather than being a second constant,
+so there is one number to defend and it is already defended in §2. Below it comes the chip, which is
+landscape precisely because a row that short cannot hold a portrait card at all.
+
+### The row count is the board's, never the card's
+
+**A field draws one row per group the server's `card_types` produced — creatures, other permanents,
+lands — and that count does not fall to buy card size.** It falls only when the field cannot give
+each row a drawable tile at all, which is §3's step 6 and the bottom of the ladder.
+
+This is stated here, in the geometry, because the packer is where the rule is actually spent. The
+objective is *not* "the row count whose worst row draws the biggest tile" — that objective always
+merges, since one row of `N` cards is never smaller than three rows of the same `N`. Card size is
+the thing that gives; the split is the thing that is kept.
 
 **The battlefield is as wide as the room, and the cards are centred in it.** `W` is the width the
 region actually has; there is no cap on it.
@@ -378,11 +414,16 @@ checkable against):
 | Permanent tile | 72 × 100 | 130 × 182 |
 | Hand card | 100 × 140 | 150 × 209 |
 | Stack item | chip | 130 × 182 |
-| Chip (below card floor) | 96 × 30 | — |
+| Chip (below a legible name) | 96 × 30 | — |
 
 The 72×100 minimum is measured off XMage, which fits a complete name, cost, type line, keyword
 line, and P/T into that box. The hand's minimum is larger because the hand is where a player
 *chooses*, and a name there may never be abbreviated at all.
+
+**"Minimum" here means the size below which the maintainer wants to be told, not the size below
+which the client stops drawing.** See "The floor is soft downward and hard sideways" above: a
+battlefield short of room draws a 64×90 card rather than dropping to a chip, and the fact that it
+had to is worth surfacing.
 
 ### Regions are sized by the viewport. Counts are absorbed by the cards.
 
@@ -518,7 +559,7 @@ Not scaled copies of one another — each drops what it has no room for, in ladd
 | **Full** — preview, inspector | Everything, including complete rules text. |
 | **Designed** — the hand, and a battlefield with the height to spare | Name, cost, art, type line, rules text if it fits at floor, marks. |
 | **Compact** — most battlefields, crowded rows, the Tall band | Name, marks, and the type line where it fits. No rules text; art and cost only if what is left allows. |
-| **Chip** — below a 100px row | Name, P/T, marks. No art. Landscape. |
+| **Chip** — below the row height at which a name can be set at 9px | Name, P/T, marks. No art. Landscape. |
 
 Which one is drawn follows from the box available, never from the call site: a battlefield card and
 a hand card of the same size are the same card.
@@ -567,8 +608,10 @@ its drawn text.
 **No presentation abbreviates a name in the hand, at any supported size**, and no presentation
 anywhere abbreviates below what keeps a card recognisable. At the 72px minimum a 9px name yields
 roughly 13 characters a line and 26 across two — enough for `Exclusion Ritual` and
-`Vraska, Golgari…`. If a name cannot be fitted at the floor, the box was sized wrong; that is a
-sizing defect to fix in §5, not a permitted state.
+`Vraska, Golgari…`. A card drawn below that minimum still fits its name — the name is what the
+whole tier exists to carry, and the point at which it can no longer be set at 9px is exactly where
+the card becomes a chip (§5, "The floor is soft downward"). So an abbreviated name is never a
+permitted state at any size: either the name fits, or the tile was never a card.
 
 ---
 
