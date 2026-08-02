@@ -181,9 +181,16 @@ const GAP_MIN = 4
 const GAP_SHARE = 0.07
 const GAP_MAX = 10
 
-/** Between the lines of a row that wrapped, and between the rows of a field. */
+/** Between the lines of a row that wrapped. */
 const LINE_GAP = 4
-const ROW_GAP = 6
+/**
+ * Between the rows of a field.
+ *
+ * Exported because `scene.ts` budgets a field for a number of rows and has to charge the same gaps
+ * this will draw between them — a budget that ignored them would hand back a field a row short of
+ * what it was meant to hold, which is how a threshold ends up six pixels out of step.
+ */
+export const ROW_GAP = 6
 
 /** The field's own edge. Horizontal only: vertical inset is height the scene already budgeted. */
 const INSET = 4

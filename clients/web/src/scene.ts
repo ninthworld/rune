@@ -58,10 +58,13 @@
  *   *designed* sizes survive, and that is now something the allocation below answers rather than
  *   something a band asserts, so the band is chosen by ratio alone once the Short floor is past.
  * - §4's Tall row says rows merge and §3 puts merging *after* chips. Merging is what keeps a
- *   permanent a card on a phone — one row of 163px beats two of 81px — so it is applied first,
+ *   permanent a card on a phone — one row of 163px beats three of 51px — so it is applied first,
  *   and by the room a field actually got rather than by the band. A 844px-tall phone keeps its
  *   rows split; a 667px one merges them; both keep card faces, which is what §4 promises.
  */
+
+import { CARD_MIN_HEIGHT } from './fit'
+import { ROW_GAP } from './pack'
 
 /** Which arrangement §4 puts this shape of screen in. */
 export type Band = 'ultrawide' | 'wide' | 'square' | 'tall' | 'short' | 'unsupported'
@@ -221,8 +224,24 @@ const HAND_PEEK = 48
 const HAND_FROM = 480
 /** §5's chip is 96×30. A field that has gone to chips still draws one row of them. */
 const CHIP_ROW = 36
-/** §5's permanent tile: 72×100 at the floor — which is §3 step 5's threshold — and 130×182. */
+/**
+ * §5's permanent tile: 72×100 at the minimum, 130×182 designed.
+ *
+ * The minimum is a **review threshold** and not a switch (§3, §5): a row under it draws a smaller
+ * card rather than a chip, and says that it had to. It is what a field *asks* for — the height it
+ * claims before anything else buys its designed size — and never what it settles for.
+ */
 const CARD_ROW: Size = { min: 100, designed: 182 }
+/**
+ * The height below which a row cannot set a name, and so cannot draw a card at all.
+ *
+ * `fit.ts`'s, derived from §2's 9px type floor, and imported rather than restated: this is the one
+ * threshold in the whole layout that decides whether a permanent is a card or a chip, and a copy
+ * of it here is a second number to keep in step. It is what the *bottom* of the ladder is measured
+ * against — where the rows merge, and where a field is a chip board — while the review threshold
+ * above is what the budget aims at.
+ */
+const CARD_MIN = CARD_MIN_HEIGHT
 /** Preview, log, and settle as a column. Below its floor it is a drawer instead (§3, step 8). */
 const SIDE: Size = { min: 260, designed: 320 }
 /** §4, Ultrawide: the board's content is held to a width a glance does not have to travel. */
@@ -230,14 +249,37 @@ const BOARD_MAX = 1440
 /** The width the board keeps whatever else happens: a rail falls back to its floor before this does. */
 const BOARD_MIN = 320
 /**
- * How many rows a split battlefield is budgeted for.
+ * How many rows a split battlefield is budgeted for: **every row the board can produce.**
  *
- * `board.ts` produces up to three — creatures, other permanents, lands — and the third is the
- * exception rather than the rule. Budgeting every field for it would spend a third of every
- * battlefield on a row most boards never draw, and it would put §4's own promise out of reach:
- * a portrait phone cannot keep card faces if its field is cut three ways.
+ * `board.ts` produces three — creatures, other permanents, lands — and §5 says a field draws one
+ * row per group it produced, a count that does not fall to buy card size. A field budgeted for two
+ * is therefore a field that is one row short of what it will be asked to draw, and the third row
+ * comes out of the other two.
+ *
+ * It was 2, and the argument for it was that a portrait phone cannot keep card faces if its field
+ * is cut three ways. That was true while the 100px row was a hard floor and anything under it was a
+ * chip; #685 made the floor soft downward, so a field cut three ways draws *smaller cards* and the
+ * argument no longer holds. What the old constant did instead was hand 1280×720 and 1440×900 a
+ * field sized for two rows and three rows to put in it, which is 47×66 and 54×76 tiles and names
+ * cut at the 9px floor — the same class of consequence as every other rule that outlived the floor
+ * it was written against.
+ *
+ * **It is a constant, and it stays one.** A field budgeted for the rows the board *currently* has
+ * would be a region sized by its contents, which is the one thing §5 forbids outright: both
+ * battlefields are this height whether they hold three rows, one, or none.
  */
-const SPLIT_ROWS = 2
+const SPLIT_ROWS = 3
+
+/**
+ * What a split field costs at a given per-row height — the rows, and the gaps `pack.ts` draws
+ * between them.
+ *
+ * The gaps are charged here because they are charged there. A budget of `rows × height` hands back
+ * a field that is exactly `(rows - 1) × ROW_GAP` short of holding what it was budgeted for, and a
+ * threshold six pixels out of step is how a board ends up one row smaller than the arithmetic that
+ * sized it believed.
+ */
+const fieldOf = (row: number): number => SPLIT_ROWS * row + (SPLIT_ROWS - 1) * ROW_GAP
 
 /** Every rail at its designed width — what the full arrangement costs the width. */
 const RAILS = TURN_RAIL.designed + STACK_RAIL.designed
@@ -394,12 +436,12 @@ function columnHeights(available: number, asking: boolean, handFloor: number): C
   dock = lower(dock, 0, 1)
   seat = lower(seat, 0, 2)
 
-  field = raise(field, SPLIT_ROWS * CARD_ROW.min, 2)
+  field = raise(field, fieldOf(CARD_ROW.min), 2)
   seat = raise(seat, SEAT.designed, 2)
   dock = raise(dock, DOCK.designed, 1)
   if (asking) dock = raise(dock, DOCK_ASKING, 1)
   hand = raise(hand, HAND.designed, 1)
-  field = raise(field, SPLIT_ROWS * CARD_ROW.designed, 2)
+  field = raise(field, fieldOf(CARD_ROW.designed), 2)
   if (left > 0) field += Math.floor(left / 2)
 
   return { seat, field, dock, hand }
@@ -567,26 +609,41 @@ export function scene(viewport: Viewport, counts: SceneCounts): Scene {
 /**
  * Which steps of §3 the allocation ended up needing.
  *
- * Rows merge before faces become chips, and both are decided by the height a battlefield got —
- * a height both of them got, so there is one answer here and not one per seat. A field with room
- * for two rows of card faces keeps them apart, because a row is how a board is read by *where
- * things are*; a field without that room is better as one row of taller cards than as two rows
- * of chips, since §4's rule is that height decides whether a permanent is a card at all.
+ * Both answers are read off the height a battlefield got — a height both fields got, so there is
+ * one answer here and not one per seat — and **both are measured against the bottom of the ladder
+ * rather than against §5's review threshold.** That is the correction #685 forces: a row under
+ * 100px is not a chip row, it is a row of smaller cards, so a threshold written at 100 gives up a
+ * step of the ladder a whole tier early.
+ *
+ * **Rows merge when a row could no longer set a name.** Not when the rows would be small — the
+ * split is what a board is read by, and §5 is explicit that the row count does not fall to buy
+ * card size. It falls when there is nothing left to fall back on, which is a field that cannot
+ * give every row the height a 9px name needs, gaps included.
+ *
+ * **The field is a chip board when the field itself cannot hold a card at §5's minimum.** Below
+ * that the whole region is the bottom of the ladder and a landscape chip carries a name better
+ * than the portrait tile the height affords — which is precisely why §5's chip is landscape. Above
+ * it the scene says nothing about the tier and the *row* decides, through `presentationFor` on the
+ * box it actually got: no surface names its own tier (§6), and the scene is a surface here.
  *
  * A merged field is a crowded field by definition, which is exactly §6's Compact presentation —
- * so the designed presentation is reserved for a board that still has its rows.
+ * so the designed presentation is reserved for a board that still has its rows, and with three of
+ * them it is a board no supported viewport is tall enough to buy. That is the honest answer rather
+ * than a shortfall: 1440p draws three rows of 162px tiles, and `presentationFor` still calls a
+ * 116×162 tile designed, because what a *card* is comes from its box and never from this word.
  *
  * Nothing here consults a count, so the flags describe the room unconditionally: an empty table
  * reports the arrangement it will still be in once both seats are full.
  */
 function ladderFor(collapsed: boolean, field: number, sideColumn: boolean): SceneLadder {
-  const rows = field >= SPLIT_ROWS * CARD_ROW.min ? 'split' : 'merged'
-  const rowHeight = rows === 'split' ? Math.floor(field / SPLIT_ROWS) : field
+  const rows = field >= fieldOf(CARD_MIN) ? 'split' : 'merged'
+  const rowHeight =
+    rows === 'split' ? Math.floor((field - (SPLIT_ROWS - 1) * ROW_GAP) / SPLIT_ROWS) : field
   return {
     rails: collapsed ? 'collapsed' : 'full',
     rows,
     cardTier:
-      rowHeight < CARD_ROW.min
+      field < CARD_ROW.min
         ? 'chip'
         : rows === 'merged' || rowHeight < CARD_ROW.designed
           ? 'compact'
