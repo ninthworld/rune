@@ -175,6 +175,16 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   which is what makes a one-click action safe. A click is routed to the slot the server listed
   that id in, never to a cursor the client advances; that is what lets one action ask "who
   attacks" and "what does each attack" at the same time.
+- `src/connect.ts` — where this client connects and who it says it is, both device-local in the
+  manner of ADR 0012's art preference. The server list is **client-side configuration**: the
+  protocol has no server directory and this is not one, `PUBLIC_SERVERS` is empty because none is
+  public yet, and the custom entry is what keeps a table in a file from being a limitation. It
+  **extends** `socket.ts`'s address precedence rather than replacing it — `?server=` still
+  outranks everything, then this device's choice, then the build-time value and the page's origin.
+- `src/shell.ts` — the three destinations, in order. **Which destination you are on is the
+  client's answer; which contract you are on is the server's.** That is what keeps "no
+  client-held phase" true while a player walks to their decks and back: a `GameView` arriving
+  replaces the whole shell because the contract changed; choosing Decks replaces nothing.
 - `src/socket.ts`, `src/useSession.ts` — the connection, and the latest frame it delivered. A
   dropped socket retries on its own and says `hello` with the stored token, which is what
   reclaims a held-open seat; the server answers by putting the connection back on whatever
@@ -230,17 +240,35 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   the whole stop preference on the same row as the strip it applies to — each shortcut printed
   on the control that duplicates it, because a shortcut nobody can find is a shortcut nobody
   uses.
-  `src/ui/lobby/` holds the pre-game surfaces — table directory, table form, seat roster, deck
-  panel, deck builder — with `Lobby.tsx` composing them the same way. Which of the two pre-game
-  screens is on is the server's answer, not a client-held phase: a `LobbyView` with a `room` is a
-  table you are at, one without it is the directory. One form serves creating *and* editing a
-  table, because `create_room` and `update_room` both carry a whole `RoomConfig`; every choice in
-  it — the formats, that format's seat range, the AI kinds — comes from the `CatalogView`, which
-  is requested per socket and is the reason nothing here hardcodes a `game_setup` id. The builder
-  draws catalog cards through the same `Card` the table does. Submit is offered whenever
-  `submit_deck` is advertised and is never gated on the client's own arithmetic.
+  Before a game there is a **shell** and not a table (`docs/client-design.md` §9): `ui/Connect.tsx`
+  asks who you are and where — a name prefilled from the last one this device used, a server list
+  carrying each entry's region, and the gear, so card art can be chosen before ever joining;
+  `ui/shell/Shell.tsx` is the rail of destinations with identity at its foot, becoming a bar at
+  narrow widths with the same destinations in the same order; `ui/shell/SettingsScreen.tsx` is
+  everything about the device, sectioned, and is where card art stopped being a header button.
+  `ui/controls.tsx` is the reason none of it is a form: **no native form control** — a `<select>`
+  clips its own arrow at 120% zoom — so `Choice` (every option on screen) and `Picker` (a listbox
+  that opens, for the sets too long to show) are the two shapes a choice comes in, with the
+  keyboard parity a select has, and what an option *is* rides on the option rather than beside
+  the control forever.
+  `src/ui/lobby/` holds the pre-game content — the tables list, the table form, the seats, the
+  deck panel, the builder — with `Lobby.tsx` holding the two things both destinations need, the
+  catalog and the deck draft. Which of the two Play screens is on is the **server's** answer, not
+  a client-held phase: a `LobbyView` with a `room` is a table you are at, one without it is the
+  directory. What a table is waiting on is drawn as a mark **on the seat it belongs to**, never
+  summarised in a sentence underneath; occupancy is a run of pips; and no room id is printed
+  where a player has no use for one. One form serves creating *and* editing a table, because
+  `create_room` and `update_room` both carry a whole `RoomConfig`; every choice in it — the
+  formats, that format's seat range, the AI kinds, the starter decks — comes from the
+  `CatalogView` or the shared deck data, which is the reason nothing here hardcodes a
+  `game_setup` id. Decks is a destination whose only job is the route: it renders the builder and
+  knows nothing about how a deck is built. Submit is offered whenever `submit_deck` is advertised
+  and is never gated on the client's own arithmetic.
 - `src/index.css`, `src/styles/` — the dressing, split along the surfaces it covers: the page
-  itself, then `cards.css`, `game.css`, `lobby.css`. Imports come first, as the cascade requires.
+  itself, then `cards.css`, `game.css`, `dock.css`, `side.css`, `shell.css`, `lobby.css`. Imports
+  come first, as the cascade requires. The shell's rules are **scoped under `.app`** wherever they
+  name a word the board also uses — `field` is a battlefield, `seat` is a player's half of the
+  table, `pip` is a mana symbol — because one unscoped rule here restyles the game.
 - `e2e/smoke.spec.ts` — the blocking gate: one path against the real server.
 - `e2e/*views.spec.ts` — the non-blocking tier: committed fixtures replayed over an
   intercepted socket, no server involved. More than one file, sharing `e2e/frames.ts`; the

@@ -95,6 +95,19 @@ describe('sending', () => {
     expect(sent).toEqual(['{"type":"hello"}'])
   })
 
+  it('survives a socket that refuses the send', () => {
+    // A real `WebSocket` throws if you send while it is CLOSING, and that window is open
+    // between the call that closed it and the event that reports it — which is where a screen
+    // re-mounting after a deliberate restart lands. The message is lost either way; taking the
+    // page down with it is the part that must not happen.
+    const { socket, connection } = harness()
+    socket.onopen?.({})
+    socket.send = () => {
+      throw new Error('WebSocket is already in CLOSING or CLOSED state.')
+    }
+    expect(() => connection.send({ type: 'request_catalog' })).not.toThrow()
+  })
+
   it('sends an in-game message on the same socket', () => {
     // The server switches this socket from the lobby contract to the in-game one without
     // reconnecting, so both message kinds go the same way.

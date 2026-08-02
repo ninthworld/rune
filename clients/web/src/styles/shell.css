@@ -1,0 +1,585 @@
+/* The client shell: connect, the rail, the content region, and the controls all three are made
+   of.
+
+   `docs/client-design.md` §9 settles the register — a shell, not a table and not a room — and
+   the one exemption that follows from it: **the lobby does not use `scene()`**. Its content is a
+   list whose length the server decides, not a board whose geometry a viewport decides, so it is
+   a conventional responsive composition and it is the one place in this client where that is
+   correct. Everything else in the document still applies: nothing clipped, nothing below the
+   11px chrome floor, text fitted rather than truncated, and no native form control.
+
+   **A list in the shell may scroll. The board may not.** That is not a softening of §3 — §3 is
+   about the board, and a table directory is not the board. The rule this file keeps is narrower
+   and stricter: exactly one region scrolls, the content region, and the rail never moves when it
+   does. A scrollbar anywhere else here is a defect.
+
+   The dressing is the table's own, because a dark felt board reached through a page of default
+   form controls reads as two applications: same felt, same panels, same accent spent only on the
+   thing the player is being asked to do next. */
+
+/* The shell owns the viewport, the way the table does. It is fixed rather than sized in `dvh`
+   so a mobile browser's collapsing address bar cannot put the rail half a bar off the screen. */
+body:has(.app) {
+  padding: 0;
+}
+
+main:has(.app) {
+  max-width: none;
+  margin: 0;
+}
+
+.app {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--felt);
+  color: var(--ink);
+}
+
+/* A banner about the connection, not about the game: it takes the room it needs at the top and
+   the shell takes the rest, so nothing it says can push a destination off the screen. */
+.app > .notice {
+  flex: 0 0 auto;
+  margin: 0.5rem;
+  font-size: var(--text-sm);
+}
+
+/* The page's default rule between sections is a document's way of grouping, and §9.2 rule 4
+   retires it: grouping is what space and alignment are for. */
+.app section {
+  border-top: none;
+}
+
+.app h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+  letter-spacing: 0.04em;
+}
+
+.app h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+  color: var(--ink-dim);
+  letter-spacing: 0.02em;
+}
+
+/* ---------------------------------------------------------------------------
+   Connect
+   --------------------------------------------------------------------------- */
+
+.connect {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  padding: 1rem;
+}
+
+.connect__panel {
+  width: min(30rem, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 1.25rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--line);
+  background: linear-gradient(var(--panel), color-mix(in srgb, var(--panel) 70%, var(--felt)));
+}
+
+.connect__head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.connect__head h1 {
+  flex: 1;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.connect__gear {
+  font-size: var(--text-lg);
+  padding: 0.3rem 0.5rem;
+}
+
+.connect__servers {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.connect__go {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.connect__status {
+  font-size: var(--text-xs);
+  color: var(--ink-dim);
+}
+
+/* ---------------------------------------------------------------------------
+   The rail, and the content beside it
+   --------------------------------------------------------------------------- */
+
+.shell {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr);
+}
+
+.shell__rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.9rem 0.6rem;
+  border-inline-end: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 45%, var(--felt));
+  min-width: 0;
+}
+
+.shell__mark {
+  font-size: var(--text-md);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--ink-faint);
+  padding-inline: 0.4rem;
+}
+
+.shell__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.shell__go {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 0.35rem;
+  background: none;
+  color: var(--ink-dim);
+  font-size: var(--text-md);
+  text-align: start;
+  cursor: pointer;
+}
+
+.shell__go:hover,
+.shell__go:focus-visible {
+  background: color-mix(in srgb, var(--panel) 80%, var(--felt));
+  color: var(--ink);
+}
+
+/* The destination in force, drawn the way the near half of the board is: brighter, because it
+   is where you are. */
+.shell__go--on {
+  background: var(--board-you);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+  color: var(--ink);
+}
+
+.shell__glyph {
+  font-size: var(--text-md);
+}
+
+/* Identity at the foot: what the server calls you, not a box asking who you are. It wraps
+   rather than truncating, because §7's fitting rule holds here too and `Ari the Kitchen…` is
+   not a name. */
+.shell__you {
+  margin: auto 0 0;
+  padding: 0.4rem 0.5rem;
+  font-size: var(--text-xs);
+  line-height: 1.25;
+  color: var(--ink-faint);
+  overflow-wrap: anywhere;
+}
+
+/* The one region in this client that scrolls, and it says so here rather than by accident. */
+.shell__content {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 1rem 1.25rem 1.5rem;
+}
+
+/* Narrow: the rail becomes a bar across the bottom. The destinations and their order do not
+   change (§9.4), so the same three things are in the same sequence whichever shape it is in.
+   The bar goes at the bottom because a 640×360 viewport can spare 2.5rem of height far more
+   easily than a 10rem column of its width. */
+@media (max-width: 59.99rem) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .shell__rail {
+    grid-row: 2;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.6rem;
+    border-inline-end: none;
+    border-block-start: 1px solid var(--line);
+  }
+
+  .shell__mark {
+    display: none;
+  }
+
+  .shell__list {
+    flex-direction: row;
+    flex: 1;
+  }
+
+  .shell__go {
+    justify-content: center;
+  }
+
+  .shell__you {
+    margin: 0;
+    max-width: 8rem;
+    text-align: end;
+  }
+
+  .shell__content {
+    padding: 0.75rem;
+  }
+}
+
+/* Narrower still: the glyph carries the destination and the label rides under it, because two
+   words side by side at 390px is what pushes a bar into two rows. */
+@media (max-width: 30rem) {
+  .shell__go {
+    flex-direction: column;
+    gap: 0.1rem;
+    padding: 0.3rem 0.25rem;
+    font-size: var(--text-xs);
+  }
+
+  .shell__you {
+    max-width: 4.5rem;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   A page inside the content region
+   --------------------------------------------------------------------------- */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  max-width: 68rem;
+}
+
+.page__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.page__head h1 {
+  margin-inline-end: auto;
+  overflow-wrap: anywhere;
+}
+
+.page__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-inline-start: auto;
+}
+
+.page__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.9rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 80%, var(--felt));
+}
+
+.page__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.6rem;
+}
+
+.page__pending {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--ink-dim);
+  max-width: 40rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Controls
+   --------------------------------------------------------------------------- */
+
+.app button {
+  padding: 0.35rem 0.7rem;
+  border-radius: 0.35rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 85%, var(--felt));
+  color: var(--ink);
+  font-size: var(--text-md);
+  cursor: pointer;
+}
+
+.app button:hover:not(:disabled),
+.app button:focus-visible:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: var(--panel);
+}
+
+.app button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* The one action a region is *for* carries the accent, and only one per region does. */
+.app .page__lead:not(:disabled),
+.app .connect__connect:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+  color: var(--accent);
+}
+
+/* Scoped, because `.field` is a **battlefield** in `game.css`: a bare rule of that name here
+   would restyle half the table. Everything in this file that names a word the board also uses
+   is scoped the same way, and the controls below deliberately are not — they are drawn by the
+   game's own settings panel as well as by this one. */
+.app .field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.field__label {
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.app .field__input {
+  padding: 0.4rem 0.55rem;
+  border-radius: 0.35rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--felt) 70%, var(--panel));
+  color: var(--ink);
+  font-size: var(--text-md);
+  min-width: 0;
+}
+
+.app input {
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.35rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--felt) 70%, var(--panel));
+  color: var(--ink);
+  font-size: var(--text-md);
+  min-width: 0;
+}
+
+.app input:focus-visible,
+.app button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 1px;
+}
+
+.app .field__hint {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+
+/* A choice: every option on screen, one of them taken. The option is a box rather than a row of
+   words because what it carries — a region, a description, a format's deck rules — belongs *on*
+   the option, at the moment the choice is being made (§9.2 rule 1). */
+.choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.choice--columns {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.choice__option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.35rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 85%, var(--felt));
+  color: var(--ink);
+  font-size: var(--text-md);
+  text-align: start;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.choice__option:hover,
+.choice__option:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: var(--panel);
+}
+
+/* The option in force. A slightly lighter box was not a statement anybody could find on a dark
+   ground at a glance — which is §9.2's second rule failing on the control that *is* the state —
+   so the chosen option carries an accent edge as well, and the edge is the loud part. */
+.choice__option--on {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
+  background: var(--board-you);
+  box-shadow: inset 0.15rem 0 0 var(--accent);
+}
+
+.choice__label {
+  font-size: var(--text-md);
+  overflow-wrap: anywhere;
+}
+
+.choice__detail {
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  color: var(--ink-dim);
+  overflow-wrap: anywhere;
+}
+
+/* A picker: one button and a list that opens, for the sets a choice cannot show at once. */
+.picker {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+
+.picker__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0.35rem 0.7rem;
+  border-radius: 0.35rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 85%, var(--felt));
+  color: var(--ink);
+  font-size: var(--text-md);
+  cursor: pointer;
+}
+
+.picker__value {
+  overflow-wrap: anywhere;
+  text-align: start;
+}
+
+.picker__caret {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+
+.picker__list {
+  position: absolute;
+  z-index: 20;
+  inset-block-start: calc(100% + 0.25rem);
+  inset-inline-start: 0;
+  min-width: 100%;
+  max-width: min(20rem, 90vw);
+  /* The list of a picker is the one thing here allowed a scrollbar besides the content region:
+     it is a popup over the page, opened on demand, and it closes again. */
+  max-height: min(16rem, 50vh);
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0.2rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 0.5rem 1.5rem #0009;
+}
+
+.picker__option {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 0.3rem;
+  background: none;
+  color: var(--ink);
+  font-size: var(--text-md);
+  text-align: start;
+  cursor: pointer;
+}
+
+.picker__option:hover,
+.picker__option:focus-visible {
+  background: color-mix(in srgb, var(--panel) 60%, var(--felt));
+}
+
+.picker__option--on {
+  color: var(--accent);
+}
+
+/* A chip: one stated fact, small, scannable, and never a sentence. */
+.chip {
+  padding: 0.1rem 0.45rem;
+  border-radius: 0.8rem;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  color: var(--ink-dim);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.chip--id code {
+  font-family: ui-monospace, monospace;
+  color: var(--ink-faint);
+}
+
+/* ---------------------------------------------------------------------------
+   Settings
+   --------------------------------------------------------------------------- */
+
+.settings__cache {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.settings__count {
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings__unit {
+  font-size: var(--text-xs);
+  color: var(--ink-dim);
+}

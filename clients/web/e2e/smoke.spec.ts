@@ -23,27 +23,40 @@ test('a fresh page to a played action, a reload, and a conceded game', async ({ 
 
   await page.goto('/')
 
-  // 1. The lobby, from the server's own first frame.
+  // 1. Connect: a name and a server, before the shell (`docs/client-design.md` §9.3). The
+  //    socket is already open to the address `socket.ts` resolved, so this is the client
+  //    saying who it is on a connection the server has already answered.
   await expect(page.getByRole('heading', { name: 'SAGE' })).toBeVisible()
-  await expect(page.getByText(/^You are /)).toBeVisible()
+  await page.getByLabel('Name').fill('Smoke')
+  await page.getByRole('button', { name: 'Connect' }).click()
+
+  // The shell, and the name the server took: `set_name` is a real round trip on the lobby
+  // contract, and the rail's foot shows what came back rather than what was typed.
+  const rail = page.getByRole('navigation', { name: 'Destinations' })
+  await expect(rail).toContainText('Smoke')
 
   // 2. A table, created from the server's own catalog. The format list is not in this build:
   //    it arrives in the `CatalogView` answering the `request_catalog` this screen sends, so
-  //    the select being populated at all is a second real round trip on the lobby contract.
-  await page.getByRole('button', { name: 'Create a table' }).click()
-  await expect(page.getByLabel('Format')).toBeVisible()
+  //    the control being populated at all is another real round trip on the lobby contract.
+  await page.getByRole('button', { name: 'New table' }).click()
+  await expect(
+    page.getByRole('radiogroup', { name: 'Format' }).getByRole('radio').first(),
+  ).toBeVisible()
   await page.getByRole('button', { name: 'Create the table' }).click()
   await expect(page.getByRole('region', { name: 'Table', exact: true })).toBeVisible()
 
   // 3. A deck, an opponent, and a ready signal — each gated on `valid_commands`, so each
   //    control appearing at all is the server saying the step is available now.
-  await page.getByLabel('Starter deck').selectOption({ index: 1 })
-  await page.getByRole('button', { name: /^Submit deck/ }).click()
+  await page.getByRole('button', { name: 'Starter deck' }).click()
+  await page.getByRole('option').first().click()
+  await page.getByRole('button', { name: 'Submit deck' }).click()
   await expect(page.getByText('Deck submitted').first()).toBeVisible()
 
-  // The AI kinds are the catalog's too, so this click is only possible because the catalog
-  // arrived — and the deck it seats the bot with is validated exactly like a human's.
+  // The AI kinds are the catalog's too, so seating one is only possible because the catalog
+  // arrived — and the deck it seats the bot with is validated exactly like a human's. The
+  // choice opens on the seat being filled, so it is two clicks: open it, then take it.
   await page.getByRole('button', { name: 'Seat an AI opponent' }).click()
+  await page.getByRole('button', { name: 'Seat', exact: true }).click()
   await expect(page.getByText('AI', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Ready' }).click()
@@ -122,7 +135,10 @@ test('a fresh page to a played action, a reload, and a conceded game', async ({ 
   // 9. And the way out: leaving gives up the token that holds the seat, so the next connection
   //    is a new session and lands in the lobby.
   await result.getByRole('button', { name: 'Back to the lobby' }).click()
-  await expect(page.getByText(/^You are /)).toBeVisible({ timeout: 20_000 })
+  // Back in the shell, not back at the connect screen: giving up a seat gives up a token, not
+  // the server this tab is talking to.
+  await expect(rail).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('region', { name: 'Tables' })).toBeVisible({ timeout: 20_000 })
 
   expect(failures, 'the page threw while playing').toEqual([])
 })

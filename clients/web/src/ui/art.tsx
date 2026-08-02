@@ -99,6 +99,23 @@ export function useArtPreference(): {
   return { preference, setPreference, clear }
 }
 
+/**
+ * How many cards this device has cached, live.
+ *
+ * The settings surface asks what is on the device and offers to clear it (§9.6), and both halves
+ * of that have to move together — a count that did not fall to zero when the button was pressed
+ * would read as a button that did nothing.
+ */
+export function useArtCache(): number {
+  const { store } = useContext(ArtContext)
+  const subscribe = useCallback((listener: () => void) => store.subscribe(listener), [store])
+  return useSyncExternalStore(
+    subscribe,
+    () => store.cached(),
+    () => 0,
+  )
+}
+
 /** A texture for one card, and how it should be presented. `undefined` means draw procedurally. */
 export interface CardArtTexture {
   url: string

@@ -94,6 +94,24 @@ export function tables(view: LobbyView): readonly TableEntry[] {
   })
 }
 
+/**
+ * One thing a seat has or has not done, as a mark on that seat.
+ *
+ * The marks are `docs/client-design.md` §9.2's second rule made concrete: what a table is
+ * waiting on is drawn **on the seat it belongs to**, as a mark that is either met or not, rather
+ * than restated underneath as a sentence about seats the reader can already see. A mark's word
+ * does not change with its state — `Deck` lit and `Deck` unlit are the same fact answered two
+ * ways — because a label that rewrote itself would have to be read rather than scanned.
+ */
+export interface SeatMark {
+  /** The word, drawn. */
+  label: string
+  /** Whether the server stated this flag true. */
+  met: boolean
+  /** The whole fact in words, for assistive technology, which cannot perceive lit or unlit. */
+  detail: string
+}
+
 /** One seat of the room this connection is in. */
 export interface SeatRow {
   seat: number
@@ -105,8 +123,8 @@ export interface SeatRow {
   ai?: string
   decked: boolean
   ready: boolean
-  /** The stated flags as words, in reading order. */
-  status: readonly string[]
+  /** What this seat still owes, as marks. Empty for a seat nobody is in: it owes nothing yet. */
+  marks: readonly SeatMark[]
   /** The first stated flag that is still false, or `undefined` when the seat is set. */
   awaiting?: string
 }
@@ -134,11 +152,14 @@ function seatRow(
   const occupied = seat.occupied_by !== undefined || seat.ai !== undefined
   const decked = seat.decked === true
   const ready = seat.ready === true
-  const status: string[] = []
-  if (!occupied) status.push('Open')
-  if (seat.ai !== undefined) status.push('AI')
-  if (decked) status.push('Deck submitted')
-  if (ready) status.push('Ready')
+  // A seat nobody is in owes neither of these: what it is waiting on is somebody, and that is
+  // the seat itself rather than a mark on it.
+  const marks: SeatMark[] = occupied
+    ? [
+        { label: 'Deck', met: decked, detail: decked ? 'Deck submitted' : 'No deck yet' },
+        { label: 'Ready', met: ready, detail: ready ? 'Ready' : 'Not ready' },
+      ]
+    : []
 
   return {
     seat: seat.seat,
@@ -152,7 +173,7 @@ function seatRow(
     ai: seat.ai,
     decked,
     ready,
-    status,
+    marks,
     awaiting: !occupied
       ? 'Nobody here yet'
       : !decked
@@ -162,16 +183,3 @@ function seatRow(
           : undefined,
   }
 }
-
-/**
- * What the room is still waiting for, one sentence per seat that is not set.
- *
- * The gate itself is the server's: it constructs the game the instant every seat is filled,
- * decked, and ready (`docs/protocol.md`). This restates which of those the server has not yet
- * reported for each seat, so a player waiting at a table can see what the wait is — an empty
- * list means every seat reported all three, not that the client decided the game may begin.
- */
-export const awaiting = (rows: readonly SeatRow[]): readonly string[] =>
-  rows
-    .filter((row) => row.awaiting !== undefined)
-    .map((row) => `Seat ${row.seat + 1} — ${row.awaiting}`)
