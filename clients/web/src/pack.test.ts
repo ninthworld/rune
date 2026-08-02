@@ -252,28 +252,102 @@ describe('a field, divided into rows', () => {
 })
 
 describe('how many rows a table draws', () => {
+  const SPLIT: FieldOptions = { rows: 'split', cardTier: 'compact' }
+  /** A half with this many groups, uncrowded: two permanents in each, in a 1400px row. */
+  const half = (groups: number): number[] => Array.from({ length: groups }, () => 2)
+  /** The table, said as how many groups each half has. Crowding is a separate case below. */
   const AT = (height: number, groups: number[], tier: FieldOptions['cardTier'] = 'compact') =>
-    fieldSlots({ width: 1400, height }, groups, { rows: 'split', cardTier: tier })
+    fieldSlots({ width: 1400, height }, groups.map(half), { rows: 'split', cardTier: tier })
+  /** `Battlefield.tsx`'s collapse, as counts: the groups furthest from the middle merge first. */
+  const collapse = (counts: readonly number[], rows: number): readonly number[] =>
+    counts.length <= rows
+      ? counts
+      : [...counts.slice(0, rows - 1), counts.slice(rows - 1).reduce((all, one) => all + one, 0)]
+  /** The smallest card on a packed field, which is what a board's readability is. */
+  const smallest = (plan: { rows: readonly { pack: PackedRow }[] }): number =>
+    plan.rows.reduce((least, row) => Math.min(least, row.pack.width), Infinity)
 
-  /** One row per group the table needs, while every one of them still holds a card face. */
-  it('gives the table a row for every group the busiest half has', () => {
-    expect(AT(229, [2, 2])).toBe(2)
-    expect(AT(200, [2, 1])).toBe(2)
+  /** The height at which two rows and one row draw the same card: 2 × 182, and the gap between. */
+  const TWO_ROWS = 2 * CARD_DESIGNED.height + 6
+  /** And three: 3 × 182, and two gaps. */
+  const THREE_ROWS = 3 * CARD_DESIGNED.height + 12
+
+  /**
+   * The split is kept while it is *free* — while the rows it makes still draw the same card the
+   * merged row would. Rows count for exactly one thing and it is this tie-break, because the scan
+   * by category costs nothing here.
+   */
+  it('gives the table every row it can draw without shrinking the card', () => {
+    expect(AT(TWO_ROWS, [2, 2])).toBe(2)
+    expect(AT(TWO_ROWS, [3, 2])).toBe(2)
+    expect(AT(THREE_ROWS, [3, 2])).toBe(3)
+    expect(AT(THREE_ROWS, [2, 2])).toBe(2)
     expect(AT(400, [1, 1])).toBe(1)
-    expect(AT(400, [3, 2])).toBe(3)
   })
 
   /**
-   * And merges when they will not, which is §3's order stated outright: merging is step 5 and
-   * chips are step 6, so the rows go before the faces do. The third row is the case the scene
-   * cannot see, because it funds two.
+   * And merges the moment the split would cost card size, which is §3's "More screen is never a
+   * worse board" applied to the one decision that can violate it. **This is not a floor test.**
+   * Three rows of 100px-and-a-bit each clear the card floor and are still the wrong answer: the
+   * same height merged draws 130×182 cards with complete names, type lines and rules text, and
+   * one row of those beats three rows of clipped 75px ones. Row count maximises card size, not
+   * rows.
    */
-  it('merges when a row would fall under the card floor', () => {
-    expect(AT(199, [2, 2])).toBe(1)
-    expect(AT(200, [2, 2])).toBe(2)
+  it('merges as soon as a row would draw a smaller card', () => {
+    expect(AT(TWO_ROWS - 1, [2, 2])).toBe(1)
+    expect(AT(THREE_ROWS - 1, [3, 2])).toBe(2)
+    // The field that produced the inversion this rule was written for: 319px at 1920×1080, where
+    // three rows each clear the 100px floor and each draw a 73px card.
+    expect(AT(319, [3, 2])).toBe(1)
     expect(AT(229, [3, 2])).toBe(1)
-    expect(AT(299, [3, 2])).toBe(1)
-    expect(AT(300, [3, 2])).toBe(3)
+    expect(AT(199, [2, 2])).toBe(1)
+  })
+
+  /**
+   * And on the count as much as on the height, because a row's tile is decided by both.
+   *
+   * A 390px field with just enough height for two rows of designed cards, and twelve permanents in
+   * three groups: split, one row holds eight and draws them at the 72px floor; merged, the same
+   * height spreads all twelve over three lines of 88px cards. Every row of the split clears the
+   * card floor and is tall enough for a designed card — a rule written on the height alone would
+   * take it — and it is still the smaller card, so it is still the wrong answer.
+   */
+  it('merges where the split’s own rows would be the crowded ones', () => {
+    const table = [
+      [4, 4, 4],
+      [4, 4, 4],
+    ]
+    expect(fieldSlots({ width: 390, height: 370 }, table, SPLIT)).toBe(1)
+    // The same board with room to spread out keeps every row it can.
+    expect(fieldSlots({ width: 1400, height: 370 }, table, SPLIT)).toBe(2)
+  })
+
+  /**
+   * The invariant under all of it, and the reason the property below holds by construction: **the
+   * card the table draws is the card the merged row would have drawn**, whatever row count came
+   * out. A merged row can reproduce any split — the same line height, with the count spread evenly
+   * instead of by category — so merging is never the smaller card, and a split is only ever taken
+   * where it matches it exactly.
+   */
+  it('never trades card size for a row', () => {
+    for (const width of [390, 640, 1000, 1400, 3000]) {
+      for (const height of [100, 150, 199, 229, 300, 319, 370, 499, 560, 800]) {
+        for (const board of [
+          [2, 2],
+          [4, 3, 1],
+          [8, 8, 8],
+          [1, 1, 18],
+          [20, 1],
+        ]) {
+          const box = { width, height }
+          const slots = fieldSlots(box, [board, board], SPLIT)
+          const total = board.reduce((all, one) => all + one, 0)
+          const merged = packField(box, [total], { slots: 1, cardTier: 'compact' })
+          const chosen = packField(box, collapse(board, slots), { slots, cardTier: 'compact' })
+          expect(smallest(chosen)).toBe(smallest(merged))
+        }
+      }
+    }
   })
 
   /** Answered for the table, so the busiest half decides for both of them. */
@@ -291,7 +365,14 @@ describe('how many rows a table draws', () => {
   /** The scene's own answer is never overturned. */
   it('cannot un-merge what the ladder merged', () => {
     expect(
-      fieldSlots({ width: 1400, height: 400 }, [3, 2], { rows: 'merged', cardTier: 'compact' }),
+      fieldSlots(
+        { width: 1400, height: 400 },
+        [
+          [2, 2, 2],
+          [2, 2],
+        ],
+        { rows: 'merged', cardTier: 'compact' },
+      ),
     ).toBe(1)
   })
 })
@@ -320,7 +401,14 @@ describe('every supported viewport, at every count', () => {
     for (const viewport of VIEWPORTS) {
       const { regions, ladder } = scene(viewport, { stackDepth: 1 })
       for (const count of COUNTS) {
-        const slots = fieldSlots(regions.yourField, [3, 2], ladder)
+        const slots = fieldSlots(
+          regions.yourField,
+          [
+            [2, 2, 2],
+            [2, 2],
+          ],
+          ladder,
+        )
         const groups = slots === 1 ? [count] : [count - 1, 1]
         const plan = packField(regions.yourField, groups, { slots, cardTier: ladder.cardTier })
         for (const row of plan.rows) {
@@ -345,6 +433,224 @@ describe('every supported viewport, at every count', () => {
         if (!packed) continue
         if (packed.tier === 'chip') expect(packed.width).toBe(CHIP.width)
         else expect(packed.width).toBeGreaterThanOrEqual(CARD_FLOOR.width)
+      }
+    }
+  })
+})
+
+/**
+ * §3, "More screen is never a worse board", asserted as the property it is stated as.
+ *
+ * **For a fixed board, a card is never smaller on a larger viewport than on a smaller one.** It
+ * is checked by sweeping the supported range rather than by listing viewports and their expected
+ * sizes, and that is the whole point of writing it this way: a table of per-size expectations is
+ * exactly what was in this file when 1440×900 drew one row of 130×182 cards and 1920×1080 —
+ * a *larger* screen, same board — drew three rows of 75px ones. Every number in that table was
+ * green. A sweep compares sizes to each other instead of to a constant, so it fails on the
+ * relationship rather than on a value somebody has to know in advance.
+ *
+ * The whole pipeline is swept, not `packRow` alone: the scene's field, the row count the table
+ * chose, the collapse a half does when it has more groups than the table draws, and the packing
+ * inside the row. The inversion lived in the second of those and was invisible in every one of
+ * the others.
+ */
+describe('more screen is never a worse board', () => {
+  /** Boards a real game reaches, grouped the way `board.ts` groups them. Fixed as the screen moves. */
+  const BOARDS = [1, 5, 12, 20, 40]
+
+  /** Creatures, other permanents, lands — as evenly as that many permanents divide. */
+  const boardOf = (permanents: number): readonly number[] => {
+    const rows = Math.max(1, Math.min(3, permanents))
+    return Array.from({ length: rows }, (_, index) =>
+      Math.floor((permanents + rows - 1 - index) / rows),
+    )
+  }
+
+  /**
+   * How the two tiles compare, negative when the first is the worse board.
+   *
+   * By tier first and width second, because a chip is not a narrow card: going from a chip to a
+   * card is an improvement even where the card is narrower than the 96px chip, and going the
+   * other way is the ladder's step 6 and a loss however wide the chip is. Comparing widths
+   * alone would call `320×480 → 390×844` — chips becoming 72px card faces — a regression.
+   */
+  const rank = (packed: PackedRow): number => (packed.tier === 'chip' ? 0 : 1)
+  const compare = (a: PackedRow, b: PackedRow): number => rank(a) - rank(b) || a.width - b.width
+  const say = (packed: PackedRow): string =>
+    `${packed.width}×${packed.height} ${packed.tier}${packed.lines > 1 ? ` ×${packed.lines}` : ''}`
+
+  /**
+   * What one viewport draws for one board — the *worst* row of it, since a board is only as
+   * readable as the smallest card on it. `undefined` where the viewport is below §1's floor and
+   * there is no board to draw at all.
+   */
+  const tileIn = (
+    field: Box,
+    board: readonly number[],
+    ladder: FieldOptions,
+  ): PackedRow | undefined => {
+    if (field.width <= 0 || field.height <= 0) return undefined
+    const slots = fieldSlots(field, [board, board], ladder)
+    // `Battlefield.tsx`'s collapse: the rows furthest from the dividing line merge first.
+    const counts =
+      board.length <= slots
+        ? board
+        : [
+            ...board.slice(0, slots - 1),
+            board.slice(slots - 1).reduce((sum, count) => sum + count, 0),
+          ]
+    const plan = packField(field, counts, { slots, cardTier: ladder.cardTier })
+    return plan.rows.reduce<PackedRow | undefined>(
+      (worst, row) => (worst === undefined || compare(row.pack, worst) < 0 ? row.pack : worst),
+      undefined,
+    )
+  }
+
+  const tileAt = (
+    viewport: { width: number; height: number },
+    board: readonly number[],
+  ): { tile: PackedRow; field: Box } | undefined => {
+    const { regions, ladder } = scene(viewport, { stackDepth: 1 })
+    const tile = tileIn(regions.yourField, board, ladder)
+    return tile && { tile, field: regions.yourField }
+  }
+
+  /** Every width and height in the supported range, at four-pixel steps. */
+  const WIDTHS = Array.from({ length: (3440 - 320) / 4 + 1 }, (_, index) => 320 + index * 4)
+  const HEIGHTS = Array.from({ length: (1440 - 320) / 4 + 1 }, (_, index) => 320 + index * 4)
+
+  /**
+   * The property over the box `pack.ts` is actually handed, at full strength and with nothing
+   * exempted: **a bigger field never draws a smaller card.**
+   *
+   * This is the half of the promise this module owns, and it is where the defect lived. The
+   * viewport sweeps below are the same property one layer out, and they can only be as good as the
+   * scene's own allocation.
+   */
+  it('never draws a smaller card in a bigger field', () => {
+    const found: string[] = []
+    for (const ladder of [
+      { rows: 'split', cardTier: 'designed' },
+      { rows: 'split', cardTier: 'compact' },
+      { rows: 'split', cardTier: 'chip' },
+      { rows: 'merged', cardTier: 'compact' },
+    ] as const satisfies readonly FieldOptions[]) {
+      for (const permanents of BOARDS) {
+        const board = boardOf(permanents)
+        for (const height of [40, 60, 100, 130, 182, 229, 300, 370, 499, 560, 800]) {
+          let previous: { field: Box; tile: PackedRow } | undefined
+          for (const width of WIDTHS) {
+            const field = { width, height }
+            const tile = tileIn(field, board, ladder)
+            if (!tile) continue
+            if (previous && compare(tile, previous.tile) < 0) {
+              found.push(
+                `${permanents} permanents, ${ladder.rows}/${ladder.cardTier}: ` +
+                  `${previous.field.width}×${previous.field.height} drew ${say(previous.tile)}, ` +
+                  `${width}×${height} draws ${say(tile)}`,
+              )
+            }
+            previous = { field, tile }
+          }
+        }
+        for (const width of [320, 390, 640, 1000, 1440, 3000]) {
+          let previous: { field: Box; tile: PackedRow } | undefined
+          for (let height = 20; height <= 900; height += 2) {
+            const field = { width, height }
+            const tile = tileIn(field, board, ladder)
+            if (!tile) continue
+            if (previous && compare(tile, previous.tile) < 0) {
+              found.push(
+                `${permanents} permanents, ${ladder.rows}/${ladder.cardTier}: ` +
+                  `${previous.field.width}×${previous.field.height} drew ${say(previous.tile)}, ` +
+                  `${width}×${height} draws ${say(tile)}`,
+              )
+            }
+            previous = { field, tile }
+          }
+        }
+      }
+    }
+    expect(found.slice(0, 8), `${found.length} inversions in the field`).toEqual([])
+  })
+
+  /**
+   * The same property from the viewport, which is where a player meets it.
+   *
+   * **One thing is exempted, and only one:** a step at which `scene.ts` handed back a field that is
+   * *smaller* in either dimension than the one before it. There is nothing the packing can do with
+   * a box that shrank, and the scene has several places where a wider or taller viewport produces a
+   * narrower or shorter field — the match line growing 8px at 640px of height, the Short band's
+   * peek strip ending, the stack rail appearing at the Square boundary. Those are `scene.ts`'s and
+   * this file cannot fix them; see the PR that added this test. The exemption is mechanical and
+   * cannot hide a regression here: if the field grew and the card shrank, that is this module's and
+   * it is asserted.
+   */
+  const sweep = (
+    viewports: (step: number) => { width: number; height: number },
+    steps: readonly number[],
+  ): string[] => {
+    const found: string[] = []
+    for (const permanents of BOARDS) {
+      const board = boardOf(permanents)
+      let previous: { at: string; drawn: { tile: PackedRow; field: Box } } | undefined
+      for (const step of steps) {
+        const viewport = viewports(step)
+        const drawn = tileAt(viewport, board)
+        if (drawn === undefined) continue
+        const at = `${viewport.width}×${viewport.height}`
+        const grew =
+          previous !== undefined &&
+          drawn.field.width >= previous.drawn.field.width &&
+          drawn.field.height >= previous.drawn.field.height
+        if (previous && grew && compare(drawn.tile, previous.drawn.tile) < 0) {
+          found.push(
+            `${permanents} permanents: ${previous.at} drew ${say(previous.drawn.tile)}, ` +
+              `${at} draws ${say(drawn.tile)}`,
+          )
+        }
+        previous = { at, drawn }
+      }
+    }
+    return found
+  }
+
+  it('never draws a smaller card on a wider viewport', () => {
+    for (const height of [360, 400, 480, 600, 720, 844, 900, 1080, 1200, 1440]) {
+      const found = sweep((width) => ({ width, height }), WIDTHS)
+      expect(
+        found.slice(0, 8),
+        `${found.length} inversions across the width at ${height}px tall`,
+      ).toEqual([])
+    }
+  })
+
+  it('never draws a smaller card on a taller viewport', () => {
+    for (const width of [390, 640, 844, 1000, 1280, 1440, 1920, 2560, 3440]) {
+      const found = sweep((height) => ({ width, height }), HEIGHTS)
+      expect(
+        found.slice(0, 8),
+        `${found.length} inversions down the height at ${width}px wide`,
+      ).toEqual([])
+    }
+  })
+
+  /** The sizes the inversion was reported at, named so the regression cannot come back quietly. */
+  it('draws 1920×1080 at least as large as 1440×900', () => {
+    for (const permanents of BOARDS) {
+      const board = boardOf(permanents)
+      const small = tileAt({ width: 1440, height: 900 }, board)!.tile
+      for (const viewport of [
+        { width: 1920, height: 1080 },
+        { width: 2560, height: 1440 },
+        { width: 3440, height: 1440 },
+      ]) {
+        const big = tileAt(viewport, board)!.tile
+        expect(
+          compare(big, small),
+          `${permanents} permanents: 1440×900 drew ${say(small)}, ` +
+            `${viewport.width}×${viewport.height} draws ${say(big)}`,
+        ).toBeGreaterThanOrEqual(0)
       }
     }
   })

@@ -41,7 +41,7 @@ import type { Permanent } from './../../protocol'
 import type { CardFace } from './../../card-face'
 import type { RelationLine } from './../../relations'
 import type { SceneLadder } from './../../scene'
-import { boardRows } from './../../board'
+import { boardRows, type BoardGroup } from './../../board'
 import { packField, type Box } from './../../pack'
 import { Card } from './../Card'
 import { RelationTrail } from './RelationTrail'
@@ -53,11 +53,56 @@ export interface FieldEntry {
   lines: readonly RelationLine[]
 }
 
-/** One row as this field will draw it: `board.ts`'s groups, or the single row they merge into. */
+/** One row as this field will draw it: a `board.ts` group, or the row several of them merged into. */
 interface DrawnRow {
   key: string
   label: string
   entries: readonly FieldEntry[]
+}
+
+/**
+ * Give up the split, as far as the table's row count requires.
+ *
+ * `pack.ts` answers how many rows the *table* draws, and it answers it to maximise card size
+ * rather than row count (§3, "More screen is never a worse board"). A half with more groups than
+ * that has to merge some of them, and **which** ones is the only decision here: the rows furthest
+ * from the dividing line go first, so the creature band the two halves meet across is the last
+ * thing to lose its own row. Combat is read along that line, and a board that merged the creatures
+ * into the lands to keep an artifact row would have spent the wrong one.
+ *
+ * The grouping is what is given up — never the ordering, and never which row a permanent belongs
+ * to. Entries stay in `board.ts`'s order inside the merged row exactly as they were in their own.
+ * A mirrored half draws its groups reversed, so the far end of it is the front of the array.
+ */
+function collapse(
+  groups: readonly BoardGroup<FieldEntry>[],
+  slots: number,
+  mirrored: boolean,
+): readonly DrawnRow[] {
+  const rows = Math.max(1, Math.floor(slots))
+  const own = (group: BoardGroup<FieldEntry>): DrawnRow => ({
+    key: group.row,
+    label: group.label,
+    entries: group.entries,
+  })
+  if (groups.length <= rows) return groups.map(own)
+  if (rows === 1) {
+    return [{ key: 'merged', label: 'Permanents', entries: groups.flatMap((row) => row.entries) }]
+  }
+
+  const merging = groups.length - rows + 1
+  const gone = mirrored ? groups.slice(0, merging) : groups.slice(rows - 1)
+  const kept = mirrored ? groups.slice(merging) : groups.slice(0, rows - 1)
+  // Named for what is in it, in the order it is drawn — a screen reader is told the row holds
+  // other permanents and lands, because that is what the row is once the split is given up.
+  const merged: DrawnRow = {
+    key: 'merged',
+    label: gone
+      .map((row, index) => (index === 0 ? row.label : row.label.toLowerCase()))
+      .join(' and '),
+    entries: gone.flatMap((row) => row.entries),
+  }
+  return mirrored ? [merged, ...kept.map(own)] : [...kept.map(own), merged]
 }
 
 export function Battlefield({
@@ -84,12 +129,7 @@ export function Battlefield({
   surface: Surface
 }) {
   const groups = boardRows(entries, (entry) => entry.face.cardTypes, { mirrored: !isYou })
-  // A merged field is one row of everything, in the order `board.ts` put the groups in — the
-  // grouping is what is given up, never the ordering, and never which row a permanent belongs to.
-  const drawn: readonly DrawnRow[] =
-    slots === 1 && groups.length > 1
-      ? [{ key: 'merged', label: 'Permanents', entries: groups.flatMap((row) => row.entries) }]
-      : groups.map((group) => ({ key: group.row, label: group.label, entries: group.entries }))
+  const drawn = collapse(groups, slots, !isYou)
   const plan = packField(
     box,
     drawn.map((group) => group.entries.length),

@@ -513,13 +513,19 @@ export function Game({
     />
   )
 
-  // §3's step 5, decided for the *table* rather than per seat: how many rows a field divides
-  // into is taken from the half that needs the most of them, so a permanent is the same size at
-  // both ends of the table and nobody's board resizes because somebody else's last artifact
-  // died. Both fields have the same box, so either of them states the room.
+  // §3's step 5, decided for the *table* rather than per seat: how many rows a field divides into
+  // is answered once out of both halves' groups, so a permanent is the same size at both ends of
+  // the table and nobody's board is two thirds the size of the other's. Both fields have the same
+  // box, so either of them states the room. The groups arrive with their sizes because the answer
+  // is which arrangement draws the biggest card, and that is decided by the count in a row as much
+  // as by the height of one — never by anything a card *says* (`pack.ts`).
   const rowSlots = fieldSlots(
     regions.yourField,
-    table.map((seat) => boardRows(fieldFor(seat.id), (entry) => entry.face.cardTypes).length),
+    table.map((seat) =>
+      boardRows(fieldFor(seat.id), (entry) => entry.face.cardTypes).map(
+        (group) => group.entries.length,
+      ),
+    ),
     ladder,
   )
 
