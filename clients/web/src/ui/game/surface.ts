@@ -52,6 +52,15 @@ export interface Surface {
    * click — a blocker, an enchanted creature, a spell someone else controls.
    */
   trace(id: string | undefined): void
-  /** The display name for an entity id the view mentioned — a card, a permanent, a seat. */
+  /**
+   * The display name for an entity id — a card, a permanent, a stack object, a seat.
+   *
+   * Only ever a name the **view** stated (`relations.entityNames`), and never the id. An entity
+   * this view describes nowhere gets `UNNAMED`, because the controls that ask for a label are
+   * ones that have to exist whatever happens — the dock's fallback button for a subject no
+   * surface drew, the heading over an object's own actions — and neither a blank nor
+   * `perm_vivien` is something a player can read. The trail does not come through here at all:
+   * its ends arrive already named, so it can drop the ones it cannot name instead.
+   */
   labelFor(id: string): string
 }
