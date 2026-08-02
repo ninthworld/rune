@@ -247,7 +247,7 @@ Chosen by the shape of the viewport, not by device. Note how little differs betw
 | Band | Shape | What differs |
 | --- | --- | --- |
 | **Wide** | ratio ≥ 1.3, height ≥ 640 | The reference arrangement. Seat columns at the leading edge, board beside them, phase strip on the midline, stack at the trailing edge, side panel as a drawer. |
-| **Ultrawide** | ratio ≥ 2.0 | Nothing moves. The extra width goes to board rows — more cards before overlap — with the board held to a maximum width so a glance does not have to cross the whole screen. |
+| **Ultrawide** | ratio ≥ 2.0 | Nothing moves. The extra width goes to the board rows — more cards at full size before they overlap. |
 | **Square** | ratio 0.8–1.3 | Nothing moves. Ladder steps 1–4 as needed. |
 | **Tall** | ratio < 0.8 (phone portrait) | Seat columns become seat bars above and below their own half — a column cannot hold life *and* five counts at 390px wide, and that is the stated constraint. Rows merge, cards overlap early. Cards stay cards. |
 | **Short** | height < 480 (phone landscape, 200% zoom on a small desktop) | As Tall, plus: height is the scarce resource, so the full ladder including chips, and the hand is a peek strip that expands on gesture. |
@@ -327,6 +327,20 @@ width   = clamp(FLOOR, fitted, ideal)
 When `fitted < FLOOR`, the row switches from spacing to overlap and pitch becomes
 `(W - width) / (N - 1)`, bounded below by the width of a legible name strip. Cards never shrink
 below `FLOOR` — they overlap instead.
+
+**The battlefield is as wide as the room, and the cards are centred in it.** `W` is the width the
+region actually has; there is no cap on it.
+
+An earlier draft held the board's content to a maximum width, so that a glance would not have to
+cross a very wide screen. That was the wrong instrument for a real concern, and it bought the
+concern at the price of permanent dead space — a fixed size imposed on a region, which is the thing
+this document exists to remove. **Centring solves it properly and costs nothing**: with five
+permanents the glance travels five cards' worth wherever it is drawn, and with thirty it travels the
+whole row — which is exactly when the width is wanted, because it is what keeps the cards at full
+size instead of overlapped.
+
+Left-alignment has the same defect in miniature: it pushes a short row against one edge and leaves
+the dead space beside it, on every screen rather than only on wide ones.
 
 **Card proportion is 63:88 (0.716)**, the printed proportion, at every size. A permanent tile is
 that plus a fixed allowance for state marks.
