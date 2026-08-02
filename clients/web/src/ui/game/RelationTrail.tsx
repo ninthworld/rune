@@ -29,23 +29,27 @@ export function RelationTrail({
       {lines.map((line) => (
         <span key={`${line.kind}-${line.direction}`} className="trail__line">
           <span className="trail__label">{line.label}</span>
-          {/* An edge the server stated without naming its other end — an attack with no
-              defender projected — is the label alone. There is nothing to click through to,
-              and inventing something to point at would be answering a question about the
-              game that the view declined to answer. */}
-          {line.ids.map((id) => (
+          {/* An edge with no end to draw is the label alone: either the server stated the
+              relationship without naming its other end — an attack with no defender projected —
+              or it named an object this view describes nowhere. There is nothing to click
+              through to in either case, and inventing something to point at would be answering
+              a question about the game that the view declined to answer.
+
+              Nothing here reads an id. `relations.ts` hands over ends that are already named,
+              so the identifier this button routes on has no path to the screen. */}
+          {line.ends.map((end) => (
             <button
-              key={id}
+              key={end.id}
               type="button"
               className="trail__end"
               // The phrase comes with it. Read on its own — by a screen reader, or by anyone
               // looking at a control out of context — a button labelled `Serra Angel` says
               // nothing about why it is under this card, and `attached to Serra Angel` says
               // all of it. It also keeps the visible text short enough to sit in a trail.
-              aria-label={`${line.label} ${surface.labelFor(id)}`}
-              onClick={() => surface.activate(id)}
+              aria-label={`${line.label} ${end.name}`}
+              onClick={() => surface.activate(end.id)}
             >
-              {surface.labelFor(id)}
+              {end.name}
             </button>
           ))}
         </span>
