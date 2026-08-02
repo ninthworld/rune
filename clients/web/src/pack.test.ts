@@ -577,14 +577,12 @@ describe('more screen is never a worse board', () => {
   /**
    * The same property from the viewport, which is where a player meets it.
    *
-   * **One thing is exempted, and only one:** a step at which `scene.ts` handed back a field that is
-   * *smaller* in either dimension than the one before it. There is nothing the packing can do with
-   * a box that shrank, and the scene has several places where a wider or taller viewport produces a
-   * narrower or shorter field — the match line growing 8px at 640px of height, the Short band's
-   * peek strip ending, the stack rail appearing at the Square boundary. Those are `scene.ts`'s and
-   * this file cannot fix them; see the PR that added this test. The exemption is mechanical and
-   * cannot hide a regression here: if the field grew and the card shrank, that is this module's and
-   * it is asserted.
+   * **Nothing is exempted.** It used to skip any step at which `scene.ts` handed back a field that
+   * had *shrunk* — the match line growing 8px at 640px of height, the Short band's peek strip
+   * ending, the stack rail appearing at the Square boundary — because there is nothing the packing
+   * can do with a box that got smaller. That exemption was the tell, and it is gone: the scene is
+   * monotone by construction now (`scene.test.ts`), so the whole pipeline is, and a card that
+   * shrinks on a bigger screen is a defect wherever it was introduced.
    */
   const sweep = (
     viewports: (step: number) => { width: number; height: number },
@@ -599,11 +597,7 @@ describe('more screen is never a worse board', () => {
         const drawn = tileAt(viewport, board)
         if (drawn === undefined) continue
         const at = `${viewport.width}×${viewport.height}`
-        const grew =
-          previous !== undefined &&
-          drawn.field.width >= previous.drawn.field.width &&
-          drawn.field.height >= previous.drawn.field.height
-        if (previous && grew && compare(drawn.tile, previous.drawn.tile) < 0) {
+        if (previous && compare(drawn.tile, previous.drawn.tile) < 0) {
           found.push(
             `${permanents} permanents: ${previous.at} drew ${say(previous.drawn.tile)}, ` +
               `${at} draws ${say(drawn.tile)}`,

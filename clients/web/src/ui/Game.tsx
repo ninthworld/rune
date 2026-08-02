@@ -93,13 +93,13 @@ import { changes, NO_CHANGES } from './../motion'
 import { dockTone } from './../dock'
 import { boardRows } from './../board'
 import { fieldSlots } from './../pack'
-import { scene, type Rect } from './../scene'
+import { peeking, scene, type Rect } from './../scene'
 import { buildChooseAction, type Draft } from './../submission'
 import { CardInspector } from './CardInspector'
 import { ActionDock } from './game/ActionDock'
 import { Motion } from './game/Motion'
 import { Settings } from './game/Settings'
-import { TurnStrip, type TurnLayout } from './game/TurnStrip'
+import { TurnStrip, turnLayoutFor } from './game/TurnStrip'
 import { Battlefield, type FieldEntry } from './game/Battlefield'
 import { CardPreview } from './game/CardPreview'
 import { Region, share, useViewport } from './game/frame'
@@ -504,15 +504,17 @@ export function Game({
   }
 
   const collapsed = ladder.rails === 'collapsed'
-  const turnLayout: TurnLayout = collapsed ? 'chip' : band === 'square' ? 'strip' : 'rail'
+  // Which of the three the turn is drawn as is read off the box it was given, not off the band:
+  // the scene decides the room, and the same room is always drawn the same way.
+  const turnLayout = turnLayoutFor(regions.turn)
   const drawer = ladder.sidePanel === 'drawer'
   // A pile the player opened and cards the server put in front of them are both things somebody
   // asked for, so the drawer they live in is already open when they arrive.
   const sideOpen = !drawer || drawerOpen || openZone !== undefined || revealedFaces.length > 0
-  // §2's trade, in the same terms `scene.ts` allocated the height by: the hand keeps the bottom
-  // band while nothing is pending, and yields it the moment there is something to answer — always
-  // at Short, where height is the scarce resource and the strip is the resting state.
-  const peek = band === 'short' || (band === 'tall' && asking)
+  // §2's trade, read off the box the hand actually got rather than restated here: the scene gives
+  // the controls the bottom band before the hand grows past its floor, so a hand with no room for
+  // a hand card is a peek strip — always at Short, where the strip is the resting state.
+  const peek = peeking(regions.hand)
   // The look, at full size. Resolved out of this frame's faces like everything else, so an object
   // that leaves the view stops previewing rather than pinning a card that is gone.
   const preview = hovering === undefined ? undefined : faces.get(hovering)

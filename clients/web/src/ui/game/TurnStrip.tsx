@@ -15,19 +15,34 @@
  * A step the server passed on the player's behalf **this turn** is marked too, so the settle's
  * path is visible on the same row that explains how to stop it happening again.
  *
- * Three layouts, and the scene picks between them (`scene.ts`, §3 step 7 and §4's table): a rail
- * down the left edge where there is width for one, a horizontal band under the header where the
- * viewport is square, and — collapsed — the current step alone. Collapsing is a real loss and it
- * is the last of them for a reason: the row is what says what is *behind and ahead*, and a chip
- * says only where the game is. What the chip keeps is the one thing §3 lists as never degrading,
- * and the eleven steps it drops are still in the accessibility tree, so nothing about setting a
- * stop becomes unreachable — it becomes unseen.
+ * Three layouts, and the **box decides which** (§3 step 7): a rail down the left edge where the
+ * scene gave one, a horizontal band under the header where it gave a row wide enough for twelve
+ * steps, and — collapsed — the current step alone. Read off the box and off nothing else, as
+ * `fit.ts` reads a card's: two viewports the scene hands the same box are two viewports that draw
+ * the same turn, so a screen cannot get *taller* and lose eleven steps because a ratio crossed a
+ * band boundary (§3, "More screen is never a worse board").
+ *
+ * Collapsing is a real loss and it is the last of them for a reason: the row is what says what is
+ * *behind and ahead*, and a chip says only where the game is. What the chip keeps is the one thing
+ * §3 lists as never degrading, and the eleven steps it drops are still in the accessibility tree,
+ * so nothing about setting a stop becomes unreachable — it becomes unseen.
  */
+import type { Rect } from './../../scene'
 import type { Phase } from './../../protocol'
 import { nextScope, scopeWording, type Step, type StopScope } from './../../turn'
 
-/** How much of the turn there is room to draw (`scene.ts`'s `ladder.rails` and the band). */
+/** How much of the turn there is room to draw. */
 export type TurnLayout = 'rail' | 'strip' | 'chip'
+
+/** Twelve steps, each with room for a short label at the 11px chrome floor (§7) and its mark. */
+const STEPS_ACROSS = 480
+
+/**
+ * Which of the three the box the scene handed this is: a rail stands up, a row lies down, and a
+ * row too narrow for twelve steps is the current one alone.
+ */
+export const turnLayoutFor = (rect: Rect): TurnLayout =>
+  rect.height > rect.width ? 'rail' : rect.width >= STEPS_ACROSS ? 'strip' : 'chip'
 
 export function TurnStrip({
   steps,
