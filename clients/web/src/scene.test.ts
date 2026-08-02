@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { scene, type Rect, type RegionName, type SceneCounts, type Viewport } from './scene'
+import {
+  scene,
+  type Rect,
+  type RegionName,
+  type Scene,
+  type SceneCounts,
+  type Viewport,
+} from './scene'
 
 /** A table mid-game: something on the stack, and nothing being asked. */
 const PLAYING: SceneCounts = { stackDepth: 1 }
@@ -131,7 +138,10 @@ describe('which arrangement a viewport is in', () => {
     const zoomed = scene({ width: 853, height: 480 }, PLAYING)
 
     expect(zoomed.band).toBe('wide')
-    expect(zoomed.ladder.cardTier).toBe('chip')
+    // And what it answers here is a card face, not a chip: the hundred pixels the hand needs to
+    // get off its peek strip come out of the hundred pixels above §4's Short floor, so crossing
+    // that floor upward buys the hand back without taking the board's cards away (§3).
+    expect(zoomed.ladder.cardTier).toBe('compact')
   })
 })
 
@@ -326,8 +336,8 @@ describe('the ladder', () => {
   it('drops to chips at the 100px row §3 puts the threshold at', () => {
     // Height, not width, decides whether a permanent is a card (§4). These two viewports differ
     // by a single pixel of height, and the pixel is the one that takes the row under 100.
-    expect(scene({ width: 1280, height: 512 }, PLAYING).ladder.cardTier).toBe('compact')
-    expect(scene({ width: 1280, height: 511 }, PLAYING).ladder.cardTier).toBe('chip')
+    expect(scene({ width: 1280, height: 412 }, PLAYING).ladder.cardTier).toBe('compact')
+    expect(scene({ width: 1280, height: 411 }, PLAYING).ladder.cardTier).toBe('chip')
   })
 
   it('merges the rows before it gives up the card face', () => {
@@ -342,20 +352,42 @@ describe('the ladder', () => {
     expect(shorter.ladder.cardTier).toBe('compact')
   })
 
-  it('collapses the rails where the composition has no room for them', () => {
+  it('collapses the rails where the width has no room for them', () => {
+    // Width alone, never the shape: a rail that arrived because the *ratio* crossed 0.8 would
+    // leave again when the same screen got taller, and the board would lurch both ways (§3).
     expect(scene({ width: 1920, height: 1080 }, PLAYING).ladder.rails).toBe('full')
-    // Square keeps the rails and turns them: the turn is a horizontal strip under the header and
-    // the stack is an edge tab, which the boxes say without needing a flag of their own.
+    // So a square viewport is the reference arrangement too — §4's own "nothing moves" — rather
+    // than a third one with the turn laid out flat under the header.
     const square = scene({ width: 1000, height: 1000 }, PLAYING)
     expect(square.ladder.rails).toBe('full')
-    expect(square.regions.turn.width).toBeGreaterThan(square.regions.turn.height)
+    expect(square.regions.turn.height).toBeGreaterThan(square.regions.turn.width)
     expect(square.regions.stack.height).toBeGreaterThan(square.regions.stack.width)
 
-    // Collapsed: one current-step chip and one stack badge, side by side under the header.
+    // Collapsed: the turn is a row under the header and the stack the badge beside it, together
+    // spanning the width — one arrangement, and the same one on a phone in either orientation.
     const phone = scene({ width: 390, height: 844 }, PLAYING)
     expect(phone.ladder.rails).toBe('collapsed')
     expect(phone.regions.turn.y).toBe(phone.regions.stack.y)
     expect(phone.regions.turn.width + phone.regions.stack.width).toBe(390)
+
+    // In between, the stack has earned a rail and the turn has not: the rails are bought one at
+    // a time, in the order §5 ranks them, and each is paid for before it is drawn.
+    const between = scene({ width: 700, height: 700 }, PLAYING)
+    expect(between.ladder.rails).toBe('collapsed')
+    expect(between.regions.stack.height).toBeGreaterThan(between.regions.stack.width)
+  })
+
+  it('buys a rail out of the width past it, never out of the board', () => {
+    // The three inversions this arithmetic exists to remove, each stated as the pair it broke on.
+    const board = (width: number, height: number) =>
+      scene({ width, height }, PLAYING).regions.yourField
+    // The match line growing to its designed height at 640.
+    expect(board(1280, 640).height).toBeGreaterThanOrEqual(board(1280, 639).height)
+    // The hand leaving its peek strip at 480, which used to cost the board its card faces.
+    expect(board(640, 480).height).toBeGreaterThanOrEqual(board(640, 476).height)
+    // A rail arriving: the board is the same width across the step, and wider after it.
+    expect(board(686, 800).width).toBe(board(685, 800).width)
+    expect(board(900, 800).width).toBeGreaterThan(board(686, 800).width)
   })
 
   it('makes the side panel a column only where there is width nothing else wanted', () => {
@@ -410,6 +442,157 @@ describe('the hand and the action affordance trade the bottom band', () => {
     const asked = scene({ width: 1920, height: 1080 }, { ...PLAYING, asking: true })
 
     expect(asked.regions.hand.height).toBe(resting.regions.hand.height)
+  })
+})
+
+/**
+ * §3, "More screen is never a worse board", asserted over the arrangement itself.
+ *
+ * > **For a fixed board, nothing is smaller or less complete on a larger viewport than on a
+ * > smaller one.**
+ *
+ * `pack.ts` can only be as good as the box it is handed, so the property has to hold here first:
+ * a field that shrank draws a smaller card however correct the packing is. It is checked by
+ * sweeping at one-pixel resolution and comparing each scene to the one a pixel smaller, rather
+ * than by listing viewports and their expected boxes — a table of expectations is exactly what
+ * was green while `640×476` drew 84×117 cards and `640×480`, four pixels of extra screen, drew
+ * chips.
+ *
+ * **Nothing is exempted.** Every region is compared, in every arrangement, with one bounded
+ * allowance that is itself asserted: a region that *turns* — a row under the header becoming a
+ * rail down the edge — cannot keep both of its dimensions, and is compared by area instead. The
+ * last test here pins the set of regions that ever take that path, so the allowance cannot
+ * quietly spread: it is the turn and only the turn, and §4.1 retires that reorientation.
+ */
+describe('more screen is never a worse board', () => {
+  const ALL: readonly RegionName[] = [
+    'header',
+    'turn',
+    'opponentSeat',
+    'opponentField',
+    'stack',
+    'yourField',
+    'yourSeat',
+    'dock',
+    'hand',
+    'side',
+  ]
+
+  /** The table states the scene is asked about. Fixed while the viewport moves — that is the test. */
+  const STATES: Record<string, SceneCounts> = {
+    'a spell on the stack': { stackDepth: 1 },
+    'an empty stack': { stackDepth: 0 },
+    'a question pending': { stackDepth: 1, asking: true },
+  }
+
+  const area = (rect: Rect): number => rect.width * rect.height
+  const say = (rect: Rect): string => `${rect.width}×${rect.height}`
+  /** Landscape or portrait. A region that changes which one it is has turned. */
+  const turned = (before: Rect, after: Rect): boolean =>
+    before.width >= before.height !== after.width >= after.height
+
+  interface Sweep {
+    inversions: string[]
+    turns: Set<RegionName>
+  }
+
+  /** One step of a sweep: what the larger viewport took away from the smaller one, if anything. */
+  const step = (
+    state: string,
+    before: { at: Viewport; scene: Scene },
+    after: { at: Viewport; scene: Scene },
+    found: Sweep,
+  ): void => {
+    for (const region of ALL) {
+      const was = before.scene.regions[region]
+      const is = after.scene.regions[region]
+      if (is.width >= was.width && is.height >= was.height) continue
+      if (turned(was, is) && area(is) >= area(was)) {
+        found.turns.add(region)
+        continue
+      }
+      found.inversions.push(
+        `${state}, ${region}: ${before.at.width}×${before.at.height} had ${say(was)}, ` +
+          `${after.at.width}×${after.at.height} has ${say(is)}`,
+      )
+    }
+  }
+
+  /** Every viewport a `line` walks through, each compared to the one before it. */
+  const sweep = (line: (at: number) => Viewport, from: number, to: number): Sweep => {
+    const found: Sweep = { inversions: [], turns: new Set() }
+    for (const [state, counts] of Object.entries(STATES)) {
+      let previous: { at: Viewport; scene: Scene } | undefined
+      for (let at = from; at <= to; at += 1) {
+        const viewport = line(at)
+        const current = { at: viewport, scene: scene(viewport, counts) }
+        if (previous) step(state, previous, current, found)
+        previous = current
+      }
+    }
+    return found
+  }
+
+  const report = (found: Sweep, where: string): void => {
+    expect(found.inversions.slice(0, 6), `${found.inversions.length} inversions ${where}`).toEqual(
+      [],
+    )
+    // The allowance, pinned: only the turn ever changes which way round it is drawn.
+    expect([...found.turns].sort()).toEqual(found.turns.size === 0 ? [] : ['turn'])
+  }
+
+  /** §1's supported range: the floor at 320, and past every desktop this is meant to be played on. */
+  const WIDTH = { from: 320, to: 3440 }
+  const HEIGHT = { from: 320, to: 1440 }
+
+  /** Heights the width sweeps are run at: the band floors, the thresholds, and ordinary screens. */
+  const HEIGHTS = [320, 360, 390, 400, 479, 480, 481, 512, 600, 639, 640, 667, 720, 844, 1080, 1440]
+  /** Widths the height sweeps are run at, chosen the same way. */
+  const WIDTHS = [320, 375, 390, 480, 582, 640, 686, 800, 844, 1000, 1280, 1440, 1920, 2560, 3440]
+
+  it('never hands back a smaller region on a wider viewport', () => {
+    for (const height of HEIGHTS) {
+      report(
+        sweep((width) => ({ width, height }), WIDTH.from, WIDTH.to),
+        `across the width at ${height}px tall`,
+      )
+    }
+  })
+
+  it('never hands back a smaller region on a taller viewport', () => {
+    for (const width of WIDTHS) {
+      report(
+        sweep((height) => ({ width, height }), HEIGHT.from, HEIGHT.to),
+        `down the height at ${width}px wide`,
+      )
+    }
+  })
+
+  /**
+   * The same property over the plane rather than along lines through it, coarsely.
+   *
+   * Two sweeps at one pixel through a grid of the other dimension cannot see a step that needs
+   * both dimensions to move; this compares every point to its neighbour in each direction, which
+   * can — at a resolution the lines above then check exhaustively where it matters.
+   */
+  it('never hands back a smaller region anywhere in the supported range', () => {
+    const found: Sweep = { inversions: [], turns: new Set() }
+    for (let width = WIDTH.from; width <= WIDTH.to; width += 16) {
+      for (let height = HEIGHT.from; height <= HEIGHT.to; height += 16) {
+        for (const [state, counts] of Object.entries(STATES)) {
+          const at = { width, height }
+          const here = { at, scene: scene(at, counts) }
+          for (const next of [
+            { width: width + 16, height },
+            { width, height: height + 16 },
+          ]) {
+            if (next.width > WIDTH.to || next.height > HEIGHT.to) continue
+            step(state, here, { at: next, scene: scene(next, counts) }, found)
+          }
+        }
+      }
+    }
+    report(found, 'over the supported range')
   })
 })
 

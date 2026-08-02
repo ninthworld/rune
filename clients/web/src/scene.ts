@@ -35,6 +35,22 @@
  * That is what makes every band in §4 testable without one — the bands are arithmetic on two
  * numbers, and a phone, a tablet, and a desktop at 200% zoom are the same arithmetic.
  *
+ * **No region ever shrinks as the viewport grows.** §3's "More screen is never a worse board" is
+ * a property, and the only way to have it is to build for it: every size below is a *ramp* rather
+ * than a step. A chrome element that wants more room at a threshold — the match line at its
+ * designed height, the hand back at its floor, a rail where there was a badge — takes it out of
+ * the room the threshold *brought with it*, one pixel per pixel, and never out of a region that
+ * was already sized. Where the surplus has not covered a rail yet, the width is held aside rather
+ * than lent to the board and taken back a pixel later: a hundred pixels of gutter for a hundred
+ * pixels of width is the price of a board that never gets smaller, and it is cheap.
+ *
+ * That is also why **the arrangement across the table is a function of width alone, and down it
+ * of height alone**. A rail that appeared because the *ratio* crossed 0.8 would vanish again when
+ * the same screen got taller, and the board would lurch by two hundred pixels in both directions;
+ * §4's own test for a per-band difference is "name the thing that does not fit", and what does not
+ * fit beside a rail is width. The band still names the shape of the screen — it is what tells a
+ * surface whether a seat is a column or a bar — but it no longer decides a box.
+ *
  * Two places where the spec's own sections point in different directions, and what was done:
  *
  * - §4 gives the Wide band as "ratio ≥ 1.3, height ≥ 640", which leaves 853×480 — a 1280×720
@@ -81,11 +97,12 @@ export interface SceneCounts {
    * Whether the game is mid-question — `dock.ts`'s `asking` or `confirm` tone.
    *
    * The hand and the action affordance both want the bottom band on a small screen and they take
-   * turns for it (§2): the hand is full height while nothing is pending, and collapses to a peek
-   * strip the moment there is something to answer, with the dock taking what it freed. Restoring
-   * the hand over that is a gesture, and a hand raised over a peek strip is an overlay rather
-   * than a region — the same class of thing as an opened pile — because the space it would need
-   * belongs to tier-1 minimums the board cannot give up.
+   * turns for it (§2): the dock takes what it needs to carry a question before the hand grows past
+   * its floor, so a screen with room for both keeps both and a screen without one gives the room to
+   * the question that is waiting. Where that leaves the hand under a hand card's height it is the
+   * peek strip, and restoring it is a gesture — a hand raised over a peek strip is an overlay
+   * rather than a region, the same class of thing as an opened pile, because the space it would
+   * need belongs to tier-1 minimums the board cannot give up.
    *
    * This is a change of *mode*, not a measure of content, which is what makes it a departure §5
    * allows where an empty battlefield is not one.
@@ -130,7 +147,7 @@ export type RegionName =
  * There is no `overflow` here and no `scroll`. That is the contract, not an omission.
  */
 export interface SceneLadder {
-  /** Step 7. `collapsed` means the turn is one current-step chip and the stack is a badge. */
+  /** Step 7. `collapsed` means the turn is a row under the header rather than a rail at the edge. */
   rails: 'full' | 'collapsed'
   /** Step 6. `merged` means a battlefield draws one row, not `board.ts`'s three. */
   rows: 'split' | 'merged'
@@ -161,16 +178,28 @@ interface Size {
 
 /** One line about the match. Chrome's type floor is 11px (§7), so the band is thin either way. */
 const HEADER: Size = { min: 40, designed: 48 }
+/** Where the match line can start paying for its designed height, out of the height past it. */
+const HEADER_FROM = 640
 /** The turn as a vertical rail: twelve steps, each of them the control that sets a stop there. */
 const TURN_RAIL: Size = { min: 88, designed: 112 }
-/** The same twelve steps laid horizontally under the header, where the ratio is square. */
-const TURN_STRIP = 32
-/** Collapsed (§3, step 7): the current step, and nothing else. */
-const TURN_CHIP = 28
+/**
+ * The turn as a row under the header, where the width has no rail in it.
+ *
+ * One height, whether the row carries all twelve steps or the current one alone (§3, step 7).
+ * They used to be 32 and 28, and four pixels a *wider* screen took off the fields is exactly the
+ * defect this module is now built against — a row is a row, and which of the two it draws inside
+ * that row is a fitting decision with no geometry in it.
+ */
+const TURN_ROW = 32
 /** A stack item is 130 wide designed and a chip is 96 (§5); the rail is that plus its gutter. */
 const STACK_RAIL: Size = { min: 104, designed: 150 }
-/** Collapsed: the top item's name and a count, which §3 says never degrades further. */
-const STACK_BADGE = 132
+/**
+ * Collapsed: the top item's name and a count, which §3 says never degrades further.
+ *
+ * The rail's floor width, laid down instead of up, so that the rail which replaces it is never
+ * narrower than the badge was — the same chip is drawn either way.
+ */
+const STACK_BADGE = STACK_RAIL.min
 /** Name, life, status marks, and the fold that opens the five zone counts (§2, "The seat bar"). */
 const SEAT: Size = { min: 40, designed: 56 }
 /** The action affordance. Fixed place, always present — §2 admits no size at which it is not. */
@@ -181,6 +210,15 @@ const DOCK_ASKING = 160
 const HAND: Size = { min: 148, designed: 217 }
 /** Enough of every card to count them, and no more. The hand is small, never invisible (§2). */
 const HAND_PEEK = 48
+/**
+ * The height at which the hand starts buying its floor back, a pixel at a time.
+ *
+ * §4's Short band — height under 480 — makes the peek strip the *resting* state, and the hundred
+ * pixels between the strip and a hand card have to come from somewhere. They come from the
+ * hundred pixels of screen above the Short floor and from nothing else, so `640×476`'s card faces
+ * survive `640×480` instead of being spent on a hand that suddenly wanted its whole floor.
+ */
+const HAND_FROM = 480
 /** §5's chip is 96×30. A field that has gone to chips still draws one row of them. */
 const CHIP_ROW = 36
 /** §5's permanent tile: 72×100 at the floor — which is §3 step 5's threshold — and 130×182. */
@@ -201,7 +239,57 @@ const BOARD_MIN = 320
  */
 const SPLIT_ROWS = 2
 
+/** Every rail at its designed width — what the full arrangement costs the width. */
+const RAILS = TURN_RAIL.designed + STACK_RAIL.designed
+/**
+ * The narrowest viewport that could hold the whole arrangement beside a minimum board.
+ *
+ * Below it no rail is paid for at all, so a phone spends nothing on rails it will never draw.
+ * From here the rails are bought a pixel per pixel of new width, and by `RAILS_FROM + RAILS` they
+ * are all drawn and the board is growing again — never smaller than the `BOARD_MIN` it had when
+ * the saving started.
+ */
+const RAILS_FROM = BOARD_MIN + RAILS
+
+/**
+ * The rails, in the order width buys them, each entry the whole arrangement at that price.
+ *
+ * The stack goes first because it is tier 1 whenever it is non-empty; the turn rail is next, at
+ * its floor before its designed width, because a rail at 88 is still twelve steps and the board
+ * is what the difference is worth; the stack's designed width is last, since a stack item at the
+ * chip size is a name and a count and that is what §3 says never degrades.
+ */
+const RAIL_STEPS: readonly { turn: number; stack: number }[] = [
+  { turn: 0, stack: 0 },
+  { turn: 0, stack: STACK_RAIL.min },
+  { turn: TURN_RAIL.min, stack: STACK_RAIL.min },
+  { turn: TURN_RAIL.designed, stack: STACK_RAIL.min },
+  { turn: TURN_RAIL.designed, stack: STACK_RAIL.designed },
+]
+
 const EMPTY: Rect = { x: 0, y: 0, width: 0, height: 0 }
+
+/**
+ * Whether the hand's box is the peek strip of §2 rather than a hand.
+ *
+ * Read off the box, not off a band or a mode: the hand is a strip exactly when §5's hand card
+ * does not fit in the room it was given, which is the same question a surface would ask of any
+ * other box. It is the scene's number, so it is answered here rather than by a component holding
+ * a copy of 148.
+ */
+export const peeking = (hand: Rect): boolean => hand.height < HAND.min
+
+/**
+ * What a region may take at a threshold: the room past it, and never more than it wants.
+ *
+ * The whole of §3's "More screen is never a worse board" as arithmetic. A size that steps up at a
+ * threshold pays for the step out of the surplus the threshold brought — a pixel per pixel — so
+ * what is left for everything else is flat across the step instead of falling off it. Below the
+ * threshold it is the floor, `target - floor` pixels above it the target, and in between it is
+ * exactly as big as the extra screen allows.
+ */
+const ramp = (available: number, from: number, floor: number, target: number): number =>
+  Math.max(floor, Math.min(target, floor + (available - from)))
 
 /**
  * Which band a viewport is in.
@@ -210,6 +298,10 @@ const EMPTY: Rect = { x: 0, y: 0, width: 0, height: 0 }
  * to state, and below 480px of height the scarce resource is height no matter how wide the
  * screen is, which is the whole of what the Short band means. Everything past that is the ratio,
  * and the thresholds are §4's.
+ *
+ * It names the *shape* of the screen and nothing else. No box below is a function of it: what a
+ * rail costs is width, what a row costs is height, and a band is a ratio — so an arrangement
+ * chosen by one would change under a screen that only got bigger.
  */
 function bandOf(width: number, height: number): Band {
   // §1's floor, measured on the edges rather than on width and height, because a viewport does
@@ -249,10 +341,12 @@ interface Column {
  *    buys its designed size.
  * 2. The seats and the dock, up to their designed sizes. Both are small and both are read
  *    constantly.
- * 3. The hand, up to its designed size. Its floor is deliberately larger than a permanent's,
+ * 3. The dock again, when the game is asking. This is §2's trade, and it is *ordering* rather
+ *    than a band: the controls take the bottom band before the hand grows past its floor, so a
+ *    screen with room for both keeps both and a screen without one gives the room to the
+ *    question that is waiting for an answer.
+ * 4. The hand, up to its designed size. Its floor is deliberately larger than a permanent's,
  *    because the hand is where a player *chooses* and §6 forbids abbreviating a name there.
- * 4. The dock again, when the game is asking. This is the trade §2 describes and it is funded by
- *    the hand that collapsed, which is why it is spent after the hand and not before it.
  * 5. The battlefields, up to designed and then past it. Whatever is left is board — the one
  *    region that is better for having more of it.
  *
@@ -261,13 +355,14 @@ interface Column {
  * resizing the table under the player, and a first creature from shoving the other half of it
  * upward: the height of a field is what the viewport can afford, and the count inside it is the
  * cards' problem, not the box's (§5).
+ *
+ * The order is what makes this monotone: every step spends what is left over from the step before
+ * it, so a pixel of extra height can only ever make a region bigger.
  */
-function columnHeights(available: number, asking: boolean, peekHand: boolean): Column {
-  const handTarget = peekHand ? HAND_PEEK : HAND.designed
-
+function columnHeights(available: number, asking: boolean, handFloor: number): Column {
   let seat = SEAT.min
   let dock = DOCK.min
-  let hand = peekHand ? HAND_PEEK : HAND.min
+  let hand = handFloor
   let field = CHIP_ROW
   let left = available - (2 * seat + dock + hand + 2 * field)
 
@@ -293,7 +388,7 @@ function columnHeights(available: number, asking: boolean, peekHand: boolean): C
     return current - Math.ceil(given / copies)
   }
 
-  hand = lower(hand, peekHand ? 0 : HAND_PEEK, 1)
+  hand = lower(hand, Math.min(hand, HAND_PEEK), 1)
   field = lower(field, 0, 2)
   hand = lower(hand, 0, 1)
   dock = lower(dock, 0, 1)
@@ -302,8 +397,8 @@ function columnHeights(available: number, asking: boolean, peekHand: boolean): C
   field = raise(field, SPLIT_ROWS * CARD_ROW.min, 2)
   seat = raise(seat, SEAT.designed, 2)
   dock = raise(dock, DOCK.designed, 1)
-  hand = raise(hand, handTarget, 1)
   if (asking) dock = raise(dock, DOCK_ASKING, 1)
+  hand = raise(hand, HAND.designed, 1)
   field = raise(field, SPLIT_ROWS * CARD_ROW.designed, 2)
   if (left > 0) field += Math.floor(left / 2)
 
@@ -319,15 +414,43 @@ interface Across {
   boardX: number
 }
 
+/** What the rails have been paid for, and what is set aside for the ones that are not drawn yet. */
+interface Rails {
+  /** Width the board may not have. Ramped, so the board is flat across a rail arriving, never cut. */
+  reserved: number
+  turn: number
+  stack: number
+}
+
 /**
- * Divide the width, for the arrangements that have rails in them.
+ * Which rails a width can afford — and, before it can, how much it has saved toward them.
  *
- * The stack is taken first because it is tier 1 whenever it is non-empty — and costs nothing at
- * all when it is empty, which is §5's one exception and not a rule the battlefields share: an
- * event that is not happening takes no room, a place at the table keeps its box. What the
- * exception does not cover is depth, so the rail is the same width for one object as for seven.
- * The turn rail is next, both falling back to their floors rather than to nothing, because the
- * board keeps `BOARD_MIN` whatever else happens.
+ * The saving is the point. A rail that simply appeared at the width it fits would take its whole
+ * width off the board in one pixel of extra screen, which is the defect; a rail that is saved for
+ * holds the board still for as long as it takes and then costs it nothing at all. What is saved
+ * and not yet spent is gutter — up to a rail's width of it, and only in the band of widths where
+ * a rail is about to arrive.
+ *
+ * Nothing here reads the height. A rail is a width question ("name the thing that does not fit",
+ * §4), and a rail that came and went as the same screen got taller would move the board by two
+ * hundred pixels in the direction §3 forbids.
+ */
+function railsFor(width: number): Rails {
+  const reserved = Math.min(RAILS, Math.max(0, width - RAILS_FROM))
+  return RAIL_STEPS.reduce<Rails>(
+    (afforded, step) => (step.turn + step.stack <= reserved ? { reserved, ...step } : afforded),
+    { reserved, turn: 0, stack: 0 },
+  )
+}
+
+/**
+ * Divide the width between the rails, the side column, and the board.
+ *
+ * The stack costs nothing at all when it is empty, which is §5's one exception and not a rule the
+ * battlefields share: an event that is not happening takes no room, a place at the table keeps its
+ * box. What the exception does not cover is depth, so the rail is the same width for one object as
+ * for seven — and it does not cover the *arrangement* either, which is why the reserve is what it
+ * is regardless and only the rail's own width comes back.
  *
  * The side column is last and is paid for out of what is left *after* the board has taken its
  * maximum. That single rule reproduces §4's table: at 1440 and 1920 there is nothing spare and
@@ -338,21 +461,20 @@ interface Across {
  * gives its width back to the board, which is a board that grows; if it also promoted the side
  * panel from a drawer to a column, resolving a spell would rearrange the screen.
  */
-function acrossWidths(width: number, railWidth: number, stackCeiling: number, up: boolean): Across {
-  const reserved =
-    stackCeiling === 0 ? 0 : fit(STACK_RAIL, width - railWidth - BOARD_MIN, stackCeiling)
-  const stack = up ? reserved : 0
-  const turn = railWidth === 0 ? 0 : fit(TURN_RAIL, width - reserved - BOARD_MIN, railWidth)
-  const free = width - stack - turn
-  const spare = width - turn - reserved - BOARD_MAX
+function acrossWidths(width: number, rails: Rails, up: boolean): Across {
+  const stack = up ? rails.stack : 0
+  const spare = width - rails.reserved - BOARD_MAX
   const side = spare >= SIDE.min ? Math.min(SIDE.designed, spare) : 0
-  const board = Math.min(free - side, BOARD_MAX)
-  return { turn, stack, side, board, boardX: turn + Math.floor((free - side - board) / 2) }
+  const free = width - rails.turn - stack - side
+  const board = Math.min(width - rails.reserved + (rails.stack - stack) - side, BOARD_MAX)
+  return {
+    turn: rails.turn,
+    stack,
+    side,
+    board,
+    boardX: rails.turn + Math.floor((free - board) / 2),
+  }
 }
-
-/** A rail at its designed width where the budget allows, at its floor where it does not. */
-const fit = (size: Size, budget: number, ceiling: number): number =>
-  Math.min(ceiling, budget >= size.designed ? size.designed : size.min)
 
 /**
  * The whole arrangement, for one viewport and one set of counts.
@@ -376,39 +498,29 @@ export function scene(viewport: Viewport, counts: SceneCounts): Scene {
     }
   }
 
-  const collapsed = band === 'tall' || band === 'short'
-  // A square viewport lays the turn out horizontally under the header, and the stack becomes the
-  // edge tab §4 names — sized to the rail's *floor*, because the top item is named there and §3
-  // says a name on the stack is one of the things that never degrades.
-  const stripped = band === 'square'
-  const headerHeight = height >= 640 ? HEADER.designed : HEADER.min
   const hasStack = counts.stackDepth > 0
+  const rails = railsFor(width)
+  const across = acrossWidths(width, rails, hasStack)
+  // Where there is no turn rail the turn is a row under the header instead, and the stack — if
+  // there is one and it has not yet earned a rail — is the edge badge §4 names, in the same row.
+  const collapsed = rails.turn === 0
+  const rowHeight = collapsed ? TURN_ROW : 0
+  const badge = rowHeight > 0 && rails.stack === 0 && hasStack ? STACK_BADGE : 0
 
-  const across = collapsed
-    ? { turn: 0, stack: 0, side: 0, board: Math.min(width, BOARD_MAX), boardX: 0 }
-    : acrossWidths(
-        width,
-        stripped ? 0 : TURN_RAIL.designed,
-        stripped ? STACK_RAIL.min : STACK_RAIL.designed,
-        hasStack,
-      )
-
-  const badge = collapsed && hasStack ? Math.min(STACK_BADGE, Math.floor(width / 2)) : 0
-  const stripHeight = collapsed ? TURN_CHIP : stripped ? TURN_STRIP : 0
-  const contentTop = headerHeight + stripHeight
+  const headerHeight = ramp(height, HEADER_FROM, HEADER.min, HEADER.designed)
+  const contentTop = headerHeight + rowHeight
   const contentHeight = Math.max(0, height - contentTop)
 
-  // The hand yields the bottom band to the controls where the two of them cannot both have it:
-  // always at Short, where height is the scarce resource and §4 makes the peek strip the resting
-  // state, and at Tall only while something is actually being asked. It is the asking that moves
-  // it and never the number of cards — an empty hand is still a place, and is drawn at the height
-  // the hand it is about to hold will need.
-  const peekHand = band === 'short' || (band === 'tall' && counts.asking === true)
-  const column = columnHeights(contentHeight, counts.asking === true, peekHand)
+  // The hand and the controls trade the bottom band (§2), and both halves of the trade are read
+  // off the room rather than off a band: the hand's floor is the peek strip until the height past
+  // §4's Short floor has bought it back, and the dock takes what it needs to ask a question before
+  // the hand grows past that floor. It is the asking that moves it and never the number of cards —
+  // an empty hand is still a place, drawn at the height the hand it is about to hold will need.
+  const handFloor = ramp(height, HAND_FROM, HAND_PEEK, HAND.min)
+  const column = columnHeights(contentHeight, counts.asking === true, handFloor)
 
-  const boardX = collapsed ? Math.floor((width - across.board) / 2) : across.boardX
   const box = (y: number, regionHeight: number): Rect =>
-    regionHeight <= 0 ? EMPTY : { x: boardX, y, width: across.board, height: regionHeight }
+    regionHeight <= 0 ? EMPTY : { x: across.boardX, y, width: across.board, height: regionHeight }
 
   // Down from the top for the opponent's half and up from the bottom for yours, so the hand sits
   // on the bottom edge and the odd pixel an even split cannot place falls on the line between the
@@ -422,18 +534,16 @@ export function scene(viewport: Viewport, counts: SceneCounts): Scene {
 
   const regions: Record<RegionName, Rect> = {
     header: { x: 0, y: 0, width, height: headerHeight },
-    turn: collapsed
-      ? { x: 0, y: headerHeight, width: width - badge, height: TURN_CHIP }
-      : stripped
-        ? { x: 0, y: headerHeight, width, height: TURN_STRIP }
+    turn:
+      rowHeight > 0
+        ? { x: 0, y: headerHeight, width: width - rails.reserved - badge, height: rowHeight }
         : { x: 0, y: contentTop, width: across.turn, height: contentHeight },
-    stack: collapsed
-      ? badge === 0
-        ? EMPTY
-        : { x: width - badge, y: headerHeight, width: badge, height: TURN_CHIP }
-      : across.stack === 0
-        ? EMPTY
-        : { x: width - across.stack, y: contentTop, width: across.stack, height: contentHeight },
+    stack:
+      badge > 0
+        ? { x: width - badge, y: headerHeight, width: badge, height: rowHeight }
+        : across.stack === 0
+          ? EMPTY
+          : { x: width - across.stack, y: contentTop, width: across.stack, height: contentHeight },
     side:
       across.side === 0
         ? EMPTY
