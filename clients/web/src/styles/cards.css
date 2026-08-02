@@ -85,6 +85,12 @@
      containing-block chain — and a hand of twenty cards ends up growing the page by the width of
      its own scroll area. */
   position: relative;
+  /* And a stacking context, so the frame's own layering stays inside the frame. Every `z-index`
+     below is about one card's anatomy — the band over the picture, the marks over the art, the
+     text over a tapped card's hatch — and none of it is a claim about the *page*. Without this
+     they are all levels 1–3 of whatever context the board happens to sit in, and a hand of
+     full-art cards paints its name bands straight through a panel opened over the board. */
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   /* Near zero. A 108px tile that was mostly padding and art window is what showed `C…`; the
@@ -190,9 +196,15 @@ button.card:hover {
 /* The art window, and everything that lies on it: the cost, the state marks, the stat. It takes
    what is left after the text rather than a fixed share (§6) — it is the only element that can
    degrade to nothing without costing a fact, since identity lives in the name. */
+/* The printed illustration's share of the card, and the same share on every card (`fit.ts`,
+   `ART_RATIO`). `flex: 0 1` and not `none`: everything else in the frame is `flex: none`, so the
+   window is the only element that can give, which is exactly the one §2 says gives — if a font
+   this build did not measure against draws a hair taller than the arithmetic expected, the picture
+   loses a pixel rather than the rules text losing a line. */
 .card__window {
   position: relative;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
+  aspect-ratio: 63 / 47;
   min-block-size: 0;
   overflow: hidden;
   border-radius: 0.15rem;
@@ -348,7 +360,10 @@ button.card:hover {
   padding: 0 0.25rem;
   border-radius: 0.5rem;
   border: 1px solid color-mix(in srgb, var(--tint) 65%, transparent);
-  background: color-mix(in srgb, Canvas 82%, var(--tint));
+  /* Opaque, because it sits in the card's own corner now and what is under it is usually the last
+     line of the rules text rather than a picture. A stat a player has to read *through* is the
+     one number on the frame that must never need reading twice. */
+  background: color-mix(in srgb, Canvas 96%, var(--tint));
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -446,11 +461,22 @@ button.card:hover {
   border-radius: 0.55rem;
 }
 
-/* The one window with no residue to take, because the card has no height to divide up — so it
-   keeps a printed art window's own proportion. */
+/* Nothing to shrink for, because the card has no height to divide up: the panel grows instead. */
 .card--full .card__window {
   flex: none;
-  aspect-ratio: 63 / 47;
+}
+
+/* And when the whole card image *is* the face (ADR 0012): then the window holds a card and
+   not an illustration, so it takes a card's proportion. Cropping 63:88 into 63:47 cuts a printed
+   face through its own text box — which is the compaction these two panels exist to undo. And
+   the picture is the whole frame, so the frame keeps none of its own padding around it: the card
+   in the picture has a printed border already. */
+.card--full.card--image {
+  padding: 0;
+}
+
+.card--full.card--image .card__window {
+  aspect-ratio: 63 / 88;
 }
 
 .card--full .card__name,
@@ -472,8 +498,9 @@ button.card:hover {
 }
 
 /* An object with no printed face — an emblem (CR 114), a bare ability on the stack — has no art
-   window to hang the marks on, so they return to the flow under whatever text there is rather
-   than being pinned over its last line. */
+   window to hang the badges on, so they return to the flow under whatever text there is rather
+   than being pinned over its last line. The *stat* needs no such case: it is in the card's own
+   corner on every frame now, picture or no picture. */
 .card:not(.card--chip):not(:has(.card__window)) .card__badges {
   position: relative;
   inset: auto;
@@ -519,6 +546,15 @@ button.card:hover {
 .inspector > .card {
   inline-size: 21rem;
   max-inline-size: 100%;
+}
+
+/* A whole card image has a definite height the moment it has a width, so the panel can be told
+   the one thing it could not work out for itself: whichever runs out first, a card's worth of
+   width or the height this window has for a 63:88 face and the panel's own chrome. Scale, never
+   crop — a short viewport gets a smaller whole card, not a bigger cut one, and the panel's
+   `overflow-y` stops being the thing that hides the bottom of the art. */
+.inspector > .card--image {
+  inline-size: min(21rem, 100%, (100dvh - 8rem) * 63 / 88);
 }
 
 /* ---------------------------------------------------------------------------
@@ -785,8 +821,12 @@ button.card:hover {
    The inspector
    --------------------------------------------------------------------------- */
 
+/* Above every layer the board itself stacks — the dock, the header, the drawer, a picker's popup.
+   A panel opened over the table is the topmost thing on the screen by definition, and saying so
+   here is cheaper than every one of those layers having to stay under a number nobody stated. */
 .inspector-backdrop {
   position: fixed;
+  z-index: 30;
   inset: 0;
   display: grid;
   place-items: center;

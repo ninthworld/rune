@@ -154,6 +154,8 @@ export function Card({
   onTrace,
 }: CardProps) {
   const [measure, measured] = useMeasuredBox()
+  // `mayAbbreviate` is still threaded through for the panels, which have room for a whole name and
+  // no reason to cut one; on the table it no longer decides anything (`fit.ts`, `fitTable`).
   const plan = cardPlan(face, measured ?? UNMEASURED, { mayAbbreviate })
   const stateLabel = STATE_LABELS[state]
 
@@ -165,6 +167,14 @@ export function Card({
   // a chip and an object with no type line have no art window to fill, so they keep SAGE's own
   // text whatever the preference says.
   const imageFace = plan.art && face.typeLine !== undefined && art?.style === 'full'
+
+  // SAGE keeps drawing its own name and cost over a picture because at a tile's scale the printed
+  // ones are unreadable, and never in the place a player's eye has learnt to look. A face drawn at
+  // reading size — the preview and the inspector — has neither problem: the printed name and cost
+  // are legible on the image, and SAGE's band would be those two facts a second time, over the art
+  // the panel was opened to see. So it is hidden there rather than dropped. Hidden, because a
+  // screen reader cannot read a picture and is owed both whatever the frame chose to draw.
+  const bandDrawn = !imageFace || plan.presentation !== 'full'
 
   // With the picture carrying the printed text, the frame's own type line and text box move to
   // assistive technology rather than being drawn twice.
@@ -188,7 +198,18 @@ export function Card({
   // answer and it is always the same one: the name is fitted first, and the cost is drawn in the
   // width the name did not use, or not at all.
   const band = (
-    <span className={`card__band${imageFace ? ' card__band--over' : ''}`}>
+    <span
+      className={[
+        'card__band',
+        imageFace && bandDrawn && 'card__band--over',
+        !bandDrawn && 'visually-hidden',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      // The box the band was reserved, so a one-line name leaves the row it did not use standing
+      // rather than handing its card a taller window than the card beside it (`fit.ts`).
+      style={plan.bandHeight > 0 ? { minBlockSize: `${plan.bandHeight}px` } : undefined}
+    >
       <span
         className="card__name"
         title={face.name}
@@ -209,44 +230,49 @@ export function Card({
     </span>
   )
 
-  // State marks, and the number a player scans a whole board for. Both lie on the picture where
-  // there is one — the one surface on a dense frame with room to spare, and the corner the
-  // printed stat sits in — and fall back into the flow where there is not.
-  const marks = (
-    <>
-      <span className="card__badges">
-        {stateLabel && <span className="badge badge--state">{stateLabel}</span>}
-        {link && <span className="badge badge--link">{LINK_LABELS[link]}</span>}
-        {face.markers.map((marker) => (
-          <span key={marker} className="badge badge--marker">
-            {marker}
-          </span>
-        ))}
-        {/* Tapped is the quarter turn the card is drawn at, or the mark across a face that has
+  // The state marks stay over the picture. They are the one surface on a dense frame with room to
+  // spare, and a badge laid over the rules text covers a sentence a player is trying to read.
+  const badges = (
+    <span className="card__badges">
+      {stateLabel && <span className="badge badge--state">{stateLabel}</span>}
+      {link && <span className="badge badge--link">{LINK_LABELS[link]}</span>}
+      {face.markers.map((marker) => (
+        <span key={marker} className="badge badge--marker">
+          {marker}
+        </span>
+      ))}
+      {/* Tapped is the quarter turn the card is drawn at, or the mark across a face that has
             no turn to make (`cards.css`), so there is no badge: a pill saying it would spend the
             frame's scarcest room restating what the card already looks like. The word is what
             assistive technology gets, which can perceive neither a mark nor a turn. */}
-        {face.tapped && <span className="visually-hidden">Tapped</span>}
-        {face.counters.map((counter) => (
-          <span key={counter.kind} className="badge badge--counter">
-            {counter.count}× {counter.kind}
-          </span>
-        ))}
-        {face.damage !== undefined && (
-          <span className="badge badge--damage">{face.damage} damage</span>
-        )}
-      </span>
-
-      {face.stat && (
-        <span
-          className={`card__stat card__stat--${face.stat.kind}`}
-          style={{ fontSize: `${plan.statSize}px` }}
-        >
-          <span className="visually-hidden">{face.stat.label} </span>
-          {face.stat.value}
+      {face.tapped && <span className="visually-hidden">Tapped</span>}
+      {face.counters.map((counter) => (
+        <span key={counter.kind} className="badge badge--counter">
+          {counter.count}× {counter.kind}
         </span>
+      ))}
+      {face.damage !== undefined && (
+        <span className="badge badge--damage">{face.damage} damage</span>
       )}
-    </>
+    </span>
+  )
+
+  // The stat goes in the corner of the **card**, not of the picture.
+  //
+  // It used to hang inside the art window, which put it wherever that window happened to end — a
+  // different height on every card, and gone entirely from a card that had no window. A printed
+  // card puts the stat in the bottom-right of the card, XMage puts it there, and it is the one
+  // number a player scans a whole board for: it has to be in the same place on every frame, or
+  // scanning becomes reading. It carries its own opaque background because what is under it is
+  // usually the last line of the rules text.
+  const stat = face.stat && (
+    <span
+      className={`card__stat card__stat--${face.stat.kind}`}
+      style={{ fontSize: `${plan.statSize}px` }}
+    >
+      <span className="visually-hidden">{face.stat.label} </span>
+      {face.stat.value}
+    </span>
   )
 
   // Every keyword the drawn face does not already carry — neither in the prose it is drawing nor
@@ -269,9 +295,15 @@ export function Card({
       {band}
 
       {window && (
-        <span className="card__window">
+        <span
+          className="card__window"
+          // The share the plan gave it, so every card in a row agrees on where the picture starts
+          // and ends. Left to the stylesheet where the plan states none — the panels, which are
+          // fitted against no height and take the printed proportion straight from CSS.
+          style={plan.artHeight > 0 ? { blockSize: `${plan.artHeight}px` } : undefined}
+        >
           <CardArt face={face} url={art?.url} />
-          {marks}
+          {badges}
         </span>
       )}
 
@@ -292,7 +324,16 @@ export function Card({
       )}
 
       {text && (
-        <span className="card__text" style={{ fontSize: `${text.size}px` }}>
+        <span
+          className="card__text"
+          // The box the plan gave it, and a cap: text that did not fit whole is drawn into this
+          // and clipped by it, rather than the box growing and pushing the card apart. `0` at the
+          // panels, where nothing is fitted against a height and the box grows to its text.
+          style={{
+            fontSize: `${text.size}px`,
+            ...(text.height > 0 ? { blockSize: `${text.height}px` } : {}),
+          }}
+        >
           {text.rulesText && face.rulesText && (
             <RulesText className="card__rules" text={face.rulesText} />
           )}
@@ -315,7 +356,10 @@ export function Card({
           keyword exactly once, on the same rule the drawing follows. */}
       {unheard.length > 0 && <span className="visually-hidden">{keywordLine(unheard)}</span>}
 
-      {!window && marks}
+      {/* A face with no picture — an emblem, a bare ability — has nowhere to hang the badges but
+          the flow, so they follow whatever text there is instead of being pinned over its end. */}
+      {!window && badges}
+      {stat}
     </>
   )
 

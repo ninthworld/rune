@@ -169,31 +169,6 @@ function wraps(text: string, width: number, size: number, lines: number): boolea
   return laid.length <= lines && laid.every((line) => textWidth(line, size) <= width)
 }
 
-/**
- * The narrowest band the text still lays out in, at a size it has already been granted.
- *
- * This is what makes a shared band answerable rather than negotiable: once the name has been
- * fitted, *this* is the width it needs, and everything past it is width the name is not using.
- * `width` is returned unchanged when the text does not fit at all, so a name that is already
- * overflowing its band leaves nothing for anything else — which is §6's "if that would push the
- * name below its floor, the cost goes" falling out of the arithmetic rather than being a case.
- *
- * Bisected because `wraps` is monotone in the width: greedy wrapping never produces more lines in
- * a wider box, so there is exactly one crossing to find.
- */
-function narrowest(text: string, size: number, lines: number, width: number): number {
-  const most = Math.max(0, Math.ceil(width))
-  if (!wraps(text, most, size, lines)) return most
-  let low = 0
-  let high = most
-  while (high - low > 1) {
-    const mid = Math.floor((low + high) / 2)
-    if (wraps(text, mid, size, lines)) high = mid
-    else low = mid
-  }
-  return high
-}
-
 // ---------------------------------------------------------------------------
 // The name
 // ---------------------------------------------------------------------------
@@ -368,6 +343,25 @@ export const PRINTED_RATIO = 63 / 88
 const BAND_LINES = 2
 
 /**
+ * The illustration's own share of a printed card: a window the card's full width and about 47mm
+ * tall on an 88mm card.
+ *
+ * **The window holds this share on every card, rather than taking what the rest left behind.** It
+ * used to be the residue — last in the queue, on the reasoning that art is the one element that
+ * degrades to nothing without costing a fact. That reasoning is about *one* card and the row it is
+ * drawn in is what disproved it: from a single row of identical boxes, a vanilla land got a picture
+ * half the card tall, the card beside it a stripe, and a text-heavy card no window at all. Three
+ * anatomies out of one box, and the illustration cropped differently on each one, is a worse
+ * failure than the one dropping the window was avoiding — it makes the *shape* of a card stop
+ * meaning anything, so a player cannot learn where to look.
+ *
+ * The share is the printed one because the frame is a printed card's anatomy (§6), and because the
+ * source images are drawn to it: at 63:47 the illustration fills the window at the crop it was
+ * composed for, at every size and on every card.
+ */
+export const ART_RATIO = 47 / 63
+
+/**
  * The narrowest name band that can still set a name at §2's 9px floor.
  *
  * **Asked in the abstract.** No card is read and no name is passed: what has to fit is the
@@ -462,10 +456,31 @@ export const keywordLine = (keywords: readonly string[]): string => keywords.joi
 export interface CardPlan {
   presentation: Presentation
   name: Fitted
+  /**
+   * The band's own box, in px — **reserved rather than measured**, and `0` where nothing is
+   * reserved (the panel presentations, and the chip, which is one row and nothing else).
+   *
+   * Two lines at the designed size, whatever the name in front of it needed. A band that was only
+   * as tall as its name handed every card in a row a different anatomy for the most ordinary
+   * reason there is: `Plains` fits on one line and `Ajani, Adversary of Tyrants` does not, so the
+   * window under one of them started 16px higher than the window under the other. The name is
+   * still fitted exactly as it was — this decides the box it sits in, not the type it is set at.
+   */
+  bandHeight: number
   /** The cost, at the name band's trailing edge. `0` when there is no room for it. */
   costSize: number
-  /** Whether an art window is drawn at all. It takes what is left, and may be left nothing. */
+  /** Whether an art window is drawn at all. It holds `ART_RATIO` of the width where it is. */
   art: boolean
+  /**
+   * The window's box, in px — `0` where there is no window, and where the presentation states it
+   * in CSS instead (the panels, which are fitted against no height at all).
+   *
+   * Stated rather than left to `aspect-ratio` because the share is clamped on a small tile, and a
+   * clamp the stylesheet cannot see would come out differently on the card beside it: a card with
+   * prose would shrink its window to make room and a vanilla card next to it would not, which is
+   * the row disagreeing about the frame again, one layer further down.
+   */
+  artHeight: number
   /** The type line as it will be drawn — `''` when it did not fit and is dropped. */
   typeLine: string
   typeSize: number
@@ -476,7 +491,20 @@ export interface CardPlan {
    * not already state (§6, Density) — empty where the prose says all of them, and the whole list
    * where there is no prose on the face.
    */
-  text: { size: number; rulesText: boolean; keywords: readonly string[] } | undefined
+  text:
+    | {
+        size: number
+        /**
+         * The box's own height in px, or `0` where the presentation states none and the box grows
+         * to its text (the panels). On the table it is a cap: the text is drawn into it and
+         * clipped by it, which is what lets a card with more to say than room draw the part that
+         * fits instead of nothing at all.
+         */
+        height: number
+        rulesText: boolean
+        keywords: readonly string[]
+      }
+    | undefined
   statSize: number
 }
 
@@ -506,6 +534,27 @@ const pipRow = (pips: number, size: number): number =>
  * a string the server sent and concludes nothing about affordability.
  */
 const MIN_PIP = 9
+/**
+ * The most of a name band a mana cost may ever take.
+ *
+ * The cost is drawn on every card at every size — XMage draws one on every card in a hand and it
+ * is how a player reads a hand at all, since what is castable is the first question they ask of
+ * it. What that costs is the name, which is truncated to whatever is left rather than the cost
+ * being dropped. This is the stop on how far that goes: past half the band a ten-symbol cost is
+ * taking the card's identity with it, and neither half is readable.
+ */
+const COST_SHARE = 0.5
+/**
+ * How fast the cost's reserve grows with the band, between the two constants that bound it.
+ *
+ * Tuned so an ordinary two-pip cost reaches its designed size on §5's designed tile and sits at
+ * the 9px floor on the 72px one — and, far more importantly, chosen as a **slope** rather than as
+ * a size. Sizing the pips from the width and then measuring the row makes the reserve a step
+ * function: it jumps a whole pip-size while the card grows by one pixel, and the name loses six
+ * pixels of band on a wider card. Every term of the reserve is a constant or a line with a slope
+ * under one, so the width left for the name never goes backwards.
+ */
+const COST_GROWTH = 0.28
 
 const lineHeight = (size: number): number => Math.ceil(size * 1.2)
 
@@ -550,8 +599,10 @@ export function cardPlan(content: CardText, box: Box, opts: PlanOptions = {}): C
         { width: Math.max(0, inner.width - statSize * 2.4) },
         { floor: NAME_FLOOR, designed: NAME_DESIGNED, mayAbbreviate, maxLines: 1 },
       ),
+      bandHeight: 0,
       costSize: 0,
       art: false,
+      artHeight: 0,
       typeLine: '',
       typeSize: 0,
       text: undefined,
@@ -573,13 +624,17 @@ export function cardPlan(content: CardText, box: Box, opts: PlanOptions = {}): C
     return {
       presentation,
       name: band.name,
+      // Nothing is fitted against a height here, so nothing has to be reserved out of one: the
+      // panel grows to the card instead.
+      bandHeight: 0,
       costSize: band.costSize,
       art: true,
+      artHeight: 0,
       typeLine: content.typeLine?.trim() ?? '',
       typeSize: BODY_DESIGNED,
       text:
         content.rulesText || keywords.length > 0
-          ? { size: BODY_DESIGNED, rulesText: true, keywords }
+          ? { size: BODY_DESIGNED, height: 0, rulesText: true, keywords }
           : undefined,
       statSize: STAT_DESIGNED,
     }
@@ -596,54 +651,115 @@ function fitTable(
   statSize: number,
   mayAbbreviate: boolean,
 ): CardPlan {
+  // **One line, on every card on the table.** A band that wrapped gave two cards in one row two
+  // different anatomies for the most ordinary reason there is, and reserving two lines for a name
+  // that needs one spends a sixth of a hand card on white space. XMage — the readability bar this
+  // whole module is measured against — sets every name on one line and gives up characters when it
+  // has to: `Troll Asce`, `Stranglero`, `Battlefield Sca`. That is the trade taken here too, and
+  // it is monotone in the box in a way the two-line rule never quite was: one line, the largest
+  // size that holds it, and characters only at the floor.
+  //
+  // `mayAbbreviate` is no longer honoured for the *line count* — it never was — and it is now
+  // ignored for the hand as well. §6 forbade abbreviating where a player chooses from what they
+  // are reading, on the reasoning that a cut name is not a name. XMage cuts them in the hand and
+  // is legible, the pointer previews the whole face continuously, and the alternative on a 100px
+  // tile is a name drawn straight over the card below it.
   const band = fitBand(content, inner.width, {
     floor: NAME_FLOOR,
     designed: NAME_DESIGNED,
     mayAbbreviate,
+    maxLines: 1,
   })
   const name = band.name
-  let left = inner.height - lineHeight(name.size) * name.lines - GAP
 
-  // The type line never outgrows the name above it, and never the body's designed size.
-  const top = Math.round(
-    Math.min(BODY_DESIGNED, Math.max(BODY_FLOOR, Math.min(name.size, inner.width * 0.11))),
-  )
+  // **Every row below this point is reserved from the box, not measured off the content.** Two
+  // cards that share a box share an anatomy — the band ends at the same pixel, the window starts
+  // and ends at the same pixel — whatever their names and prose happen to be. What varies between
+  // them is what is *in* those rows, which is the card being different; what used to vary is where
+  // the rows were, which is the frame being different, and a frame that reshapes itself per card
+  // is one a player cannot learn to read.
+  const bandHeight = Math.min(inner.height, lineHeight(NAME_DESIGNED))
+  let left = inner.height - bandHeight - GAP
+
+  // The type line's row is reserved at the size the *box* affords. What is drawn in it is still
+  // capped by the name above — a type line towering over a card's own identity is the inversion
+  // §6 settles — but that cap is about the type, not about where the row ends.
+  const top = Math.round(Math.min(BODY_DESIGNED, Math.max(BODY_FLOOR, inner.width * 0.11)))
+  const typeRow = lineHeight(top) + GAP
   let typeLine = ''
   let typeSize = top
-  if (content.typeLine && left >= lineHeight(top) + GAP) {
-    const band = fitTypeBand(content.typeLine, inner, top)
+  if (content.typeLine && left >= typeRow) {
+    const band = fitTypeBand(content.typeLine, inner, Math.min(top, name.size))
     typeLine = band.text
     typeSize = band.size
-    if (typeLine) left -= lineHeight(typeSize) + GAP
+    if (typeLine) left -= typeRow
   }
 
-  // §6's table names the *order* things leave in, not a fixed manifest: rules text is what
-  // `compact` gives up, and everything below the name is drawn while it fits. The keyword line
-  // survives at both, because it is one of the five things XMage fits onto the 72×100 tile this
-  // whole section is measured against.
-  const text = fitTextBox(content, inner, left, name.size, presentation === 'designed')
-  if (text) left -= text.height + GAP
+  // The window's share, taken before the text rather than after it — and held back from taking so
+  // much that a text box could not exist at all.
+  //
+  // **The concession is derived from the box, never from the card**, which is what keeps the row
+  // property intact: every card in a box gets the same window whether it has prose, a keyword
+  // line, or nothing to say. Without it the printed share is simply too big a fraction of a small
+  // card — 52% of the height, with the band's two reserved lines taking another 24% — and a 100px
+  // hand tile, which is what a 720p screen draws, ends up with no text box on any card in the
+  // hand. That is the hand losing the one thing it is for. What it costs instead is a window a few
+  // pixels shallower than the printed one on small tiles only; at a size with room for both, the
+  // share is exactly the printed one and this clamp never binds.
+  const room = 2 * TEXT_PAD + lineHeight(BODY_FLOOR) + 2 * GAP
+  const window = Math.min(Math.round(inner.width * ART_RATIO), Math.max(MIN_ART, left - room), left)
+  const art = window >= MIN_ART
+  if (art) left -= window + GAP
+
+  // The text box takes the room the window did not, at the largest size the whole of it fits —
+  // and **at the floor, showing as much as the box holds, where it does not**. Dropping the box
+  // outright was the old rule and it is the wrong end of the trade: it turned a card with a lot to
+  // say into a card that says nothing, which is exactly the card a player most needs to read. A
+  // box cut off after four lines still answers "what does this do" for almost every card in a
+  // format, and the pointer's preview carries the rest at no cost. XMage cuts them off and is the
+  // bar this module is measured against.
+  // **The room decides whether there is rules text, not the tier.** `compact` used to refuse it
+  // outright, which made the 100px threshold a cliff: a hand card at 99px drew no prose at all and
+  // one at 100px drew all of it, and the hand is 99px wide at 1440×900. That refusal only made
+  // sense while a box that could not hold its text whole was not drawn — under a tier that clips,
+  // a narrow card simply shows fewer lines of the same sentence, which is what §2's ladder says
+  // should happen and what a player can actually read.
+  const text = fitTextBox(content, inner, left, name.size, true)
 
   return {
     presentation,
     name,
+    bandHeight,
     costSize: band.costSize,
-    art: left >= MIN_ART,
+    art,
+    artHeight: art ? window : 0,
     typeLine,
     typeSize,
-    text: text && { size: text.size, rulesText: text.rulesText, keywords: text.keywords },
+    text: text && {
+      size: text.size,
+      height: text.height,
+      rulesText: text.rulesText,
+      keywords: text.keywords,
+    },
     statSize,
   }
 }
 
 /**
- * The text box, drawn **only when what goes in it fits whole**.
+ * The text box: **the largest size the whole of it fits at, and the floor showing what it can
+ * where nothing does.**
  *
- * A box showing the first three lines of a card's rules is a truncation wearing a border, and §6
- * forbids it: the pointer's preview carries the complete text continuously and costs no click.
- * So the box is offered the rules and the keywords together, then the keywords alone — the
- * keyword line — and then nothing at all. That last case is the defect this replaces: a blank
- * black band where the text did not fit, a container outliving its content.
+ * The rule used to be that a box which could not hold its text whole was not drawn — a box showing
+ * the first three lines is a truncation wearing a border, and the preview carries the complete
+ * text anyway. The trade is the wrong way round. Dropping the box turns a card with a lot to say
+ * into a card that says *nothing*, and that card is the one a player most needs to read: a vanilla
+ * bear loses nothing by having no text box, and `Angel of the Dawn` loses everything. Four lines
+ * and a cut answers "what does this do" for almost every card in a format; no box answers it for
+ * none of them. XMage cuts them off, and XMage is the bar.
+ *
+ * So the ladder is unchanged down to the floor and only its last rung is different: the rules and
+ * the keywords together, then the keywords alone, then the rules again **at the floor and clipped**
+ * — and nothing at all only where the box has no room to be a box.
  *
  * **The keywords offered depend on which candidate it is**, which is §6's "Density" rule and not a
  * fitting decision: beside the prose, only the keywords the prose does not already say; in the
@@ -688,11 +804,35 @@ function fitTextBox(
         )
       const height = lines * lineHeight(size) + 2 * TEXT_PAD
       if (height <= available - GAP) {
-        return { size, height, rulesText: candidate.rulesText, keywords: candidate.keywords }
+        // The room it was offered, not the height its text wanted — the last row of the frame
+        // ends where the card does, on every card in a box, exactly as the band and the window
+        // do. A box that shrank to its prose put `{T}: Add {G}.` in a one-line box beside a
+        // three-line one and left the card's own bottom edge somewhere different on each.
+        return {
+          size,
+          height: available - GAP,
+          rulesText: candidate.rulesText,
+          keywords: candidate.keywords,
+        }
       }
     }
   }
-  return undefined
+
+  // Nothing fits whole. The box is drawn anyway, at the floor, holding as many lines as there is
+  // room for — the browser clips the rest and `Card.tsx` states the whole prose to assistive
+  // technology, which is where completeness was always kept. It takes the room it was offered
+  // rather than the height its text wanted, so a clipped box is the same height as a full one on
+  // the card beside it.
+  const clipped = candidates[0]
+  if (!clipped) return undefined
+  const height = available - GAP
+  if (height < 2 * TEXT_PAD + lineHeight(BODY_FLOOR)) return undefined
+  return {
+    size: BODY_FLOOR,
+    height,
+    rulesText: clipped.rulesText,
+    keywords: clipped.keywords,
+  }
 }
 
 /** The name and the cost, sharing one band. */
@@ -726,19 +866,47 @@ interface Band {
  * goes. It is never the name.
  */
 function fitBand(content: CardText, width: number, opts: NameOptions): Band {
-  const name = fitName(content.name, { width }, opts)
   const pips = manaSymbols(content.manaCost).length
-  if (pips === 0) return { name, costSize: 0 }
+  if (pips === 0) return { name: fitName(content.name, { width }, opts), costSize: 0 }
 
-  const spare = width - narrowest(content.name, name.size, opts.maxLines ?? 2, width) - BAND_GAP
-  // Never taller than the name beside it: a cost that towers over the card's identity is the
-  // fight §6 is settling, wearing the other hat.
-  for (let size = Math.min(NAME_DESIGNED, name.size); size >= MIN_PIP; size--) {
-    if (pipRow(pips, size) > spare) continue
-    // Re-fitted against what is actually left, so the name may spend the room the cost did not
-    // take — on one line instead of two, most often.
-    const reserve = Math.ceil(pipRow(pips, size)) + BAND_GAP
-    return { name: fitName(content.name, { width: width - reserve }, opts), costSize: size }
+  // **The reserve is the quantity, and the pip size is read off it — never the other way round.**
+  //
+  // The objection §6 recorded against reserving the cost first was never about the order: it was
+  // that the cost's claim *vanished at a threshold*, so a card one pixel wider than the threshold
+  // handed the name a narrower band. A claim that is always made has no threshold to cross — but
+  // it has a subtler version of the same fault, which cost this a round of the same bug. Sizing
+  // the cost from the width and then measuring the row makes the reserve a **step** function: at
+  // each step the pips jump a whole size and take ~7px more, while the card grew by one. The name
+  // loses six pixels on a wider card, which is the inversion wearing its third hat.
+  //
+  // So every term below is non-decreasing in the width with a slope of at most one — two constants
+  // and two lines — which makes the width left over for the name non-decreasing *pointwise* rather
+  // than on average. The pip size is then the largest the reserve holds, which inherits the
+  // property instead of creating it.
+  const rowAt = (size: number) => Math.ceil(pipRow(pips, size)) + BAND_GAP
+  const reserve = Math.min(
+    // Never more than the cost wants at its designed size — a reserve past that is dead band the
+    // name could have had. Taking the *greater* of the half-band and the pips' own need is what
+    // gave a 72px tile a 36px reserve for a 29px cost, and drew 12px pips beside a 9px name.
+    rowAt(NAME_DESIGNED),
+    // What the band affords, but never under what the pips need to stay readable at all.
+    Math.max(Math.floor(width * COST_GROWTH), rowAt(MIN_PIP)),
+    // And never past `COST_SHARE`, whatever the pips want. Past half the band a ten-symbol cost
+    // is taking the card's identity with it; the pips overflow and are clipped instead, which is
+    // the one thing on the frame that can be cut without costing a fact the name does not repeat.
+    Math.floor(width * COST_SHARE),
+  )
+
+  let costSize = MIN_PIP
+  for (let size = NAME_DESIGNED; size > MIN_PIP; size--) {
+    if (rowAt(size) <= reserve) {
+      costSize = size
+      break
+    }
   }
-  return { name, costSize: 0 }
+
+  return {
+    name: fitName(content.name, { width: Math.max(0, width - reserve) }, opts),
+    costSize,
+  }
 }
