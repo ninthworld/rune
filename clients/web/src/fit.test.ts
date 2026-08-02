@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  CARD_MIN_HEIGHT,
   cardPlan,
   fitName,
   fitTypeLine,
@@ -8,6 +9,7 @@ import {
   NAME_DESIGNED,
   NAME_FLOOR,
   presentationFor,
+  PRINTED_RATIO,
   textWidth,
   unstatedKeywords,
   wrapText,
@@ -549,9 +551,39 @@ describe('which presentation a box gets', () => {
     expect(presentationFor({ width: 336, height: 470 })).toBe('full')
   })
 
-  it('stops being a card below a hundred pixels of height', () => {
-    expect(presentationFor({ width: 190, height: 99 })).toBe('chip')
+  /**
+   * **Where a tile stops being a card is derived from §2's type floor, not from §5's 100px row.**
+   *
+   * §5 makes the 72×100 minimum soft downward — a 90px row draws a 64×90 card with everything on
+   * it set smaller — and puts the threshold at the point where the name band can no longer set a
+   * legible name at 9px. The old 100px switch is what made three rows in a two-row field mean
+   * three rows of chips, which is what made a packer merge them.
+   */
+  it('stops being a card where a name stops fitting, not at a hundred pixels', () => {
     expect(presentationFor({ width: 96, height: 30 })).toBe('chip')
+    expect(CARD_MIN_HEIGHT).toBeLessThan(PERMANENT_MIN.height)
+    // Either side of the threshold, at the printed proportion a battlefield tile is drawn at.
+    const tile = (height: number) => ({ width: Math.round(height * PRINTED_RATIO), height })
+    expect(presentationFor(tile(CARD_MIN_HEIGHT))).not.toBe('chip')
+    expect(presentationFor(tile(CARD_MIN_HEIGHT - 1))).toBe('chip')
+    expect(presentationFor({ width: 190, height: 99 })).not.toBe('chip')
+  })
+
+  /**
+   * And the derivation itself: at the threshold a name really is still set, whole, at the floor.
+   *
+   * `MIN_STEM` characters is what §6 accepts as a name — `Troll Asce` is the example it names —
+   * and the tile at the threshold sets one at `NAME_FLOOR` without abbreviating it. That is the
+   * property the constant is derived from, asserted rather than the number it comes out at.
+   */
+  it('can still set a name at the threshold it stops being a card at', () => {
+    const width = Math.round(CARD_MIN_HEIGHT * PRINTED_RATIO)
+    const plan = cardPlan(face({ name: 'Troll Asce' }), { width, height: CARD_MIN_HEIGHT })
+    expect(plan.presentation).not.toBe('chip')
+    expect(plan.name.text).toBe('Troll Asce')
+    expect(plan.name.abbreviated).toBe(false)
+    expect(plan.name.size).toBeGreaterThanOrEqual(NAME_FLOOR)
+    expect('Troll Asce'.length).toBe(MIN_STEM)
   })
 })
 

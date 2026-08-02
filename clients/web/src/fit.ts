@@ -100,6 +100,15 @@ export const MIN_STEM = 10
 const THIN = new Set(" ijl.,:;'’!·-()[]J".split(''))
 /** The letters between thin and ordinary, plus the braces and the slash. Max 0.447. */
 const NARROW = new Set('tfrI/{}'.split(''))
+/**
+ * Everything the buckets do not name — the rest of the lowercase alphabet, and any glyph this
+ * table has never seen. The widest of those is 0.65, so it covers an unknown character too.
+ *
+ * Named rather than written inline because it is also the *abstract* answer to "how wide is a
+ * character", which is what the chip threshold below is derived from: a caller with no string to
+ * measure is charged the widest ordinary letter, which is this file's upper bound everywhere.
+ */
+const ORDINARY = 0.66
 /** The widest glyphs any of this text contains. Max 0.975. */
 const WIDE = new Set('mwMW@'.split(''))
 /** The round capitals, which are a fifth wider than the rest of the alphabet. Max 0.813. */
@@ -121,7 +130,7 @@ function advance(character: string): number {
   if (SLIM.has(character)) return 0.6
   // Everything else, which is the rest of the lowercase alphabet and anything this table has
   // never seen. The widest of those is 0.65, so the default covers an unknown glyph as well.
-  return 0.66
+  return ORDINARY
 }
 
 /** How wide a run of text would be drawn, in px. Over-estimated on purpose; see above. */
@@ -341,8 +350,46 @@ function fitTypeBand(
  */
 export type Presentation = 'full' | 'designed' | 'compact' | 'chip'
 
-/** Below this height a tile is no longer a card but a landscape chip (§3, step 5). */
-const CARD_MIN_HEIGHT = 100
+/** Near zero, because §6's density is padding spent on text. */
+const PAD = 2
+/** The frame's own 1px rule. Inside `box-sizing: border-box` it comes out of the text's width. */
+const BORDER = 1
+
+/**
+ * The printed proportion, as a multiplier from a tile's height to its width: 63:88 at every size.
+ *
+ * §5's number, and it lives here rather than in `pack.ts` because the threshold below is derived
+ * *through* it — "can this box still set a name" is a question about a band's width, and a
+ * battlefield tile's width is its height times this. One number, one home; `pack.ts` imports it.
+ */
+export const PRINTED_RATIO = 63 / 88
+
+/** The lines a portrait tile's name band affords, which is `fitName`'s own default. */
+const BAND_LINES = 2
+
+/**
+ * The narrowest name band that can still set a name at §2's 9px floor.
+ *
+ * **Asked in the abstract.** No card is read and no name is passed: what has to fit is the
+ * shortest run §6 still accepts as a name — `MIN_STEM` characters — at `NAME_FLOOR`, across the
+ * two lines a portrait band affords, with every character charged the widest ordinary letter.
+ * That is the same upper bound every other estimate in this file uses, so the answer errs toward
+ * demanding *more* room than a real name needs.
+ */
+const nameFloorWidth = (): number => Math.ceil((MIN_STEM * ORDINARY * NAME_FLOOR) / BAND_LINES)
+
+/**
+ * Below this height a tile can no longer set a name, so it is drawn as a landscape chip.
+ *
+ * **Derived, not chosen** (§5, "The floor is soft downward and hard sideways"). It used to be the
+ * 100px row of §5's permanent minimum, which made that minimum hard in both directions: a field
+ * too short for three 100px rows had to give up either its rows or its card faces, and a packer
+ * told to protect the faces gave up the rows. The floor is soft downward now — a 90px row draws a
+ * 64×90 card with everything on it set smaller, an 80px row a 57×80 one — and the point at which
+ * a tile stops being a card is where §2's type floor puts it rather than where a second constant
+ * did. One number to defend, and §2 already defends it.
+ */
+export const CARD_MIN_HEIGHT = Math.ceil((nameFloorWidth() + 2 * (PAD + BORDER)) / PRINTED_RATIO)
 /**
  * Wide enough that nothing has to be dropped: the inspector, and the pointer's preview over the
  * side column. Set at the narrower of the two, because the preview is the surface that redeems
@@ -357,8 +404,9 @@ const COMPACT_WIDTH = 100
  *
  * **A function of the box and nothing else** — a battlefield card and a hand card of the same
  * size are the same card, so no surface names its own tier. Height decides only whether a tile
- * is still a card, which is §4's rule and the one thing there that can be evaluated rather than
- * judged; width decides how much of a card it is.
+ * is still a card — which is §6's own wording for the chip, *below the row height at which a name
+ * can be set at 9px*, and is `CARD_MIN_HEIGHT` above rather than a judgment per screen; width
+ * decides how much of a card it is.
  */
 export function presentationFor(box: Box): Presentation {
   if (box.height < CARD_MIN_HEIGHT) return 'chip'
@@ -432,10 +480,6 @@ export interface CardPlan {
   statSize: number
 }
 
-/** Near zero, because §6's density is padding spent on text. */
-const PAD = 2
-/** The frame's own 1px rule. Inside `box-sizing: border-box` it comes out of the text's width. */
-const BORDER = 1
 const GAP = 2
 /** Below this an art window is a stripe, and a stripe is worth less than the room it takes. */
 const MIN_ART = 20
