@@ -62,9 +62,13 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   viewport and a count is absorbed by the cards** — `footprint = clamp(FLOOR, (W − (N−1)·g)/N,
   ideal)` over the **turned** footprint a tapped permanent needs, charged whether or not anything
   is tapped (§6); a second line while the row's own height affords one at the same tile size, and
-  overlap after that, fanned so the exposed strip is the name band. Cards never shrink below
-  72×100; below a 100px row they are 96×30 chips (§3, step 6), and the printed 63:88 holds at
-  every size. It reads
+  overlap after that, fanned so the exposed strip is the name band. **The floor is soft downward
+  and hard sideways**: too many cards for the width overlap at full size, too short a row draws a
+  smaller card and *reports* it (`belowFloor`), and a tile stops being a card only where its name
+  band can no longer set a name at 9px — `fit.ts`'s answer from §2's type floor, never a second
+  constant here. The printed 63:88 holds at every size. **The row count is the board's, never the
+  card's**: one row per group `board.ts` made, falling below that only where a row could not draw
+  a tile at all (§3, step 6). It reads
   no card and decides no row membership — that is `board.ts`'s answer from the server's
   `card_types`, and the order inside a row is the server's.
 - `src/board.ts` — a battlefield, as rows. Groups permanents into creatures, other permanents,

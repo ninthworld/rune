@@ -63,9 +63,9 @@ interface DrawnRow {
 /**
  * Give up the split, as far as the table's row count requires.
  *
- * `pack.ts` answers how many rows the *table* draws, and it answers it to maximise card size
- * rather than row count (§3, "More screen is never a worse board"). A half with more groups than
- * that has to merge some of them, and **which** ones is the only decision here: the rows furthest
+ * `pack.ts` answers how many rows the *table* draws — one per group the board has, falling below
+ * that only where a row could not draw a tile at all (§5). A half with more groups than the table
+ * has to merge some of them, and **which** ones is the only decision here: the rows furthest
  * from the dividing line go first, so the creature band the two halves meet across is the last
  * thing to lose its own row. Combat is read along that line, and a board that merged the creatures
  * into the lands to keep an artifact row would have spent the wrong one.
@@ -158,6 +158,14 @@ export function Battlefield({
             key={group.key}
             className={`cards cards--battlefield field__row field__row--${group.key}`}
             aria-label={isYou ? group.label : `${name} ${group.label.toLowerCase()}`}
+            // A tile under §5's 72×100 minimum, said out loud. The minimum is a *review
+            // threshold* and not a stop-drawing line (§3): where the room requires it the card
+            // is drawn smaller, its name still fits, and the fact that it had to is worth
+            // surfacing rather than hiding. Not a class, because it is not a style — it is a
+            // measurement the scale gate reads back and the maintainer judges.
+            data-below-floor={
+              row.pack.belowFloor ? `${row.pack.width}×${row.pack.height}` : undefined
+            }
             style={{ left: row.x, top: row.y, width: row.width, height: row.height }}
           >
             {group.entries.map(({ permanent, face, lines }, position) => (

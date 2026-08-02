@@ -22,11 +22,15 @@
  * card than the same room would have drawn upright, and the printed 63:88 takes the width from
  * there.
  *
- * When `fitted` falls under the floor the row stops spacing and starts **overlapping**: the pitch
- * becomes `(W - footprint) / (N - 1)` and the cards keep their size. That direction is the whole
- * point — a card below the floor is unreadable everywhere at once, while an overlapped row is
- * unreadable only where it is covered, and what stays exposed is the top-left strip, which is the
- * name band. A fanned row is read as its names.
+ * **The floor is soft downward and hard sideways** (§5), and the two directions are not the same
+ * problem. Too many cards for the width: the row stops spacing and starts **overlapping**, the
+ * pitch becomes `(W - footprint) / (N - 1)`, and the cards keep their size — a card shrunk to fit
+ * is unreadable everywhere at once, while an overlapped row is unreadable only where it is
+ * covered, and what stays exposed is the top-left strip, which is the name band. A fanned row is
+ * read as its names. Too *short* a row for a 100px card: the card simply gets smaller and stays a
+ * card. Nothing is given up to hold 72×100, because giving something up is what §3 exists to
+ * forbid; the tile stops being a card only where its name band can no longer set a name at §2's
+ * 9px floor, which is `fit.ts`'s `CARD_MIN_HEIGHT` and not a number this file carries.
  *
  * One thing comes before the fan, and it is the only addition to §5 here: **a row takes a second
  * line while it has the height for one at the same tile size.** A chip is 30px in a 60px box and a
@@ -35,13 +39,13 @@
  * right-hand side. It is never bought with the tile: a line paid for by shorter cards would be
  * §3's step 6 taken early, and the card is what the ladder protects longest.
  *
- * Two things the row height decides, and they are §4's rule rather than a judgment per screen.
- * **A permanent is a card while its row is at least 100px tall**; below that it is a landscape
- * chip carrying the name, the P/T, and the marks, with the face one gesture away (§3, step 6) —
- * rendering a 60px "card" instead is a shape with the outline of information and none of the
- * substance. And the *printed* proportion, 63:88, holds at every size, so a short row produces a
- * narrow card no matter how much width is going spare: height is the thing that runs out on a
- * table, and a card that ignored it would be a card lying half in the next row.
+ * Two things the row height decides, and neither is a judgment per screen. **A permanent is a card
+ * while its row can still set a name**; below that it is a landscape chip carrying the name, the
+ * P/T, and the marks, with the face one gesture away (§3, step 6) — and *that* threshold is
+ * `fit.ts`'s, derived from §2's 9px type floor, because the question is about type and this file
+ * has never read a character. And the *printed* proportion, 63:88, holds at every size, so a short
+ * row produces a narrow card no matter how much width is going spare: height is the thing that
+ * runs out on a table, and a card that ignored it would be a card lying half in the next row.
  *
  * **Pure, and deliberately so.** Numbers in, numbers out: no React, no DOM, no `window`, no
  * measurement. Every case in this file — the clamp, the overlap switchover, the chip threshold,
@@ -54,7 +58,7 @@
  * else — no packing decision may depend on a card's text (§5's opening line), which is the defect
  * this whole document exists to remove.
  */
-import { presentationFor, type Presentation } from './fit'
+import { CARD_MIN_HEIGHT, PRINTED_RATIO, presentationFor, type Presentation } from './fit'
 
 /** A box to pack into, in CSS px. Where it came from is the caller's business. */
 export interface Box {
@@ -97,6 +101,16 @@ export interface PackedRow {
   /** How many lines of tiles the row uses. More than one only where the height is going spare. */
   lines: number
   /**
+   * Whether this tile is drawn under §5's 72×100 permanent minimum — **reported, never hidden**.
+   *
+   * §3 makes that minimum a *review threshold* rather than a stop-drawing line: "when scaling
+   * reaches a size that seems too small, the client still draws it, and the fact is reported to
+   * the maintainer — who is the one who decides whether it has gone too far." So a field with the
+   * room for three rows of 66px cards draws them, and says that it did. A chip is never under the
+   * floor: it is a different tier with a floor of its own, not a small card.
+   */
+  belowFloor: boolean
+  /**
    * The presentation these tiles will get, which is `fit.ts`'s answer for this box and not a
    * second opinion: a surface never names its own tier (§6). Reported because it is what the row
    * *is*, and a caller that wants to say so in a class name should not have to re-derive it.
@@ -135,21 +149,24 @@ export interface PackOptions {
   cardTier: FieldOptions['cardTier']
 }
 
-/** The printed proportion, as a multiplier from height to width. Held at every size (§5). */
-const RATIO = 63 / 88
-
 /**
- * §5's permanent tile: 72×100 at the floor, 130×182 designed.
+ * §5's permanent tile: 72×100 at the minimum, 130×182 designed.
  *
- * The floor is measured off XMage, which fits a complete name, cost, type line, keyword line and
+ * The minimum is measured off XMage, which fits a complete name, cost, type line, keyword line and
  * P/T into that box at roughly 9px — complete-and-small is readable where large-and-truncated is
- * not. It is a floor for the *card*, not for the tile: below it a permanent stops being a card
- * rather than becoming a smaller one.
+ * not. **It is a review threshold, not a stop-drawing line** (§3, §5): a row too short for it
+ * draws a smaller card and says so (`PackedRow.belowFloor`), and the only place it is still a hard
+ * bound is *sideways*, where a row too crowded for it overlaps at full size rather than shrinking.
  */
 const CARD_FLOOR: Box = { width: 72, height: 100 }
 const CARD_DESIGNED: Box = { width: 130, height: 182 }
 
-/** §5's chip, drawn below a 100px row. Landscape, and it never shrinks — it overlaps instead. */
+/**
+ * §5's chip: what is drawn where a row can no longer set a name at all.
+ *
+ * Landscape precisely because a row that short cannot hold a portrait card, and it never shrinks —
+ * it overlaps instead. Where the threshold is, is `fit.ts`'s answer and not a number here.
+ */
 const CHIP: Box = { width: 96, height: 30 }
 
 /**
@@ -175,9 +192,9 @@ const INSET = 4
  * Pack one row: §5's clamp, then §3's fan.
  *
  * The tile is sized from the height first and the width second, because a row's height is what
- * runs out on a table. `chip` is the caller's, from the ladder; a row shorter than the card floor
- * is a chip row whatever it was told, since §4 makes that a rule that can be evaluated rather
- * than a judgment call per screen.
+ * runs out on a table. `chip` is the caller's, from the ladder; a row too short to set a name at
+ * §2's floor is a chip row whatever it was told, since that is a rule that can be evaluated
+ * rather than a judgment call per screen — and `fit.ts` owns it, because it is a fact about type.
  *
  * **A row takes a second line before it fans.** §5 bounds the pitch below by "the width of a
  * legible name strip" and leaves the number open; what is actually available to honour that bound
@@ -202,14 +219,14 @@ export function packRow(box: Box, count: number, opts: { chip?: boolean } = {}):
   const room = Math.max(0, Math.floor(box.width))
   const tall = Math.max(0, Math.floor(box.height))
   const many = Math.max(0, Math.floor(count))
-  const chip = opts.chip === true || tall < CARD_FLOOR.height
-  const floor = chip ? CHIP : CARD_FLOOR
+  const chip = opts.chip === true || tall < CARD_MIN_HEIGHT
+  const least = chip ? CHIP.height : CARD_MIN_HEIGHT
 
   let lines = 1
   let solved = solve(room, lineTall(tall, 1, chip), many, chip)
-  // Every line count the tier's floor still leaves room for, and there is nothing to move onto a
-  // line past the last permanent.
-  for (let take = 2; take <= many && lineTall(tall, take, chip) >= floor.height; take++) {
+  // Every line count the tier's own minimum still leaves room for, and there is nothing to move
+  // onto a line past the last permanent.
+  for (let take = 2; take <= many && lineTall(tall, take, chip) >= least; take++) {
     const candidate = solve(room, lineTall(tall, take, chip), Math.ceil(many / take), chip)
     if (better(candidate, solved)) {
       lines = take
@@ -242,6 +259,7 @@ export function packRow(box: Box, count: number, opts: { chip?: boolean } = {}):
     })
   }
 
+  const tier = presentationFor({ width: solved.width, height: solved.height })
   return {
     width: solved.width,
     height: solved.height,
@@ -249,7 +267,8 @@ export function packRow(box: Box, count: number, opts: { chip?: boolean } = {}):
     pitch: solved.pitch,
     overlapped: solved.overlapped,
     lines,
-    tier: presentationFor({ width: solved.width, height: solved.height }),
+    tier,
+    belowFloor: many > 0 && tier !== 'chip' && solved.height < CARD_FLOOR.height,
     positions,
   }
 }
@@ -300,16 +319,20 @@ const better = (candidate: Solved, best: Solved): boolean =>
  *
  * The ideal is the height the line got, never a number of its own: a short line produces a narrow
  * card however much width is going spare, because the alternative is a card lying half in the line
- * below it.
+ * below it. **And it is not lifted back to 72×100**: where the line is shorter than that, the card
+ * is smaller than that, which is the whole of §5's soft floor downward.
  */
 function solve(room: number, tall: number, count: number, chip: boolean): Solved {
   // A chip is landscape and fixed: it is already the floor, so there is nothing under it to
   // shrink to and a crowded chip row overlaps from the start. It never turns either — a 96×30
   // chip is already lying down — so its footprint is simply its width.
-  const ideal = chip
-    ? CHIP.width
-    : Math.max(CARD_FLOOR.height, Math.min(CARD_DESIGNED.height, tall))
-  const floor = chip ? CHIP.width : CARD_FLOOR.height
+  const ideal = chip ? CHIP.width : Math.min(CARD_DESIGNED.height, tall)
+  // **Sideways the floor is hard.** A row too crowded for the minimum tile overlaps at full size
+  // rather than shrinking past it — but a row too *short* for the minimum tile has already drawn a
+  // smaller one, and inflating its footprint back to 100 would reserve room for a card that is not
+  // there. So the bound the width divides against is the minimum, or the line's own tile where
+  // that is smaller.
+  const floor = chip ? CHIP.width : Math.min(CARD_FLOOR.height, ideal)
 
   // The gap here is the minimum §5 divides by; the drawn one is decided below, out of whatever
   // the clamp left behind.
@@ -318,9 +341,10 @@ function solve(room: number, tall: number, count: number, chip: boolean): Solved
   // rather than hanging over the edge, because the fix belongs to whatever chose the box.
   const footprint = Math.min(room, Math.max(floor, Math.min(fitted, ideal)))
   const height = chip ? tall : Math.min(tall, footprint)
-  const width = chip
-    ? footprint
-    : Math.min(footprint, Math.max(CARD_FLOOR.width, Math.floor(height * RATIO)))
+  // Rounded rather than floored, so the proportion is the printed one at every size instead of
+  // needing 72 asserted back over it at the minimum: 100px of card is 72px wide by rounding, and
+  // 66px of card is 47px wide by the same arithmetic.
+  const width = chip ? footprint : Math.min(footprint, Math.round(height * PRINTED_RATIO))
 
   const gap = Math.min(GAP_MAX, Math.max(GAP_MIN, Math.round(width * GAP_SHARE)))
   const spread = count > 1 ? (room - footprint) / (count - 1) : 0
@@ -332,30 +356,28 @@ function solve(room: number, tall: number, count: number, chip: boolean): Solved
 }
 
 /**
- * How many rows a table draws — §3's step 5, applied to the room a field actually got rather
- * than to the band it is in.
+ * How many rows a table draws: **one per group the board has**, and that is the whole rule.
  *
- * **The row count is chosen to maximise card size, not to maximise rows** (§3, "More screen is
- * never a worse board"). Rows are not inherently better: splitting into creatures, other
- * permanents and lands buys a *scan by category* and costs card size, because the same height
- * divided three ways draws smaller cards. Asking only whether each row clears the 100px floor is
- * the ladder read as a checklist — a field with just enough height to squeeze three rows past it
- * draws three rows of clipped 75px cards where one merged row would draw complete 130px ones, and
- * a bigger screen that draws a smaller card is the one thing §3 says is never allowed.
+ * §5, "The row count is the board's, never the card's": a field draws one row per group the
+ * server's `card_types` produced — creatures, other permanents, lands — and **that count does not
+ * fall to buy card size**. Where three rows will not fit at 100px each, the answer is three rows
+ * of smaller cards (§3, "The split is kept, and the cards get smaller"). The scan by category is
+ * how a board is read at a glance and it is worth far more than any particular card size.
  *
- * So every row count from one up to the one the table needs is **packed**, and the one whose
- * *worst* row draws the biggest tile wins. Packed rather than estimated from the row height,
- * because the height is only half of it: a merged row can spend its own spare height on a second
- * line of whole tiles and a split row is already too short to, so the choice between them turns on
- * the count as well as the room. Scored on the worst row and not the average, since a board is
- * only as readable as the smallest card on it.
+ * This used to pack every row count from one upward and take the one whose worst row drew the
+ * biggest tile. **That objective always merges.** One row of `N` cards is never smaller than three
+ * rows of the same `N` — the merged row can reproduce any split, same line height with the count
+ * spread evenly instead of by category, and usually beats it — so the "at equal size the deeper
+ * split wins" tie-break almost never fired and every desktop below ultrawide drew its creatures,
+ * artifacts and lands in one row. It was obeying the spec of the time, which made the 100px floor
+ * hard and turned any shorter row into chips; §5 now makes that floor soft downward, so keeping
+ * the split costs card size instead of costing card faces.
  *
- * Rows count for exactly one thing, and it is the tie-break: **at equal card size the deeper split
- * wins**, because there the scan by category is free. It is never more than a tie-break, and that
- * is what makes the answer monotone: a merged row can reproduce any split — same line height, and
- * the count spread evenly instead of by category — so merging is never the smaller card, the
- * winning size is always the merged one, and the merged one is non-decreasing in the box. The
- * split is kept precisely while it costs nothing.
+ * **The count falls only where a row cannot draw a tile at all** — not where it would draw a small
+ * one. The bound is the tier's own minimum: the chip's 30px, which is the smallest tile any tier
+ * draws, since a row too short for a card already draws a chip instead (`packRow`). A row with
+ * less height than that draws nothing, and nothing is worse than a merged row. That is §3's step
+ * 6 and the bottom of the ladder.
  *
  * The ladder's answer still comes first: where the scene already merged, this cannot un-merge.
  *
@@ -367,88 +389,21 @@ function solve(room: number, tall: number, count: number, chip: boolean): Solved
  * where it reads as the absence it is. A half with *more* groups than the table gives up the
  * split, from the edge away from the dividing line inward (`Battlefield.tsx`).
  *
- * **It still reads no card.** `halves` is how many permanents are in each of a half's groups, which
- * is a count and a shape, never a name or a type — `board.ts` decided the grouping and the server
- * decided that. What it means is that the *structure* of a field answers to what is on the board
- * while the *box* never does, which is the line §5 draws: the region is the viewport's, the tiles
- * inside it are the count's.
+ * **It reads no card, and now not even a count.** `groups` is how many groups each half drew, a
+ * single number per half — `board.ts` decided the grouping from what the server stated, and how
+ * many permanents are in one is the cards' problem rather than the row count's. The *structure* of
+ * a field answers to what is on the board; its *box* never does (§5).
  */
-export function fieldSlots(
-  box: Box,
-  halves: readonly (readonly number[])[],
-  ladder: FieldOptions,
-): number {
+export function fieldSlots(box: Box, groups: readonly number[], ladder: FieldOptions): number {
   if (ladder.rows === 'merged') return 1
-  const most = Math.max(1, ...halves.map((half) => half.length))
-  if (most === 1) return 1
-  const room = Math.max(0, Math.floor(box.width) - 2 * INSET)
   const height = Math.max(0, Math.floor(box.height))
-  const chip = ladder.cardTier === 'chip'
-
-  let best = 1
-  let winner = worstRow(room, height, halves, 1, chip)
-  for (let rows = 2; rows <= most; rows++) {
-    const tile = worstRow(room, height, halves, rows, chip)
-    // Not *worse*, walking upward: at equal card the deeper split wins.
-    if (!poorer(tile, winner)) {
-      winner = tile
-      best = rows
-    }
-  }
-  return best
+  const floor = ladder.cardTier === 'chip' ? CHIP.height : CARD_FLOOR.height
+  let rows = Math.max(1, ...groups.map((count) => Math.max(0, Math.floor(count))))
+  // Down one row at a time, so the answer is the deepest split the field can still draw anything
+  // in rather than a jump to one row the moment the deepest does not fit.
+  while (rows > 1 && slotHeight(height, rows, floor) < CHIP.height) rows--
+  return rows
 }
-
-/** The smallest tile on the table, if it divided both its halves into `rows` rows. */
-function worstRow(
-  room: number,
-  height: number,
-  halves: readonly (readonly number[])[],
-  rows: number,
-  chip: boolean,
-): PackedRow {
-  const box: Box = {
-    width: room,
-    height: slotHeight(height, rows, chip ? CHIP.height : CARD_FLOOR.height),
-  }
-  let worst: PackedRow | undefined
-  for (const half of halves) {
-    for (const count of collapseCounts(half, rows)) {
-      const packed = packRow(box, count, { chip })
-      if (worst === undefined || poorer(packed, worst)) worst = packed
-    }
-  }
-  return worst ?? packRow(box, 0, { chip })
-}
-
-/**
- * Which of two tiles is the poorer board.
- *
- * The tier leads and the size follows, because **a chip is not a narrow card**: giving up the face
- * is §3's step 6 and it loses to any card, including one narrower than the 96px chip. Comparing
- * widths alone would call a row of chips the better answer for being wider.
- *
- * Height breaks a tie in width, which only ever matters to chips — a card's height is its width
- * through the printed proportion, so the two cannot disagree there. A chip has no narrower size to
- * shrink to, but a row too short to hold one squashes it, and 96×25 is the poorer tile.
- */
-const poorer = (tile: PackedRow, than: PackedRow): boolean =>
-  (tile.tier === 'chip') !== (than.tier === 'chip')
-    ? tile.tier === 'chip'
-    : tile.width !== than.width
-      ? tile.width < than.width
-      : tile.height < than.height
-
-/**
- * The counts `rows` rows draw, for a half that has more groups than that.
- *
- * The arithmetic of `Battlefield.tsx`'s collapse and nothing else — which groups merge is that
- * file's decision, and it does not change the multiset this returns, so it does not change which
- * row count wins.
- */
-const collapseCounts = (counts: readonly number[], rows: number): readonly number[] =>
-  counts.length <= rows
-    ? counts
-    : [...counts.slice(0, rows - 1), counts.slice(rows - 1).reduce((all, one) => all + one, 0)]
 
 /**
  * Divide a field into the table's rows and pack each of them.
@@ -460,11 +415,10 @@ const collapseCounts = (counts: readonly number[], rows: number): readonly numbe
  *
  * The rows this half has are laid into the slots nearest the middle of the table, so a mirrored
  * half keeps its creatures against the dividing line whether or not it has lands to put behind
- * them. Every slot is the same height, and they are equal *before* the gap between them is paid
- * for: the scene budgets two rows of exactly the card floor, so a gap taken off the top would put
- * both rows a few pixels under it and turn a board of cards into a board of chips over three
- * pixels of air. The gap is drawn only where the rows can still hold their tile without it —
- * §3's step 1, which compresses gaps before anything else gives way.
+ * them. Every slot is the same height, and the gap between them is what gives first: the scene
+ * budgets two rows of exactly the card minimum, so a gap taken off the top would put both rows a
+ * few pixels under it for three pixels of air. §3's step 1 compresses gaps before anything else
+ * gives way, and `slotHeight` is where that happens.
  */
 export function packField(box: Box, counts: readonly number[], opts: PackOptions): FieldPlan {
   const width = Math.max(0, Math.floor(box.width) - 2 * INSET)
@@ -474,8 +428,8 @@ export function packField(box: Box, counts: readonly number[], opts: PackOptions
 
   const chip = opts.cardTier === 'chip'
   const floor = chip ? CHIP.height : CARD_FLOOR.height
-  const gap = rowGap(height, slots, floor)
-  const each = rowHeight(height, slots, gap)
+  const each = slotHeight(height, slots, floor)
+  const gap = rowGap(height, slots, each)
   const offset = opts.mirrored === true ? slots - counts.length : 0
 
   return {
@@ -493,10 +447,20 @@ export function packField(box: Box, counts: readonly number[], opts: PackOptions
 const rowHeight = (height: number, rows: number, gap: number): number =>
   rows <= 0 ? 0 : Math.max(0, Math.floor((height - (rows - 1) * gap) / rows))
 
-/** The gap between rows, drawn only where the rows still hold their tile without it (§3, step 1). */
-const rowGap = (height: number, rows: number, floor: number): number =>
-  rowHeight(height, rows, ROW_GAP) >= floor ? ROW_GAP : 0
-
-/** The height one of `rows` rows gets, gap included where the field can afford to draw one. */
+/**
+ * The height one of `rows` rows gets: its share after the gaps, or `floor` where giving the gaps
+ * up is what holds the tile at it.
+ *
+ * §3's step 1 — gaps compress toward their minimums before anything else gives way — and the
+ * clause is bounded rather than a switch, which is what makes it **monotone**. Both terms are
+ * non-decreasing in the height, so their maximum is, and a field one pixel taller can never draw a
+ * shorter row. Written as a switchover instead — the gap appearing whole the moment the rows clear
+ * the floor with it — a 312px field drew three 100px rows where a 311px one drew three 103px rows,
+ * which is exactly §3's "More screen is never a worse board" broken over six pixels of air.
+ */
 const slotHeight = (height: number, rows: number, floor: number): number =>
-  rowHeight(height, rows, rowGap(height, rows, floor))
+  Math.max(rowHeight(height, rows, ROW_GAP), Math.min(floor, rowHeight(height, rows, 0)))
+
+/** The gap actually drawn between the rows: what they left over, up to `ROW_GAP`. */
+const rowGap = (height: number, rows: number, each: number): number =>
+  rows <= 1 ? 0 : Math.min(ROW_GAP, Math.max(0, Math.floor((height - rows * each) / (rows - 1))))

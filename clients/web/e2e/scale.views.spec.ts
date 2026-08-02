@@ -95,10 +95,18 @@ interface Known {
  * Keyed by `width×height` rather than by the prose name, so renaming a band does not silently
  * orphan a row into a permanently-red unexpected pass.
  *
- * **Every remaining `clipped` row is relationship trails and nothing else**, and that repetition is
- * the finding rather than noise: a trail's control needs up to 328px in 192px on a 3440px ultrawide
- * exactly as it does on a phone, because that box is not derived from the viewport. Everything that
- * *is* derived from it has left this table.
+ * The `clipped` rows are relationship trails, and that repetition is the finding rather than noise:
+ * a trail's control needs up to 328px in 192px on a 3440px ultrawide exactly as it does on a phone,
+ * because that box is not derived from the viewport.
+ *
+ * The exception is the one thing in the table that *is* derived from the viewport and is there on
+ * purpose: **#686 keeps creatures, other permanents and lands in their own rows at every desktop
+ * size, and the cards pay for it.** At 1440×900 and below, a field the scene budgets for two 100px
+ * rows is divided three ways, and the tile that comes out — 54×76, then 47×66 — has a name band a
+ * few pixels short of the longest single words the fixture has. Those rows carry the measurement
+ * rather than hiding it, the field marks itself with `data-below-floor`, and the room they want is
+ * `scene.ts`'s `SPLIT_ROWS`. It is the deliberate trade of §3 — "cannot fit three rows? Make the
+ * cards smaller" — reported at the point where a person has to judge whether it went too far.
  *
  * First measured against `main` at 9084a1c, which is #667 — the redrawn card. That merge retired
  * more than half of what this gate first reported: clipped elements went from 16–34 per viewport
@@ -117,13 +125,14 @@ interface Known {
  * 100px row they are chips. What is left in each `scrolls` row is the stack alone, so the rows are
  * narrowed to it rather than deleted, and each one retires with #662.
  *
- * The follow-up to #676 — the row count chosen to maximise the card rather than the rows, and
- * `fit.ts`'s advance table made the upper bound it always claimed to be — retired **every**
- * remaining `clipped` element that a permanent drew. `Creature — Ogre Warrior` needing 130px in a
- * 124px band at three sizes, and `Colossal Dreadmaw` and `Gravedigger` missing their 72×100 tile's
- * name band on a phone, were all the estimator coming up 5–9% short of what the browser draws; the
- * table is measured now and a unit test pins the direction of the error. 1920×1080 lost two more
- * with them, because the three rows of 75px cards that produced them are gone.
+ * The follow-up to #676 — `fit.ts`'s advance table made the upper bound it always claimed to be —
+ * retired every `clipped` element a permanent drew that was an *estimation* error.
+ * `Creature — Ogre Warrior` needing 130px in a 124px band at three sizes, and `Colossal Dreadmaw`
+ * and `Gravedigger` missing their 72×100 tile's name band on a phone, were all the estimator coming
+ * up 5–9% short of what the browser draws; the table is measured now and a unit test pins the
+ * direction of the error. What #676 also did was merge the rows, and #686 reverses that: the names
+ * listed at 1440×900 and below are back, at smaller tiles, and this time they are a stated cost
+ * rather than a wrong number. 1920×1080 draws its three rows at 73×102 and cuts nothing.
  */
 const KNOWN: Record<string, Known> = {
   '1920×1080': {
@@ -137,11 +146,25 @@ const KNOWN: Record<string, Known> = {
       'battlefields hold their own content now (#660), which is what took them out of this row.',
   },
   '1440×900': {
-    clipped: '#663 — the same 6 trails the 1920×1080 row lists, at the same numbers.',
+    clipped:
+      '#663 — the same 6 trails the 1920×1080 row lists, at the same numbers — **and two card ' +
+      'names**, which are #686 and not #663: keeping creatures, other permanents and lands in ' +
+      'their own rows costs this field a 54×76 tile, and a 48px band draws `Gravedigge` and ' +
+      "`Marauder's` 50px wide at the 9px floor. Two pixels each, on the two longest single words " +
+      'the fixture has. The row says so itself — `data-below-floor="54×76"` — and whether it has ' +
+      "gone too far is the maintainer's call, not this file's. The room it wants is the " +
+      "scene's: `SPLIT_ROWS` budgets a field for two rows of 100px, and a board with three groups " +
+      'divides that between three.',
     scrolls: '#662 — the stack alone: `section.rail__zone` holds 1307px in a 750px box.',
   },
   '1280×720': {
-    clipped: '#663 — the same 6 trails again.',
+    clipped:
+      '#663 — the same 6 trails again, and **four card names** for #686, for the reason the ' +
+      '1440×900 row gives: three rows in a field budgeted for two draw a 47×66 tile, and its ' +
+      "41px band cuts `Gearsmith` (46px), `Gravedigge` (50px), `Marauder's` (50px) and " +
+      '`Mountain` (43px) at the 9px floor. Between 2px and 9px each, and every one of them a ' +
+      'single word, which no second line can help. This is the split being paid for in card ' +
+      'size (§3) at the size where the payment starts to show.',
     scrolls: '#662 — the stack alone: `section.rail__zone` holds 1307px in a 589px box.',
   },
   '640×360': {
@@ -154,9 +177,9 @@ const KNOWN: Record<string, Known> = {
   '390×844': {
     clipped:
       '#663 — 8 trails, four of them squeezed into the seat bars of a 390px screen, where ' +
-      '`Serra Angel` gets 11px and `Thopter` 8px. The two name bands that used to be here — ' +
-      '`Colossal Dreadmaw` and `Gravedigger` over their 72×100 tile — were `fit.ts` estimating ' +
-      'short and are gone.',
+      '`Serra Angel` gets 11px and `Thopter` 8px. Plus the same four card names the 1280×720 ' +
+      'row lists, at the same 47×66 tile: a portrait phone keeps its three rows now, and this ' +
+      'is what they cost it.',
     scrolls: '#662 — the stack alone: the collapsed `section.badge-rail` holds 333px in 130px.',
   },
   '844×390': {
@@ -745,6 +768,69 @@ for (const viewport of VIEWPORTS) {
  * because that sweep is still red for the stack (#662) at both of these sizes and an assertion
  * that cannot go green says nothing about the thing it is named after.
  */
+/**
+ * §5's split, and what it costs — the two halves of the same rule, at every supported size.
+ *
+ * **Creatures, other permanents and lands stay in their own rows and the cards shrink to make
+ * that possible** (§3, "The split is kept, and the cards get smaller"). The board is read by
+ * category at a glance, and the maintainer's report on a 1920×1080 board that had merged them was
+ * unambiguous: *"the creatures and lands mixing together is unacceptable."*
+ *
+ * What it costs is card size, and §5 makes 72×100 a **review threshold** rather than a
+ * stop-drawing line: below it the client still draws the card and *reports* that it had to. That
+ * report is `data-below-floor` on the row, carrying the size it came out at, and this is the gate
+ * asserting on it — not as a failure, because whether a 47×66 card is too small is exactly the
+ * judgment §3 leaves to a person, but as a measurement that appears in the run rather than in
+ * nobody's head. What it does assert is the part that is not a judgment: a tile the client says is
+ * under the minimum still names its card.
+ */
+test.describe('the split, and what it costs', () => {
+  for (const viewport of VIEWPORTS) {
+    test(`keeps a row per category, and says what it cost, at ${viewport.name}`, async ({
+      page,
+    }) => {
+      await table(page, viewport)
+      const fields = page.getByRole('region', { name: /battlefield$/ })
+      await expect(fields).toHaveCount(2)
+
+      // The fixture's board has creatures and lands on both halves, so a field that draws one
+      // row has merged them. `scene.ts` merges below its own threshold (§3, step 6) — the phone
+      // sizes here are exactly that — so the assertion is over the sizes §1 calls Optimized.
+      const rows = await fields.first().getByRole('list').count()
+      if (viewport.width >= 1280 && viewport.height >= 720) {
+        expect(rows, `${viewport.name}: one list means the categories merged`).toBeGreaterThan(1)
+      }
+
+      // Every row reporting a sub-minimum tile, with the size it drew, in the run's own output.
+      const under = await page
+        .locator('.field__row[data-below-floor]')
+        .evaluateAll((nodes) =>
+          nodes.map(
+            (node) =>
+              `${node.getAttribute('aria-label') ?? '?'}: ${node.getAttribute('data-below-floor')}`,
+          ),
+        )
+      if (under.length > 0) {
+        test.info().annotations.push({
+          type: 'under §5’s 72×100 minimum',
+          description: `${viewport.name} — ${[...new Set(under)].join(', ')}`,
+        })
+      }
+
+      // And a card the client drew under the minimum is still a card: it names itself. That is
+      // the line §6 draws — either the name fits, or the tile was never a card.
+      for (const row of await page.locator('.field__row[data-below-floor]').all()) {
+        const named = await row
+          .getByRole('listitem')
+          .evaluateAll((tiles) =>
+            tiles.map((tile) => (tile.querySelector('.card__name')?.textContent ?? '').trim()),
+          )
+        expect(named.filter((name) => name === '')).toEqual([])
+      }
+    })
+  }
+})
+
 test.describe('a field holding twenty permanents a seat', () => {
   /** The dense board with its permanents cloned up to twenty a seat, ids and cards distinct. */
   const crowded = () => {

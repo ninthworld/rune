@@ -1176,30 +1176,24 @@ test.describe('the keyboard, and what the frame draws', () => {
 
 test.describe('a battlefield with rows', () => {
   /**
-   * A viewport whose field can afford the split — which is a *smaller* set of screens than it
-   * sounds, and deliberately so.
+   * A viewport whose field keeps the split, and one where the scene has already given it up.
    *
-   * `docs/client-design.md` §3, "More screen is never a worse board": the row count is chosen to
-   * maximise card size, not to maximise rows. Splitting a field two ways halves the height every
-   * row has, so the split is kept only while the rows it makes still draw the same card the merged
-   * row would — which needs a field tall enough for two designed cards, and that is the ultrawide.
-   * Everything smaller draws one row of larger cards, and the tests below assert both halves of
-   * that: the grouping where it is affordable, the ordering where it is not.
+   * `docs/client-design.md` §5, "The row count is the board's, never the card's": a field draws
+   * one row per group the server's `card_types` produced, and that count does not fall to buy card
+   * size. Where three rows will not fit at 100px each the answer is three rows of smaller cards —
+   * so 1920×1080 is a *split* screen, and so is every desktop size. What merges is the bottom of
+   * the ladder (§3, step 6), which `scene.ts` reaches on a screen that cannot give a split field a
+   * drawable row at all: 320×480, the smallest one supported.
    *
-   * This is the rule the old version of this file was written against, and it had it backwards:
-   * it asserted named rows at 1920×1080, where the split costs 130×182 cards and buys 111×156
-   * ones. Losing the split costs the scan by category; losing the card's text costs the card.
+   * This file used to say the opposite, because the packer did: it asserted a merged board at
+   * 1920×1080, on the reasoning that the row count is chosen to maximise card size. That objective
+   * always merges — one row of `N` cards is never smaller than three rows of the same `N` — and
+   * the board it produced is the one the maintainer called unacceptable.
    */
-  const SPLIT = { width: 3440, height: 1440 }
-  const MERGED = { width: 1920, height: 1080 }
+  const SPLIT = { width: 1920, height: 1080 }
+  const MERGED = { width: 320, height: 480 }
 
-  /**
-   * A board with exactly the two groups the table budgets for: creatures, and a land.
-   *
-   * The committed fixture's planeswalker is dropped, because a *third* group is the case §3 gives
-   * up first — a field that can afford two rows of designed cards cannot afford three, so a board
-   * with three groups merges its outermost two even here. That is asserted separately below.
-   */
+  /** A board with creatures and a land, and — unless it is dropped — a planeswalker between. */
   const withLand = (planeswalker = true) => {
     const base = fixture('gameview.json')
     const battlefield = [
@@ -1257,11 +1251,34 @@ test.describe('a battlefield with rows', () => {
     expect(creatures && lands ? creatures.y < lands.y : false).toBe(true)
   })
 
-  test('gives up the split rather than the card, and keeps the order when it does', async ({
+  test('keeps all three categories apart on a desktop, and shrinks the cards to do it', async ({
     page,
   }) => {
-    // The same board on a screen that cannot afford two rows of designed cards. The grouping goes
-    // — one row named for what is in it, not three named for what each holds — and the *ordering*
+    // Three groups on the size the game is designed at. Every one of them keeps its own row —
+    // this is the board the maintainer asked for — and what it costs is card size, which is the
+    // trade §3 states: "cannot fit three rows? Make the cards smaller. Do not merge the rows."
+    await page.setViewportSize(SPLIT)
+    await serveFrames(page, [withLand()])
+    await page.goto('/')
+
+    const field = page.getByRole('region', { name: 'Your battlefield' })
+    await expect(field.getByRole('list', { name: 'Creatures' })).toContainText('Grizzly Bears')
+    await expect(field.getByRole('list', { name: 'Other permanents' })).toContainText('Nissa')
+    await expect(field.getByRole('list', { name: 'Lands' })).toContainText('Forest')
+
+    // And they are still cards, drawn in the order the rows are read in: creatures nearest the
+    // dividing line, lands furthest from it.
+    const bear = await field.getByRole('button', { name: /^Grizzly Bears/ }).boundingBox()
+    const forest = await field.getByRole('button', { name: /^Forest/ }).boundingBox()
+    expect(bear && forest ? bear.y < forest.y : false).toBe(true)
+    expect(bear?.width).toBeGreaterThan(40)
+  })
+
+  test('gives up the split only where the scene has, and keeps the order when it does', async ({
+    page,
+  }) => {
+    // The bottom of the ladder, on the smallest screen the client supports. The grouping goes —
+    // one row named for what is in it, not three named for what each holds — and the *ordering*
     // does not: creatures are still first, so your creatures are still the ones nearest the middle
     // of the table, along the row instead of above it.
     await page.setViewportSize(MERGED)
@@ -1278,25 +1295,9 @@ test.describe('a battlefield with rows', () => {
     const forest = await merged.getByRole('button', { name: /^Forest/ }).boundingBox()
     expect(bear && forest ? bear.x < forest.x : false).toBe(true)
 
-    // And it is the *card* that was bought with the row: a merged row here draws the designed
-    // 130×182 tile, which is the whole reason the split was given up.
-    expect(bear?.width).toBeGreaterThan(120)
-  })
-
-  test('gives up the outermost rows first, so the creature band is the last to go', async ({
-    page,
-  }) => {
-    // Three groups on a field that affords two rows. Creatures keep their own row against the
-    // dividing line — combat is read along that line — and the two rows furthest from it merge.
-    await page.setViewportSize(SPLIT)
-    await serveFrames(page, [withLand()])
-    await page.goto('/')
-
-    const field = page.getByRole('region', { name: 'Your battlefield' })
-    await expect(field.getByRole('list', { name: 'Creatures' })).toContainText('Grizzly Bears')
-    const rest = field.getByRole('list', { name: /^Other permanents and lands$/ })
-    await expect(rest).toContainText('Nissa')
-    await expect(rest).toContainText('Forest')
+    // And what the merge bought is the card face: §4's promise for a phone is that a permanent is
+    // still a card there, which one row of the field's whole height is what pays for.
+    await expect(merged.locator('.card--chip')).toHaveCount(0)
   })
 })
 
