@@ -241,8 +241,9 @@ test.describe('a card says what it is', () => {
       .getByRole('button', { name: /^Grizzly Bears/ })
     await expect(board).toHaveClass(/card--designed|card--compact/)
 
-    // And the inspector, which is the one place everything is shown, is the full presentation.
+    // And the pinned preview, which is the one place everything is shown, is the full
+    // presentation.
     await board.click({ button: 'right' })
-    await expect(page.getByRole('dialog').locator('.card')).toHaveClass(/card--full/)
+    await expect(page.locator('.preview--pinned > .card')).toHaveClass(/card--full/)
   })
 })

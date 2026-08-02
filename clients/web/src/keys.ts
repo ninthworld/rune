@@ -111,5 +111,5 @@ export const BINDINGS: readonly { keys: string; does: string }[] = [
   { keys: 'F4', does: 'Stop at your main phases, and pass' },
   { keys: 'F5', does: 'Stop only where the game must ask, and pass' },
   { keys: '?', does: 'This list' },
-  { keys: 'Right-click', does: 'Read any card, whatever else is in progress' },
+  { keys: 'Right-click', does: 'Pin any card in the preview; right-click it again to release' },
 ]

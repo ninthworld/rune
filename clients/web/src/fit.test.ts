@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  BODY_FLOOR,
   CARD_MIN_HEIGHT,
   cardPlan,
   fitName,
@@ -365,42 +366,55 @@ describe('the name band: the name leads, the cost follows', () => {
   const WIDTHS = Array.from({ length: 269 }, (_, index) => index + 72)
   const boxAt = (width: number) => ({ width, height: Math.round((width * 88) / 63) })
 
-  it('draws the cost in the band at every presentation that has room for it', () => {
-    for (const box of [HAND_MIN, DESIGNED, { width: 336, height: 470 }]) {
-      const plan = banded({ name: 'Grizzly Bears', manaCost: '{1}{G}' }, box)
-      expect(plan.costSize, `${box.width}px`).toBeGreaterThanOrEqual(NAME_FLOOR)
-      expect(plan.name.text).toBe('Grizzly Bears')
-    }
-  })
-
   /**
-   * **The whole of the priority, as one property: a cost changes nothing about the name.**
+   * **The cost is on every card, at every size a card is drawn at.**
    *
-   * Not "the name is usually fine" — the size and the completeness are *identical* to the same
-   * name planned with no cost at all, at every width and both in the hand and on the board. That
-   * is what "identity outranks reference" has to mean if it is to mean anything, and it is what
-   * makes the drop rule §6 states unnecessary as a special case: a name that needs its whole band
-   * leaves nothing, so the cost is already gone.
+   * This replaces the rule that ran the other way. §6 used to say identity outranks reference and
+   * drew the cost only in the width the name did not want, which meant the cards with the longest
+   * names — exactly the expensive multicolour ones — were the cards with no cost on them. A hand
+   * is read by asking what is castable, so a hand where the costs come and go by name length is a
+   * hand that has to be read one card at a time in the preview. XMage draws a cost on every card
+   * in the hand and truncates the name to do it, and that is the trade taken here.
    */
-  it('costs the name neither a size nor a character, at any width', () => {
+  it('draws a cost on every card at every width', () => {
     const found: string[] = []
-    for (const may of [true, false]) {
-      for (const name of NAMES) {
+    for (const name of NAMES) {
+      for (const manaCost of COSTS) {
         for (const width of WIDTHS) {
-          const bare = banded({ name }, boxAt(width), may)
-          for (const manaCost of COSTS) {
-            const priced = banded({ name, manaCost }, boxAt(width), may)
-            if (priced.name.size !== bare.name.size || priced.name.text !== bare.name.text) {
-              found.push(
-                `${name} ${manaCost} at ${width}px: ${bare.name.size}px "${bare.name.text}" ` +
-                  `became ${priced.name.size}px "${priced.name.text}"`,
-              )
-            }
+          const plan = banded({ name, manaCost }, boxAt(width))
+          if (plan.presentation === 'chip') continue
+          if (plan.costSize < NAME_FLOOR) {
+            found.push(`${name} ${manaCost} at ${width}px: costSize ${plan.costSize}`)
           }
         }
       }
     }
-    expect(found.slice(0, 8), `${found.length} names paid for a cost`).toEqual([])
+    expect(found.slice(0, 8), `${found.length} cards drew no cost`).toEqual([])
+  })
+
+  /**
+   * And what it costs, stated as a property so it cannot grow quietly.
+   *
+   * The name pays for the cost — that is the reversal — but it pays out of the *band*, never past
+   * `COST_SHARE` of it. A cost that took more than half the band would be taking the card's
+   * identity with it, and neither half would be readable.
+   */
+  it('never gives the cost more than half the band', () => {
+    const found: string[] = []
+    for (const name of NAMES) {
+      for (const manaCost of COSTS) {
+        for (const width of WIDTHS) {
+          const bare = banded({ name }, boxAt(width))
+          const priced = banded({ name, manaCost }, boxAt(width))
+          if (bare.presentation === 'chip') continue
+          // The name may lose characters or a size, but never more than the half-band buys.
+          if (priced.name.size < NAME_FLOOR) {
+            found.push(`${name} ${manaCost} at ${width}px: name fell to ${priced.name.size}px`)
+          }
+        }
+      }
+    }
+    expect(found.slice(0, 8), `${found.length} names fell under the floor`).toEqual([])
   })
 
   /**
@@ -433,20 +447,45 @@ describe('the name band: the name leads, the cost follows', () => {
     expect(found.slice(0, 8), `${found.length} inversions in the band`).toEqual([])
   })
 
-  /** A pip is never taller than the name it sits beside, and never under §7's floor. */
-  it('keeps the cost within the type scale', () => {
-    for (const name of NAMES) {
+  /**
+   * A pip is never under §7's floor, never over the designed size — and **the same on every card
+   * that shares a box**, which is what the old "never taller than the name beside it" rule made
+   * impossible. Tying the pips to the name's fitted size gave two cards in one row two different
+   * costs, which is the row disagreeing about the frame in its smallest form.
+   */
+  it('keeps the cost within the type scale, and off the name entirely', () => {
+    for (const width of WIDTHS) {
       for (const manaCost of COSTS) {
-        for (const width of WIDTHS) {
-          const plan = banded({ name, manaCost }, boxAt(width))
-          if (plan.costSize === 0) continue
-          expect(plan.costSize, `${name} ${manaCost} at ${width}px`).toBeGreaterThanOrEqual(
-            NAME_FLOOR,
-          )
-          expect(plan.costSize).toBeLessThanOrEqual(plan.name.size)
+        const sizes = new Set(
+          NAMES.map((name) => banded({ name, manaCost }, boxAt(width))).map((plan) =>
+            plan.presentation === 'chip' ? 0 : plan.costSize,
+          ),
+        )
+        expect(sizes, `${manaCost} at ${width}px`).toHaveProperty('size', 1)
+        for (const size of sizes) {
+          if (size === 0) continue
+          expect(size).toBeGreaterThanOrEqual(NAME_FLOOR)
+          expect(size).toBeLessThanOrEqual(NAME_DESIGNED)
         }
       }
     }
+  })
+
+  /** And the pips themselves never shrink as the card grows. */
+  it('never draws a smaller cost on a wider card', () => {
+    const found: string[] = []
+    for (const manaCost of COSTS) {
+      let previous = 0
+      for (const width of WIDTHS) {
+        const plan = banded({ name: 'Gravedigger', manaCost }, boxAt(width))
+        if (plan.presentation === 'chip') continue
+        if (plan.costSize < previous) {
+          found.push(`${manaCost} at ${width}px: ${previous}px became ${plan.costSize}px`)
+        }
+        previous = plan.costSize
+      }
+    }
+    expect(found.slice(0, 8), `${found.length} inversions in the cost`).toEqual([])
   })
 
   /** Below the chip threshold the cost is gone regardless (§6) — a chip is a name and its marks. */
@@ -588,14 +627,21 @@ describe('which presentation a box gets', () => {
 })
 
 describe('planning a whole card', () => {
-  it('fits a complete name, a type line, and a stat into a 72×100 tile', () => {
-    // The acceptance criterion, and the bar XMage set.
-    const plan = cardPlan(face({ name: 'Llanowar Elves', typeLine: 'Creature — Elf Druid' }), {
-      ...PERMANENT_MIN,
-    })
-    expect(plan.name.text).toBe('Llanowar Elves')
-    expect(plan.name.abbreviated).toBe(false)
+  it('fits a name, a cost, a type line, and a stat into a 72×100 tile', () => {
+    // The acceptance criterion, and the bar XMage set — read off what XMage actually draws at
+    // this size rather than off an idealised version of it. XMage's own 72×100 tiles read
+    // `Troll Asce`, `Stranglero`, `Battlefield Sca`: the name is one line, it is cut when it has
+    // to be, and the *cost* is what is never given up, because a hand is read by asking what is
+    // castable. What has to be complete at this size is everything except the name's tail.
+    const plan = cardPlan(
+      face({ name: 'Llanowar Elves', typeLine: 'Creature — Elf Druid', manaCost: '{G}' }),
+      { ...PERMANENT_MIN },
+    )
+    expect(plan.name.lines).toBe(1)
+    expect(plan.name.text).not.toContain('…')
+    expect(plan.name.text.length).toBeGreaterThanOrEqual(MIN_STEM)
     expect(plan.name.size).toBeGreaterThanOrEqual(NAME_FLOOR)
+    expect(plan.costSize).toBeGreaterThanOrEqual(NAME_FLOOR)
     expect(plan.typeLine).toBeTruthy()
     expect(plan.typeLine).not.toContain('…')
     expect(plan.statSize).toBeGreaterThanOrEqual(NAME_FLOOR)
@@ -616,13 +662,18 @@ describe('planning a whole card', () => {
     expect(cardPlan(face({ rulesText: '' }), DESIGNED).text).toBeUndefined()
   })
 
-  it('draws a text box only when what goes in it fits whole', () => {
+  it('draws a text box that clips rather than no box at all', () => {
     const short = cardPlan(
       face({ typeLine: 'Creature — Elf', rulesText: '{T}: Add {G}.' }),
       DESIGNED,
     )
     expect(short.text?.rulesText).toBe(true)
 
+    // Far more prose than the box holds at any size. The old rule dropped it entirely and left
+    // the card saying nothing about itself, which is the wrong end of the trade: the card with
+    // the most to say is the one a player most needs to read. It is drawn at the floor, into the
+    // room there is, and the browser clips the rest — XMage's answer, and the preview still
+    // carries the whole of it.
     const long = cardPlan(
       face({
         typeLine: 'Creature — Elf',
@@ -633,7 +684,11 @@ describe('planning a whole card', () => {
       }),
       HAND_MIN,
     )
-    expect(long.text).toBeUndefined()
+    expect(long.text?.rulesText).toBe(true)
+    expect(long.text?.size).toBe(BODY_FLOOR)
+    // And it takes the room it was offered, not the height its text wanted, so a clipped box is
+    // the same height as a full one on the card beside it.
+    expect(long.text?.height).toBeGreaterThan(0)
   })
 
   it('keeps the keyword line when the rules text will not fit', () => {
@@ -647,6 +702,7 @@ describe('planning a whole card', () => {
     )
     expect(plan.text).toEqual({
       size: expect.any(Number),
+      height: expect.any(Number),
       rulesText: false,
       keywords: ['Flying', 'Vigilance'],
     })
@@ -665,26 +721,88 @@ describe('planning a whole card', () => {
     expect(plan.costSize).toBe(0)
   })
 
-  it('drops the cost before it drops anything the name needs', () => {
-    // Presentation, not a rules judgment: the server states what is playable through
-    // `valid_actions`, and nothing here concludes anything about affordability.
+  it('cuts the name before it drops the cost', () => {
+    // The reversal, at its worst case: a six-pip cost on a 72px tile. Presentation, not a rules
+    // judgment — the server states what is playable through `valid_actions`, and nothing here
+    // concludes anything about affordability.
     const wide = cardPlan(face({ typeLine: 'Creature — Bear', manaCost: '{1}{G}' }), DESIGNED)
     expect(wide.costSize).toBeGreaterThan(0)
+    expect(wide.name.text).toBe('Grizzly Bears')
 
     const crowded = cardPlan(
       face({ typeLine: 'Creature — Bear', manaCost: '{2}{W}{U}{B}{R}{G}' }),
       PERMANENT_MIN,
     )
-    expect(crowded.costSize).toBe(0)
-    expect(crowded.name.text).toBe('Grizzly Bears')
+    expect(crowded.costSize).toBeGreaterThanOrEqual(NAME_FLOOR)
+    expect(crowded.name.text.length).toBeGreaterThanOrEqual(MIN_STEM)
   })
 
-  it('lets the art window take what is left, down to nothing', () => {
-    // Art is the one element that degrades to zero without costing a fact, so it queues last —
-    // a card with a lot to say spends the window on saying it.
-    const roomy = cardPlan(face({ typeLine: 'Creature — Bear' }), { width: 130, height: 182 })
-    expect(roomy.art).toBe(true)
+  it('gives every card that shares a box the same anatomy', () => {
+    // The defect this replaces, and the reason the window stopped being the residue: one row of
+    // identical boxes drew a vanilla land a picture half the card tall, the card beside it a
+    // stripe, and a card with a lot to say no window at all — three frames from one box, with the
+    // illustration cropped differently on each. What a card *says* is allowed to differ. Where its
+    // rows are is not: a frame that reshapes itself per card is one nobody can learn to read.
+    const ROW: readonly CardText[] = [
+      face({ name: 'Plains', typeLine: 'Basic Land — Plains', rulesText: '{T}: Add {W}.' }),
+      face({
+        name: 'Ajani, Adversary of Tyrants',
+        typeLine: 'Legendary Planeswalker — Ajani',
+        rulesText: 'A'.repeat(280),
+      }),
+      face({ name: 'Silverbeak Griffin', typeLine: 'Creature — Griffin', keywords: ['Flying'] }),
+      face({
+        name: 'Angel of the Dawn',
+        typeLine: 'Creature — Angel',
+        rulesText:
+          'When Angel of the Dawn enters the battlefield, creatures you control get +1/+1 until end of turn and creatures you control gain vigilance until end of turn.',
+        keywords: ['Flying'],
+      }),
+    ]
 
+    // Swept rather than sampled, and across every box a table hands out: the property is about the
+    // box, so a table of three widths would only prove it at three widths.
+    for (let width = 72; width <= 200; width++) {
+      const box = { width, height: Math.round(width / PRINTED_RATIO) }
+      const plans = ROW.map((card) => cardPlan(card, box))
+      // The whole frame, not just whether there is a window: where the band ends and where the
+      // picture starts and stops are the three numbers a player reads a row by.
+      const anatomy = new Set(
+        plans.map(
+          (plan) => `${plan.presentation}/${plan.bandHeight}/${plan.art}/${plan.artHeight}`,
+        ),
+      )
+      expect(anatomy, `cards disagreed about the frame at ${width}px`).toHaveProperty('size', 1)
+
+      // And the last row too. *Whether* there is a text box is content — a card with nothing to
+      // say has nothing to put in one — but every box that is drawn ends where the card does, so
+      // two cards that both have prose put their bottom edge in the same place.
+      const boxes = new Set(plans.map((plan) => plan.text?.height).filter((height) => height))
+      expect(boxes.size, `text boxes disagreed at ${width}px`).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('sets every name on one line, in a band it reserved', () => {
+    // `Plains` is short and `Ajani, Adversary of Tyrants` is not, which is the most ordinary
+    // difference two cards can have — and it must move neither the band nor the window under it.
+    // One line each: the long one gives up characters rather than taking a second row, which is
+    // what XMage does and what keeps two cards in a row the same shape.
+    const short = cardPlan(face({ name: 'Plains', typeLine: 'Basic Land — Plains' }), DESIGNED)
+    const long = cardPlan(
+      face({ name: 'Ajani, Adversary of Tyrants', typeLine: 'Legendary Planeswalker — Ajani' }),
+      DESIGNED,
+    )
+    expect(short.name.lines).toBe(1)
+    expect(long.name.lines).toBe(1)
+    expect(short.bandHeight).toBe(long.bandHeight)
+    // And the reserve is a line of the designed size, not the size the name happened to need.
+    expect(short.bandHeight).toBe(Math.ceil(NAME_DESIGNED * 1.2))
+  })
+
+  it('keeps the window when a card has a lot to say, and drops the text instead', () => {
+    // The trade the row property costs, stated outright so it cannot be walked back by accident.
+    // A dense card in the hand can end up with no text box where it used to have one; the pinned
+    // preview carries the prose, exactly as it does for every other clamp on the table.
     const talkative = cardPlan(
       face({
         typeLine: 'Creature — Bear',
@@ -692,8 +810,10 @@ describe('planning a whole card', () => {
       }),
       HAND_MIN,
     )
-    expect(talkative.text?.rulesText).toBe(true)
-    expect(talkative.art).toBe(false)
+    expect(talkative.art).toBe(true)
+
+    const roomy = cardPlan(face({ typeLine: 'Creature — Bear' }), DESIGNED)
+    expect(roomy.art).toBe(true)
   })
 
   it('drops nothing at the full presentation', () => {
@@ -711,6 +831,7 @@ describe('planning a whole card', () => {
     expect(plan.typeLine).toBe('Legendary Planeswalker — Nissa')
     expect(plan.text).toEqual({
       size: expect.any(Number),
+      height: expect.any(Number),
       rulesText: true,
       keywords: ['Flying'],
     })

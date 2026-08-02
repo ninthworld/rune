@@ -760,16 +760,45 @@ main:has(.screen) {
 .hand {
   position: relative;
   min-width: 0;
-  padding: 0.3rem 0.5rem 0;
+  /* Exactly the gutter the scene budgeted. `HAND.min` is 148 and it is spelt out there as "§5's
+     hand card, 100×140 at the floor, plus the gutter under it" — so the gutter is 8px, and this
+     is the one place that spends it. A 0.3rem inset spends 9.6px and leaves the card 138 tall and
+     99 wide, which is a pixel under the `compact` threshold: the whole card loses its rules text
+     because the padding was rounded generously. */
+  padding: 0.25rem 0.5rem;
   background: linear-gradient(color-mix(in srgb, var(--panel) 55%, var(--felt)), var(--panel));
   display: flex;
   justify-content: center;
   overflow: hidden;
 }
 
+/* **The card takes the band's height, and its width from the printed proportion.**
+
+   It used to take its width from `--card-hand-w`, which is `clamp(6.25rem, 13vh, 8.6rem)` — a
+   second copy, in CSS, of a number the scene already computed in TypeScript. The two disagreed
+   exactly where you would expect: at 1440×900 the scene budgeted the hand 148px for a card at its
+   140px floor, and `13vh` drew a 163px one. `overflow: hidden` then cut 20px off the bottom of
+   every card in the hand — not spilling past the screen, which is what the scale gate looks for,
+   but *cut*, which is the same defect wearing a hat that gate cannot see.
+
+   So there is one copy of the number again and it is the scene's. The band is what the viewport
+   can afford; the card is as big as the band; nothing here needs to know what a viewport is. */
 .hand .cards--hand {
   flex-wrap: nowrap;
   margin: 0;
+  block-size: 100%;
+  align-items: stretch;
+}
+
+.hand .cards--hand > li {
+  block-size: 100%;
+  min-inline-size: 0;
+}
+
+.hand .cards--hand > li > .card {
+  inline-size: auto;
+  block-size: 100%;
+  max-inline-size: 100%;
 }
 
 .hand__empty {

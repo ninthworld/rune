@@ -75,6 +75,24 @@
   box-shadow: 0 0.5rem 1.5rem color-mix(in srgb, CanvasText 45%, transparent);
 }
 
+/* Parked. Everything the hover preview is careful about stops applying the moment a player asked
+   for this card to stay: it claims its height, so nothing below it is covered for as long as it
+   is up; it takes the pointer, so the release is a click on the card itself; and it stays stuck
+   to the top of the column, which is what makes it readable while the log scrolls under it. */
+.preview--pinned {
+  position: sticky;
+  height: auto;
+  margin-block-end: 0;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.preview__unpin {
+  align-self: stretch;
+}
+
 .preview-over {
   position: fixed;
   z-index: 4;

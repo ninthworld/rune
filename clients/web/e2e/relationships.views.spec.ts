@@ -156,7 +156,7 @@ test.describe('a board with relationships to trace', () => {
       .getByRole('button', { name: 'targeting Colossal Dreadmaw' })
       .click()
 
-    await expect(page.getByRole('dialog')).toContainText('Colossal Dreadmaw')
+    await expect(page.locator('.preview--pinned')).toContainText('Colossal Dreadmaw')
     expect(submissions(sent)).toEqual([])
   })
 
@@ -164,8 +164,7 @@ test.describe('a board with relationships to trace', () => {
     await board(page)
 
     // Tracing follows the look rather than the click, because the objects most worth tracing
-    // own no action: clicking a blocker opens the inspector over the very board the
-    // relationship crosses.
+    // own no action: clicking a blocker only pins it beside the board the relationship crosses.
     await tile(page, MINE, 'Onakke Ogre')
       .getByRole('button', { name: /^Onakke Ogre/ })
       .hover()
@@ -298,7 +297,7 @@ test.describe('a board with relationships to trace', () => {
     await tile(page, THEIRS, 'Colossal Dreadmaw')
       .getByRole('button', { name: /^Colossal Dreadmaw/ })
       .click()
-    await expect(page.getByRole('dialog')).toContainText('Colossal Dreadmaw')
+    await expect(page.locator('.preview--pinned')).toContainText('Colossal Dreadmaw')
   })
 
   test('raises the lines of what is being looked at, and steps the rest back', async ({ page }) => {
