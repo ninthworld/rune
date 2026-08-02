@@ -22,42 +22,68 @@
   gap: 0.4rem;
 }
 
+/* The question, as one wrapping row rather than as a stack of panels.
+
+   §2.1 rule 4 — *one box* — taken literally: the dock is the box, and what is being asked lays
+   out inside it as controls that pack across the band and wrap only when they have to. A panel
+   inside the dock inside the region cost two borders and four paddings of height in a band that
+   is 44px on half the supported viewports, and it grouped nothing that space and alignment do
+   not group. */
 .choices {
-  border: 1px solid currentColor;
-  padding: 0.5rem 0.75rem;
-  margin-block: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--dock-gap, 0.9rem);
+  row-gap: var(--dock-row-gap, 0.3rem);
+  min-width: 0;
 }
 
-.choices__what {
-  margin: 0 0 0.4rem;
-  font-size: 0.9rem;
-}
+/* One question is a group, and it is *only* a group: `display: contents` keeps it in the reading
+   order and in the accessibility tree while letting its prompt and its controls be laid out by
+   the band rather than by a box of their own.
 
-.choices__controls {
-  margin-block-end: 0;
-}
-
-/* One question. Each is bounded, because an action asking three of them at once — which
-   creatures attack, and what each of them attacks — is otherwise one undifferentiated wall. */
+   That is what lets the row be packed as **prose, then everything that can be pressed** — the
+   `order` values below — instead of a row per question. Flex breaks lines greedily, so a question
+   whose prompt is wider than what is left of a line pushes the controls under it to a third row
+   that a 44px band does not have; asking every prompt first and then packing every control puts
+   the same content in two. Reading order is unchanged: a question is still read before it is
+   answered. */
 .slot {
-  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
-  padding: 0.35rem 0.5rem;
-  margin-block: 0.4rem;
+  display: contents;
+}
+
+.slot__ask {
+  order: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.slot .actions,
+.slot__number {
+  order: 1;
+  margin: 0;
+}
+
+/* Last, wherever the row it lands on ends: committing and backing out are the same two controls
+   whatever is being asked. */
+.choices__controls {
+  order: 2;
+  margin: 0;
+  min-width: 0;
 }
 
 .slot__tally {
   opacity: 0.75;
 }
 
-.slot__hint,
 .dock__hint {
-  margin-block: 0.2rem;
-  font-size: 0.75rem;
+  margin-block: 0;
   opacity: 0.7;
 }
 
 .slot__number input {
-  width: 5rem;
+  width: 4rem;
+  font: inherit;
 }
 
 /* A chosen candidate, in a list of buttons rather than checkboxes: the same click that picks it
@@ -68,33 +94,39 @@
 }
 
 .dock__subject {
-  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
-  padding: 0.35rem 0.5rem;
-  margin-block: 0.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--dock-gap, 0.9rem);
+  row-gap: var(--dock-row-gap, 0.3rem);
+  min-width: 0;
 }
 
-/* Louder than a selection box on purpose: this is the one thing the player must do, and the
-   game does not move until they do it. */
-.dock__owed {
-  border: 1px solid currentColor;
-  padding: 0.35rem 0.5rem;
-  margin-block: 0.4rem;
+/* Louder than the rest of the row on purpose: this is the one thing the player must do, and the
+   game does not move until they do it. Shown on the controls rather than said in a heading above
+   them (§2.1 rules 2 and 4) — the band already says the game is waiting on an answer. */
+.dock .actions--owed button {
+  border-color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 22%, transparent);
 }
 
 .dock__who {
-  margin-block-start: 0;
+  margin: 0;
 }
 
 /* Pinned, and its own box. Where this used to say `max-height: 38vh; overflow-y: auto`, it now
    says nothing about its size at all: the scene gives it one, and a dock with more in it than
-   fits is a dock whose contents wrap tighter — never one a player scrolls to find `Pass` in. */
+   fits is a dock whose contents scale tighter (`dockDensity`) — never one a player scrolls to
+   find `Pass` in, and never one that cuts the button it is asking them to press. */
 .dock {
   min-width: 0;
-  padding: 0.3rem 0.5rem;
+  padding: var(--dock-row-gap, 0.3rem) 0.5rem;
   background: var(--panel);
   display: flex;
   justify-content: center;
   overflow: hidden;
+  font-size: var(--dock-text, var(--text-md));
+  line-height: 1.25;
 }
 
 /* One band, not a stack of blocks. What the game wants, the hint, the global actions, and the
@@ -110,12 +142,11 @@
   flex-wrap: wrap;
   align-items: baseline;
   align-content: flex-start;
-  column-gap: 1.1rem;
-  row-gap: 0.3rem;
+  column-gap: var(--dock-gap, 1.1rem);
+  row-gap: var(--dock-row-gap, 0.3rem);
   overflow: hidden;
 }
 
-.dock__owed,
 .dock__subject,
 .dock__confirm,
 .dock__pending,
@@ -146,7 +177,6 @@
 .dock__all {
   margin-block-start: 0;
   margin-inline-start: auto;
-  font-size: 0.8rem;
 }
 
 .dock__all summary {
@@ -180,9 +210,13 @@
 
 /* The global actions are the row a player's hand rests on. `Pass` is pressed more than every
    other control on the screen put together, so it is a button rather than a link-sized word. */
-.dock .actions button {
-  padding: 0.25rem 0.8rem;
-  font-size: var(--text-md);
+.dock .actions button,
+.dock .choices__controls button,
+.dock .dock__confirm button,
+.dock .dock__subject button {
+  padding: var(--dock-pad-y, 0.25rem) var(--dock-pad-x, 0.8rem);
+  font-size: inherit;
+  line-height: inherit;
   border: 1px solid var(--line);
   border-radius: 0.3rem;
   background: #ffffff12;
@@ -237,7 +271,6 @@
   align-items: baseline;
   gap: 0.5rem;
   margin: 0;
-  font-size: var(--text-sm);
   white-space: nowrap;
 }
 
@@ -278,11 +311,12 @@
   }
 }
 
-/* The draft panel takes the tone too, because it *is* the question the band is announcing. */
-.dock .choices {
-  border-color: color-mix(in srgb, var(--tone) 60%, transparent);
-  border-radius: 0.3rem;
-  background: color-mix(in srgb, var(--tone) 8%, transparent);
+/* A dock that is asking *looks* like it is asking (§6.5 rule 2), which is what pays for the
+   sentence that used to say so. The whole band takes the tone rather than a panel drawn inside
+   it, because the panel was a box inside a box and its border was height. */
+.dock--asking,
+.dock--confirm {
+  background: color-mix(in srgb, var(--tone) 10%, var(--panel));
 }
 
 /* ---------------------------------------------------------------------------

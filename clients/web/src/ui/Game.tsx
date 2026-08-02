@@ -93,13 +93,13 @@ import { changes, NO_CHANGES } from './../motion'
 import { dockTone } from './../dock'
 import { boardRows } from './../board'
 import { fieldSlots } from './../pack'
-import { scene, type Rect } from './../scene'
+import { peeking, scene, type Rect } from './../scene'
 import { buildChooseAction, type Draft } from './../submission'
 import { CardInspector } from './CardInspector'
 import { ActionDock } from './game/ActionDock'
 import { Motion } from './game/Motion'
 import { Settings } from './game/Settings'
-import { TurnStrip, type TurnLayout } from './game/TurnStrip'
+import { TurnStrip, turnLayoutFor } from './game/TurnStrip'
 import { Battlefield, type FieldEntry } from './game/Battlefield'
 import { CardPreview } from './game/CardPreview'
 import { Region, share, useViewport } from './game/frame'
@@ -241,6 +241,22 @@ export function Game({
     faces.set(face.id, face)
   }
   const inspected = inspecting === undefined ? undefined : faces.get(inspecting)
+
+  // Which objects the table itself puts a box on, so a question about them is answered on them
+  // and the dock carries only the subjects it did not draw (`docs/client-design.md` §6.5).
+  //
+  // A fact about this client's own rendering and nothing else. It is the tier-1 surfaces plus the
+  // cards the server showed this seat — every one of them on screen at every band, so what the
+  // dock holds does not change when a drawer opens. A pile is deliberately not in it: its cards
+  // are behind a gesture, which is exactly the case the dock's fallback controls exist for.
+  const drawn = new Set<string>([
+    ...handFaces.map((face) => face.id),
+    ...revealedFaces.map((face) => face.id),
+    ...fieldEntries.map((entry) => entry.permanent.id),
+    ...stackEntries.map((entry) => entry.item.id),
+    ...emblemEntries.map((entry) => entry.face.id),
+    ...table.map((seat) => seat.id),
+  ])
 
   // Names for entity ids the surfaces and the dock mention. The server labels players; cards and
   // permanents are named from the view's own contents, never resolved client-side.
@@ -488,15 +504,17 @@ export function Game({
   }
 
   const collapsed = ladder.rails === 'collapsed'
-  const turnLayout: TurnLayout = collapsed ? 'chip' : band === 'square' ? 'strip' : 'rail'
+  // Which of the three the turn is drawn as is read off the box it was given, not off the band:
+  // the scene decides the room, and the same room is always drawn the same way.
+  const turnLayout = turnLayoutFor(regions.turn)
   const drawer = ladder.sidePanel === 'drawer'
   // A pile the player opened and cards the server put in front of them are both things somebody
   // asked for, so the drawer they live in is already open when they arrive.
   const sideOpen = !drawer || drawerOpen || openZone !== undefined || revealedFaces.length > 0
-  // §2's trade, in the same terms `scene.ts` allocated the height by: the hand keeps the bottom
-  // band while nothing is pending, and yields it the moment there is something to answer — always
-  // at Short, where height is the scarce resource and the strip is the resting state.
-  const peek = band === 'short' || (band === 'tall' && asking)
+  // §2's trade, read off the box the hand actually got rather than restated here: the scene gives
+  // the controls the bottom band before the hand grows past its floor, so a hand with no room for
+  // a hand card is a peek strip — always at Short, where the strip is the resting state.
+  const peek = peeking(regions.hand)
   // The look, at full size. Resolved out of this frame's faces like everything else, so an object
   // that leaves the view stops previewing rather than pinning a card that is gone.
   const preview = hovering === undefined ? undefined : faces.get(hovering)
@@ -637,6 +655,8 @@ export function Game({
           actions={actions}
           interaction={interaction}
           result={view.result}
+          box={regions.dock}
+          drawn={drawn}
           where={`Turn ${view.turn ?? 0} · ${phaseLabel(view.phase)}`}
           labelFor={surface.labelFor}
           take={take}

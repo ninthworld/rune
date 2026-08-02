@@ -687,9 +687,14 @@ test.describe('a choice the game will not proceed past', () => {
     // One action, so the click on the stack object *is* arming it — and because that action
     // asks a question, what the click reaches is the question rather than a submission.
     await stack.getByRole('button').first().click()
-    await expect(page.getByRole('region', { name: 'Choices' })).toContainText(
-      'Target opponent loses 1 life',
-    )
+    const choices = page.getByRole('region', { name: 'Choices' })
+    // The question, once (§2.1 rule 5): the slot's own prompt. The trigger's text is on the
+    // stack item that was just clicked and is highlighted, and printing it again over the
+    // controls is what used to push them out of the band (#678).
+    await expect(choices).toContainText('Target opponent — 0 chosen')
+    await expect(choices).not.toContainText('loses 1 life')
+    // Still named for anyone who is not looking at the highlighted trigger.
+    await expect(choices).toHaveAttribute('aria-label', /loses 1 life/)
 
     await page.getByRole('region', { name: 'p1 seat' }).getByRole('button', { name: 'p1' }).click()
     await page.getByRole('button', { name: 'Confirm' }).click()
@@ -1326,7 +1331,12 @@ test.describe('the band that says what the game wants', () => {
     await page.getByRole('list', { name: 'Global actions' }).getByText('Concede').click()
 
     await expect(page.locator('.dock')).toHaveClass(/dock--confirm/)
-    await expect(page.getByRole('region', { name: 'Actions' })).toContainText('cannot be undone')
+    // The question itself says what it costs. The band above it does not say so a second time
+    // (§6.5 rule 2): a dock that is asking looks like it is asking, and the row it used to spend
+    // on saying so is the row the buttons needed.
+    const actions = page.getByRole('region', { name: 'Actions' })
+    await expect(actions).toContainText('nothing undoes it')
+    await expect(actions).not.toContainText('Confirm below')
     expect(submissions(sent)).toEqual([])
   })
 })
