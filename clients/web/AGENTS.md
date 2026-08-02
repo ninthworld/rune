@@ -57,6 +57,14 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   does not move for any game event; a count is absorbed by the cards getting smaller and then
   overlapping. `ui/game/frame.tsx` is the other half — one `ResizeObserver` on the root feeding
   one `scene()` call, and every region placed at the box it returned.
+- `src/pack.ts` — the other half of §5, and pure like the scene: `scene.ts` says how much room a
+  field gets, this says what happens to the permanents inside it. **A region is sized by the
+  viewport and a count is absorbed by the cards** — `width = clamp(FLOOR, (W − (N−1)·g)/N, ideal)`,
+  a second line while the row's own height affords one at the same tile size, and overlap after
+  that, fanned so the exposed strip is the name band. Cards never shrink below 72×100; below a
+  100px row they are 96×30 chips (§3, step 6), and the printed 63:88 holds at every size. It reads
+  no card and decides no row membership — that is `board.ts`'s answer from the server's
+  `card_types`, and the order inside a row is the server's.
 - `src/board.ts` — a battlefield, as rows. Groups permanents into creatures, other permanents,
   and lands from `CardView.card_types`, which the **server** states beside the type line it
   renders (`docs/protocol.md`) precisely so nothing here parses `"Artifact Creature — Thopter"`.

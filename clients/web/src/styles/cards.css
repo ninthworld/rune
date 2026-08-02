@@ -373,7 +373,10 @@ button.card:hover {
   gap: 0.25rem;
   aspect-ratio: auto;
   block-size: 100%;
-  padding: 2px 4px;
+  /* The same 2px every other frame has, and it has to be: `fit.ts` fits a chip's name against
+     `width - 2 × (padding + border)`, so a stylesheet spending four here would hand the name four
+     pixels less than the fitting was told it had — and at 96px that is a cut name. */
+  padding: 2px;
 }
 
 .card--chip .card__band {
@@ -381,23 +384,52 @@ button.card:hover {
   min-inline-size: 0;
 }
 
-/* No picture to lie on, so the marks and the stat take their place in the row. `relative` rather
-   than `static`: they are back in the flow either way, and staying positioned is what lets the
-   tapped mark be drawn under them here as it is everywhere else. */
-.card--chip .card__badges,
+/* No picture to lie on, so the stat takes its place at the end of the row. `relative` rather than
+   `static`: it is back in the flow either way, and staying positioned is what lets the tapped
+   mark be drawn under it here as it is everywhere else.
+
+   It is the bare number here, without the pill it wears on a card face. `fit.ts` fits the name
+   against `width - statSize × 2.4` — about 26px of a 96px chip — and a bordered, padded pill is
+   ten pixels more than that, taken out of the one thing on a chip that identifies the card. The
+   number reads perfectly well without a ring around it at a size where nothing else is competing
+   for the corner. */
 .card--chip .card__stat {
   position: relative;
-  /* The insets the absolute version was pinned by would become offsets from where the flow put
-     it, which is a two-pixel nudge nobody asked for. */
   inset: auto;
   flex: none;
-  padding-inline-end: 0;
-  inline-size: auto;
-  flex-wrap: nowrap;
+  margin-inline-start: auto;
+  padding: 0;
+  border: 0;
+  background: none;
 }
 
-.card--chip .card__stat {
-  margin-inline-start: auto;
+/* **The words come off a chip; the marks do not.** A chip is 96px of name and P/T, and pills
+   reading `1× +1/+1`, `2 damage`, `Token` took 60 of them — leaving four pixels for the one thing
+   that identifies the card. §2 asks a permanent to say *that* it carries counters, damage, or
+   attachments — "the mark, not necessarily the detail" — so the detail becomes a dot on the
+   frame's own corner, costing no width at all, and every word stays in the document where a
+   screen reader still reads it and the preview still shows it whole. */
+.card--chip .card__badges {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+/* The dot. Drawn in the band's own empty half — a chip's name is one line in a 30px row — and
+   only where the server said there is something to mark. */
+.card--chip:has(.badge--counter, .badge--damage, .badge--marker, .badge--state)::before {
+  content: '';
+  position: absolute;
+  z-index: 3;
+  inset-block-end: 3px;
+  inset-inline-start: 3px;
+  inline-size: 5px;
+  block-size: 5px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--tint) 70%, CanvasText);
 }
 
 /* The preview and the inspector: the place everything the table clamps is redeemed, so nothing
@@ -456,8 +488,14 @@ button.card:hover {
   inline-size: var(--card-hand-w);
 }
 
+/* The battlefield is the one surface that states no width here at all: `pack.ts` gives every tile
+   a box from the room the field has and the number of permanents in it, and the frame fills it.
+   Both dimensions are definite, which is what turns the printed proportion off — the *tile* is
+   63:88 and the card is the tile, so a chip's landscape box is a chip without a second rule
+   saying so. */
 .cards--battlefield > li > .card {
-  inline-size: var(--card-field-w);
+  inline-size: 100%;
+  block-size: 100%;
 }
 
 /* The stack and the emblems beside it are a narrow column where height, not width, is what runs

@@ -91,7 +91,9 @@ import {
 import { objectMenu } from './../menu'
 import { changes, NO_CHANGES } from './../motion'
 import { dockTone } from './../dock'
-import { scene } from './../scene'
+import { boardRows } from './../board'
+import { fieldSlots } from './../pack'
+import { scene, type Rect } from './../scene'
 import { buildChooseAction, type Draft } from './../submission'
 import { CardInspector } from './CardInspector'
 import { ActionDock } from './game/ActionDock'
@@ -511,12 +513,23 @@ export function Game({
     />
   )
 
-  const field = (seat: Seat) => (
+  // §3's step 5, decided for the *table* rather than per seat: how many rows a field divides
+  // into is taken from the half that needs the most of them, so a permanent is the same size at
+  // both ends of the table and nobody's board resizes because somebody else's last artifact
+  // died. Both fields have the same box, so either of them states the room.
+  const rowSlots = fieldSlots(
+    regions.yourField,
+    table.map((seat) => boardRows(fieldFor(seat.id), (entry) => entry.face.cardTypes).length),
+    ladder,
+  )
+
+  const field = (seat: Seat, box: Rect) => (
     <Battlefield
       entries={fieldFor(seat.id)}
       name={seat.name}
       isYou={seat.isYou}
-      rows={ladder.rows}
+      box={box}
+      slots={rowSlots}
       cardTier={ladder.cardTier}
       surface={surface}
     />
@@ -578,15 +591,14 @@ export function Game({
         </Region>
       ))}
 
-      {opponents.map((seat, index) => (
-        <Region
-          key={`field:${seat.id}`}
-          name="opponent-field"
-          rect={share(regions.opponentField, index, opponents.length)}
-        >
-          {field(seat)}
-        </Region>
-      ))}
+      {opponents.map((seat, index) => {
+        const rect = share(regions.opponentField, index, opponents.length)
+        return (
+          <Region key={`field:${seat.id}`} name="opponent-field" rect={rect}>
+            {field(seat, rect)}
+          </Region>
+        )
+      })}
 
       <Region name="stack" rect={regions.stack}>
         <StackRail
@@ -601,7 +613,11 @@ export function Game({
       {/* Your half. Its box is the opponent's box, always — the line across the middle of the
           table is drawn once by the viewport and does not move for any game event. */}
       <Region name="your-field" rect={regions.yourField}>
-        {local ? field(local) : <p className="field__empty">You are watching this table.</p>}
+        {local ? (
+          field(local, regions.yourField)
+        ) : (
+          <p className="field__empty">You are watching this table.</p>
+        )}
       </Region>
 
       {local && (

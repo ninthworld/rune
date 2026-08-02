@@ -166,6 +166,24 @@ and two rows of chips. The card wins — losing the split costs the scan by cate
 face costs the card. It is also what makes §4's Tall band possible: that band promises rows merge
 *and* cards stay cards, and only this order delivers both.
 
+### More screen is never a worse board
+
+**For a fixed board, a card is never smaller on a larger viewport than on a smaller one.** Card size
+must be non-decreasing in both viewport width and viewport height. This is a property, it is
+testable by sweep, and it is not negotiable against any other rule here.
+
+It has to be said because the ladder reads as though more rows are better, and they are not
+inherently. Splitting into creature, other, and land rows buys a *scan by category*; it costs card
+size, because the same height divided three ways draws smaller cards. A field with just enough height
+to squeeze three rows past the 100px floor therefore draws a **worse** board than one with slightly
+less height that merges — three rows of clipped 75px cards against one row of complete 130px cards.
+That is the ladder read as a checklist rather than as a preference order.
+
+So **row count is chosen to maximise card size, not to maximise rows.** The split is kept while it
+is affordable and given up when it is not, on the same principle as §2's type rule: take the largest
+size that works, and give up structure to get it. Losing the split costs the scan by category;
+losing the card's text costs the card, and the card wins.
+
 ### What never degrades, at any size
 
 - Whose priority it is, and what is being asked.

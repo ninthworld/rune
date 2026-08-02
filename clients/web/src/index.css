@@ -56,27 +56,24 @@
   --mana-gold: #c6a244;
   --mana-gold-ink: #23201a;
 
-  /* One width per tier; every height follows from the printed 63:88, so a card is a card at
+  /* The hand's card width; its height follows from the printed 63:88, so a card is a card at
      whatever size the surface can afford.
 
-     Each is the **smaller** of a comfortable reading size and a share of the viewport's height,
+     It is the **smaller** of a comfortable reading size and a share of the viewport's height,
      and the second half is what stops the layout falling apart. A card's height is what it costs
      the screen — the hand and the two halves of the board are stacked, and they are competing
      for one viewport. Sized in `rem` alone, zooming in grows every card while the viewport it
      has to fit in does not, so the hand eats the board and the lands scroll out from under it.
      Sized against `vh` as well, a card gives ground when there is less screen to have: it stays
-     as large as it can be and no larger. */
-  /* The board outranks the hand. A hand is seven cards read once a turn and a board is
-     everything both players have committed, so a hand drawn half again as large as the
-     permanents it is about had the weighting backwards — most visibly on a short viewport,
-     where the hand kept its size and the board was the thing that got clipped. The two are
-     closer now, and the board is the one that gives ground last. */
-  /* Each is also floored, at the minimum box `docs/client-design.md` §5 states for its surface —
-     100px for a hand card, 72px for a permanent, which is the tile XMage fits a complete name, a
-     type line, and a P/T into. Below those a frame is not a smaller card, it is an unreadable
-     one, and §5's answer when a row cannot afford them is to overlap rather than to shrink. */
+     as large as it can be and no larger. It is floored at the 100px box `docs/client-design.md`
+     §5 states for a hand card, below which a frame is not a smaller card but an unreadable one.
+
+     There is no width here for a permanent any more, and its absence is the point: the
+     battlefield's tiles come from `pack.ts`, which is handed the field's own box and the number
+     of permanents in it. A token in a stylesheet cannot know either, which is why a board of
+     four permanents left 500px of gap and a board of fifteen ran off the bottom of the same
+     field. */
   --card-hand-w: clamp(6.25rem, 13vh, 8.6rem);
-  --card-field-w: clamp(4.5rem, 12vh, 7.6rem);
   --card-hand-h: calc(var(--card-hand-w) * 88 / 63);
 
   /* How long the mark that says a permanent tapped takes to come up, and the curve it comes up

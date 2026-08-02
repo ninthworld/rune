@@ -15,20 +15,22 @@
  * The two halves mirror, so both sets of creatures meet at the dividing line and combat reads as
  * one band rather than two lists that happen to be stacked.
  *
- * Under each card hangs its relationship trail: what it is attacking, what blocked it, what it
- * is attached to, what is attached to it, what named it as a target, and what of its own is on
- * the stack. Those are relationships *between* objects rather than facts about one, so they are
- * joined in `relations.ts` from identifiers the server stated, and every name in the trail is a
- * control that reaches the object on the other end — which is often the only way to see it,
- * since the other end may be across the table or inside a pile.
+ * **The box is the scene's and the count is `pack.ts`'s problem.** A battlefield is handed a
+ * rectangle and never asks for one: fifteen permanents in a field sized for six do not make the
+ * field taller, they make the cards smaller and then overlapped and then chips (§5). Both halves
+ * are therefore always the same height and the line across the middle of the table does not move
+ * for any game event — a seat that wipes the opponent's board does not watch its own permanents
+ * jump to a new size and a new place. Every tile below is placed at a computed point rather than
+ * flowed, which is what makes that true whatever is in the row: nothing here can grow a box, and
+ * there is no overflow for a scrollbar to appear in.
  *
- * **The box is the scene's and the count is this field's problem.** A battlefield is handed a
- * height by `scene.ts` and never asks for one: fifteen permanents in a field sized for six do not
- * make the field taller, they make the cards smaller and then overlapped (§5). Both halves are
- * therefore always the same height and the line across the middle of the table does not move for
- * any game event — a seat that wipes the opponent's board does not watch its own permanents jump
- * to a new size and a new place. `rows` and `cardTier` are how the ladder reaches the packing
- * that does the absorbing; today they are stated on the element and the packing is #660's.
+ * **The relationship trail is no longer drawn under the card.** It was what set a permanent's
+ * column width — 233px of `blocked by Colossal Dreadmaw Zombie` around a 108px card — and a
+ * geometry decided by a sentence about an object is exactly what §5 removes. The words stay in
+ * the document, where assistive technology reads them and where they remain the accessible
+ * equivalent of the line `RelationOverlay` draws across the board; what they no longer do is
+ * decide how big a card is. The seat bar and the stack rail still draw their trails, because
+ * neither of them is packing a row.
  *
  * There is no "No permanents." sentence, and its absence is the point. It spent a card row's
  * height printing a fact the empty half of the table already states, and "my opponent has
@@ -40,6 +42,7 @@ import type { CardFace } from './../../card-face'
 import type { RelationLine } from './../../relations'
 import type { SceneLadder } from './../../scene'
 import { boardRows } from './../../board'
+import { packField, type Box } from './../../pack'
 import { Card } from './../Card'
 import { RelationTrail } from './RelationTrail'
 import type { Surface } from './surface'
@@ -50,63 +53,111 @@ export interface FieldEntry {
   lines: readonly RelationLine[]
 }
 
+/** One row as this field will draw it: `board.ts`'s groups, or the single row they merge into. */
+interface DrawnRow {
+  key: string
+  label: string
+  entries: readonly FieldEntry[]
+}
+
 export function Battlefield({
   entries,
   name,
   isYou,
-  rows = 'split',
+  box,
+  slots = 1,
   cardTier = 'compact',
   surface,
 }: {
   entries: readonly FieldEntry[]
   name: string
   isYou: boolean
-  /** §3, step 5: whether this field's height buys two rows of card faces or one taller one. */
-  rows?: SceneLadder['rows']
+  /** The region the scene gave this field. Nothing here ever asks for a different one. */
+  box: Box
+  /**
+   * How many rows the *table* draws (§3, step 5), which `pack.ts` decides for both halves at
+   * once. One means this field's groups are drawn as a single row.
+   */
+  slots?: number
   /** §6's presentations, as the room allows — the ladder's steps 2–4, arriving as one word. */
   cardTier?: SceneLadder['cardTier']
   surface: Surface
 }) {
   const groups = boardRows(entries, (entry) => entry.face.cardTypes, { mirrored: !isYou })
+  // A merged field is one row of everything, in the order `board.ts` put the groups in — the
+  // grouping is what is given up, never the ordering, and never which row a permanent belongs to.
+  const drawn: readonly DrawnRow[] =
+    slots === 1 && groups.length > 1
+      ? [{ key: 'merged', label: 'Permanents', entries: groups.flatMap((row) => row.entries) }]
+      : groups.map((group) => ({ key: group.row, label: group.label, entries: group.entries }))
+  const plan = packField(
+    box,
+    drawn.map((group) => group.entries.length),
+    { slots, mirrored: !isYou, cardTier },
+  )
+  const tier = plan.rows[0]?.pack.tier ?? cardTier
 
   return (
     <section
       className={[
         'field',
         isYou ? 'field--you' : 'field--opponent',
-        `field--rows-${rows}`,
-        `field--tier-${cardTier}`,
+        `field--rows-${slots === 1 ? 'merged' : 'split'}`,
+        `field--tier-${tier}`,
       ].join(' ')}
       aria-label={isYou ? 'Your battlefield' : `${name} battlefield`}
     >
-      {groups.map((group) => (
-        // Named for a screen reader, which cannot see that a row is a row. Sighted readers
-        // get the grouping itself and no heading — a board with three labels stacked down it
-        // spends its scarcest resource, vertical space, on words a player already knows.
-        <ul
-          key={group.row}
-          className={`cards cards--battlefield field__row field__row--${group.row}`}
-          aria-label={isYou ? group.label : `${name} ${group.label.toLowerCase()}`}
-        >
-          {group.entries.map(({ permanent, face, lines }) => (
-            <li key={permanent.id}>
-              {/* One box per permanent, whatever its state. A tapped permanent used to turn a
-                  quarter and needed a slot around it to reserve the landscape footprint; it is
-                  marked upright now (§6), so every tile on the row is the same card-shaped
-                  box and a row has one packing problem instead of two. */}
-              <Card
-                face={face}
-                state={surface.stateOf(face.id)}
-                link={surface.linkOf(face.id)}
-                onActivate={surface.activate}
-                onInspect={surface.inspect}
-                onTrace={surface.trace}
-              />
-              <RelationTrail lines={lines} surface={surface} />
-            </li>
-          ))}
-        </ul>
-      ))}
+      {plan.rows.map((row, index) => {
+        const group = drawn[index]
+        if (!group) return null
+        return (
+          // Named for a screen reader, which cannot see that a row is a row. Sighted readers
+          // get the grouping itself and no heading — a board with three labels stacked down it
+          // spends its scarcest resource, vertical space, on words a player already knows.
+          <ul
+            key={group.key}
+            className={`cards cards--battlefield field__row field__row--${group.key}`}
+            aria-label={isYou ? group.label : `${name} ${group.label.toLowerCase()}`}
+            style={{ left: row.x, top: row.y, width: row.width, height: row.height }}
+          >
+            {group.entries.map(({ permanent, face, lines }, position) => (
+              // One box per permanent, whatever its state. A tapped permanent used to turn a
+              // quarter and needed a slot around it to reserve the landscape footprint; it is
+              // marked upright now (§6), so every tile on the row is the same card-shaped box
+              // and a row has one packing problem instead of two.
+              //
+              // Later tiles lie over earlier ones, so what an overlapped row leaves showing is
+              // each card's top-left corner: the name band (§3, step 4).
+              <li
+                key={permanent.id}
+                style={{
+                  left: row.pack.positions[position]?.x ?? 0,
+                  top: row.pack.positions[position]?.y ?? 0,
+                  width: row.pack.width,
+                  height: row.pack.height,
+                  zIndex: position,
+                }}
+              >
+                <Card
+                  face={face}
+                  state={surface.stateOf(face.id)}
+                  link={surface.linkOf(face.id)}
+                  onActivate={surface.activate}
+                  onInspect={surface.inspect}
+                  onTrace={surface.trace}
+                />
+                {/* The same trail, in the document only. Every relationship it names is drawn
+                    across the board as a line, and a line is not readable — so this is the copy
+                    a screen reader gets and the traversal a keyboard keeps, and it is out of the
+                    packing entirely because a card's size may not be decided by a sentence. */}
+                <div className="visually-hidden">
+                  <RelationTrail lines={lines} surface={surface} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        )
+      })}
     </section>
   )
 }
