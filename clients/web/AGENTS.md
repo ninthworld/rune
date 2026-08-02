@@ -130,7 +130,10 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   One direction is not enough to draw a board — a blocker knows what it blocks and the attacker
   knows nothing about being blocked — so the reverse is derived here once rather than by each
   surface scanning the battlefield. Every edge is a stated id; nothing is concluded from rules
-  text or the log.
+  text or the log. It joins the **names** too, because an id is not a name: `entityNames` is
+  every `(id, name)` pair the view states, and a trail draws a word from that or draws nothing.
+  **No server identifier reaches a surface a player reads** (`docs/client-design.md` §9.2), and
+  an end the view named nowhere is never filled in with a kind concluded from the relationship.
 - `src/menu.ts` — whether an object's own actions belong *at* the object. The dock's list, from
   the same `actionsFor`, opened by the click that already produced `{kind: 'select'}` — no new
   gesture, and deliberately **not** a right-click menu: right-click is spent on the inspector,
