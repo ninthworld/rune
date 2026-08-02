@@ -17,7 +17,7 @@
  */
 import type { GameView } from './protocol'
 import { cardFace, type CardFace } from './card-face'
-import { isConnected, list, playerLabel } from './normalize'
+import { isConnected, isNamed, list, playerLabel, seatOrder } from './normalize'
 
 /**
  * One pip of unspent mana.
@@ -53,6 +53,14 @@ export interface SeatPile {
 export interface Seat {
   id: string
   name: string
+  /**
+   * Whether `name` is the server's word for this seat or the client's.
+   *
+   * A seat nobody named is called `You` or `Opponent` (`normalize.playerLabel`), which already
+   * says whose it is — so a surface that would otherwise add that fact a second time can tell
+   * the two apart without comparing the string against a phrase.
+   */
+  named: boolean
   isYou: boolean
   /** Absent when the server projected no totals for this seat at all. */
   life?: number
@@ -78,20 +86,15 @@ export interface Seat {
 /**
  * Every seat at the table, in the order the server seated them.
  *
- * `seat_order` is the authority when it is present. When it is not — an older frame, or a view
- * that simply did not carry it — the seats are still known from `you` and `opponents[]`, and
- * reconstructing them is better than rendering a table with nobody at it. What is never done is
- * inventing an order the server did not state for seats it did not list.
+ * The order is `normalize.seatOrder`'s, because a seat's *name* depends on its position when
+ * two seats share one, and a table drawn in one order while labelled from another would put the
+ * qualifier on the wrong chair.
  */
 export function seats(view: GameView): readonly Seat[] {
   const you = view.you ?? ''
   const opponents = new Map(list(view.opponents).map((opponent) => [opponent.player_id, opponent]))
 
-  const stated = list(view.seat_order)
-  const order =
-    stated.length > 0 ? stated : [...(you ? [you] : []), ...opponents.keys()].filter(unique)
-
-  return order.map((id) => {
+  return seatOrder(view).map((id) => {
     const isYou = id === you
     const self = isYou ? view.me : undefined
     const opponent = opponents.get(id)
@@ -101,6 +104,7 @@ export function seats(view: GameView): readonly Seat[] {
     return {
       id,
       name: playerLabel(view, id),
+      named: isNamed(view, id),
       isYou,
       life: seat?.life,
       librarySize: seat?.library_size,
@@ -143,5 +147,3 @@ function pilesFor(view: GameView, player: string): readonly SeatPile[] {
     return cards.length === 0 ? [] : [{ zone, label, faces: cards.map(cardFace) }]
   })
 }
-
-const unique = <T>(value: T, index: number, all: readonly T[]) => all.indexOf(value) === index

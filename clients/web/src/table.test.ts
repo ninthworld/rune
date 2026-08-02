@@ -41,6 +41,16 @@ describe('seating the table', () => {
     expect(table.filter((s) => s.isYou).map((s) => s.id)).toEqual(['p1'])
   })
 
+  it('carries the seat’s name and whether the server is the one who gave it', () => {
+    // The one string the panel's heading, the battlefield's region label and the life total's
+    // owner all read — with no wire key in it since #692 — and the flag that says whether it is
+    // the server's word, which is what lets the panel add `(you)` only where it adds anything.
+    expect(seat('gameview-commander.json', 'p1')).toMatchObject({ name: 'Bob', named: true })
+    // `gameview.json` names nobody, so the client finds a word from what the view did state.
+    expect(seat('gameview.json', 'p1')).toMatchObject({ name: 'You', named: false })
+    expect(seat('gameview.json', 'p2')).toMatchObject({ name: 'Opponent', named: false })
+  })
+
   it('keeps your projection and an opponent’s as the different shapes they are', () => {
     const mine = seat('gameview-commander.json', 'p0')
     const theirs = seat('gameview-commander.json', 'p1')

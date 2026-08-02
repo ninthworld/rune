@@ -217,10 +217,10 @@ export function entityNames(view: GameView): ReadonlyMap<string, string> {
 
   for (const emblem of list(view.emblems)) state(emblem.id, EMBLEM)
 
-  // Deliberately last and deliberately unconditional. `playerLabel` falls back to the seat's own
-  // id when the server named nobody, and that is a name here rather than a leaked identifier:
-  // it is the same string the seat's panel, its battlefield region, and its life total are all
-  // labelled with, so a trail that dropped it would be hiding a seat the player can see.
+  // Deliberately last and deliberately unconditional. A seat is always nameable: where the server
+  // named nobody, `playerLabel` finds a word from what the view *did* state — `You`, `Opponent`,
+  // the seat's position — so this is a name rather than the wire key it used to be (#692), and it
+  // is the same string the seat's panel, its battlefield region and its life total all carry.
   for (const seat of seatIds(view)) state(seat, playerLabel(view, seat))
 
   return names

@@ -139,7 +139,10 @@ export function PlayerPanel({
           onBlur={() => surface.trace(undefined)}
         >
           <strong>{seat.name}</strong>
-          {seat.isYou && ' (you)'}
+          {/* Which chair is yours, said once (§2.1, rule 5). A seat the server named needs it —
+              "Ada" alone does not say she is you — and a seat nobody named is already called
+              `You`, so adding it again would print `You (you)`. */}
+          {seat.isYou && seat.named && ' (you)'}
         </button>
       </p>
 

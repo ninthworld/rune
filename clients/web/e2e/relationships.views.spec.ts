@@ -22,7 +22,7 @@ import { DESKTOP, fixture, pageFits, serveFrames, submissions } from './frames'
  */
 test.describe('a board with relationships to trace', () => {
   const MINE = 'Your battlefield'
-  const THEIRS = 'Bo (p2) battlefield'
+  const THEIRS = 'Bo battlefield'
 
   /**
    * One object's tile, addressed by the card frame inside it rather than by its text.
@@ -76,7 +76,7 @@ test.describe('a board with relationships to trace', () => {
       tile(page, THEIRS, 'Vivien Reid').getByRole('button', { name: 'attacked by Onakke Ogre' }),
     ).toBeVisible()
 
-    const seat = page.getByRole('region', { name: 'Bo (p2) seat' })
+    const seat = page.getByRole('region', { name: 'Bo seat' })
     await expect(seat.getByRole('button', { name: 'attacked by Serra Angel' })).toBeVisible()
     await expect(seat.getByRole('button', { name: 'attacked by Thopter' })).toBeVisible()
     await expect(seat.getByRole('button', { name: 'attacked by Onakke Ogre' })).toHaveCount(0)
@@ -126,7 +126,7 @@ test.describe('a board with relationships to trace', () => {
     // An ability has no card of its own, so the source is the only link back to what made it.
     await expect(top.getByRole('button', { name: "from Marauder's Axe" })).toBeVisible()
     await expect(top.getByRole('button', { name: 'targeting Air Elemental' })).toBeVisible()
-    await expect(top.getByRole('button', { name: 'targeting Bo (p2)' })).toBeVisible()
+    await expect(top.getByRole('button', { name: 'targeting Bo' })).toBeVisible()
 
     // The bottom knows its position, and knows what named it — a spell and the counterspell
     // aimed at it trace to each other without either reading the other's rules text.
@@ -354,18 +354,20 @@ test.describe('a board with relationships to trace', () => {
 })
 
 /**
- * The board of #674: the same dense fixture with the opponent controlling nothing.
+ * The rendered page, swept for the identifiers the wire addresses things by (#674, #692).
  *
- * Every relationship the server stated survives — the Ogre is still attacking Vivien Reid, the
- * Aura is still attached to Gearsmith Guardian, the equipment ability is still aimed at Air
- * Elemental — and this view describes none of those objects. That is the case the trail used to
- * answer with `attacking perm_vivien`, which is a log line under a card and, worse, looks like a
- * card name to anyone who has not seen the wire (`docs/client-design.md` §9.2).
+ * `docs/client-design.md` §2.1 rule 3 in a real browser: an object id, a seat id, anything a
+ * player has no use for, belongs in a log and not on a surface. Two boards make the two ways it
+ * used to reach one — a relationship whose other end this view no longer describes, which is
+ * where `attacking perm_vivien` came from, and a table the server named nobody at, which is where
+ * `Bo (p2)` and its nameless twin `p1` came from.
  *
- * The check is a sweep rather than three strings: the forbidden set is read *out of the fixture*,
- * so an identifier leaking through a surface nobody thought about is caught whatever it is called.
+ * The check is a sweep rather than a list of the strings that leaked: the forbidden set is read
+ * *out of the fixture*, and what is swept is the whole page — every word on it and every
+ * `aria-label` behind it — so a seat panel, a battlefield's region label, a life total, a trail
+ * or a surface nobody thought of is covered by the same assertion, whatever it is called.
  */
-test.describe('a board whose other half the view no longer describes', () => {
+test.describe('no wire identifier reaches the page', () => {
   /** Fields that address an object rather than describing one — see `relations.test.ts`. */
   const ADDRESSES = new Set([
     'id',
@@ -376,15 +378,35 @@ test.describe('a board whose other half the view no longer describes', () => {
     'physical_card',
   ])
 
-  const objectIds = (value: unknown, into = new Set<string>()): Set<string> => {
+  /** Fields that address a seat. Forbidden since #692, on the same rule — see `relations.test.ts`. */
+  const SEATS = new Set([
+    'you',
+    'player_id',
+    'player',
+    'controller',
+    'owner',
+    'attacking_player',
+    'active_player',
+    'priority_player',
+    'winner',
+  ])
+
+  /** Lists whose entries are seats, and the map whose *keys* are. */
+  const SEAT_LISTS = new Set(['seat_order', 'losers'])
+
+  const forbiddenIds = (value: unknown, into = new Set<string>()): Set<string> => {
     if (Array.isArray(value)) {
-      for (const item of value) objectIds(item, into)
+      for (const item of value) forbiddenIds(item, into)
       return into
     }
     if (value !== null && typeof value === 'object') {
       for (const [key, entry] of Object.entries(value)) {
-        if (typeof entry === 'string' && ADDRESSES.has(key)) into.add(entry)
-        else objectIds(entry, into)
+        if (typeof entry === 'string' && (ADDRESSES.has(key) || SEATS.has(key))) into.add(entry)
+        else if (SEAT_LISTS.has(key) && Array.isArray(entry)) {
+          for (const seat of entry) if (typeof seat === 'string') into.add(seat)
+        } else if (key === 'player_names' && entry !== null && typeof entry === 'object') {
+          for (const seat of Object.keys(entry)) into.add(seat)
+        } else forbiddenIds(entry, into)
       }
     }
     return into
@@ -398,6 +420,12 @@ test.describe('a board whose other half the view no longer describes', () => {
         parts.push(element.getAttribute('aria-label') ?? '')
       return parts.join('\n')
     })
+
+  /** The sweep itself: nothing the fixture addresses anything by survives as a word on screen. */
+  const sweep = async (page: Page, base: Record<string, unknown>) => {
+    const tokens = new Set((await readable(page)).split(/[^A-Za-z0-9_]+/))
+    expect([...forbiddenIds(base)].filter((id) => tokens.has(id))).toEqual([])
+  }
 
   test('names every end it can, and prints no identifier for the ends it cannot', async ({
     page,
@@ -425,11 +453,12 @@ test.describe('a board whose other half the view no longer describes', () => {
     await expect(ogre.getByRole('button', { name: /^attacking/ })).toHaveCount(0)
 
     // And what *can* still be named is still named. The seat is here, so the ability that names
-    // both a vanished permanent and a seat reads as the half that survived.
+    // both a vanished permanent and a seat reads as the half that survived — as the name its
+    // player chose, with nothing of the wire beside it.
     await expect(
       page
         .getByRole('region', { name: 'Stack' })
-        .getByRole('button', { name: 'targeting Bo (p2)' })
+        .getByRole('button', { name: 'targeting Bo' })
         .first(),
     ).toBeVisible()
 
@@ -442,8 +471,60 @@ test.describe('a board whose other half the view no longer describes', () => {
       .click()
     await expect(page.getByRole('region', { name: 'Choices' })).toBeVisible()
 
-    const tokens = new Set((await readable(page)).split(/[^A-Za-z0-9_]+/))
-    expect([...objectIds(base)].filter((id) => tokens.has(id))).toEqual([])
+    await sweep(page, base)
+  })
+
+  test('names a seat the server named, on every surface that names one', async ({ page }) => {
+    await page.setViewportSize(DESKTOP)
+    const base = fixture('gameview-board.json')
+    await serveFrames(page, [base])
+    await page.goto('/')
+
+    // The four surfaces #692 listed, each carrying the one string `playerLabel` produces. The
+    // panel and the region label reach assistive technology as accessible names and the life
+    // total is drawn inside the panel, so addressing them by role is addressing both copies.
+    const seat = page.getByRole('region', { name: 'Bo seat' })
+    await expect(seat).toBeVisible()
+    await expect(seat.getByText('9')).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Bo battlefield' })).toBeVisible()
+    // Two objects on this stack name the seat, and both name it the same way.
+    await expect(
+      page.getByRole('region', { name: 'Stack' }).getByRole('button', { name: 'targeting Bo' }),
+    ).toHaveCount(2)
+
+    // Your own seat is still yours by the word the panel adds, not by the key the wire used.
+    await expect(page.getByRole('region', { name: 'Your seat' })).toContainText('Ada (you)')
+
+    await sweep(page, base)
+  })
+
+  test('finds a nameless table words of its own, on every one of them', async ({ page }) => {
+    await page.setViewportSize(DESKTOP)
+    // `player_names` is elided when empty, so this is the ordinary case rather than the exotic
+    // one — most committed fixtures are exactly this. It is where the label used to be the bare
+    // `p1`, which is the wire's key for a seat and nothing a player can act on.
+    const base = { ...fixture('gameview-board.json') }
+    delete base.player_names
+    await serveFrames(page, [base])
+    await page.goto('/')
+
+    // The view says which seat is the reader's, so the reader's seat is *you* and the one other
+    // seat is *the opponent*. Both are things a player already knows about their own table.
+    await expect(page.getByRole('region', { name: 'Your seat' })).toBeVisible()
+    // ...and said once: the panel's `(you)` is what a name needs and a seat called `You` does not.
+    await expect(page.getByRole('region', { name: 'Your seat' })).not.toContainText('(you)')
+
+    const theirs = page.getByRole('region', { name: 'Opponent seat' })
+    await expect(theirs).toBeVisible()
+    await expect(theirs.getByText('9')).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Opponent battlefield' })).toBeVisible()
+    await expect(
+      page
+        .getByRole('region', { name: 'Stack' })
+        .getByRole('button', { name: 'targeting Opponent' }),
+    ).toHaveCount(2)
+
+    await sweep(page, base)
   })
 })
 
@@ -501,7 +582,7 @@ test.describe('browsing what a player is allowed to see', () => {
 
     const pile = page.getByRole('region', { name: 'Graveyard' })
     await expect(pile.getByRole('listitem')).toHaveCount(10)
-    await expect(pile).toContainText('Ada (p1)')
+    await expect(pile).toContainText('Ada')
     await expect(pile).toContainText('Llanowar Elves')
 
     // Beside, not over: a pile is usually what a player is choosing *from* while the dock asks
@@ -526,7 +607,7 @@ test.describe('browsing what a player is allowed to see', () => {
     await expect(mine).toContainText('Library (31)')
     await expect(mine.getByRole('button', { name: /^Library/ })).toHaveCount(0)
 
-    const theirs = page.getByRole('region', { name: 'Bo (p2) seat' })
+    const theirs = page.getByRole('region', { name: 'Bo seat' })
     await expect(theirs).toContainText('Hand (4)')
     await expect(theirs.getByRole('button', { name: /^Hand/ })).toHaveCount(0)
     await expect(theirs).toContainText('Library (28)')
