@@ -226,21 +226,79 @@ losing the card's text costs the card, and the card wins.
 any screen. Density changes; the spatial metaphor does not, so what a player learns on a desktop
 still holds on a phone. Everything else about an arrangement is negotiable.
 
+### One arrangement, varied only under duress
+
+**A thing is in the same place at every size unless it cannot be.** Sameness is the default, and
+every difference between bands has to be paid for by a stated constraint — a region that will not
+fit, a gesture that does not exist on the device. A difference introduced for any other reason is a
+second layout to learn, and it is why the client currently puts the turn in three different places
+depending on the window.
+
+The test to apply to any per-band difference: *name the thing that does not fit.* If nothing does,
+the arrangement is the same.
+
+This mostly replaces per-band arrangement with **per-band density**, which was always the intent of
+§3 — the ladder changes how much is drawn, not where it is.
+
 ### Bands
 
-Chosen by the shape of the viewport, not by device.
+Chosen by the shape of the viewport, not by device. Note how little differs between them.
 
-| Band | Shape | Arrangement |
+| Band | Shape | What differs |
 | --- | --- | --- |
-| **Wide** | ratio ≥ 1.3, height ≥ 640 | The optimized version. Seats stacked vertically, turn rail at the left edge, stack rail at the right, side panel as a drawer. Card faces throughout. |
-| **Ultrawide** | ratio ≥ 2.0 | Same composition. Extra width goes to board rows — more cards before overlap — with the board's content held to a maximum width so a glance does not have to travel the whole screen. Rails stay pinned to the edges. |
-| **Square** | ratio 0.8–1.3 | Same vertical order. Turn rail becomes a horizontal strip beneath the header; stack becomes an edge tab. Ladder steps 1–4 as needed. |
-| **Tall** | ratio < 0.8 (phone portrait) | Vertical order preserved and comfortable — height is what portrait has. Rails collapse (step 7), zone counts fold into the seat bars, rows merge, cards overlap early. Cards stay cards. |
-| **Short** | height < 480 (phone landscape, 200% zoom on a small desktop) | The hard case: height is the scarce resource. Full ladder, including chips (step 5). Hand is a peek strip by default and expands on gesture. |
+| **Wide** | ratio ≥ 1.3, height ≥ 640 | The reference arrangement. Seat columns at the leading edge, board beside them, phase strip on the midline, stack at the trailing edge, side panel as a drawer. |
+| **Ultrawide** | ratio ≥ 2.0 | Nothing moves. The extra width goes to board rows — more cards before overlap — with the board held to a maximum width so a glance does not have to cross the whole screen. |
+| **Square** | ratio 0.8–1.3 | Nothing moves. Ladder steps 1–4 as needed. |
+| **Tall** | ratio < 0.8 (phone portrait) | Seat columns become seat bars above and below their own half — a column cannot hold life *and* five counts at 390px wide, and that is the stated constraint. Rows merge, cards overlap early. Cards stay cards. |
+| **Short** | height < 480 (phone landscape, 200% zoom on a small desktop) | As Tall, plus: height is the scarce resource, so the full ladder including chips, and the hand is a peek strip that expands on gesture. |
 
 At the Tall and Short bands the hand and the dock trade the bottom band as §2 describes: hand full
 height while nothing is pending, peek strip the moment something is. At Wide, Ultrawide, and Square
 there is room for both and the dock sits above the hand permanently, as it does today.
+
+### 4.1 The turn is not a rail
+
+**The turn strip is not tier 1 and must stop being drawn as though it were.** §2 puts *the current
+step* in tier 1 and *the turn structure beyond it* in tier 2 — one gesture. A twelve-step rail
+pinned to an edge at all times inverts that, and it is expensive: ~112px of width, which is most of
+a card, spent on something a player glances at rarely.
+
+It is also **already being read somewhere else.** The dock says `Your move · Turn 7 · Declare
+blockers`, and that is where a player actually looks to find out what step it is — beside the
+controls they are about to use, not across the screen.
+
+So:
+
+- **The current step and turn number live in the dock.** Tier 1, satisfied by text already on
+  screen, costing no region at all.
+- **The full turn — every step, where the game will stop, what a settle already did, and the stop
+  preference — is one compact control in one fixed place, at every band, that expands on a
+  gesture.** Not a rail at Wide, a strip at Square, and a chip at Tall: one control, one place.
+- **The phase strip, where drawn, sits on the midline between the two battlefields** — the table's
+  dividing line, which is where the turn's shape belongs and where combat is already read across.
+
+This retires three band-specific arrangements at once, and it fixes a regression the collapsed rail
+introduced: per-step stops became unreachable at Tall and Short because the rail that carried them
+disappeared. With one mechanism at every size, they are reachable at every size.
+
+The width this frees at the leading edge is what pays for §4.2.
+
+### 4.2 Seat columns
+
+Life, library, hand, graveyard, exile and commander state are things a player should **never hunt
+for**, and squeezing them into a 40px bar made them exactly that — folded behind a disclosure at
+small sizes and cramped at large ones.
+
+Each seat gets a **column at the leading edge of its own half**: opponent's beside the opponent's
+battlefield, yours beside yours, in the space the turn rail used to hold. Life is the largest thing
+in it. The zone counts are a labelled stack, plainly readable, not a row of glyphs to decode.
+
+The reading order of §4's invariant is unchanged — opponent, board, you, hand, top to bottom. A seat
+column belongs to the half it sits beside, so the vertical order still reads the same way.
+
+At Tall and Short a column cannot hold life *and* five counts at 390px wide, so there the seat
+becomes a bar above and below its own half, and §2's fold applies. **That is the stated constraint
+that licenses the difference**, per §4's rule above.
 
 **Height, not width, decides whether a permanent is a card.** Card faces survive while their row
 is at least 100px tall. That is why portrait phones keep cards and short-landscape does not — and
