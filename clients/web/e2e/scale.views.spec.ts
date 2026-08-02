@@ -99,13 +99,13 @@ interface Known {
  * a trail's control needs up to 328px in 192px on a 3440px ultrawide exactly as it does on a phone,
  * because that box is not derived from the viewport.
  *
- * The one exception is in the 1280×720 row, and it is there on purpose: **#686 keeps creatures,
- * other permanents and lands in their own rows at every desktop size, and the cards pay for it**
- * (§3, "cannot fit three rows? Make the cards smaller"). Budgeting a field for the three rows it
- * draws bought the names back everywhere the height allows — 1440×900 draws 69×96 tiles and cuts
- * nothing, a portrait phone 59×82 — and at 720px of height no allocation does. Every row that came
- * out under §5's 72×100 minimum marks itself with `data-below-floor` and the size it drew, which
- * is the review threshold §3 asks for rather than a silent removal.
+ * One thing in the `clipped` measurement is **not** a trail and has no row here, because it is not a
+ * defect with an owner: at 1280×720 a field divided three ways draws a 47×66 tile, and four
+ * single-word names miss its 41px band at the 9px floor. What that turns on is where a tile stops
+ * being a card (§5, "The floor is soft downward and hard sideways") — a threshold question for the
+ * maintainer, not a fix anyone can make in this file. The tile says so itself: every row drawn under
+ * §5's 72×100 minimum carries `data-below-floor` and the size it came out at, which is the review
+ * threshold §3 asks for rather than a silent removal.
  *
  * First measured against `main` at 9084a1c, which is #667 — the redrawn card. That merge retired
  * more than half of what this gate first reported: clipped elements went from 16–34 per viewport
@@ -130,8 +130,8 @@ interface Known {
  * and `Gravedigger` missing their 72×100 tile's name band on a phone, were all the estimator coming
  * up 5–9% short of what the browser draws; the table is measured now and a unit test pins the
  * direction of the error. What #676 also did was merge the rows, and #686 reverses that — three
- * rows at every desktop size, out of a field budgeted for three. 1920×1080 draws them at 73×102
- * and 1440×900 at 69×96, and neither cuts a name.
+ * rows at every desktop size, out of a field budgeted for the three rows a board draws. 1920×1080
+ * draws them at 73×102 and 1440×900 at 69×96, and neither cuts a name.
  */
 const KNOWN: Record<string, Known> = {
   '1920×1080': {
@@ -149,14 +149,7 @@ const KNOWN: Record<string, Known> = {
     scrolls: '#662 — the stack alone: `section.rail__zone` holds 1307px in a 750px box.',
   },
   '1280×720': {
-    clipped:
-      '#663 — the same 6 trails again, and four card names that are not #663 and not a defect ' +
-      'in this client at all: at 720px of height there is no allocation that gives three rows a ' +
-      'tile whose band can set a 9px name. The tile is 47×66, its band 41px, and `Gearsmith` ' +
-      "(46px), `Gravedigge` (50px), `Marauder's` (50px) and `Mountain` (43px) are each a single " +
-      'word no second line can help. The row marks itself `data-below-floor` and the maintainer ' +
-      'has the measurements: the choice between this, a chip board and a merged one is theirs, ' +
-      'and what decides it is where the 9px name threshold sits — not this ledger.',
+    clipped: '#663 — the same 6 trails again.',
     scrolls: '#662 — the stack alone: `section.rail__zone` holds 1307px in a 589px box.',
   },
   '640×360': {
@@ -169,8 +162,9 @@ const KNOWN: Record<string, Known> = {
   '390×844': {
     clipped:
       '#663 — 8 trails, four of them squeezed into the seat bars of a 390px screen, where ' +
-      '`Serra Angel` gets 11px and `Thopter` 8px. A portrait phone keeps all three rows now, at ' +
-      'a 59×82 tile, and cuts no name to do it.',
+      '`Serra Angel` gets 11px and `Thopter` 8px. The two name bands that used to be here — ' +
+      '`Colossal Dreadmaw` and `Gravedigger` over their 72×100 tile — were `fit.ts` estimating ' +
+      'short and are gone.',
     scrolls: '#662 — the stack alone: the collapsed `section.badge-rail` holds 333px in 130px.',
   },
   '844×390': {
