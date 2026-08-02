@@ -162,48 +162,73 @@ that band it takes, and it only ever grows when there is something to take.
 Room always runs out somewhere. The design is the *order* in which things give way — stated once
 here, so it is derivable rather than hand-tuned per screen.
 
-Applied in order, each step taken only when the one before it is exhausted:
+### Scale first. Remove last.
+
+**The first answer to "it does not fit" is always to make it smaller — never to take something
+away.** Removal is what happens when scaling has genuinely run out, and it is a failure to be
+reported, not a design move to reach for.
+
+Earlier drafts of this section had that backwards. They read as a menu of things to drop, and they
+were implemented faithfully: rules text that would not fit was deleted rather than set smaller; the
+art window was eaten to make room for text; creature and land rows were merged so the remaining
+cards could be drawn at full size. Every one of those is the same mistake — **trading a feature away
+to keep something else at its preferred size**, when scaling both would have kept both.
+
+So the rule the ladder below serves:
+
+- **Cannot fit the art and the rules text? Set the text smaller.**
+- **Cannot fit the cards in the row? Make the cards smaller.**
+- **Cannot fit three rows? Make the cards smaller.** Do not merge the rows.
+- Only when everything has been scaled as far as it goes does anything come off.
+
+**The floor is a review threshold, not a licence to drop.** When scaling reaches a size that seems
+too small, the client still draws it, and the fact is reported to the maintainer — who is the one
+who decides whether it has gone too far. A silent removal hides the question; a small card asks it.
+
+### The ladder
+
+Applied in order, and **each step is a last resort reached only when scaling within the step before
+it is exhausted**:
 
 1. **Padding and gaps compress** toward their minimums.
-2. **Cards shrink** toward the legibility floor.
-3. **Secondary text drops from the card face** — rules text first, then type line, then mana cost.
-   Name, P/T, and state marks remain.
-4. **Cards overlap within their row**, fanned so the exposed strip is the top-left: the name band.
+2. **Everything on the card scales together** — the tile, its type, its art window. Proportions hold;
+   nothing is dropped to protect anything else's preferred size.
+3. **Cards overlap within their row**, fanned so the exposed strip is the top-left: the name band.
    A fanned row reads as a column of names. Pitch tightens as the count grows.
-5. **Rows merge.** Creatures, other permanents, and lands stop being separate rows and become one.
-6. **Card faces become chips.** Below a row height of 100px effective a card tile is no longer a
-   card — it is a landscape chip carrying name, P/T, and state marks, with the face one gesture
-   away. Rendering a 60px "card" is the current failure mode: it has the shape of information
-   without being readable.
-7. **Rails collapse.** The turn strip becomes a single current-step chip; the stack becomes a badge
-   carrying the top item's name and a count, expanding on gesture.
+4. **Secondary content leaves the card face**, in this order: rules text, then art, then type line,
+   then mana cost. Name, P/T, and state marks remain. Reaching this step at all means step 2 ran
+   out, and it is worth saying so.
+5. **Card faces become chips.** A landscape chip carrying name, P/T, and state marks, with the face
+   one gesture away.
+6. **Rows merge.** Creatures, other permanents, and lands become one row. This is **late**: the scan
+   by category is what a player uses to read a board at a glance, and shrinking the cards to keep it
+   is nearly always the better trade.
+7. **Rails collapse.** The stack becomes a badge carrying the top item's name and a count, expanding
+   on gesture.
 8. **The side column becomes a drawer.** Preview, log, and settle move behind one gesture.
 
-**Merging rows before chipping cards is deliberate**, and it is the one place in this ladder where
-the order is load-bearing rather than merely sensible. A split battlefield is budgeted for two rows
-of cards; merged, the same height buys one row of *twice the size*. So a field that cannot afford
-two 100px rows can very often afford one, and the choice is between a merged row of readable cards
-and two rows of chips. The card wins — losing the split costs the scan by category, and losing the
-face costs the card. It is also what makes §4's Tall band possible: that band promises rows merge
-*and* cards stay cards, and only this order delivers both.
+### The split is kept, and the cards get smaller
+
+**Creatures, other permanents, and lands stay in their own rows, and the cards shrink to make that
+possible.** The scan by category is how a player reads a board at a glance, and it is worth far more
+than any particular card size. Merging is step 6 of the ladder — a late resort, reached only when
+the cards have already been scaled as far as they go.
+
+An earlier draft said the opposite: *"row count is chosen to maximise card size… losing the split
+costs the scan by category, losing the card's text costs the card, and the card wins."* That framing
+assumed one of them had to lose, which is the mistake this whole section now exists to name. Neither
+has to. Three rows of smaller cards is three rows.
 
 ### More screen is never a worse board
 
-**For a fixed board, a card is never smaller on a larger viewport than on a smaller one.** Card size
-must be non-decreasing in both viewport width and viewport height. This is a property, it is
-testable by sweep, and it is not negotiable against any other rule here.
+**For a fixed board, nothing is smaller or less complete on a larger viewport than on a smaller
+one.** Card size, and the amount drawn on a card, are both non-decreasing in viewport width and
+height. This is a property, it is testable by sweep, and it is not negotiable against any other rule
+here.
 
-It has to be said because the ladder reads as though more rows are better, and they are not
-inherently. Splitting into creature, other, and land rows buys a *scan by category*; it costs card
-size, because the same height divided three ways draws smaller cards. A field with just enough height
-to squeeze three rows past the 100px floor therefore draws a **worse** board than one with slightly
-less height that merges — three rows of clipped 75px cards against one row of complete 130px cards.
-That is the ladder read as a checklist rather than as a preference order.
-
-So **row count is chosen to maximise card size, not to maximise rows.** The split is kept while it
-is affordable and given up when it is not, on the same principle as §2's type rule: take the largest
-size that works, and give up structure to get it. Losing the split costs the scan by category;
-losing the card's text costs the card, and the card wins.
+It is stated separately because it is what catches a ladder applied as a checklist. Crossing a
+threshold upward must never take something away — not a row, not the art window, not a line of rules
+text. If more screen ever produces less board, the arrangement is wrong, not the screen.
 
 ### What never degrades, at any size
 
@@ -518,9 +543,24 @@ The other half of what XMage proves. Its permanent tile is ~72×100 and is *full
 padding, a small art share, and text everywhere else — which is how it fits eleven permanents to a
 row, three rows, a seven-card hand, and both rails on one screen with nothing cut off.
 
-Ours are the inverse: a 108px tile that is mostly padding and art window, showing `C…`. **The art
-window takes the space that is left, not a fixed share** — it is the one element that degrades to
-nothing without costing a fact, since SAGE ships no art and identity lives in the name.
+Ours were the inverse: a 108px tile that was mostly padding and art window, showing `C…`.
+
+**The card's parts scale together; the art window is not the residue.** An earlier draft said the
+art "takes the space that is left" and "degrades to nothing without costing a fact", and that was
+implemented literally — a card whose rules text is long loses its art window entirely so the text
+can stay at its preferred size. That is §3's mistake at the scale of one card: **the text should get
+smaller, not the art get eaten.**
+
+The art window is the *last* thing to leave the face, after the rules text has scaled all the way
+down and then been dropped. It is worth keeping for the same reason a printed card has one: it is
+what makes a board readable as objects rather than as a table of labels, and it is the fastest way
+to recognise a card you have already seen this game.
+
+**Everything on a card is written once.** A keyword that appears in the rules text is not also
+printed as a separate italic line — that is one fact twice (§2.1), and it is currently costing a
+line of the very space the art is being taken for. Where the server's prose states a keyword, the
+prose is the statement; the separate keyword line exists only for a card whose keywords are *not* in
+its drawn text.
 
 ### The check this has to pass
 
