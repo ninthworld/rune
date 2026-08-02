@@ -324,20 +324,34 @@ describe('the ladder', () => {
     })
   })
 
-  it('reaches the designed presentation only where the height is there for it', () => {
+  it('puts the designed battlefield out of reach of every supported viewport', () => {
     // §5's designed permanent is 130×182 and §6 reserves that presentation for a board with its
-    // rows intact. Two rows of it per seat, plus a designed hand, needs more height than a 1080p
-    // desktop has — so 1080p draws the compact card XMage's density argues for, and 1440p draws
-    // the designed one.
-    expect(scene({ width: 3440, height: 1440 }, PLAYING).ladder.cardTier).toBe('designed')
-    expect(scene({ width: 1920, height: 1080 }, PLAYING).ladder.cardTier).toBe('compact')
+    // rows intact. **Three** rows of it per seat is 558px of field, twice over, plus a designed
+    // hand and the chrome — more height than the largest screen the client supports has. So the
+    // ladder says `compact` everywhere, which is §6's own answer ("`compact` is the normal
+    // battlefield presentation, not a degradation") rather than a shortfall.
+    //
+    // It says nothing about the *card*: at 1440p the rows are 162px and `presentationFor` calls a
+    // 116×162 tile designed, because what a card is comes from its box and never from this word.
+    for (const viewport of [
+      { width: 3440, height: 1440 },
+      { width: 2560, height: 1440 },
+      { width: 1920, height: 1080 },
+    ]) {
+      expect(scene(viewport, PLAYING).ladder.cardTier).toBe('compact')
+    }
   })
 
-  it('drops to chips at the 100px row §3 puts the threshold at', () => {
-    // Height, not width, decides whether a permanent is a card (§4). These two viewports differ
-    // by a single pixel of height, and the pixel is the one that takes the row under 100.
+  it('calls a field that cannot hold a card at §5’s minimum a chip board', () => {
+    // The scene's own bottom: a *field* — not a row of one — with less height than §5's 100px
+    // minimum tile is a region where a landscape chip carries a name better than the portrait
+    // tile the height affords, which is precisely why §5's chip is landscape. These two viewports
+    // differ by a single pixel of height, and the pixel is the one that takes the field under 100.
     expect(scene({ width: 1280, height: 412 }, PLAYING).ladder.cardTier).toBe('compact')
     expect(scene({ width: 1280, height: 411 }, PLAYING).ladder.cardTier).toBe('chip')
+    // And above it the scene names no tier at all: a split field's rows are whatever height the
+    // division leaves, and `presentationFor` answers for the box each one got.
+    expect(scene({ width: 1280, height: 720 }, PLAYING).ladder.cardTier).toBe('compact')
   })
 
   it('merges the rows before it gives up the card face', () => {
@@ -414,15 +428,34 @@ describe('the ladder', () => {
 })
 
 describe('the hand and the action affordance trade the bottom band', () => {
-  it('keeps the hand full height on a phone while nothing is being asked', () => {
-    const resting = scene({ width: 390, height: 844 }, PLAYING)
-    const asked = scene({ width: 390, height: 844 }, { ...PLAYING, asking: true })
+  it('gives the question the band the hand was going to grow into', () => {
+    const resting = scene({ width: 1920, height: 1080 }, PLAYING)
+    const asked = scene({ width: 1920, height: 1080 }, { ...PLAYING, asking: true })
 
     expect(asked.regions.hand.height).toBeLessThan(resting.regions.hand.height)
     // The dock takes what the hand freed — §2's rejection of a permanently reserved bar.
     expect(asked.regions.dock.height).toBeGreaterThan(resting.regions.dock.height)
     // Small, never invisible: the peek strip still shows enough of every card to count them.
     expect(asked.regions.hand.height).toBeGreaterThan(0)
+  })
+
+  /**
+   * What budgeting a field for three rows costs the trade, stated rather than left to be found.
+   *
+   * Below about 950px of height the two fields take the whole surplus at their first claim — §3's
+   * order, which buys the board's card faces before anything else buys its designed size — so
+   * there is nothing left for a question to grow into and nothing the hand can free that the board
+   * has not already taken. The dock is still at the floor §2 admits no size below, and the *gain*
+   * is on the same line: the board does not move when the game asks something, which is the one
+   * thing §5 says a region must never do.
+   */
+  it('has nothing left to trade where the board has already taken the surplus', () => {
+    const resting = scene({ width: 390, height: 844 }, PLAYING)
+    const asked = scene({ width: 390, height: 844 }, { ...PLAYING, asking: true })
+
+    expect(asked.regions.dock.height).toBe(resting.regions.dock.height)
+    expect(asked.regions.hand.height).toBe(resting.regions.hand.height)
+    expect(asked.regions.yourField).toEqual(resting.regions.yourField)
   })
 
   it('makes the peek strip the resting state where height is the scarce resource', () => {
@@ -438,8 +471,8 @@ describe('the hand and the action affordance trade the bottom band', () => {
   })
 
   it('leaves the bottom band alone where there is room for both', () => {
-    const resting = scene({ width: 1920, height: 1080 }, PLAYING)
-    const asked = scene({ width: 1920, height: 1080 }, { ...PLAYING, asking: true })
+    const resting = scene({ width: 1920, height: 1200 }, PLAYING)
+    const asked = scene({ width: 1920, height: 1200 }, { ...PLAYING, asking: true })
 
     expect(asked.regions.hand.height).toBe(resting.regions.hand.height)
   })
