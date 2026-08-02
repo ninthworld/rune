@@ -36,6 +36,12 @@
  * nobody would notice. Every failure this file found is still asserted, at full strength, in a
  * form that a green pipeline can carry. See #652 and the issues under it.
  *
+ * Three things are measured at every band, and the third was added with #678. The board's text
+ * against the box it was given; the board's regions against their own overflow; and **the dock's
+ * controls against the dock's band** — a question drawn bigger than the band it was allocated
+ * does not clip its own text and does not make anything scroll, so neither of the first two can
+ * see it. The buttons are simply below the box, and `overflow: hidden` takes them away.
+ *
  * The **non-blocking** tier (ADR 0011) — breadth lives here so breadth never gates a merge on
  * browser flake, and `smoke.spec.ts` remains the one blocking path.
  */
@@ -403,6 +409,143 @@ async function boardScrolling(page: Page): Promise<Scrolling[]> {
   return found
 }
 
+/**
+ * The dock's own box, which is the band `scene()` allocated and nothing to do with its contents.
+ *
+ * Read off the region rather than off a class: what is asserted about it is that it does not
+ * change with the count, and a selector would tie that to the current markup.
+ */
+const dockBox = (page: Page) =>
+  page
+    .getByRole('region', { name: 'Actions' })
+    .evaluate((root) => root.getBoundingClientRect().toJSON() as DOMRect)
+
+/**
+ * Everything the dock draws that is not inside the dock.
+ *
+ * A different question from `textIn` and from `boardScrolling`, and neither of them can see it:
+ * a button pushed past the bottom of a box with `overflow: hidden` is not clipping its own text
+ * and is not making anything scroll. It is simply gone, and it is the specific way a player lost
+ * the controls they were being asked to press (#678).
+ *
+ * `checkVisibility` rather than a `display`/`visibility` pair, because a closed `<details>` in
+ * current Chrome hides its contents with `content-visibility` — which still reports a box, at
+ * coordinates well outside the dock. Measuring those would report the disclosure that is doing
+ * exactly what a disclosure should as the defect this is looking for.
+ */
+async function outsideTheDock(page: Page): Promise<string[]> {
+  return page.getByRole('region', { name: 'Actions' }).evaluate((root) => {
+    const box = root.getBoundingClientRect()
+    const out: string[] = []
+    for (const node of root.querySelectorAll('button, input, summary, p, li')) {
+      const el = node as HTMLElement
+      if (
+        !el.checkVisibility({
+          contentVisibilityAuto: true,
+          opacityProperty: true,
+          visibilityProperty: true,
+        })
+      ) {
+        continue
+      }
+      const rect = el.getBoundingClientRect()
+      if (rect.width <= 1 || rect.height <= 1) continue
+      // One pixel of slack for the sub-pixel rounding a fractional viewport produces, and no more.
+      if (
+        rect.top < box.top - 1 ||
+        rect.bottom > box.bottom + 1 ||
+        rect.left < box.left - 1 ||
+        rect.right > box.right + 1
+      ) {
+        out.push(
+          `${el.tagName.toLowerCase()} "${(el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 40)}" ` +
+            `${Math.round(rect.top)}–${Math.round(rect.bottom)} in ${Math.round(box.top)}–${Math.round(box.bottom)}`,
+        )
+      }
+    }
+    return out
+  })
+}
+
+/** The keep-or-mulligan contract fixture, painted at one viewport. */
+async function mulligan(page: Page, viewport: { width: number; height: number }) {
+  await page.setViewportSize({ width: viewport.width, height: viewport.height })
+  await serveFrames(page, [fixture('gameview-prompts.json')])
+  await page.goto('/')
+  await expect(page.getByRole('region', { name: 'Actions' })).toBeVisible()
+}
+
+/** Arm the action the dock is offering by that name, and wait for its questions to be drawn. */
+async function armed(page: Page, label: string) {
+  const dock = page.getByRole('region', { name: 'Actions' })
+  // Exact: the turn strip carries a step called "Declare blockers" and it is a different control.
+  await dock.getByRole('button', { name: label, exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Choices' })).toBeVisible()
+}
+
+/**
+ * A board where the answer is *on the board*: one attacker, and `count` creatures that may block.
+ *
+ * There is no committed fixture for a blocking declaration, so the view is written out here from
+ * `docs/protocol.md` — the same way `views.spec.ts` writes out the combat shapes. Every candidate
+ * is a permanent the board draws, which is the case §6.5 is about: the dock carries the tally and
+ * the two controls, and the twenty subjects are answered where they lie.
+ */
+const blocking = (count: number) => ({
+  you: 'p0',
+  phase: 'declare_blockers',
+  turn: 6,
+  me: { life: 20, library_size: 40 },
+  opponents: [{ player_id: 'p1', life: 20, hand_size: 3, library_size: 40, graveyard_size: 0 }],
+  seat_order: ['p0', 'p1'],
+  active_player: 'p1',
+  priority_player: 'p0',
+  battlefield: [
+    {
+      id: 'perm_attacker',
+      controller: 'p1',
+      owner: 'p1',
+      attacking_player: 'p0',
+      card: {
+        id: 'perm_attacker',
+        name: 'Colossal Dreadmaw',
+        type_line: 'Creature — Dinosaur',
+        card_types: ['creature'],
+        power: '6',
+        toughness: '6',
+      },
+    },
+    ...Array.from({ length: count }, (_, index) => ({
+      id: `perm_block_${index}`,
+      controller: 'p0',
+      owner: 'p0',
+      card: {
+        id: `perm_block_${index}`,
+        name: `Wall of Vines ${index + 1}`,
+        type_line: 'Creature — Plant Wall',
+        card_types: ['creature'],
+        power: '0',
+        toughness: '3',
+      },
+    })),
+  ],
+  valid_actions: [
+    {
+      id: 'blk',
+      type: 'declare_blockers',
+      label: 'Declare blockers',
+      token: 'tblk',
+      requirements: [
+        {
+          slot: 'blockers',
+          prompt: 'Choose which creatures block',
+          candidates: Array.from({ length: count }, (_, index) => `perm_block_${index}`),
+        },
+      ],
+    },
+  ],
+})
+
 for (const viewport of VIEWPORTS) {
   test.describe(viewport.name, () => {
     /**
@@ -525,6 +668,65 @@ for (const viewport of VIEWPORTS) {
     test('renders no text below its type floor', async ({ page }) => {
       await table(page, viewport)
       expect((await textIn(page)).filter((m) => m.fontSize < m.floor)).toEqual([])
+    })
+
+    /**
+     * The defect #678 is about, asserted where it happened: a question bigger than the band.
+     *
+     * The dock's box is `scene()`'s and is as little as 44px on half of the viewports in this
+     * list, so a question drawn at desktop type had its controls pushed out of the band and
+     * `overflow: hidden` cut them — the player losing the very buttons they were being asked to
+     * press. It is a different failure from the two sweeps above and needs its own measurement:
+     * nothing there is clipping its own text, and the dock is not scrolling. The controls are
+     * simply *below the box*.
+     *
+     * Both questions the issue names, in sequence, so what is asserted is a real path through a
+     * prompt rather than one frame of it: the mulligan decision, and the bottoming question that
+     * only appears once *keep* is chosen — the case that made this three rows deep.
+     */
+    test('cuts nothing off the question it is asking', async ({ page }) => {
+      await mulligan(page, viewport)
+      expect(await outsideTheDock(page)).toEqual([])
+
+      await armed(page, 'Keep or mulligan')
+      expect(await outsideTheDock(page)).toEqual([])
+
+      // The follow-up question, and the tally that is the only statement of how far the answer
+      // has got. Both have to be inside the band, and the controls under them with it.
+      await page.getByRole('button', { name: 'Keep this hand' }).click()
+      await expect(page.getByRole('region', { name: 'Choices' })).toContainText('0 of 1')
+      expect(await outsideTheDock(page)).toEqual([])
+    })
+
+    /**
+     * §5, applied to the dock: the band responds to *whether* the game is asking, never to how
+     * much there is to ask about. Two legal blockers and twenty are the same question.
+     *
+     * A sweep over the count rather than a pair of expected pixel values — the recurring defect
+     * in this client is a number that is not monotone across a boundary, and a table of
+     * expectations is exactly what fails to see one.
+     */
+    test('is the same dock for twenty legal blockers as for two', async ({ page }) => {
+      const heights: number[] = []
+      for (const count of [2, 6, 20]) {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height })
+        await serveFrames(page, [blocking(count)])
+        await page.goto('/')
+        await armed(page, 'Declare blockers')
+
+        // Every one of them is on the board, highlighted, and answers the slot the server listed
+        // it in. None of them is a button in the dock, which is what used to make this grow.
+        await expect(
+          page.getByRole('region', { name: 'Your battlefield' }).getByRole('listitem'),
+        ).toHaveCount(count)
+        await expect(
+          page.getByRole('region', { name: 'Choices' }).getByRole('button', { name: /^Wall/ }),
+        ).toHaveCount(0)
+
+        expect(await outsideTheDock(page)).toEqual([])
+        heights.push((await dockBox(page)).height)
+      }
+      expect(new Set(heights).size).toBe(1)
     })
   })
 }

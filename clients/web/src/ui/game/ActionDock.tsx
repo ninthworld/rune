@@ -24,9 +24,19 @@
  * One action is asked twice. Conceding ends the match and nothing in the game undoes it, so it
  * takes over the dock with a question rather than firing on the click that reached it — and any
  * other click is a "no", because every other transition drops the question (`interaction.ts`).
+ *
+ * **Its band is `scene()`'s, and its contents scale into it** (`docs/client-design.md` §6.5 rule
+ * 5, §3). The box responds to *whether* the game is asking and never to how much there is to ask
+ * about; on half the supported viewports it is 44px even then, so the type, the padding, and the
+ * gaps are handed down from `dockDensity` as one scale rather than each element deciding its own.
+ * That is the ladder §3 gave every region and the dock's contents never had — and it is why the
+ * answer to a question that will not fit is now a smaller question, never a cut one.
  */
+import type { CSSProperties } from 'react'
+
 import type { GameResult, ValidAction } from './../../protocol'
-import { dockTone, dockWording } from './../../dock'
+import type { Rect } from './../../scene'
+import { dockDensity, dockNarrates, dockTone, dockWording } from './../../dock'
 import {
   actionsFor,
   clear,
@@ -45,6 +55,15 @@ export interface DockProps {
   actions: readonly ValidAction[]
   interaction: Interaction
   result: GameResult | undefined
+  /** The band `scene()` allocated, which is the whole of what the contents scale into. */
+  box: Rect
+  /**
+   * The ids the table is currently drawing.
+   *
+   * Presentation and nothing else: it says which objects this client put a box on, so a question
+   * about them can be answered on them (§6.5) and the dock can carry the ones it did not draw.
+   */
+  drawn: ReadonlySet<string>
   /** Turn and step, restated where the controls are — see the band's note below. */
   where: string
   labelFor(id: string): string
@@ -60,6 +79,8 @@ export function ActionDock({
   actions,
   interaction,
   result,
+  box,
+  drawn,
   where,
   labelFor,
   take,
@@ -92,9 +113,23 @@ export function ActionDock({
   )
 
   const tone = dockTone(actions, interaction, result)
+  const density = dockDensity(box.height)
 
   return (
-    <div className={`dock dock--${tone}`}>
+    <div
+      className={`dock dock--${tone}`}
+      // One scale for the whole band (§7), handed down from the box `scene()` allocated rather
+      // than measured off the content — the contents scale into the region, never the reverse.
+      style={
+        {
+          '--dock-text': `${density.text}px`,
+          '--dock-pad-y': `${density.padY}px`,
+          '--dock-pad-x': `${density.padX}px`,
+          '--dock-gap': `${density.gap}px`,
+          '--dock-row-gap': `${density.rowGap}px`,
+        } as CSSProperties
+      }
+    >
       <section aria-labelledby="actions-heading">
         <h2 id="actions-heading">Actions</h2>
 
@@ -104,14 +139,21 @@ export function ActionDock({
             colour two of which look alike, and a colour a screen reader cannot see all say
             nothing on their own (`dock.ts`).
 
+            Drawn only where nothing below it is already stating the question (§6.5 rule 2): a
+            draft's own controls are the question, and a confirmation asks in as many words, so
+            adding "the game is waiting on your answer" above either is the same fact twice and
+            it is a row of height the band does not have to spare.
+
             The step is restated here rather than only in the header. It is the question asked
             most often after "is it my turn", the header is the full width of the screen away
             from the controls, and a player mid-decision should not have to look up. */}
-        <p className="dock__tone" role="status">
-          <span className="dock__tone-mark" aria-hidden="true" />
-          <strong>{dockWording(tone)}</strong>
-          <span className="dock__where">{where}</span>
-        </p>
+        {dockNarrates(actions, interaction, result) && (
+          <p className="dock__tone" role="status">
+            <span className="dock__tone-mark" aria-hidden="true" />
+            <strong>{dockWording(tone)}</strong>
+            <span className="dock__where">{where}</span>
+          </p>
+        )}
 
         {interaction.pending && (
           <p role="status" className="notice dock__pending">
@@ -155,6 +197,7 @@ export function ActionDock({
             ready={current.ready}
             blocked={blocked}
             interaction={interaction}
+            drawn={drawn}
             labelFor={labelFor}
             update={update}
             confirm={confirm}
@@ -164,15 +207,14 @@ export function ActionDock({
           />
         ) : (
           <>
+            {/* What the game will not proceed past, held out rather than left to be found on the
+                board. The band above already says the game is waiting on an answer, so this does
+                not say it a second time in a box of its own (§2.1 rules 4 and 5) — the emphasis
+                is on the controls themselves, which is where a player is going to click. */}
             {owed.length > 0 && (
-              <div className="dock__owed" role="group" aria-label="Waiting on you">
-                <p className="dock__who">
-                  <strong>The game is waiting on you.</strong>
-                </p>
-                <ul className="actions" aria-label="Actions you owe">
-                  {owed.map(button)}
-                </ul>
-              </div>
+              <ul className="actions actions--owed" aria-label="Actions you owe">
+                {owed.map(button)}
+              </ul>
             )}
 
             {selected === undefined ? (

@@ -144,3 +144,155 @@ test.describe('reaching an object’s actions without a mouse', () => {
     expect(submissions(sent)).toMatchObject([{ action_id: 'a1' }])
   })
 })
+
+/**
+ * `docs/client-design.md` §6.5: the board answers, and the dock carries what the board cannot.
+ *
+ * The two halves are one rule and are asserted together, because either alone is a defect. A
+ * subject that is drawn must not *also* be a button in the dock — that second copy is what made a
+ * question grow until `overflow: hidden` cut the controls under it (#678). A subject that is not
+ * drawn must still be a button in the dock — a card in a closed pile has nothing on the table to
+ * click, and an action reachable only by finding its object is an action a player cannot take.
+ *
+ * The frame is written out here rather than committed, because no fixture has a graveyard the
+ * server is offering as a candidate.
+ */
+const RAISE = {
+  you: 'p0',
+  phase: 'precombat_main',
+  turn: 3,
+  me: { life: 20, library_size: 40 },
+  opponents: [{ player_id: 'p1', life: 20, hand_size: 3, library_size: 40, graveyard_size: 0 }],
+  seat_order: ['p0', 'p1'],
+  active_player: 'p0',
+  priority_player: 'p0',
+  my_hand: [
+    {
+      id: 'h_raise',
+      name: 'Raise Dead',
+      type_line: 'Sorcery',
+      card_types: ['sorcery'],
+      mana_cost: '{B}',
+    },
+  ],
+  battlefield: [
+    {
+      id: 'perm_bear',
+      controller: 'p0',
+      owner: 'p0',
+      card: {
+        id: 'perm_bear',
+        name: 'Grizzly Bears',
+        type_line: 'Creature — Bear',
+        card_types: ['creature'],
+        power: '2',
+        toughness: '2',
+      },
+    },
+  ],
+  graveyards: [
+    {
+      player_id: 'p0',
+      cards: [
+        {
+          id: 'g_zombie',
+          name: 'Walking Corpse',
+          type_line: 'Creature — Zombie',
+          card_types: ['creature'],
+          mana_cost: '{2}{B}',
+          power: '2',
+          toughness: '2',
+        },
+      ],
+    },
+  ],
+  valid_actions: [
+    { id: 'a0', type: 'pass_priority', label: 'Pass' },
+    {
+      id: 'raise',
+      type: 'cast_spell',
+      label: 'Cast Raise Dead',
+      subject: ['h_raise'],
+      token: 'traise',
+      requirements: [
+        {
+          slot: 't0',
+          prompt: 'Return target creature card from your graveyard',
+          // One candidate the table draws and one it does not, in a single slot, so the rule is
+          // asserted on the same question rather than on two convenient ones.
+          candidates: ['g_zombie', 'perm_bear'],
+        },
+      ],
+    },
+  ],
+}
+
+test.describe('a subject the board draws, and one it does not', () => {
+  const armed = async (page: Page) => {
+    const served = await open(page, RAISE)
+    await page
+      .getByRole('region', { name: 'Your hand' })
+      .getByRole('button', { name: /^Raise Dead/ })
+      .click()
+    await expect(page.getByRole('region', { name: 'Choices' })).toBeVisible()
+    return served
+  }
+
+  test('lists only the one the board cannot answer', async ({ page }) => {
+    await armed(page)
+    const choices = page.getByRole('region', { name: 'Choices' })
+
+    // In a closed pile, so there is nothing on the table to click: the dock is its only path.
+    await expect(choices.getByRole('button', { name: 'Walking Corpse' })).toBeVisible()
+    // On the board and highlighted, so the board is its path and the dock does not repeat it.
+    await expect(choices.getByRole('button', { name: 'Grizzly Bears' })).toHaveCount(0)
+    await expect(
+      page
+        .getByRole('region', { name: 'Your battlefield' })
+        .getByRole('button', { name: /^Grizzly Bears/ }),
+    ).toHaveClass(/card--candidate/)
+  })
+
+  test('sends the same submission from the dock as the board would', async ({ page }) => {
+    const { sent } = await armed(page)
+
+    await page
+      .getByRole('region', { name: 'Choices' })
+      .getByRole('button', {
+        name: 'Walking Corpse',
+      })
+      .click()
+    await expect(page.getByRole('region', { name: 'Choices' })).toContainText('1 chosen')
+    await page.getByRole('button', { name: 'Confirm' }).click()
+
+    await expect.poll(() => submissions(sent)).toHaveLength(1)
+    expect(submissions(sent)[0]).toMatchObject({
+      action_id: 'raise',
+      token: 'traise',
+      targets: [{ slot: 't0', chosen: ['g_zombie'] }],
+    })
+  })
+
+  test('answers on the board with the keyboard, as it does with the pointer', async ({ page }) => {
+    const { sent } = await armed(page)
+
+    // §6.5 rule 4. Everything the pointer reaches the keyboard reaches, *including answering on
+    // the board* — which is the path that carries most of a question now that the dock has
+    // stopped listing the subjects the table already drew. Enter is deliberately the browser's on
+    // a focused control (`keys.ts`), which is what makes the card behave like the button it is.
+    await page
+      .getByRole('region', { name: 'Your battlefield' })
+      .getByRole('button', { name: /^Grizzly Bears/ })
+      .focus()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('region', { name: 'Choices' })).toContainText('1 chosen')
+
+    // And Space still commits the finished answer, from wherever the focus happens to be.
+    await page.keyboard.press(' ')
+    await expect.poll(() => submissions(sent)).toHaveLength(1)
+    expect(submissions(sent)[0]).toMatchObject({
+      action_id: 'raise',
+      targets: [{ slot: 't0', chosen: ['perm_bear'] }],
+    })
+  })
+})
