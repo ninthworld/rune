@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import type { Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 
 const FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -67,6 +67,30 @@ export async function serveFrames(page: Page, frames: readonly unknown[]) {
   return serveSockets(page, [frames])
 }
 
+/**
+ * Load the page and press through the connect screen.
+ *
+ * `docs/client-design.md` §9.3 puts a first screen in front of the shell — a name and a server —
+ * so a player arrives at the lobby already being somebody. A fresh browser context holds no
+ * session token, so every pre-game test starts there and this is the one click that gets past
+ * it. Tests that serve a `GameView` need none of this: the contract in force outranks the
+ * screen, and a seated connection is never shown a connect screen.
+ *
+ * `name` is what goes in the field. Left empty, no `set_name` is sent at all, which is the
+ * device-with-no-name case.
+ */
+export async function open(page: Page, name = '') {
+  await page.goto('/')
+  const connect = page.getByRole('button', { name: 'Connect' })
+  const rail = page.getByRole('navigation', { name: 'Destinations' })
+  await expect(connect.or(rail).first()).toBeVisible()
+  // A second visit in the same tab carries the token the first was issued, and a tab that is
+  // already somebody is never asked again — so this is a no-op there rather than a failure.
+  if ((await connect.count()) === 0) return
+  if (name) await page.getByLabel('Name').fill(name)
+  await connect.click()
+}
+
 /** Every message of one `type` the page has sent, oldest first. */
 export const messages = (sent: readonly string[], type: string): Record<string, unknown>[] =>
   sent.map((raw) => JSON.parse(raw)).filter((message) => message.type === type)
@@ -98,6 +122,10 @@ export const pageFits = (page: Page) =>
  * which is why this is a no-op when there is no control to press.
  */
 export const openHistory = async (page: Page) => {
+  // Wait for the board first. The control exists only once a game view has arrived, and asking
+  // before that reads "there is no drawer" rather than "not yet" — which is a no-op that then
+  // fails several assertions later, in a test that has nothing to do with timing.
+  await expect(page.getByRole('region', { name: 'Actions' })).toBeVisible()
   const control = page.getByRole('button', { name: 'History' })
   if ((await control.count()) > 0) await control.click()
 }

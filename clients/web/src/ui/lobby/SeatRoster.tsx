@@ -1,25 +1,31 @@
 /**
- * The roster of the table you are at: who is in each seat, and what each seat still owes.
+ * The seats of the table you are at, and what each of them still owes.
  *
- * The status words and the waiting list are the seat flags the server sent, restated
- * (`lobby.ts`). The room starts when the server's own gate closes, not when this list empties —
- * what it shows is why the wait is happening, which is the thing a player sitting at a table with
- * nothing moving actually wants to know.
+ * **Waiting-on is drawn on the seat it belongs to** (`docs/client-design.md` §9.5). The old
+ * screen printed *"Waiting on — Seat 1 — No deck yet · Seat 2 — Nobody here yet"* underneath a
+ * list of seats that already carried those facts, which is §9.2's second rule exactly: a fact
+ * that needs a sentence to be legible means the thing drawing it is wrong, and the sentence is
+ * not the fix. So a seat carries two marks, lit or unlit, and an empty seat carries none —
+ * because what an empty seat is waiting for is somebody, which is the seat itself.
  *
- * Seating a bot is offered here because an empty seat is where you would look for it, and it is
- * offered *at all* only because the server advertised `add_ai` — the client never works out that
- * it is the host. The kinds are the ones the catalog advertises; the deck is one of the bundled
- * starters, validated by the server exactly like a human's.
+ * The marks are the flags the server stated, restated (`lobby.ts`). The room starts when the
+ * server's own gate closes, never when this list looks complete.
+ *
+ * Seating a bot is offered on the empty seat, because that is where a player looks for it, and
+ * it is offered *at all* only because the server advertised `add_ai` — the client never works
+ * out that it is the host. Choosing the opponent happens **when the choice is being made**: the
+ * kinds and what each one plays like are the catalog's own words, on the options, at the moment
+ * a player is picking between them, rather than printed beside a control forever.
  */
 import { useState } from 'react'
 
 import type { SeatRow } from './../../lobby'
 import type { AiOption } from './../../protocol'
 import type { StarterDeck } from './../../decks'
+import { Choice } from './../controls'
 
 export function SeatRoster({
   rows,
-  waiting,
   aiOptions,
   starters,
   canAddAi,
@@ -28,7 +34,6 @@ export function SeatRoster({
   onRemoveAi,
 }: {
   rows: readonly SeatRow[]
-  waiting: readonly string[]
   aiOptions: readonly AiOption[]
   starters: readonly StarterDeck[]
   canAddAi: boolean
@@ -36,33 +41,44 @@ export function SeatRoster({
   onSeatAi(seat: number, kind: string, cards: readonly string[]): void
   onRemoveAi(seat: number): void
 }) {
+  const [filling, setFilling] = useState<number>()
   const [kind, setKind] = useState(aiOptions[0]?.id ?? '')
   const [deckId, setDeckId] = useState(starters[0]?.id ?? '')
   const deck = starters.find((candidate) => candidate.id === deckId)
   const seating = canAddAi && aiOptions.length > 0 && deck !== undefined
 
   return (
-    <section aria-labelledby="roster-heading" className="roster">
-      <h3 id="roster-heading">Seats</h3>
-      <ul className="roster__list">
+    <section aria-label="Seats" className="seats">
+      <ul className="seats__list">
         {rows.map((row) => (
-          <li key={row.seat} className={`seat-row${row.you ? ' seat-row--you' : ''}`}>
-            <span className="seat-row__index">Seat {row.seat + 1}</span>
-            <span className="seat-row__who">
-              {row.label}
-              {row.you && ' (you)'}
+          <li
+            key={row.seat}
+            className={`seat${row.you ? ' seat--you' : ''}${row.occupied ? '' : ' seat--empty'}`}
+          >
+            <span className="seat__index" aria-hidden="true">
+              {row.seat + 1}
             </span>
-            <span className="seat-row__status">
-              {row.status.map((word) => (
-                <span key={word} className="badge badge--marker">
-                  {word}
+            <span className="seat__who">
+              <span className="visually-hidden">Seat {row.seat + 1} — </span>
+              {row.occupied ? row.label : 'Empty'}
+              {row.you && <span className="seat__you"> you</span>}
+            </span>
+            {row.ai !== undefined && <span className="seat__kind">AI</span>}
+
+            <span className="seat__marks">
+              {row.marks.map((mark) => (
+                <span key={mark.label} className={`mark${mark.met ? ' mark--met' : ''}`}>
+                  <span aria-hidden="true">{mark.label}</span>
+                  {/* The whole fact, for assistive technology: lit and unlit are not something
+                      a screen reader can perceive, and the word alone is ambiguous without it. */}
+                  <span className="visually-hidden">{mark.detail}</span>
                 </span>
               ))}
-              {row.awaiting && <span className="seat-row__awaiting">{row.awaiting}</span>}
             </span>
-            <span className="seat-row__controls">
-              {seating && !row.occupied && (
-                <button type="button" onClick={() => onSeatAi(row.seat, kind, deck.cards)}>
+
+            <span className="seat__controls">
+              {seating && !row.occupied && filling !== row.seat && (
+                <button type="button" onClick={() => setFilling(row.seat)}>
                   Seat an AI opponent
                 </button>
               )}
@@ -72,39 +88,52 @@ export function SeatRoster({
                 </button>
               )}
             </span>
+
+            {seating && filling === row.seat && (
+              <div className="seat__fill">
+                <Choice
+                  label="Opponent"
+                  columns
+                  value={kind}
+                  options={aiOptions.map((option) => ({
+                    value: option.id,
+                    label: option.name,
+                    ...(option.description ? { detail: option.description } : {}),
+                  }))}
+                  onChange={setKind}
+                />
+                <Choice
+                  label="Deck"
+                  columns
+                  value={deckId}
+                  options={starters.map((candidate) => ({
+                    value: candidate.id,
+                    label: candidate.name,
+                    detail: candidate.summary,
+                  }))}
+                  onChange={setDeckId}
+                />
+                <p className="seat__fill-go">
+                  <button
+                    type="button"
+                    className="page__lead"
+                    autoFocus
+                    onClick={() => {
+                      onSeatAi(row.seat, kind, deck.cards)
+                      setFilling(undefined)
+                    }}
+                  >
+                    Seat
+                  </button>
+                  <button type="button" onClick={() => setFilling(undefined)}>
+                    Cancel
+                  </button>
+                </p>
+              </div>
+            )}
           </li>
         ))}
       </ul>
-
-      {seating && (
-        <p className="roster__ai">
-          <label>
-            Opponent{' '}
-            <select value={kind} onChange={(event) => setKind(event.target.value)}>
-              {aiOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.name}
-                </option>
-              ))}
-            </select>
-          </label>{' '}
-          <label>
-            playing{' '}
-            <select value={deckId} onChange={(event) => setDeckId(event.target.value)}>
-              {starters.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.name}
-                </option>
-              ))}
-            </select>
-          </label>{' '}
-          <span className="roster__ai-note">
-            {aiOptions.find((option) => option.id === kind)?.description}
-          </span>
-        </p>
-      )}
-
-      {waiting.length > 0 && <p className="roster__waiting">Waiting on — {waiting.join(' · ')}</p>}
     </section>
   )
 }

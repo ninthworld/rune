@@ -38,6 +38,19 @@ export interface Connection {
 const defaultFactory: SocketFactory = (url) => new WebSocket(url) as unknown as SocketLike
 
 /**
+ * The address a `?server=` query parameter names, if this page was given one.
+ *
+ * Separated from the resolution below so the connect screen can tell an address that was
+ * *configured for this page load* from one that is merely the default: an explicit parameter
+ * outranks even what this device chose last (`connect.ts`), because it is what points one built
+ * bundle at a staging server or a stub.
+ */
+export function serverUrlOverride(): string | undefined {
+  if (typeof window === 'undefined' || !window.location?.search) return undefined
+  return new URLSearchParams(window.location.search).get('server') ?? undefined
+}
+
+/**
  * The address of the server this client talks to, in precedence order:
  *
  * 1. a `?server=` query parameter — point a built client at another host without rebuilding;
@@ -49,12 +62,13 @@ const defaultFactory: SocketFactory = (url) => new WebSocket(url) as unknown as 
  * The query parameter is ordinary configuration, not a test backdoor: it selects an address and
  * grants no capability the socket does not already have. It is what lets one built bundle be
  * pointed at a local server, a staging one, or a stub.
+ *
+ * This is the address a client that was never asked would use. What a player *chose* on the
+ * connect screen is `connect.ts`, which extends this order rather than replacing it.
  */
 export function defaultServerUrl(): string {
-  if (typeof window !== 'undefined' && window.location?.search) {
-    const override = new URLSearchParams(window.location.search).get('server')
-    if (override) return override
-  }
+  const override = serverUrlOverride()
+  if (override) return override
   const configured = import.meta.env?.VITE_SAGE_SERVER
   if (typeof configured === 'string' && configured.length > 0) return configured
   if (typeof window !== 'undefined' && window.location?.protocol?.startsWith('http')) {
@@ -98,8 +112,19 @@ export function connect(
   return {
     send: (message) => {
       const json = JSON.stringify(message)
-      if (open) socket.send(json)
-      else pending.push(json)
+      if (!open) {
+        pending.push(json)
+        return
+      }
+      try {
+        socket.send(json)
+      } catch {
+        // A real `WebSocket` throws if you send while it is CLOSING, and a socket can enter that
+        // state between the call that closed it and the `close` event that reports it — which is
+        // exactly the window a screen re-mounting after a deliberate restart sends in. The
+        // message is lost either way; what matters is that losing it does not take the page down
+        // with it. Everything a fresh connection needs is re-sent per epoch (`useSession.ts`).
+      }
     },
     close: () => socket.close(),
   }

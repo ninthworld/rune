@@ -9,11 +9,17 @@
  * `game_setup` ids, and the seat counts are that format's own advertised range. Nothing is
  * hardcoded, so a format the server adds appears here without a client change — and a client
  * that has not been handed a catalog offers no format at all rather than guessing one.
+ *
+ * What a format *requires* rides on the format's own option rather than on a line under the
+ * form (`docs/client-design.md` §9.2 rule 1). A deck minimum and a copy limit are the whole
+ * substance of choosing between two formats, and printing them beside the control instead of on
+ * the options makes a reader hold one in their head while they look at the other.
  */
 import { useState } from 'react'
 
 import type { CatalogFormat, RoomConfig } from './../../protocol'
-import { deckRules, seatRange } from './../../deck'
+import { deckRules } from './../../deck'
+import { Choice, TextField } from './../controls'
 
 export function TableForm({
   formats,
@@ -46,7 +52,7 @@ export function TableForm({
 
   if (formats.length === 0) {
     return (
-      <p className="table-form__waiting">
+      <p className="page__pending">
         Waiting for the server’s format list. Tables are created from the formats it advertises.
       </p>
     )
@@ -72,54 +78,54 @@ export function TableForm({
         })
       }}
     >
-      <label>
-        Format{' '}
-        <select value={gameSetup} onChange={(event) => pickFormat(event.target.value)}>
-          {formats.map((candidate) => (
-            <option key={candidate.game_setup} value={candidate.game_setup}>
-              {candidate.game_setup}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label>
-        Seats{' '}
-        <select value={seats} onChange={(event) => setSeats(Number(event.target.value))}>
-          {range.map((count) => (
-            <option key={count} value={count}>
-              {count}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label>
-        Table name{' '}
-        <input
-          value={name}
-          placeholder="optional"
-          maxLength={32}
-          onChange={(event) => setName(event.target.value)}
+      <div className="table-form__group">
+        <span className="field__label">Format</span>
+        <Choice
+          label="Format"
+          columns
+          value={gameSetup}
+          options={formats.map((candidate) => {
+            const rules = deckRules(candidate).join(' · ')
+            return {
+              value: candidate.game_setup,
+              label: candidate.game_setup,
+              ...(rules ? { detail: rules } : {}),
+            }
+          })}
+          onChange={pickFormat}
         />
-      </label>
+      </div>
 
-      <label>
-        <input
-          type="checkbox"
-          aria-label="Private table"
-          checked={privateTable}
-          onChange={(event) => setPrivateTable(event.target.checked)}
-        />{' '}
-        Private — unlisted, reachable only by its id
-      </label>
+      <div className="table-form__group">
+        <span className="field__label">Seats</span>
+        <Choice
+          label="Seats"
+          value={String(seats)}
+          options={range.map((count) => ({ value: String(count), label: String(count) }))}
+          onChange={(value) => setSeats(Number(value))}
+        />
+      </div>
 
-      <p className="table-form__rules">
-        {[seatRange(format), ...deckRules(format)].filter(Boolean).join(' · ')}
-      </p>
+      <TextField label="Table name" value={name} maxLength={32} onChange={setName} />
+
+      <div className="table-form__group">
+        <span className="field__label">Who can find it</span>
+        <Choice
+          label="Visibility"
+          columns
+          value={privateTable ? 'private' : 'public'}
+          options={[
+            { value: 'public', label: 'Public', detail: 'Listed for everybody' },
+            { value: 'private', label: 'Private', detail: 'Unlisted, reachable only by its id' },
+          ]}
+          onChange={(value) => setPrivateTable(value === 'private')}
+        />
+      </div>
 
       <p className="table-form__controls">
-        <button type="submit">{submitLabel}</button>{' '}
+        <button type="submit" className="page__lead">
+          {submitLabel}
+        </button>
         {onCancel && (
           <button type="button" onClick={onCancel}>
             Cancel

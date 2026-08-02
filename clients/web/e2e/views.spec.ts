@@ -15,6 +15,7 @@ import {
   DESKTOP,
   fixture,
   messages,
+  open,
   openHistory,
   pageFits,
   serveFrames,
@@ -960,14 +961,15 @@ test.describe('making a settle legible', () => {
 
 test.describe('the pre-game screen', () => {
   test('renders a lobby and offers only the commands the server allows', async ({ page }) => {
-    await serveFrames(page, [
+    const { sent } = await serveFrames(page, [
       { session: 's1', you: 'p0', valid_commands: ['create_room', 'join_room'] },
     ])
-    await page.goto('/')
+    await open(page, 'Ari')
 
-    await expect(page.getByRole('button', { name: 'Create a table' })).toBeVisible()
-    // `set_name` was not offered, so the control must not appear.
-    await expect(page.getByRole('button', { name: 'Set name' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'New table' })).toBeVisible()
+    // `set_name` was not offered, so the name the connect screen collected is not sent — a
+    // device preference never becomes a command the server did not advertise.
+    expect(messages(sent, 'set_name')).toEqual([])
   })
 
   test('shows a rejected deck without losing the lobby', async ({ page }) => {
@@ -982,10 +984,10 @@ test.describe('the pre-game screen', () => {
         },
       },
     ])
-    await page.goto('/')
+    await open(page)
 
     await expect(page.getByRole('alert')).toContainText('Onakke Ogre appears 5 times')
-    await expect(page.getByRole('button', { name: 'Create a table' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'New table' })).toBeVisible()
   })
 })
 
@@ -995,10 +997,10 @@ test.describe('a message this client cannot read', () => {
       { session: 's1', you: 'p0', valid_commands: ['create_room'] },
       { phase: 'interstitial', you: 'p0' },
     ])
-    await page.goto('/')
+    await open(page)
 
     await expect(page.getByRole('status')).toContainText('could not be read')
-    await expect(page.getByRole('button', { name: 'Create a table' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'New table' })).toBeVisible()
   })
 })
 

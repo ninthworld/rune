@@ -290,8 +290,11 @@ test.describe('ending a match', () => {
       .getByRole('button', { name: 'Back to the lobby' })
       .click()
 
-    // The board goes immediately: the session it belonged to has been given up.
-    await expect(page.getByRole('heading', { name: 'SAGE' })).toBeVisible()
+    // The board goes immediately: the session it belonged to has been given up. What is left is
+    // the shell — not the connect screen, because a connection that was just seated has plainly
+    // already introduced itself and is still talking to the same server.
+    await expect(page.getByRole('region', { name: 'Your hand' })).toHaveCount(0)
+    await expect(page.getByRole('navigation', { name: 'Destinations' })).toBeVisible()
     await expect.poll(() => sockets.length, { timeout: 15_000 }).toBe(2)
     await expect(page.getByRole('heading', { name: 'Kitchen table' })).toBeVisible()
 
