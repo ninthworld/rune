@@ -130,7 +130,7 @@ test.describe('the board, from one view', () => {
     )
   })
 
-  test('opens a card inspector from the hand without submitting anything', async ({ page }) => {
+  test('pins a card from the hand without submitting anything', async ({ page }) => {
     const { sent } = await serveFrames(page, [fixture('gameview.json')])
     await page.goto('/')
 
@@ -139,18 +139,19 @@ test.describe('the board, from one view', () => {
     await page.getByRole('region', { name: 'Your hand' }).getByRole('button').first().click()
 
     // Everything the hand tile clamps or drops is here, in full — with the wire's `{T}` and
-    // `{G}` drawn as the pips a player reads, so the sentence between them is what remains.
-    const inspector = page.getByRole('dialog')
-    await expect(inspector).toContainText('Llanowar Elves')
-    await expect(inspector).toContainText(': Add')
-    await expect(inspector.getByRole('img', { name: /tap/ })).toBeVisible()
+    // `{G}` drawn as the pips a player reads, so the sentence between them is what remains. In
+    // the column beside the board rather than over it: the card is read *against* the table.
+    const pinned = page.locator('.preview--pinned')
+    await expect(pinned).toContainText('Llanowar Elves')
+    await expect(pinned).toContainText(': Add')
+    await expect(pinned.getByRole('img', { name: /tap/ })).toBeVisible()
 
-    // Inspecting is not a game action. Asserted against what was *sent* rather than a message
+    // Reading is not a game action. Asserted against what was *sent* rather than a message
     // count, because the client's own `hello` races the click and would count as traffic.
     expect(submissions(sent)).toEqual([])
 
     await page.keyboard.press('Escape')
-    await expect(inspector).toHaveCount(0)
+    await expect(pinned).toHaveCount(0)
   })
 
   test('casts a card the server offered one action for, on one click', async ({ page }) => {
@@ -184,26 +185,37 @@ test.describe('the board, from one view', () => {
       'Lightning Bolt deals 3 damage to any target.',
     )
 
+    // And the right-click parks it there, so the pointer can go back to the board while the card
+    // stays up to be read against it.
     await bolt.click({ button: 'right' })
-    await expect(page.getByRole('dialog')).toContainText('Lightning Bolt')
+    await expect(page.locator('.preview--pinned')).toContainText('Lightning Bolt')
     expect(submissions(sent)).toEqual([])
   })
 
-  test('inspects a permanent the player cannot act on', async ({ page }) => {
-    // Reading an object matters most when it cannot be acted on, so inspection is offered on
-    // every surface rather than only where an action happens to exist.
+  test('pins a permanent the player cannot act on, and releases it', async ({ page }) => {
+    // Reading an object matters most when it cannot be acted on, so it is offered on every
+    // surface rather than only where an action happens to exist.
     await serveFrames(page, [fixture('gameview.json')])
     await page.goto('/')
 
-    await page
+    const thopter = page
       .getByRole('region', { name: 'Your battlefield' })
       .getByRole('button')
       .filter({ hasText: 'Thopter' })
-      .click()
+    await thopter.click()
 
-    await expect(page.getByRole('dialog')).toContainText('Artifact Creature — Thopter')
-    await page.getByRole('button', { name: 'Close' }).click()
-    await expect(page.getByRole('dialog')).toHaveCount(0)
+    const pinned = page.locator('.preview--pinned')
+    await expect(pinned).toContainText('Artifact Creature — Thopter')
+
+    // Its own control releases it, and so does the gesture that made it — the pin is a toggle on
+    // the object, so nothing has to be hunted for to get out of it.
+    await pinned.getByRole('button', { name: 'Unpin' }).click()
+    await expect(pinned).toHaveCount(0)
+
+    await thopter.click()
+    await expect(pinned).toContainText('Artifact Creature — Thopter')
+    await thopter.click()
+    await expect(pinned).toHaveCount(0)
   })
 
   test('renders an emblem beside the board, with its abilities', async ({ page }) => {
@@ -1121,8 +1133,13 @@ test.describe('the keyboard, and what the frame draws', () => {
       card.evaluate((node: HTMLElement) => ({ width: node.offsetWidth, height: node.offsetHeight }))
     expect(await laidOut(bear)).toEqual(await laidOut(thopter))
 
-    // The name is whole, which is the cost of the turn and the thing it may not take.
-    await expect(bear.locator('.card__name')).toHaveText('Grizzly Bears')
+    // The name is not what the turn costs. It may be shortened to hold its one line beside the
+    // mana cost — that is the band's own rule and XMage's — but the cut is by characters and never
+    // by ellipsis, and the whole name is still what assistive technology is read.
+    const drawn = await bear.locator('.card__name').innerText()
+    expect('Grizzly Bears').toContain(drawn)
+    expect(drawn).not.toContain('…')
+    await expect(bear).toHaveAccessibleName(/Grizzly Bears/)
 
     // The badge is gone: the turn is the statement, and a pill repeating it spent the frame's
     // scarcest room on a fact the card already shows.

@@ -95,7 +95,6 @@ import { boardRows } from './../board'
 import { fieldSlots } from './../pack'
 import { peeking, scene, type Rect } from './../scene'
 import { buildChooseAction, type Draft } from './../submission'
-import { CardInspector } from './CardInspector'
 import { ActionDock } from './game/ActionDock'
 import { Motion } from './game/Motion'
 import { Settings } from './game/Settings'
@@ -134,10 +133,20 @@ export function Game({
 }) {
   const label = (id: string) => playerLabel(view, id)
 
-  // The inspector remembers an **id**, never a face. Faces are rebuilt from whatever view
-  // arrived last, so an open inspector shows the object as it is now — and an object that has
-  // left the view closes it rather than pinning a card that no longer exists.
-  const [inspecting, setInspecting] = useState<string | undefined>(undefined)
+  // The card the player has parked in the preview. Reading a card used to open a panel over the
+  // board, which is the one place a card cannot usefully be read: it covered the very table the
+  // card is about. So the gesture pins the preview that already exists instead — the column keeps
+  // showing this object while the pointer goes back to the game, and the board stays visible the
+  // whole time. Nothing is layered, nothing takes the keyboard, and nothing has to be dismissed
+  // before play continues.
+  //
+  // An **id**, never a face. Faces are rebuilt from whatever view arrived last, so a pinned card
+  // shows the object as it is now, and an object that has left the view stops resolving and
+  // unpins itself rather than freezing a card the game no longer has.
+  const [pinned, setPinned] = useState<string | undefined>(undefined)
+  // Pinning is a toggle on its own object: the gesture that parks a card is the gesture that
+  // releases it, so the control that put it there is also the way out.
+  const pin = (id: string) => setPinned((current) => (current === id ? undefined : id))
   // The pile the player is looking through, held the same way and for the same reason: a seat
   // and a zone, never the cards. A pile that empties, or a seat that leaves, stops resolving
   // and the browser closes rather than showing a graveyard the game no longer has.
@@ -232,7 +241,7 @@ export function Game({
   }))
 
   // One face per card-shaped object on screen, so the hand, the board, the piles, and the
-  // inspector cannot disagree about the same object.
+  // preview cannot disagree about the same object.
   const faces = new Map<string, CardFace>()
   for (const face of [
     ...handFaces,
@@ -244,7 +253,6 @@ export function Game({
   ]) {
     faces.set(face.id, face)
   }
-  const inspected = inspecting === undefined ? undefined : faces.get(inspecting)
 
   // Which objects the table itself puts a box on, so a question about them is answered on them
   // and the dock carries only the subjects it did not draw (`docs/client-design.md` §6.5).
@@ -342,11 +350,17 @@ export function Game({
   // selection — this decides only *whether* it belongs beside the card too (`menu.ts`).
   const menu = objectMenu(actions, interaction)
 
-  /** Something is layered over the board, so the keyboard belongs to it rather than to the game. */
-  const layered = inspecting !== undefined || settingsOpen || menu !== undefined
+  /**
+   * Something is layered over the board, so the keyboard belongs to it rather than to the game.
+   *
+   * A pinned card is deliberately not one of them. It sits beside the table rather than over it,
+   * so the player can still pass priority and take actions while reading — which is the whole
+   * reason reading moved out of a modal.
+   */
+  const layered = settingsOpen || menu !== undefined
 
   const back = () => {
-    if (inspecting !== undefined) return setInspecting(undefined)
+    if (pinned !== undefined) return setPinned(undefined)
     if (settingsOpen) return setSettingsOpen(false)
     if (handRaised) return setHandRaised(false)
     if (browsing) return setBrowsing(undefined)
@@ -428,7 +442,7 @@ export function Game({
       const gesture = gestureFor(actions, interaction, id)
       switch (gesture.kind) {
         case 'inspect':
-          setInspecting(id)
+          pin(id)
           return
         case 'select':
           setInteraction(select(interaction, id))
@@ -448,7 +462,7 @@ export function Game({
         }
       }
     },
-    inspect: setInspecting,
+    inspect: pin,
     labelFor: (id: string) => names.get(id) ?? UNNAMED,
   }
 
@@ -512,7 +526,15 @@ export function Game({
   const peek = peeking(regions.hand)
   // The look, at full size. Resolved out of this frame's faces like everything else, so an object
   // that leaves the view stops previewing rather than pinning a card that is gone.
-  const preview = hovering === undefined ? undefined : faces.get(hovering)
+  //
+  // **A pin outranks the pointer**, because that is the whole of what pinning means: the panel
+  // stops following the look and stays on the card the player parked there, so they can sweep the
+  // board comparing it against everything else without it being replaced by whatever they pass
+  // over. Hover is what it falls back to, unchanged, when nothing is pinned.
+  const looking = pinned ?? hovering
+  const preview = looking === undefined ? undefined : faces.get(looking)
+  // A pin that no longer resolves is a card that left the view. It releases rather than lingering.
+  const parked = pinned !== undefined && preview !== undefined
 
   const seatPanel = (seat: Seat) => (
     <PlayerPanel
@@ -556,9 +578,12 @@ export function Game({
     <SidePanel
       zone={openZone}
       closeZone={() => setBrowsing(undefined)}
-      // Over the board rather than in the column, when there is no column: the preview is the
-      // one thing here a player did not ask for, so it cannot wait behind a gesture.
-      preview={drawer ? undefined : preview}
+      // Over the board rather than in the column, when there is no column and it is standing
+      // closed: the preview is the one thing here a player did not ask for, so it cannot wait
+      // behind a gesture. Once the drawer is open it belongs inside it — a pinned card that
+      // vanished when the player opened the drawer would not be locked in place at all.
+      preview={drawer && !sideOpen ? undefined : preview}
+      onUnpin={parked ? () => setPinned(undefined) : undefined}
       revealed={revealedFaces}
       settled={list(view.auto_passed_steps)}
       missed={passedEvents(view)}
@@ -655,7 +680,7 @@ export function Game({
           take={take}
           update={setInteraction}
           confirm={confirm}
-          inspect={setInspecting}
+          inspect={pin}
         />
       </Region>
 
@@ -693,7 +718,7 @@ export function Game({
           fighting for it is one panel too many. */}
       {drawer && !sideOpen && preview && (
         <aside className="preview-over" aria-label="Card preview">
-          <CardPreview face={preview} />
+          <CardPreview face={preview} onUnpin={parked ? () => setPinned(undefined) : undefined} />
         </aside>
       )}
 
@@ -714,15 +739,10 @@ export function Game({
           menu={menu}
           label={surface.labelFor}
           take={take}
-          inspect={setInspecting}
+          inspect={pin}
           close={() => setInteraction(clear(interaction))}
         />
       )}
-
-      {/* Last in the tree so they layer over the table without any surface below them needing to
-          know they exist. `inspected` is looked up in this frame's faces, so an object that has
-          left the view simply stops resolving and the panel closes itself. */}
-      {inspected && <CardInspector face={inspected} onClose={() => setInspecting(undefined)} />}
 
       {settingsOpen && (
         <Settings

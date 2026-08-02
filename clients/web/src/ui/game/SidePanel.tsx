@@ -36,6 +36,7 @@ export function SidePanel({
   zone,
   closeZone,
   preview,
+  onUnpin,
   revealed,
   settled,
   missed,
@@ -48,6 +49,11 @@ export function SidePanel({
   closeZone(): void
   /** The face of whatever the player is currently looking at, if anything. */
   preview?: CardFace
+  /**
+   * Present when the player parked that face here rather than merely passing over it, and the
+   * whole of the difference: a pinned card takes part in the column instead of floating over it.
+   */
+  onUnpin?(): void
   revealed: readonly CardFace[]
   settled: readonly AutoPassedStep[]
   /** What happened while the settle was acting for this seat (`turn.ts`). */
@@ -74,8 +80,9 @@ export function SidePanel({
 
       {/* Over this column rather than in it: a preview that took part in the layout would make
           the log jump every time the pointer crossed a card, and one over the table would hide
-          the board being read. */}
-      {preview && <CardPreview face={preview} />}
+          the board being read. A *pinned* card is the exception, and for the same reason — the
+          column moving once, when the player asked it to, is not the jitter this is avoiding. */}
+      {preview && <CardPreview face={preview} onUnpin={onUnpin} />}
 
       {zone && (
         <ZonePanel
