@@ -1063,6 +1063,11 @@ test.describe('the keyboard, and what the frame draws', () => {
   })
 
   test('draws a cost as pips without losing it from the name', async ({ page }) => {
+    // A hand card with room for an art window, which is where §2 puts the cost: over the art's
+    // top-right corner, out of the name's row. A 100px hand card whose rules text fills the box
+    // has no window and no cost — that is the ladder's own order, art last and "may be left
+    // nothing", and it is what the smaller default viewport draws.
+    await page.setViewportSize({ width: 1920, height: 1080 })
     await serveFrames(page, [fixture('gameview.json')])
     await page.goto('/')
 
@@ -1123,22 +1128,41 @@ test.describe('the keyboard, and what the frame draws', () => {
 
 test.describe('a battlefield with rows', () => {
   /**
-   * A viewport whose field can afford a row of card faces per group.
+   * A viewport whose field can afford the split — which is a *smaller* set of screens than it
+   * sounds, and deliberately so.
    *
-   * This board has three — creatures, a planeswalker, and the land added below — and
-   * `docs/client-design.md` §3 merges the rows rather than drawing three that cannot each hold a
-   * face: "the choice is between a merged row of readable cards and two rows of chips. The card
-   * wins." So the *grouping* is asserted where the grouping is what the ladder draws, which is
-   * the question these two tests are about; that it merges when the room runs out is `pack.ts`'s
-   * own suite, and that it never scrolls either way is `scale.views.spec.ts`.
+   * `docs/client-design.md` §3, "More screen is never a worse board": the row count is chosen to
+   * maximise card size, not to maximise rows. Splitting a field two ways halves the height every
+   * row has, so the split is kept only while the rows it makes still draw the same card the merged
+   * row would — which needs a field tall enough for two designed cards, and that is the ultrawide.
+   * Everything smaller draws one row of larger cards, and the tests below assert both halves of
+   * that: the grouping where it is affordable, the ordering where it is not.
+   *
+   * This is the rule the old version of this file was written against, and it had it backwards:
+   * it asserted named rows at 1920×1080, where the split costs 130×182 cards and buys 111×156
+   * ones. Losing the split costs the scan by category; losing the card's text costs the card.
    */
-  const ROOMY = { width: 1920, height: 1080 }
+  const SPLIT = { width: 3440, height: 1440 }
+  const MERGED = { width: 1920, height: 1080 }
 
-  /** The board fixture, with a land added — no committed board has one to group. */
-  const withLand = () => {
+  /**
+   * A board with exactly the two groups the table budgets for: creatures, and a land.
+   *
+   * The committed fixture's planeswalker is dropped, because a *third* group is the case §3 gives
+   * up first — a field that can afford two rows of designed cards cannot afford three, so a board
+   * with three groups merges its outermost two even here. That is asserted separately below.
+   */
+  const withLand = (planeswalker = true) => {
     const base = fixture('gameview.json')
     const battlefield = [
-      ...(base.battlefield as Record<string, unknown>[]),
+      ...(base.battlefield as Record<string, unknown>[]).filter(
+        (permanent) =>
+          planeswalker ||
+          !(
+            (permanent.card as Record<string, unknown> | undefined)?.card_types as
+              string[] | undefined
+          )?.includes('planeswalker'),
+      ),
       {
         id: 'perm_forest',
         controller: 'p1',
@@ -1156,8 +1180,8 @@ test.describe('a battlefield with rows', () => {
   }
 
   test('separates lands from creatures, from the types the server stated', async ({ page }) => {
-    await page.setViewportSize(ROOMY)
-    await serveFrames(page, [withLand()])
+    await page.setViewportSize(SPLIT)
+    await serveFrames(page, [withLand(false)])
     await page.goto('/')
 
     // Named rows, not one wrapping list. The client parsed no type line to get here: the row
@@ -1173,8 +1197,8 @@ test.describe('a battlefield with rows', () => {
   test('draws creatures nearest the middle of the table, on both halves', async ({ page }) => {
     // So the two sets of creatures face each other across the dividing line and combat reads as
     // one band rather than two lists that happen to be stacked.
-    await page.setViewportSize(ROOMY)
-    await serveFrames(page, [withLand()])
+    await page.setViewportSize(SPLIT)
+    await serveFrames(page, [withLand(false)])
     await page.goto('/')
 
     const field = page.getByRole('region', { name: 'Your battlefield' })
@@ -1183,6 +1207,48 @@ test.describe('a battlefield with rows', () => {
 
     // Your half is below the divider, so your creatures are the row nearer the top of it.
     expect(creatures && lands ? creatures.y < lands.y : false).toBe(true)
+  })
+
+  test('gives up the split rather than the card, and keeps the order when it does', async ({
+    page,
+  }) => {
+    // The same board on a screen that cannot afford two rows of designed cards. The grouping goes
+    // — one row named for what is in it, not three named for what each holds — and the *ordering*
+    // does not: creatures are still first, so your creatures are still the ones nearest the middle
+    // of the table, along the row instead of above it.
+    await page.setViewportSize(MERGED)
+    await serveFrames(page, [withLand(false)])
+    await page.goto('/')
+
+    const field = page.getByRole('region', { name: 'Your battlefield' })
+    await expect(field.getByRole('list', { name: 'Creatures' })).toHaveCount(0)
+    const merged = field.getByRole('list', { name: 'Permanents' })
+    await expect(merged).toContainText('Grizzly Bears')
+    await expect(merged).toContainText('Forest')
+
+    const bear = await merged.getByRole('button', { name: /^Grizzly Bears/ }).boundingBox()
+    const forest = await merged.getByRole('button', { name: /^Forest/ }).boundingBox()
+    expect(bear && forest ? bear.x < forest.x : false).toBe(true)
+
+    // And it is the *card* that was bought with the row: a merged row here draws the designed
+    // 130×182 tile, which is the whole reason the split was given up.
+    expect(bear?.width).toBeGreaterThan(120)
+  })
+
+  test('gives up the outermost rows first, so the creature band is the last to go', async ({
+    page,
+  }) => {
+    // Three groups on a field that affords two rows. Creatures keep their own row against the
+    // dividing line — combat is read along that line — and the two rows furthest from it merge.
+    await page.setViewportSize(SPLIT)
+    await serveFrames(page, [withLand()])
+    await page.goto('/')
+
+    const field = page.getByRole('region', { name: 'Your battlefield' })
+    await expect(field.getByRole('list', { name: 'Creatures' })).toContainText('Grizzly Bears')
+    const rest = field.getByRole('list', { name: /^Other permanents and lands$/ })
+    await expect(rest).toContainText('Nissa')
+    await expect(rest).toContainText('Forest')
   })
 })
 

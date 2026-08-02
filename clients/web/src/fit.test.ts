@@ -47,6 +47,135 @@ describe('estimating how wide text draws', () => {
       expect(line).not.toMatch(/^\s|\s$/)
     }
   })
+
+  /**
+   * **The direction of the error, pinned.**
+   *
+   * The estimate is allowed to be wrong; it is not allowed to be wrong the *narrow* way. Erring
+   * wide costs a font size or a line, and §2 spends both before it gives up a character; erring
+   * narrow draws text into a box smaller than the text, and `overflow: hidden` cuts it. This
+   * module's own doc comment claimed the safe direction while the table pointed the other way —
+   * `Creature — Ogre Warrior` drawn 130px into the 124px band it was told fitted, `Gravedigger`
+   * 72px into 66px — so the claim is now a test.
+   *
+   * `MEASURED` is the widest each glyph is actually drawn, from `system-ui` at font-weight **700**
+   * in the browser `@playwright/test` pins. 700 is heavier than any text that goes through this
+   * module — the name band is 600 and the type line and rules are 400 — so a table that is an
+   * upper bound at 700 has margin in hand at the weights it is really used at. To re-measure,
+   * render `ch.repeat(10)` in a `white-space: pre` element at a large size and divide.
+   */
+  const MEASURED: Record<string, number> = {
+    '—': 1,
+    m: 0.975,
+    W: 0.967,
+    M: 0.943,
+    '@': 0.898,
+    w: 0.856,
+    N: 0.813,
+    O: 0.791,
+    Q: 0.791,
+    H: 0.765,
+    U: 0.756,
+    D: 0.732,
+    G: 0.724,
+    A: 0.692,
+    X: 0.67,
+    B: 0.665,
+    K: 0.664,
+    R: 0.656,
+    h: 0.65,
+    n: 0.65,
+    u: 0.65,
+    V: 0.65,
+    b: 0.632,
+    d: 0.632,
+    g: 0.632,
+    p: 0.632,
+    q: 0.632,
+    Y: 0.626,
+    o: 0.625,
+    C: 0.624,
+    P: 0.621,
+    k: 0.62,
+    a: 0.599,
+    e: 0.597,
+    T: 0.595,
+    Z: 0.579,
+    x: 0.578,
+    '0': 0.572,
+    '1': 0.572,
+    '5': 0.572,
+    '8': 0.572,
+    '9': 0.572,
+    '+': 0.572,
+    '×': 0.572,
+    v: 0.571,
+    y: 0.571,
+    E: 0.56,
+    L: 0.559,
+    '|': 0.551,
+    S: 0.551,
+    F: 0.549,
+    c: 0.516,
+    s: 0.502,
+    z: 0.493,
+    r: 0.447,
+    t: 0.434,
+    '/': 0.415,
+    '{': 0.394,
+    '}': 0.394,
+    I: 0.389,
+    f: 0.386,
+    '(': 0.339,
+    ')': 0.339,
+    '[': 0.331,
+    ']': 0.331,
+    J: 0.331,
+    '-': 0.32,
+    i: 0.299,
+    j: 0.298,
+    l: 0.298,
+    ',': 0.285,
+    ';': 0.285,
+    '!': 0.282,
+    '.': 0.281,
+    ':': 0.281,
+    '·': 0.281,
+    "'": 0.266,
+    ' ': 0.26,
+    '’': 0.217,
+  }
+
+  it('never estimates a character narrower than the browser draws it', () => {
+    const short = Object.entries(MEASURED)
+      .filter(([character, drawn]) => textWidth(character, 100) < drawn * 100)
+      .map(([character, drawn]) => `${character}: ${textWidth(character, 100) / 100} < ${drawn}`)
+    expect(short, `${short.length} characters estimated narrower than they draw`).toEqual([])
+  })
+
+  it('never estimates a string narrower than the browser draws it', () => {
+    // The strings the board is actually made of, including the three the scale gate caught this
+    // on. A per-character bound gives a per-string bound, and this says so where a reader is
+    // looking at the cards rather than at the alphabet.
+    const drawn = (text: string, size: number) =>
+      [...text].reduce((all, character) => all + (MEASURED[character] ?? 0), 0) * size
+    for (const text of [
+      'Creature — Ogre Warrior',
+      'Legendary Creature — Elf Druid',
+      'Gravedigger',
+      'Colossal Dreadmaw',
+      'Nissa, Who Shakes the World',
+      'Llanowar Elves',
+      'Basic Land — Forest',
+      "Marauder's Axe",
+    ]) {
+      for (const size of [9, 11, 13, 17]) {
+        expect(textWidth(text, size), `${text} at ${size}px`).toBeGreaterThanOrEqual(
+          drawn(text, size),
+        )
+      }
+    }
+  })
 })
 
 describe('fitting a name: the largest size that works, then abbreviate', () => {
@@ -72,7 +201,13 @@ describe('fitting a name: the largest size that works, then abbreviate', () => {
   it('prefers fewer lines at equal size', () => {
     // The same name in a box wide enough to hold it whole at 13px: the second line buys nothing
     // here, so it is not taken. Fewer lines is the tiebreak, never the thing traded for size.
-    const fitted = name('Llanowar Elves', HAND_MIN.width)
+    //
+    // The box is the designed permanent rather than the hand's 100px minimum, which is what this
+    // asked for while the advance table under-stated a lowercase letter by a fifth: `Llanowar
+    // Elves` needs about 106px at 13px, and a 100px box takes the second line. That is the
+    // corrected estimate being *conservative* — the browser draws it in 94px — and a wrap is what
+    // §2 spends before a size, so it is the error going the way this module promises.
+    const fitted = name('Llanowar Elves', DESIGNED.width)
     expect(fitted.size).toBe(NAME_DESIGNED)
     expect(fitted.lines).toBe(1)
   })
@@ -204,7 +339,10 @@ describe('degrading a type line by rule rather than by ellipsis', () => {
   })
 
   it('drops the subtype first', () => {
-    expect(fitTypeLine('Legendary Creature — Elf Druid', { width: 90 }, 9)).toBe(
+    // 110px rather than the 90 this used to ask for: `Legendary Creature` estimates at 94px at
+    // 9px now that the table is an upper bound, where the old one put it at 72 and the browser
+    // draws it at 84. The step order is what is asserted here, and it is unchanged.
+    expect(fitTypeLine('Legendary Creature — Elf Druid', { width: 110 }, 9)).toBe(
       'Legendary Creature',
     )
   })

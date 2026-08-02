@@ -73,26 +73,52 @@ export const MIN_STEM = 10
 // ---------------------------------------------------------------------------
 
 /**
- * Advance widths as a fraction of the font size, in four buckets.
+ * Advance widths as a fraction of the font size, in buckets.
  *
- * Calibrated against the spec's own arithmetic — §6 expects roughly 13 characters a line from a
- * 9px name in a 72px tile, which is about 0.58em average — and rounded up from there. The name
- * band is drawn semibold and the type line and rules are not, so one table for both over-states
- * the lighter of the two, which is the safe direction.
+ * **Every number here is an upper bound, and that is the whole contract**: the estimate must come
+ * out wider than what the browser will draw, never narrower. Erring wide costs a font size or a
+ * line; erring narrow *clips*, and `overflow: hidden` is the backstop rather than the plan.
+ *
+ * The table used to be reasoned from §6's arithmetic — "roughly 13 characters a line from a 9px
+ * name in a 72px tile" — and it was not an upper bound at all. It put a lowercase letter at 0.55em
+ * where a real one is 0.65, `r` and `t` at 0.32 where they are 0.45, and it came up short by 5–9%
+ * on exactly the strings a board is full of: `Creature — Ogre Warrior` drawn 130px wide into the
+ * 124px band it was told fitted, `Gravedigger` 72px into 66px. Its own doc comment said the error
+ * was always the safe way round while it was pointing the other way.
+ *
+ * So the buckets are **measured** rather than argued, at `system-ui` and at font-weight **700** —
+ * heavier than anything fitted text is drawn at, since the name band is 600 and the type line and
+ * rules are 400. Taking the heaviest weight's widest character in each bucket is where the margin
+ * comes from: it is a real measurement with a real reason to be generous, rather than a percentage
+ * somebody picked. `fit.test.ts` pins the direction against the measurements themselves, so a
+ * bucket that stops being an upper bound fails a test rather than clipping a card.
  */
-const NARROW = new Set(" ijltfrI.,:;'!|()[]{}/-".split(''))
+/** Punctuation, the thin letters, and the one capital that is as thin as they are. Max 0.339. */
+const THIN = new Set(" ijl.,:;'’!·-()[]J".split(''))
+/** The letters between thin and ordinary, plus the braces and the slash. Max 0.447. */
+const NARROW = new Set('tfrI/{}'.split(''))
+/** The widest glyphs any of this text contains. Max 0.975. */
 const WIDE = new Set('mwMW@'.split(''))
+/** The round capitals, which are a fifth wider than the rest of the alphabet. Max 0.813. */
+const BROAD = new Set('NOQHUDG'.split(''))
+/** The lowercase letters that are narrower than a lowercase `o`. Max 0.599. */
+const SLIM = new Set('acesvxyz'.split(''))
 
 function advance(character: string): number {
   // The long dash a type line is printed with is a full em, and it is the one character that
   // would be badly mis-estimated by a default: every creature's type line contains one.
   if (character === '—') return 1
-  if (NARROW.has(character)) return 0.32
-  if (WIDE.has(character)) return 0.92
-  // Capitals and digits carry more ink than lowercase, and a name is full of both.
-  if (character >= 'A' && character <= 'Z') return 0.68
-  if (character >= '0' && character <= '9') return 0.6
-  return 0.55
+  if (THIN.has(character)) return 0.34
+  if (NARROW.has(character)) return 0.45
+  if (WIDE.has(character)) return 0.98
+  if (BROAD.has(character)) return 0.82
+  // Capitals carry more ink than lowercase, and a name is full of both.
+  if (character >= 'A' && character <= 'Z') return 0.7
+  if (character >= '0' && character <= '9') return 0.58
+  if (SLIM.has(character)) return 0.6
+  // Everything else, which is the rest of the lowercase alphabet and anything this table has
+  // never seen. The widest of those is 0.65, so the default covers an unknown glyph as well.
+  return 0.66
 }
 
 /** How wide a run of text would be drawn, in px. Over-estimated on purpose; see above. */
