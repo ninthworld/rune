@@ -10,7 +10,7 @@ import {
   type PackOptions,
   type Point,
 } from './pack'
-import { CARD_MIN_HEIGHT } from './fit'
+import { CARD_MIN_HEIGHT, MIN_STEM, NAME_FLOOR, textWidth } from './fit'
 import { scene } from './scene'
 
 /** §5's numbers, restated here so a change to one of them fails a test rather than passing. */
@@ -876,6 +876,46 @@ describe('more screen is never a worse board', () => {
         // Cards, at whatever size three rows cost — never chips, and never off the box.
         expect(row.pack.tier, at).not.toBe('chip')
         expect(row.y + row.height, at).toBeLessThanOrEqual(regions.yourField.height)
+      }
+    }
+  })
+
+  /**
+   * The other half of "the split is kept and the cards get smaller": **the cards stay cards.**
+   *
+   * §6's closing rule is that either a name fits or the tile was never a card, and the thing no
+   * second line can help with is a single long word — so what a name band has to hold is
+   * `MIN_STEM` characters of one, at §2's 9px floor, by `fit.ts`'s own (over-)estimate. This is
+   * the property the field's *budget* exists to buy: `scene.ts` budgets a field for the three rows
+   * `board.ts` draws, and a field budgeted for two hands three rows a tile two thirds the height
+   * they needed. It is asserted at the sizes whose height can pay for it, which is where the
+   * budget is the thing that decides — 720px and 768px of viewport height cannot, at any
+   * allocation that keeps §2's tier-1 floors, and that is stated in the PR rather than asserted
+   * here as though it were a target.
+   */
+  it('gives three rows a tile whose name band can still set a name', () => {
+    // The frame's own padding and rule, which come off the tile before the band (`cards.css`).
+    const CHROME = 6
+    const word = textWidth('n'.repeat(MIN_STEM), NAME_FLOOR)
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 1600, height: 1000 },
+      { width: 1920, height: 1080 },
+      { width: 2560, height: 1440 },
+      { width: 3440, height: 1440 },
+    ]) {
+      const board = [5, 2, 5]
+      const { regions, ladder } = scene(viewport, { stackDepth: 1 })
+      const slots = fieldSlots(regions.yourField, [board.length, board.length], ladder)
+      const plan = packField(regions.yourField, board, { slots, cardTier: ladder.cardTier })
+      const at = `${viewport.width}×${viewport.height}`
+      expect(plan.rows, at).toHaveLength(3)
+      for (const row of plan.rows) {
+        expect(row.pack.tier, at).not.toBe('chip')
+        expect(
+          row.pack.width - CHROME,
+          `${at}: ${row.pack.width}×${row.pack.height}`,
+        ).toBeGreaterThanOrEqual(word)
       }
     }
   })

@@ -99,14 +99,13 @@ interface Known {
  * a trail's control needs up to 328px in 192px on a 3440px ultrawide exactly as it does on a phone,
  * because that box is not derived from the viewport.
  *
- * The exception is the one thing in the table that *is* derived from the viewport and is there on
- * purpose: **#686 keeps creatures, other permanents and lands in their own rows at every desktop
- * size, and the cards pay for it.** At 1440×900 and below, a field the scene budgets for two 100px
- * rows is divided three ways, and the tile that comes out — 54×76, then 47×66 — has a name band a
- * few pixels short of the longest single words the fixture has. Those rows carry the measurement
- * rather than hiding it, the field marks itself with `data-below-floor`, and the room they want is
- * `scene.ts`'s `SPLIT_ROWS`. It is the deliberate trade of §3 — "cannot fit three rows? Make the
- * cards smaller" — reported at the point where a person has to judge whether it went too far.
+ * One thing in the `clipped` measurement is **not** a trail and has no row here, because it is not a
+ * defect with an owner: at 1280×720 a field divided three ways draws a 47×66 tile, and four
+ * single-word names miss its 41px band at the 9px floor. What that turns on is where a tile stops
+ * being a card (§5, "The floor is soft downward and hard sideways") — a threshold question for the
+ * maintainer, not a fix anyone can make in this file. The tile says so itself: every row drawn under
+ * §5's 72×100 minimum carries `data-below-floor` and the size it came out at, which is the review
+ * threshold §3 asks for rather than a silent removal.
  *
  * First measured against `main` at 9084a1c, which is #667 — the redrawn card. That merge retired
  * more than half of what this gate first reported: clipped elements went from 16–34 per viewport
@@ -130,9 +129,9 @@ interface Known {
  * `Creature — Ogre Warrior` needing 130px in a 124px band at three sizes, and `Colossal Dreadmaw`
  * and `Gravedigger` missing their 72×100 tile's name band on a phone, were all the estimator coming
  * up 5–9% short of what the browser draws; the table is measured now and a unit test pins the
- * direction of the error. What #676 also did was merge the rows, and #686 reverses that: the names
- * listed at 1440×900 and below are back, at smaller tiles, and this time they are a stated cost
- * rather than a wrong number. 1920×1080 draws its three rows at 73×102 and cuts nothing.
+ * direction of the error. What #676 also did was merge the rows, and #686 reverses that — three
+ * rows at every desktop size, out of a field budgeted for the three rows a board draws. 1920×1080
+ * draws them at 73×102 and 1440×900 at 69×96, and neither cuts a name.
  */
 const KNOWN: Record<string, Known> = {
   '1920×1080': {
@@ -146,25 +145,11 @@ const KNOWN: Record<string, Known> = {
       'battlefields hold their own content now (#660), which is what took them out of this row.',
   },
   '1440×900': {
-    clipped:
-      '#663 — the same 6 trails the 1920×1080 row lists, at the same numbers — **and two card ' +
-      'names**, which are #686 and not #663: keeping creatures, other permanents and lands in ' +
-      'their own rows costs this field a 54×76 tile, and a 48px band draws `Gravedigge` and ' +
-      "`Marauder's` 50px wide at the 9px floor. Two pixels each, on the two longest single words " +
-      'the fixture has. The row says so itself — `data-below-floor="54×76"` — and whether it has ' +
-      "gone too far is the maintainer's call, not this file's. The room it wants is the " +
-      "scene's: `SPLIT_ROWS` budgets a field for two rows of 100px, and a board with three groups " +
-      'divides that between three.',
+    clipped: '#663 — the same 6 trails the 1920×1080 row lists, at the same numbers.',
     scrolls: '#662 — the stack alone: `section.rail__zone` holds 1307px in a 750px box.',
   },
   '1280×720': {
-    clipped:
-      '#663 — the same 6 trails again, and **four card names** for #686, for the reason the ' +
-      '1440×900 row gives: three rows in a field budgeted for two draw a 47×66 tile, and its ' +
-      "41px band cuts `Gearsmith` (46px), `Gravedigge` (50px), `Marauder's` (50px) and " +
-      '`Mountain` (43px) at the 9px floor. Between 2px and 9px each, and every one of them a ' +
-      'single word, which no second line can help. This is the split being paid for in card ' +
-      'size (§3) at the size where the payment starts to show.',
+    clipped: '#663 — the same 6 trails again.',
     scrolls: '#662 — the stack alone: `section.rail__zone` holds 1307px in a 589px box.',
   },
   '640×360': {
@@ -177,9 +162,9 @@ const KNOWN: Record<string, Known> = {
   '390×844': {
     clipped:
       '#663 — 8 trails, four of them squeezed into the seat bars of a 390px screen, where ' +
-      '`Serra Angel` gets 11px and `Thopter` 8px. Plus the same four card names the 1280×720 ' +
-      'row lists, at the same 47×66 tile: a portrait phone keeps its three rows now, and this ' +
-      'is what they cost it.',
+      '`Serra Angel` gets 11px and `Thopter` 8px. The two name bands that used to be here — ' +
+      '`Colossal Dreadmaw` and `Gravedigger` over their 72×100 tile — were `fit.ts` estimating ' +
+      'short and are gone.',
     scrolls: '#662 — the stack alone: the collapsed `section.badge-rail` holds 333px in 130px.',
   },
   '844×390': {
