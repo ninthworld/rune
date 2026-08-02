@@ -44,6 +44,27 @@ obtainable.** Everything else is a question of how much of it is on screen at on
 
 Three tiers. What moves between them as room runs out is §3.
 
+### 2.1 Say it once
+
+Everything below is about *what must be on screen*. This is about how much of it to write, and it
+applies to every surface in the client — the table as much as the lobby.
+
+1. **A control says what it does. It does not explain itself.** A description of an option belongs
+   where a player asks for it — on the option, at the moment of choosing — not printed beside the
+   control forever.
+2. **State is shown, not narrated.** If a fact needs a sentence to be legible, the thing drawing it
+   is wrong; the sentence is not the fix.
+3. **No identifier a player has no use for.** A room id, an object id, a seat id: those belong in a
+   log.
+4. **One box.** A panel inside a panel inside a panel, each with a heading, is a document's way of
+   grouping. Grouping is what space and alignment are for.
+5. **Ask a question once.** A heading, a legend, and a set of buttons that all say the same thing
+   are one question written three times, and the buttons are the only one a player acts on.
+
+The failure these describe is a single one, and it is not fixed by writing better sentences: **a
+surface that narrates is a surface that has not been drawn.** Prose is what a document uses when it
+cannot show something. This client can show it.
+
 ### Tier 1 — always visible, no gesture
 
 | What | Why it cannot wait for a gesture |
@@ -205,21 +226,79 @@ losing the card's text costs the card, and the card wins.
 any screen. Density changes; the spatial metaphor does not, so what a player learns on a desktop
 still holds on a phone. Everything else about an arrangement is negotiable.
 
+### One arrangement, varied only under duress
+
+**A thing is in the same place at every size unless it cannot be.** Sameness is the default, and
+every difference between bands has to be paid for by a stated constraint — a region that will not
+fit, a gesture that does not exist on the device. A difference introduced for any other reason is a
+second layout to learn, and it is why the client currently puts the turn in three different places
+depending on the window.
+
+The test to apply to any per-band difference: *name the thing that does not fit.* If nothing does,
+the arrangement is the same.
+
+This mostly replaces per-band arrangement with **per-band density**, which was always the intent of
+§3 — the ladder changes how much is drawn, not where it is.
+
 ### Bands
 
-Chosen by the shape of the viewport, not by device.
+Chosen by the shape of the viewport, not by device. Note how little differs between them.
 
-| Band | Shape | Arrangement |
+| Band | Shape | What differs |
 | --- | --- | --- |
-| **Wide** | ratio ≥ 1.3, height ≥ 640 | The optimized version. Seats stacked vertically, turn rail at the left edge, stack rail at the right, side panel as a drawer. Card faces throughout. |
-| **Ultrawide** | ratio ≥ 2.0 | Same composition. Extra width goes to board rows — more cards before overlap — with the board's content held to a maximum width so a glance does not have to travel the whole screen. Rails stay pinned to the edges. |
-| **Square** | ratio 0.8–1.3 | Same vertical order. Turn rail becomes a horizontal strip beneath the header; stack becomes an edge tab. Ladder steps 1–4 as needed. |
-| **Tall** | ratio < 0.8 (phone portrait) | Vertical order preserved and comfortable — height is what portrait has. Rails collapse (step 7), zone counts fold into the seat bars, rows merge, cards overlap early. Cards stay cards. |
-| **Short** | height < 480 (phone landscape, 200% zoom on a small desktop) | The hard case: height is the scarce resource. Full ladder, including chips (step 5). Hand is a peek strip by default and expands on gesture. |
+| **Wide** | ratio ≥ 1.3, height ≥ 640 | The reference arrangement. Seat columns at the leading edge, board beside them, phase strip on the midline, stack at the trailing edge, side panel as a drawer. |
+| **Ultrawide** | ratio ≥ 2.0 | Nothing moves. The extra width goes to the board rows — more cards at full size before they overlap. |
+| **Square** | ratio 0.8–1.3 | Nothing moves. Ladder steps 1–4 as needed. |
+| **Tall** | ratio < 0.8 (phone portrait) | Seat columns become seat bars above and below their own half — a column cannot hold life *and* five counts at 390px wide, and that is the stated constraint. Rows merge, cards overlap early. Cards stay cards. |
+| **Short** | height < 480 (phone landscape, 200% zoom on a small desktop) | As Tall, plus: height is the scarce resource, so the full ladder including chips, and the hand is a peek strip that expands on gesture. |
 
 At the Tall and Short bands the hand and the dock trade the bottom band as §2 describes: hand full
 height while nothing is pending, peek strip the moment something is. At Wide, Ultrawide, and Square
 there is room for both and the dock sits above the hand permanently, as it does today.
+
+### 4.1 The turn is not a rail
+
+**The turn strip is not tier 1 and must stop being drawn as though it were.** §2 puts *the current
+step* in tier 1 and *the turn structure beyond it* in tier 2 — one gesture. A twelve-step rail
+pinned to an edge at all times inverts that, and it is expensive: ~112px of width, which is most of
+a card, spent on something a player glances at rarely.
+
+It is also **already being read somewhere else.** The dock says `Your move · Turn 7 · Declare
+blockers`, and that is where a player actually looks to find out what step it is — beside the
+controls they are about to use, not across the screen.
+
+So:
+
+- **The current step and turn number live in the dock.** Tier 1, satisfied by text already on
+  screen, costing no region at all.
+- **The full turn — every step, where the game will stop, what a settle already did, and the stop
+  preference — is one compact control in one fixed place, at every band, that expands on a
+  gesture.** Not a rail at Wide, a strip at Square, and a chip at Tall: one control, one place.
+- **The phase strip, where drawn, sits on the midline between the two battlefields** — the table's
+  dividing line, which is where the turn's shape belongs and where combat is already read across.
+
+This retires three band-specific arrangements at once, and it fixes a regression the collapsed rail
+introduced: per-step stops became unreachable at Tall and Short because the rail that carried them
+disappeared. With one mechanism at every size, they are reachable at every size.
+
+The width this frees at the leading edge is what pays for §4.2.
+
+### 4.2 Seat columns
+
+Life, library, hand, graveyard, exile and commander state are things a player should **never hunt
+for**, and squeezing them into a 40px bar made them exactly that — folded behind a disclosure at
+small sizes and cramped at large ones.
+
+Each seat gets a **column at the leading edge of its own half**: opponent's beside the opponent's
+battlefield, yours beside yours, in the space the turn rail used to hold. Life is the largest thing
+in it. The zone counts are a labelled stack, plainly readable, not a row of glyphs to decode.
+
+The reading order of §4's invariant is unchanged — opponent, board, you, hand, top to bottom. A seat
+column belongs to the half it sits beside, so the vertical order still reads the same way.
+
+At Tall and Short a column cannot hold life *and* five counts at 390px wide, so there the seat
+becomes a bar above and below its own half, and §2's fold applies. **That is the stated constraint
+that licenses the difference**, per §4's rule above.
 
 **Height, not width, decides whether a permanent is a card.** Card faces survive while their row
 is at least 100px tall. That is why portrait phones keep cards and short-landscape does not — and
@@ -248,6 +327,20 @@ width   = clamp(FLOOR, fitted, ideal)
 When `fitted < FLOOR`, the row switches from spacing to overlap and pitch becomes
 `(W - width) / (N - 1)`, bounded below by the width of a legible name strip. Cards never shrink
 below `FLOOR` — they overlap instead.
+
+**The battlefield is as wide as the room, and the cards are centred in it.** `W` is the width the
+region actually has; there is no cap on it.
+
+An earlier draft held the board's content to a maximum width, so that a glance would not have to
+cross a very wide screen. That was the wrong instrument for a real concern, and it bought the
+concern at the price of permanent dead space — a fixed size imposed on a region, which is the thing
+this document exists to remove. **Centring solves it properly and costs nothing**: with five
+permanents the glance travels five cards' worth wherever it is drawn, and with thirty it travels the
+whole row — which is exactly when the width is wanted, because it is what keeps the cards at full
+size instead of overlapped.
+
+Left-alignment has the same defect in miniature: it pushes a short row against one edge and leaves
+the dead space beside it, on every screen rather than only on wide ones.
 
 **Card proportion is 63:88 (0.716)**, the printed proportion, at every size. A permanent tile is
 that plus a fixed allowance for state marks.
@@ -335,11 +428,21 @@ a 100px card spends 45px on `{1}{U}{U}` and leaves 20px for the name.
    at all** — that is where a player chooses, and XMage's hand shows `Simian Spirit Guide` and
    `Temple of Deceit` complete at ~118px wide. On the battlefield an abbreviation must still leave a
    recognisable card: XMage's `Troll Asce` is one, `C…` is not.
-2. **Cost.** Overlaid on the art's top-right corner, out of the name's row. Pips are graphic and
-   read at sizes text does not — no baseline, no wrapping, no hyphenation. Below the chip threshold
-   (§3, step 5) the cost drops entirely: the server already states what is playable through
-   `valid_actions`, so cost is reference rather than a decision input. This is a presentation
-   judgment and not a rules one — the client still computes no affordability.
+2. **Cost.** **In the name band, at its trailing edge** — where a printed card puts it, and where a
+   player's eye already goes. Pips are graphic and read at sizes text does not: no baseline, no
+   wrapping, no hyphenation.
+
+   An earlier draft overlaid the cost on the art's top-right corner to stop it eating the name. That
+   solved the right problem the wrong way. The name was losing because the band was divided before
+   either part was fitted, and the fix for that is the fitting policy — not moving the cost somewhere
+   nobody looks, over art it tints against, in a corner that means nothing.
+
+   **The band is fitted in priority order: the name first, against the width the cost would leave;
+   and if that would push the name below its floor, the cost goes — never the name.** Identity
+   outranks reference, which is §2's tier ordering applied inside one band instead of across the
+   screen. Below the chip threshold (§3) the cost is gone regardless: the server already states what
+   is playable through `valid_actions`, so cost is reference rather than a decision input. Dropping
+   it is a presentation judgment and not a rules one — the client still computes no affordability.
 3. **Art window.** Fixed proportion, the largest single element. Procedural composition by default,
    a player-supplied illustration over it when one is present.
 4. **Type line.** Degrades **by rule, not by ellipsis**: drop the subtype after the em-dash first,
@@ -353,17 +456,33 @@ a 100px card spends 45px on `{1}{U}{U}` and leaves 20px for the name.
 
 ### Tapped
 
-**Tapped is drawn as an overlay mark on an upright card, not as a rotation.** XMage does exactly
-this on a crowded board — a mark across the face — and it is why its permanents stay readable in
-the state they spend most of the game in. Rotating a card whose identity is *text* destroys the
-identity to communicate one bit, and it costs a landscape footprint on top of that.
+**Tapped is a quarter turn.** The card rotates 90°, and it animates into it, because that is what
+tapping *is* — the single most universal convention in the game, the one every player and every
+client already shares. A pattern laid over an upright card is a private language nobody has learnt,
+and no amount of internal consistency makes it read.
 
-Two consequences. The name survives while tapped. And **the "Tapped" badge disappears**: the mark
-is the statement, and today the badge is a rotated pill laid over the art of a card whose name is
-already sideways. The word stays for assistive technology, which can see neither a mark nor a
-rotation.
+An earlier draft of this section replaced the turn with a hatch, reasoning that rotating a card
+whose identity is text takes the text sideways, and that a landscape footprint is a case the row
+packer would have to model. The first is true and is a real cost; it is simply outweighed. **A
+tapped permanent is one you are not currently reading** — you know what it is, and what you need
+from it at a glance is precisely the one bit the turn communicates better than anything else can.
+The second argument has expired: the packer exists, and reserving the rotated footprint is now an
+ordinary part of laying out a row rather than a special case bolted onto flow layout.
 
-Rotation may return at the Full presentation, where the card is large enough that nothing is lost.
+Two things follow.
+
+**The row reserves the turned footprint**, so a tapped permanent never collides with its
+neighbours and a row does not reflow when something taps. Height is what a rotated card costs, and
+it is charged whether or not anything is currently tapped — otherwise the board moves when a
+creature attacks, which §5 forbids.
+
+**The "Tapped" badge stays deleted.** The turn is the statement; a pill that says the word is the
+same fact twice (§2.1). The word remains for assistive technology, which can perceive neither a
+turn nor a mark.
+
+**At the chip tier there is no turn.** A 96×30 chip is already landscape, so rotating it says
+nothing. There, and only there, tapped is a mark — and it must be a pattern or a glyph rather than
+a tint alone, because every fact has to survive without colour.
 
 ### The four presentations
 
@@ -412,6 +531,60 @@ roughly 13 characters a line and 26 across two — enough for `Exclusion Ritual`
 sizing defect to fix in §5, not a permitted state.
 
 ---
+
+## 6.5 The dock, and how a question is asked
+
+Every region got a degradation ladder in §3. The dock's *contents* never did — so when a question
+is bigger than the dock's band, `overflow: hidden` cuts it, and a player loses the controls they
+were being asked to use. That is the defect; the verbosity below is why the question was too big in
+the first place.
+
+### What is on screen today
+
+Asking a player to keep or mulligan currently states the same fact four times:
+
+| | |
+| --- | --- |
+| the dock's tone line | *"The game is waiting on your answer"* |
+| a heading | *"Keep or mulligan"* |
+| a fieldset legend | *"Keep this hand or take a mulligan?"* |
+| two buttons | `Keep this hand` · `Mulligan` |
+
+**The buttons are the question.** The other three are chrome, and together they push the row of
+controls beneath them out of the band. This is §2.1 rules 4 and 5, in the game rather than the
+lobby.
+
+### The board answers; the dock stays small
+
+**A question about objects on the screen is answered on the screen.** The objects that can answer it
+are highlighted, clicking one answers it, and the dock carries only what the board cannot: a tally
+of what has been chosen against what is needed, the way to commit, and the way to cancel.
+
+That is how the question is asked at a real table — you point at the creature — and it is already
+what `interaction.ts` does. What changes is that the dock stops *also* listing every subject as a
+button, which is what makes it grow without limit.
+
+The dock is then bounded by the *shape* of a question rather than by its size: a tally and two
+controls is the same height whether there are two legal blockers or twenty. Nothing has to clip
+because nothing has to grow.
+
+**The fallback is not optional.** A subject no surface draws — a card in a face-down pile, an
+ability with no permanent, a choice that is not about an object at all — has nothing to click, and
+those subjects must remain reachable. They stay in the dock as controls, and the existing
+disclosure of every action stays exactly as it is: it is the guarantee that no action is reachable
+only by finding its object.
+
+### The rules
+
+1. **The prompt is drawn once, in one place, or not at all.** Where the options state the question,
+   the options *are* the question.
+2. **The tone is shown, not written.** A dock that is asking looks like it is asking; it does not
+   also say so in a sentence.
+3. **A question never scrolls and is never clipped.** If it does not fit, the fault is that
+   subjects are being listed that the board could have answered.
+4. **Everything reachable by pointer is reachable by keyboard**, including answering on the board.
+5. The dock's own band is `scene()`'s, as with every other region. It responds to *whether the game
+   is asking* — a change of mode — and never to how much there is to ask about (§5).
 
 ## 7. Type
 
@@ -502,20 +675,10 @@ Worth recording precisely, because every rule below is an answer to something on
 
 ### 9.2 The rules the lobby is drawn by
 
-1. **A control says what it does. It does not explain itself.** *"Plays a random legal action each
-   decision. A simple sparring partner"* is a description of an option, and it belongs where a
-   player asks for it — on the option, when they are choosing between options — not printed beside
-   the control forever.
-2. **State is shown, not narrated.** *"Waiting on — Seat 1 — No deck yet"* restates in prose what
-   the seat rows directly above already say. If a fact needs a sentence to be legible, the thing
-   drawing it is wrong; the sentence is not the fix.
-3. **No identifier a player has no use for.** A room id belongs in a log.
-4. **One box.** A panel inside a panel inside a panel, each with a heading, is a document's way of
-   grouping. Grouping is what space and alignment are for.
-5. **Setup happens in setup.** A task performed once does not live in the chrome of every screen.
-6. **Everything about the device is one destination**, not a scatter of buttons. See §9.6.
-7. Everything in §7 applies: fitted text, the 11px chrome floor, and **no native form control** —
-   a `<select>` that clips its own arrow at 120% zoom is the whole argument.
+These were written for the lobby and they are **not lobby rules** — they are §2.1, applied here.
+Read them there. The two that are specific to a pre-game screen: **setup happens in setup**, so a
+task performed once does not live in the chrome of every screen; and **everything about the device
+is one destination** rather than a scatter of buttons (§9.6).
 
 ### 9.3 Connect
 
