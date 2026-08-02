@@ -118,32 +118,33 @@ test.describe('a card says what it is', () => {
   })
 
   test('fits a complete name, a type line, and a P/T into a 72×100 tile', async ({ page }) => {
-    // At this viewport the permanent tile is at the §5 minimum — the box XMage fits all five of
-    // these into, and the bar the whole redraw is measured against. A phone in portrait is where
-    // that box now turns up: the tile is packed from the room the field has and the number of
-    // permanents in it (`pack.ts`), so the minimum is reached where the room runs out rather
-    // than wherever a viewport-derived token happened to bottom out.
+    // The §5 minimum tile — the box XMage fits all five of these into, and the bar the whole
+    // redraw is measured against. It is reached where the *room* runs out rather than wherever a
+    // viewport-derived token happened to bottom out, so it takes a crowded board as well as a
+    // small screen: the dense fixture on a phone in portrait, seven permanents in a 382px row.
+    // Three permanents at the same size draw a 124px tile, and that is the packing working
+    // (`pack.ts`) rather than a different minimum.
     await page.setViewportSize({ width: 390, height: 844 })
-    await serveFrames(page, [fixture('gameview.json')])
+    await serveFrames(page, [fixture('gameview-board.json')])
     await page.goto('/')
 
-    const bear = page
+    const digger = page
       .getByRole('region', { name: 'Your battlefield' })
-      .getByRole('button', { name: /^Grizzly Bears/ })
+      .getByRole('button', { name: /^Gravedigger/ })
 
     // The laid-out box, not the painted one: an object that has just arrived is animated in
     // from a scale of its own, and its painted rectangle during that quarter second is not the
     // box the fitting was planned against.
-    const box = await bear.evaluate((node: HTMLElement) => ({
+    const box = await digger.evaluate((node: HTMLElement) => ({
       width: node.offsetWidth,
       height: node.offsetHeight,
     }))
     expect(box.width).toBeLessThanOrEqual(80)
     expect(box.height).toBeLessThanOrEqual(115)
 
-    await expect(bear).toContainText('Grizzly Bears')
-    await expect(bear.locator('.card__type')).toHaveText(/Creature/)
-    await expect(bear.locator('.card__stat')).toContainText('2/2')
+    await expect(digger).toContainText('Gravedigger')
+    await expect(digger.locator('.card__type')).toHaveText(/Creature/)
+    await expect(digger.locator('.card__stat')).toContainText('2/2')
   })
 
   test('keeps the whole name for assistive technology whatever it drew', async ({ page }) => {

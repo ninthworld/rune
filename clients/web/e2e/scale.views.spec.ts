@@ -89,10 +89,10 @@ interface Known {
  * Keyed by `width×height` rather than by the prose name, so renaming a band does not silently
  * orphan a row into a permanently-red unexpected pass.
  *
- * Six of the clipped elements are the same six at every size, and that repetition is the finding
- * rather than noise: a relationship trail's control needs 304px in 192px on a 3440px ultrawide
- * exactly as it does on a phone, because that box is not derived from the viewport. Everything
- * that *is* derived from it has left this table.
+ * **Every remaining `clipped` row is relationship trails and nothing else**, and that repetition is
+ * the finding rather than noise: a trail's control needs up to 328px in 192px on a 3440px ultrawide
+ * exactly as it does on a phone, because that box is not derived from the viewport. Everything that
+ * *is* derived from it has left this table.
  *
  * First measured against `main` at 9084a1c, which is #667 — the redrawn card. That merge retired
  * more than half of what this gate first reported: clipped elements went from 16–34 per viewport
@@ -109,33 +109,33 @@ interface Known {
  * now holds its content at every viewport in this file**, from one permanent to forty: the tiles
  * are sized from the room and the count, they take a second line before they fan, and below a
  * 100px row they are chips. What is left in each `scrolls` row is the stack alone, so the rows are
- * narrowed to it rather than deleted, and each one retires with #662. The `clipped` rows are
- * narrowed the same way: the type lines a packed box was supposed to give room to are gone, and
- * what remains is the relationship trails (#663, which moves them off the board) plus, at three
- * sizes, `fit.ts`'s width estimate coming up two to six pixels short of what the browser draws —
- * a calibration in the card's fitting, not a box the packing chose.
+ * narrowed to it rather than deleted, and each one retires with #662.
+ *
+ * The follow-up to #676 — the row count chosen to maximise the card rather than the rows, and
+ * `fit.ts`'s advance table made the upper bound it always claimed to be — retired **every**
+ * remaining `clipped` element that a permanent drew. `Creature — Ogre Warrior` needing 130px in a
+ * 124px band at three sizes, and `Colossal Dreadmaw` and `Gravedigger` missing their 72×100 tile's
+ * name band on a phone, were all the estimator coming up 5–9% short of what the browser draws; the
+ * table is measured now and a unit test pins the direction of the error. 1920×1080 lost two more
+ * with them, because the three rows of 75px cards that produced them are gone.
  */
 const KNOWN: Record<string, Known> = {
   '1920×1080': {
     clipped:
-      '#663 — 8 elements, six of them relationship trails: `Return target creature card…` needs ' +
-      '328px in 192px, `Equipped creature deals 1 damage…` 304px in 192px (×3), `Lightning ' +
-      'Strike deals 3 damage…` 242px in 192px. The other two are `fit.ts` estimating a drawn ' +
-      'string short on the 75px tile this board’s three rows produce here — `Colossal Dreadmaw` ' +
-      'wrapping to 32px in a 31px band, `Gravedigger` 72px in 67px — which is the card’s ' +
-      'fitting, not the box the packing chose.',
+      '#663 — 6 relationship trails, and nothing else: `Return target creature card…` needs 328px ' +
+      'in 192px, `Equipped creature deals 1 damage…` 304px in 192px (×3), `+1: Look at the top ' +
+      'four cards…` 234px in 192px, `Lightning Strike deals 3 damage…` 242px in 192px. Nothing a ' +
+      'permanent draws is cut here any more.',
     scrolls:
       '#662 — the stack alone: `section.rail__zone` holds 1307px in a 912px box. Both ' +
       'battlefields hold their own content now (#660), which is what took them out of this row.',
   },
   '1440×900': {
-    clipped:
-      '#663 — 7 elements: the same six trails, plus `Creature — Ogre Warrior` needing 130px in ' +
-      'a 124px band on the merged row’s 130px tile — `fit.ts`’s estimate, six pixels short.',
+    clipped: '#663 — the same 6 trails the 1920×1080 row lists, at the same numbers.',
     scrolls: '#662 — the stack alone: `section.rail__zone` holds 1307px in a 750px box.',
   },
   '1280×720': {
-    clipped: '#663 — 7 elements: the same six trails and the same `Creature — Ogre Warrior`.',
+    clipped: '#663 — the same 6 trails again.',
     scrolls: '#662 — the stack alone: `section.rail__zone` holds 1307px in a 589px box.',
   },
   '640×360': {
@@ -147,9 +147,10 @@ const KNOWN: Record<string, Known> = {
   },
   '390×844': {
     clipped:
-      '#663 — 10 elements: eight trails, four of them squeezed into the seat bars of a 390px ' +
-      'screen, plus `Colossal Dreadmaw` and `Gravedigger` missing their 72×100 tile’s name band ' +
-      'by 2px and 6px — `fit.ts`’s estimate at the §5 minimum tile.',
+      '#663 — 8 trails, four of them squeezed into the seat bars of a 390px screen, where ' +
+      '`Serra Angel` gets 11px and `Thopter` 8px. The two name bands that used to be here — ' +
+      '`Colossal Dreadmaw` and `Gravedigger` over their 72×100 tile — were `fit.ts` estimating ' +
+      'short and are gone.',
     scrolls: '#662 — the stack alone: the collapsed `section.badge-rail` holds 333px in 130px.',
   },
   '844×390': {
@@ -160,7 +161,8 @@ const KNOWN: Record<string, Known> = {
     clipped:
       '#663 — 6 relationship trails on 4.9 megapixels of screen, which is the point: a trail ' +
       'needs up to 328px in 192px here exactly as it does on a phone, because that box is not ' +
-      'derived from the room available. Nothing a permanent draws is cut at this size.',
+      'derived from the room available. Nothing a permanent draws is cut at this size, and the ' +
+      'permanents here are the designed 130×182 in two rows.',
     scrolls:
       '#662 — the stack alone: `section.rail__zone` holds 1307px in a 1235px box, on the largest ' +
       'screen the client supports.',
@@ -178,7 +180,7 @@ const KNOWN: Record<string, Known> = {
       '#662 — the same stack rail the 1440×900 row describes. Nothing *inside* the pile is ' +
       'reported, which is the exemption working; this row is the board beside it, and the board ' +
       'beside it now holds its permanents.',
-    clipped: '#663 — the same 7 the 1440×900 row describes, unchanged by the pile.',
+    clipped: '#663 — the same 6 the 1440×900 row describes, unchanged by the pile.',
   },
 }
 

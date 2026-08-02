@@ -163,11 +163,20 @@ const INSET = 4
  * legible name strip" and leaves the number open; what is actually available to honour that bound
  * is the row's own unused height, and using it is strictly better than a fan — every tile stays
  * whole, at a size the height still affords, rather than every tile after the first losing its
- * right-hand side. So the lines are walked from one upward while a line still holds the tier's
- * floor, and the first count that needs no overlap wins. Where no count avoids it the deepest one
- * is taken and the row fans past the bound, because the alternative to a fanned card is not a
- * bigger card, it is a permanent nobody drew — and an object with no box can be identified by no
- * gesture at all.
+ * right-hand side.
+ *
+ * **The line count is chosen the same way the row count is: by the card it draws.** Every count
+ * a line's own floor allows is scored, and the biggest tile wins; at equal size the row that
+ * overlaps least wins, and at equal size and equal overlap the fewest lines, because a row read in
+ * one movement is worth something and nothing else here is. Reading it as "the first count that
+ * avoids overlap" instead — which is what it used to say — is the same mistake §3's "More screen
+ * is never a worse board" names one level up: a 356px row wrapped five permanents onto two lines
+ * of 73px cards, and a 360px row, with *more* room, drew one line of 72px ones. The objective is
+ * the tile, at both levels, so widening a box can never shrink what is in it.
+ *
+ * Where no count avoids the fan the deepest one is still taken, because the alternative to a
+ * fanned card is not a bigger card, it is a permanent nobody drew — and an object with no box can
+ * be identified by no gesture at all.
  */
 export function packRow(box: Box, count: number, opts: { chip?: boolean } = {}): PackedRow {
   const room = Math.max(0, Math.floor(box.width))
@@ -178,11 +187,14 @@ export function packRow(box: Box, count: number, opts: { chip?: boolean } = {}):
 
   let lines = 1
   let solved = solve(room, lineTall(tall, 1, chip), many, chip)
-  // One more line while the last one overlapped, the tiles still clear their floor, and there is
-  // something left to move onto it.
-  while (solved.overlapped && lines < many && lineTall(tall, lines + 1, chip) >= floor.height) {
-    lines += 1
-    solved = solve(room, lineTall(tall, lines, chip), Math.ceil(many / lines), chip)
+  // Every line count the tier's floor still leaves room for, and there is nothing to move onto a
+  // line past the last permanent.
+  for (let take = 2; take <= many && lineTall(tall, take, chip) >= floor.height; take++) {
+    const candidate = solve(room, lineTall(tall, take, chip), Math.ceil(many / take), chip)
+    if (better(candidate, solved)) {
+      lines = take
+      solved = candidate
+    }
   }
 
   const perLine = many === 0 ? 0 : Math.ceil(many / lines)
@@ -221,6 +233,28 @@ export function packRow(box: Box, count: number, opts: { chip?: boolean } = {}):
 const lineTall = (tall: number, lines: number, chip: boolean): number =>
   Math.min(chip ? CHIP.height : CARD_DESIGNED.height, Math.floor(tall / Math.max(1, lines)))
 
+/** One line count's answer, before it is compared with the others. */
+interface Solved {
+  width: number
+  height: number
+  pitch: number
+  overlapped: boolean
+}
+
+/**
+ * Whether one line count draws a better row than another: **the tile first**, then how little it
+ * covers itself, and nothing else.
+ *
+ * The last clause is what keeps a comfortable row from wrapping: at equal size and with neither
+ * row overlapping there is no reason to spend a second line, so the earlier — shallower — count
+ * stands. Four chips in a 500px row stay in one line even though two lines of two would space
+ * them further apart.
+ */
+const better = (candidate: Solved, best: Solved): boolean =>
+  candidate.width !== best.width
+    ? candidate.width > best.width
+    : best.overlapped && (!candidate.overlapped || candidate.pitch > best.pitch)
+
 /**
  * §5's clamp, for one line of `count` tiles in a box `room` wide and `tall` high.
  *
@@ -234,12 +268,7 @@ const lineTall = (tall: number, lines: number, chip: boolean): number =>
  * own: a short line produces a narrow card however much width is going spare, because the
  * alternative is a card lying half in the line below it.
  */
-function solve(
-  room: number,
-  tall: number,
-  count: number,
-  chip: boolean,
-): { width: number; height: number; pitch: number; overlapped: boolean } {
+function solve(room: number, tall: number, count: number, chip: boolean): Solved {
   // A chip is landscape and fixed: it is already the floor, so there is nothing under it to
   // shrink to and a crowded chip row overlaps from the start.
   const ideal = chip
@@ -268,32 +297,120 @@ function solve(
  * How many rows a table draws — §3's step 5, applied to the room a field actually got rather
  * than to the band it is in.
  *
- * The ladder's answer comes first: where the scene already merged, this cannot un-merge. What it
- * adds is the case the scene cannot see, because the scene funds two rows and `board.ts` produces
- * a third whenever a seat controls something that is neither a creature nor a land. When the rows
- * a table actually needs will not each hold a card face, they merge — which is §3's order stated
- * outright: "the choice is between a merged row of readable cards and two rows of chips. The card
- * wins — losing the split costs the scan by category, and losing the face costs the card." One
- * row of 130×182 cards beats three rows of 76px chips, and nothing else in the ladder can buy
- * that back.
+ * **The row count is chosen to maximise card size, not to maximise rows** (§3, "More screen is
+ * never a worse board"). Rows are not inherently better: splitting into creatures, other
+ * permanents and lands buys a *scan by category* and costs card size, because the same height
+ * divided three ways draws smaller cards. Asking only whether each row clears the 100px floor is
+ * the ladder read as a checklist — a field with just enough height to squeeze three rows past it
+ * draws three rows of clipped 75px cards where one merged row would draw complete 130px ones, and
+ * a bigger screen that draws a smaller card is the one thing §3 says is never allowed.
  *
- * **Answered once for the whole table, out of every half's group count.** Both halves then divide
- * their field the same way, and a permanent is the same size at both ends of it — a board where
- * one seat's creatures are two thirds the size of the other's answers "whose is this" with
- * something other than where it is, and it would resize half the table every time somebody's last
- * artifact died. The price is that a half with fewer groups than the table leaves its far slot
- * empty, and it is the right price: the empty slot is at the edge away from the dividing line,
- * where it reads as the absence it is.
+ * So every row count from one up to the one the table needs is **packed**, and the one whose
+ * *worst* row draws the biggest tile wins. Packed rather than estimated from the row height,
+ * because the height is only half of it: a merged row can spend its own spare height on a second
+ * line of whole tiles and a split row is already too short to, so the choice between them turns on
+ * the count as well as the room. Scored on the worst row and not the average, since a board is
+ * only as readable as the smallest card on it.
+ *
+ * Rows count for exactly one thing, and it is the tie-break: **at equal card size the deeper split
+ * wins**, because there the scan by category is free. It is never more than a tie-break, and that
+ * is what makes the answer monotone: a merged row can reproduce any split — same line height, and
+ * the count spread evenly instead of by category — so merging is never the smaller card, the
+ * winning size is always the merged one, and the merged one is non-decreasing in the box. The
+ * split is kept precisely while it costs nothing.
+ *
+ * The ladder's answer still comes first: where the scene already merged, this cannot un-merge.
+ *
+ * **Answered once for the whole table, out of every half's groups.** Both halves then divide their
+ * field the same way, and a permanent is the same size at both ends of it — a board where one
+ * seat's creatures are two thirds the size of the other's answers "whose is this" with something
+ * other than where it is. The price is that a half with fewer groups than the table leaves its far
+ * slot empty, and it is the right price: the empty slot is at the edge away from the dividing line,
+ * where it reads as the absence it is. A half with *more* groups than the table gives up the
+ * split, from the edge away from the dividing line inward (`Battlefield.tsx`).
+ *
+ * **It still reads no card.** `halves` is how many permanents are in each of a half's groups, which
+ * is a count and a shape, never a name or a type — `board.ts` decided the grouping and the server
+ * decided that. What it means is that the *structure* of a field answers to what is on the board
+ * while the *box* never does, which is the line §5 draws: the region is the viewport's, the tiles
+ * inside it are the count's.
  */
-export function fieldSlots(box: Box, groups: readonly number[], ladder: FieldOptions): number {
+export function fieldSlots(
+  box: Box,
+  halves: readonly (readonly number[])[],
+  ladder: FieldOptions,
+): number {
   if (ladder.rows === 'merged') return 1
-  const most = Math.max(1, ...groups)
+  const most = Math.max(1, ...halves.map((half) => half.length))
   if (most === 1) return 1
-  // Measured against whichever tile the rows are drawing: a chip row is already past the point
-  // where a card face is at stake, so what it protects is the chip's own 30px and not the card's.
-  const floor = ladder.cardTier === 'chip' ? CHIP.height : CARD_FLOOR.height
-  return rowHeight(Math.max(0, Math.floor(box.height)), most, 0) < floor ? 1 : most
+  const room = Math.max(0, Math.floor(box.width) - 2 * INSET)
+  const height = Math.max(0, Math.floor(box.height))
+  const chip = ladder.cardTier === 'chip'
+
+  let best = 1
+  let winner = worstRow(room, height, halves, 1, chip)
+  for (let rows = 2; rows <= most; rows++) {
+    const tile = worstRow(room, height, halves, rows, chip)
+    // Not *worse*, walking upward: at equal card the deeper split wins.
+    if (!poorer(tile, winner)) {
+      winner = tile
+      best = rows
+    }
+  }
+  return best
 }
+
+/** The smallest tile on the table, if it divided both its halves into `rows` rows. */
+function worstRow(
+  room: number,
+  height: number,
+  halves: readonly (readonly number[])[],
+  rows: number,
+  chip: boolean,
+): PackedRow {
+  const box: Box = {
+    width: room,
+    height: slotHeight(height, rows, chip ? CHIP.height : CARD_FLOOR.height),
+  }
+  let worst: PackedRow | undefined
+  for (const half of halves) {
+    for (const count of collapseCounts(half, rows)) {
+      const packed = packRow(box, count, { chip })
+      if (worst === undefined || poorer(packed, worst)) worst = packed
+    }
+  }
+  return worst ?? packRow(box, 0, { chip })
+}
+
+/**
+ * Which of two tiles is the poorer board.
+ *
+ * The tier leads and the size follows, because **a chip is not a narrow card**: giving up the face
+ * is §3's step 6 and it loses to any card, including one narrower than the 96px chip. Comparing
+ * widths alone would call a row of chips the better answer for being wider.
+ *
+ * Height breaks a tie in width, which only ever matters to chips — a card's height is its width
+ * through the printed proportion, so the two cannot disagree there. A chip has no narrower size to
+ * shrink to, but a row too short to hold one squashes it, and 96×25 is the poorer tile.
+ */
+const poorer = (tile: PackedRow, than: PackedRow): boolean =>
+  (tile.tier === 'chip') !== (than.tier === 'chip')
+    ? tile.tier === 'chip'
+    : tile.width !== than.width
+      ? tile.width < than.width
+      : tile.height < than.height
+
+/**
+ * The counts `rows` rows draw, for a half that has more groups than that.
+ *
+ * The arithmetic of `Battlefield.tsx`'s collapse and nothing else — which groups merge is that
+ * file's decision, and it does not change the multiset this returns, so it does not change which
+ * row count wins.
+ */
+const collapseCounts = (counts: readonly number[], rows: number): readonly number[] =>
+  counts.length <= rows
+    ? counts
+    : [...counts.slice(0, rows - 1), counts.slice(rows - 1).reduce((all, one) => all + one, 0)]
 
 /**
  * Divide a field into the table's rows and pack each of them.
@@ -319,7 +436,7 @@ export function packField(box: Box, counts: readonly number[], opts: PackOptions
 
   const chip = opts.cardTier === 'chip'
   const floor = chip ? CHIP.height : CARD_FLOOR.height
-  const gap = rowHeight(height, slots, ROW_GAP) >= floor ? ROW_GAP : 0
+  const gap = rowGap(height, slots, floor)
   const each = rowHeight(height, slots, gap)
   const offset = opts.mirrored === true ? slots - counts.length : 0
 
@@ -337,3 +454,11 @@ export function packField(box: Box, counts: readonly number[], opts: PackOptions
 /** One row's share of a field's height, once the gaps between the rows are paid for. */
 const rowHeight = (height: number, rows: number, gap: number): number =>
   rows <= 0 ? 0 : Math.max(0, Math.floor((height - (rows - 1) * gap) / rows))
+
+/** The gap between rows, drawn only where the rows still hold their tile without it (§3, step 1). */
+const rowGap = (height: number, rows: number, floor: number): number =>
+  rowHeight(height, rows, ROW_GAP) >= floor ? ROW_GAP : 0
+
+/** The height one of `rows` rows gets, gap included where the field can afford to draw one. */
+const slotHeight = (height: number, rows: number, floor: number): number =>
+  rowHeight(height, rows, rowGap(height, rows, floor))
