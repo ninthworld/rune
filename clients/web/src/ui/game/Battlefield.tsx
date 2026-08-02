@@ -161,10 +161,11 @@ export function Battlefield({
             style={{ left: row.x, top: row.y, width: row.width, height: row.height }}
           >
             {group.entries.map(({ permanent, face, lines }, position) => (
-              // One box per permanent, whatever its state. A tapped permanent used to turn a
-              // quarter and needed a slot around it to reserve the landscape footprint; it is
-              // marked upright now (§6), so every tile on the row is the same card-shaped box
-              // and a row has one packing problem instead of two.
+              // One box per permanent, whatever its state — including tapped. A permanent turns a
+              // quarter when it taps (§6) and the turn is a `transform`, which changes no
+              // geometry; the room it turns into was reserved by `pack.ts` for every tile in the
+              // row, tapped or not, and is already inside the point this tile was placed at. So
+              // the board does not move when a creature attacks.
               //
               // Later tiles lie over earlier ones, so what an overlapped row leaves showing is
               // each card's top-left corner: the name band (§3, step 4).

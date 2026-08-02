@@ -8,6 +8,7 @@ import {
   type FieldOptions,
   type PackedRow,
   type PackOptions,
+  type Point,
 } from './pack'
 import { scene } from './scene'
 
@@ -74,11 +75,15 @@ describe('one row, packed', () => {
     expect(rightEdge(packed)).toBeLessThanOrEqual(600)
   })
 
-  /** And the pitch it overlaps at is §5's, to the pixel the rounding allows. */
+  /**
+   * And the pitch it overlaps at is §5's, to the pixel the rounding allows — over the *turned*
+   * footprint, since that is what a tile occupies (§6) and the last one still has to be able to
+   * turn without leaving the row.
+   */
   it('fans at the pitch §5 states', () => {
     const packed = packRow({ width: 600, height: 120 }, 20)
     expect(packed.lines).toBe(1)
-    expect(packed.pitch).toBeCloseTo((600 - packed.width) / 19, 5)
+    expect(packed.pitch).toBeCloseTo((600 - packed.footprint) / 19, 5)
   })
 
   /**
@@ -183,12 +188,119 @@ describe('one row, packed', () => {
 
   /** A row of one has no pitch to state, and a row of none has nothing to place. */
   it('answers for the degenerate counts', () => {
-    // Centred in the height it did not need, and at the start of the row: the server's order
-    // reads from the same edge whether one permanent is on the board or twenty.
-    expect(packRow(DESK, 1).positions).toEqual([{ x: 0, y: 23 }])
+    // Centred in the height it did not need, and at the start of the row — inside its own turned
+    // footprint, which is why `x` is the half of that footprint the card does not fill rather
+    // than zero. The server's order still reads from the same edge whether one permanent is on
+    // the board or twenty.
+    const one = packRow(DESK, 1)
+    expect(one.positions).toEqual([{ x: Math.round((one.footprint - one.width) / 2), y: 23 }])
     expect(packRow(DESK, 1).overlapped).toBe(false)
     expect(packRow(DESK, 0).positions).toEqual([])
     expect(packRow({ width: 0, height: 0 }, 4).positions).toHaveLength(4)
+  })
+})
+
+/**
+ * §6's turn, as the room it needs.
+ *
+ * **Tapped is a quarter turn**, so a permanent occupies its own *height* along the row — and the
+ * row charges that whether or not anything is currently tapped, because a footprint that appeared
+ * when a creature attacked would slide every other card on the board, which §5 forbids. Nothing in
+ * this module has ever been told which permanents are tapped and nothing here starts: the
+ * reservation is unconditional, which is the whole reason the board holds still.
+ */
+describe('a row reserves the footprint a turn needs', () => {
+  /** Where a tile would be if it turned: the same centre, the long side across the row. */
+  const turned = (packed: PackedRow, at: Point) => ({
+    left: at.x + packed.width / 2 - packed.height / 2,
+    right: at.x + packed.width / 2 + packed.height / 2,
+  })
+
+  it('charges every tile its turned width, tapped or not', () => {
+    for (const height of [100, 114, 160, 182, 229, 400]) {
+      for (const count of COUNTS) {
+        const packed = packRow({ width: 1400, height }, count)
+        expect(packed.footprint, `${count} at ${height}px`).toBeGreaterThanOrEqual(packed.height)
+      }
+    }
+  })
+
+  /** A chip is already lying down, so there is no turn to reserve for and no room to spend. */
+  it('charges a chip nothing, because a chip does not turn', () => {
+    for (const count of COUNTS) {
+      const packed = packRow({ width: 500, height: 60 }, count, { chip: true })
+      expect(packed.footprint).toBe(packed.width)
+    }
+  })
+
+  /**
+   * The reservation, asserted the way a player meets it: **a permanent that taps stays inside its
+   * row.** At every count and every box the supported range produces — because a turned card
+   * clipped by the field's own edge is the landscape footprint coming back as a defect.
+   */
+  it('keeps a turned tile inside the row, at every count and every size', () => {
+    const found: string[] = []
+    for (const width of [320, 500, 640, 1000, 1400, 3000]) {
+      for (const height of [100, 114, 160, 229, 400]) {
+        for (const count of COUNTS) {
+          const packed = packRow({ width, height }, count)
+          for (const at of packed.positions) {
+            const box = turned(packed, at)
+            if (box.left < -1 || box.right > width + 1) {
+              found.push(`${count} at ${width}×${height}: ${box.left}…${box.right}`)
+            }
+          }
+        }
+      }
+    }
+    expect(found.slice(0, 8), `${found.length} turned tiles left the row`).toEqual([])
+  })
+
+  /**
+   * And it does not reach its neighbour, wherever the row is not already a fan.
+   *
+   * An overlapped row is exempt because overlapping is what it *is* — §3's step 4 has the tiles
+   * covering one another by design, and a turn there covers no more than the fan already does.
+   */
+  it('leaves a turned tile clear of its neighbours while the row is not fanned', () => {
+    const found: string[] = []
+    for (const width of [320, 640, 1400, 3000]) {
+      for (const height of [100, 114, 182, 229, 400]) {
+        for (const count of COUNTS) {
+          const packed = packRow({ width, height }, count)
+          if (packed.overlapped) continue
+          const perLine = Math.ceil(count / packed.lines)
+          for (let index = 1; index < count; index++) {
+            if (index % perLine === 0) continue
+            const before = turned(packed, packed.positions[index - 1]!)
+            const after = turned(packed, packed.positions[index]!)
+            if (after.left < before.right - 1) {
+              found.push(`${count} at ${width}×${height}: ${before.right} over ${after.left}`)
+            }
+          }
+        }
+      }
+    }
+    expect(found.slice(0, 8), `${found.length} turned tiles hit a neighbour`).toEqual([])
+  })
+
+  /**
+   * What it costs, said out loud: **height**.
+   *
+   * A crowded row draws a shorter card than the same room would have drawn upright, because the
+   * room each tile divides up is its height rather than its width. That is the trade §6 makes with
+   * its eyes open — a tapped permanent is one you are not currently reading — and it is asserted
+   * rather than left implicit, so removing the reservation shows up here as well as in the
+   * geometry above.
+   */
+  it('spends height on the turn where the row is crowded, and nothing where it is not', () => {
+    // Uncrowded: the tile is the one the row's height affords, exactly as it was.
+    expect(packRow({ width: 1400, height: 182 }, 4).height).toBe(CARD_DESIGNED.height)
+    // Crowded: twelve in a 1400px row, and the footprint is what the twelve divide.
+    const crowded = packRow({ width: 1400, height: 229 }, 12)
+    expect(crowded.footprint).toBeLessThan(CARD_DESIGNED.height)
+    expect(crowded.height).toBe(crowded.footprint)
+    expect(crowded.width).toBe(Math.floor(crowded.height * RATIO))
   })
 })
 
@@ -306,20 +418,22 @@ describe('how many rows a table draws', () => {
   /**
    * And on the count as much as on the height, because a row's tile is decided by both.
    *
-   * A 390px field with just enough height for two rows of designed cards, and twelve permanents in
-   * three groups: split, one row holds eight and draws them at the 72px floor; merged, the same
-   * height spreads all twelve over three lines of 88px cards. Every row of the split clears the
-   * card floor and is tall enough for a designed card — a rule written on the height alone would
-   * take it — and it is still the smaller card, so it is still the wrong answer.
+   * A 390px field with twelve permanents in three groups: split, every row is crowded enough to
+   * be pinned at the 72×100 floor and fanned; merged, the same height spreads all twelve over
+   * four lines of 88px cards. Every row of the split clears the card floor and is tall enough for
+   * a designed card — a rule written on the height alone would take it — and it is still the
+   * smaller card, so it is still the wrong answer.
    */
   it('merges where the split’s own rows would be the crowded ones', () => {
     const table = [
       [4, 4, 4],
       [4, 4, 4],
     ]
-    expect(fieldSlots({ width: 390, height: 370 }, table, SPLIT)).toBe(1)
-    // The same board with room to spread out keeps every row it can.
-    expect(fieldSlots({ width: 1400, height: 370 }, table, SPLIT)).toBe(2)
+    expect(fieldSlots({ width: 390, height: 500 }, table, SPLIT)).toBe(1)
+    // The same board with room to spread out keeps every row it can — and "room" is now room for
+    // eight *turned* footprints, which is what an ultrawide buys and a 1400px field does not.
+    expect(fieldSlots({ width: 1800, height: 370 }, table, SPLIT)).toBe(2)
+    expect(fieldSlots({ width: 1800, height: 560 }, table, SPLIT)).toBe(3)
   })
 
   /**

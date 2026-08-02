@@ -117,6 +117,29 @@ test.describe('a card says what it is', () => {
     }
   })
 
+  test('draws the cost in the name band, not over the art', async ({ page }) => {
+    // §6: the cost belongs at the band's trailing edge, where a printed card puts it and where a
+    // player's eye already goes. It spent a while over the art's corner, which is neither — and
+    // where it tinted against whatever was behind it.
+    await page.setViewportSize(DESKTOP)
+    await serveFrames(page, [fixture('gameview.json')])
+    await page.goto('/')
+
+    const bolt = page
+      .getByRole('region', { name: 'Your hand' })
+      .getByRole('button', { name: /^Lightning Bolt/ })
+    await expect(bolt.locator('.card__band .card__cost')).toHaveCount(1)
+    await expect(bolt.locator('.card__window .card__cost')).toHaveCount(0)
+
+    // Beside the name rather than under it or over it: same row, and after it.
+    const placed = await bolt.evaluate((card: HTMLElement) => {
+      const name = card.querySelector('.card__name')!.getBoundingClientRect()
+      const cost = card.querySelector('.card__cost')!.getBoundingClientRect()
+      return { after: cost.left >= name.right - 1, sameRow: cost.top < name.bottom }
+    })
+    expect(placed).toEqual({ after: true, sameRow: true })
+  })
+
   test('fits a complete name, a type line, and a P/T into a 72×100 tile', async ({ page }) => {
     // The §5 minimum tile — the box XMage fits all five of these into, and the bar the whole
     // redraw is measured against. It is reached where the *room* runs out rather than wherever a
@@ -164,10 +187,10 @@ test.describe('a card says what it is', () => {
   })
 
   test('says a tapped permanent is tapped without taking its name away', async ({ page }) => {
-    // The whole of §6's tapped rule, at both ends of the supported range. A quarter turn used to
-    // take the name with it, so what is checked is that the identity survives the state a
-    // permanent spends most of the game in — drawn horizontally, in full, and said in words to
-    // anyone who can see neither the mark nor a turn.
+    // The whole of §6's tapped rule, at both ends of the supported range. The turn is what a
+    // player reads a board by, and what it must not cost is the card's identity: the name is still
+    // complete on the frame, the whole of it is still on the tile for a screen reader, and the
+    // word is there for anyone who can perceive neither a turn nor a mark.
     for (const size of [DESKTOP, SHORT]) {
       await page.setViewportSize(size)
       await serveFrames(page, [fixture('gameview.json')])
@@ -186,15 +209,22 @@ test.describe('a card says what it is', () => {
       await expect(bear).toHaveAccessibleName(/Grizzly Bears/)
       await expect(bear).toHaveAccessibleName(/Tapped/)
 
-      // Horizontal, and no residue of the turn: no rotation on the frame, and none on the band
-      // the name is drawn in.
-      const turned = await bear.evaluate((card: HTMLElement) => {
-        const band = card.querySelector('.card__name')
-        return [card, band]
-          .map((node) => (node ? getComputedStyle(node).transform : 'none'))
-          .filter((transform) => transform !== 'none' && !transform.startsWith('matrix(1, 0, 0, 1'))
-      })
-      expect(turned).toEqual([])
+      // A quarter turn where the tile is a card, and a mark where it is a chip — a 96×30 chip is
+      // already lying down, so rotating it would say nothing. Read off the matrix the browser
+      // resolved rather than off a declaration, so it is the drawn state that is asserted.
+      const drawnState = await bear.evaluate((card: HTMLElement) => ({
+        chip: card.classList.contains('card--chip'),
+        transform: getComputedStyle(card).transform,
+        mark: getComputedStyle(card, '::after').opacity,
+      }))
+      if (drawnState.chip) {
+        expect(drawnState.transform, `${size.width}×${size.height}`).toBe('none')
+        expect(drawnState.mark).toBe('1')
+      } else {
+        // `rotate(90deg)` resolves to `matrix(0, 1, -1, 0, 0, 0)`.
+        expect(drawnState.transform, `${size.width}×${size.height}`).toMatch(/^matrix\(0, 1, -1, 0/)
+        expect(drawnState.mark).toBe('0')
+      }
     }
   })
 

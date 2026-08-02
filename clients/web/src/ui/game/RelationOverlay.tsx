@@ -79,21 +79,27 @@ export function RelationOverlay({
     measure()
 
     // Everything that moves a card without re-rendering this component: the window, the boxes
-    // themselves, and the regions that scroll inside their own areas.
+    // themselves, the regions that scroll inside their own areas, and the half second a permanent
+    // takes to turn.
     //
-    // A `transitionend` listener used to be here too, for the half second a permanent took to
-    // turn — a card and its neighbours changed size and place with no render behind it. Tapping
-    // is a mark on an upright card now (§6) and nothing it animates moves anything, so the
-    // listener was waiting on an event that no longer describes a board that moved. If a
-    // transition that *does* move a card is introduced, this is where it is answered.
+    // `transitionend` is back, and it is back for the reason it went: **tapped is a quarter turn
+    // again** (§6). A `ResizeObserver` watches the border box, which a rotation does not change —
+    // what changes is the painted rectangle, which is what `showing()` reads and what an arrow has
+    // to end on. The turn arrives with a new view, so the measurement this component takes is the
+    // one from *before* the card moved, and without this listener the line would point at where a
+    // permanent used to be until something unrelated re-rendered the board. Half a second is long
+    // enough for a player to see that, and a device that asked for less motion still fires the
+    // event at 1ms.
     const observer = new ResizeObserver(measure)
     observer.observe(host)
     for (const element of host.querySelectorAll(`[${ANCHOR}]`)) observer.observe(element)
     host.addEventListener('scroll', measure, true)
+    host.addEventListener('transitionend', measure, true)
     window.addEventListener('resize', measure)
     return () => {
       observer.disconnect()
       host.removeEventListener('scroll', measure, true)
+      host.removeEventListener('transitionend', measure, true)
       window.removeEventListener('resize', measure)
     }
   })

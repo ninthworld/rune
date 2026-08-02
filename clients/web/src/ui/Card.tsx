@@ -14,8 +14,8 @@
  * still one gesture away in the pointer's preview or the inspector, and it is never dropped from
  * assistive technology at all: an abbreviation is visual only.
  *
- * The frame is a real card's anatomy — a name band that owns its row, a cost over the art's
- * corner, an art window that takes what is left, a type line, a text box, and a stat in the
+ * The frame is a real card's anatomy — a name band with the cost at its trailing edge, an art
+ * window that takes what is left, a type line, a text box, and a stat in the
  * corner — at a real card's proportions, because that is what makes a board readable at a glance
  * rather than a list of tiles. The tint under it is `costTint`: the colours of the pips that were
  * printed, and explicitly not colour, colour identity, or anything else the rules define
@@ -28,7 +28,7 @@
 import { useCallback, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
 
 import type { CardFace, CardFaceLink, CardFaceState } from './../card-face'
-import { cardPlan, type Box, type Presentation } from './../fit'
+import { cardPlan, keywordLine, unstatedKeywords, type Box, type Presentation } from './../fit'
 import { costTint } from './../mana'
 import { anchorProps } from './../overlay'
 import { useCardArt } from './art'
@@ -183,9 +183,10 @@ export function Card({
     .filter(Boolean)
     .join(' ')
 
-  // The name band owns its row and nothing shares it. SAGE ships no card art, so this is the one
-  // thing that identifies a card, and the cost — which used to sit beside it and win — is over
-  // the art's corner now, where a pip is graphic and reads at sizes text does not.
+  // The name band, with the cost at its trailing edge — where a printed card puts it and where a
+  // player's eye already goes (§6). Which of the two gave way to make that fit is `fit.ts`'s
+  // answer and it is always the same one: the name is fitted first, and the cost is drawn in the
+  // width the name did not use, or not at all.
   const band = (
     <span className={`card__band${imageFace ? ' card__band--over' : ''}`}>
       <span
@@ -198,6 +199,13 @@ export function Card({
       </span>
       {/* An abbreviation is a drawing, not a fact. Whatever is on screen, this is the name. */}
       {plan.name.abbreviated && <span className="visually-hidden">{face.name}</span>}
+      {plan.costSize > 0 && (
+        <ManaCost
+          cost={face.manaCost}
+          className="card__cost"
+          style={{ fontSize: `${plan.costSize}px` }}
+        />
+      )}
     </span>
   )
 
@@ -214,10 +222,10 @@ export function Card({
             {marker}
           </span>
         ))}
-        {/* Tapped is the mark drawn across the whole face (`cards.css`), so there is no badge:
-            a pill saying it would spend the frame's scarcest room restating what the card
-            already looks like. The word is what assistive technology gets, which can perceive
-            neither a mark nor a turn. */}
+        {/* Tapped is the quarter turn the card is drawn at, or the mark across a face that has
+            no turn to make (`cards.css`), so there is no badge: a pill saying it would spend the
+            frame's scarcest room restating what the card already looks like. The word is what
+            assistive technology gets, which can perceive neither a mark nor a turn. */}
         {face.tapped && <span className="visually-hidden">Tapped</span>}
         {face.counters.map((counter) => (
           <span key={counter.kind} className="badge badge--counter">
@@ -241,6 +249,15 @@ export function Card({
     </>
   )
 
+  // Every keyword the drawn face does not already carry — neither in the prose it is drawing nor
+  // on its keyword line. Assistive technology is owed the whole card, and owed each of it once.
+  const drawn = text?.keywords ?? []
+  const unheard = (
+    text?.rulesText && face.rulesText
+      ? unstatedKeywords(face.keywords, face.rulesText)
+      : face.keywords
+  ).filter((keyword) => !drawn.includes(keyword))
+
   // Withheld for an object with no type line — an emblem, or a bare ability on the stack —
   // because those are not printed cards and framing them as one would imply a face that does not
   // exist. Withheld too when the fitting had nothing left to give it: the art window is the only
@@ -254,13 +271,6 @@ export function Card({
       {window && (
         <span className="card__window">
           <CardArt face={face} url={art?.url} />
-          {plan.costSize > 0 && (
-            <ManaCost
-              cost={face.manaCost}
-              className="card__cost"
-              style={{ fontSize: `${plan.costSize}px` }}
-            />
-          )}
           {marks}
         </span>
       )}
@@ -286,8 +296,11 @@ export function Card({
           {text.rulesText && face.rulesText && (
             <RulesText className="card__rules" text={face.rulesText} />
           )}
-          {text.keywords && face.keywords.length > 0 && (
-            <span className="card__keywords">{face.keywords.join(' · ')}</span>
+          {/* Only the keywords the drawn prose does not already say (§6, Density). A keyword
+              printed both in the rules text and again as an italic line is one fact twice, and
+              it costs a line of exactly the space the art window is being taken for. */}
+          {text.keywords.length > 0 && (
+            <span className="card__keywords">{keywordLine(text.keywords)}</span>
           )}
         </span>
       )}
@@ -298,9 +311,9 @@ export function Card({
           <RulesText text={face.rulesText} />
         </span>
       )}
-      {!text?.keywords && face.keywords.length > 0 && (
-        <span className="visually-hidden">{face.keywords.join(' · ')}</span>
-      )}
+      {/* And whatever the face neither drew nor said in its prose. A screen reader is given every
+          keyword exactly once, on the same rule the drawing follows. */}
+      {unheard.length > 0 && <span className="visually-hidden">{keywordLine(unheard)}</span>}
 
       {!window && marks}
     </>

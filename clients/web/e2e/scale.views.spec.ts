@@ -628,6 +628,61 @@ test.describe('a field holding twenty permanents a seat', () => {
 })
 
 /**
+ * §6's turn, at every band: **a tapped permanent stays on its own half of the table.**
+ *
+ * A quarter turn is the one thing on the board whose *painted* rectangle is not its laid-out one,
+ * so it is the one thing the region sweeps above cannot see: `scrollWidth` says nothing about a
+ * card rotated out over its neighbour or off the edge of the field. The room it turns into is
+ * reserved by `pack.ts` for every tile whether or not anything is tapped, and this is that
+ * reservation asserted where a player meets it — with the fixture's three tapped permanents, at
+ * every supported size, including the ones where a permanent is a chip and does not turn at all.
+ */
+test.describe('a permanent that taps', () => {
+  for (const viewport of VIEWPORTS) {
+    test(`turns inside its own field at ${viewport.name}`, async ({ page }) => {
+      await table(page, viewport)
+      const fields = page.getByRole('region', { name: /battlefield$/ })
+      await expect(fields).toHaveCount(2)
+
+      const escaped = await fields.evaluateAll((roots) => {
+        const over: string[] = []
+        for (const root of roots) {
+          const bounds = root.getBoundingClientRect()
+          for (const node of root.querySelectorAll<HTMLElement>('.card')) {
+            // The painted rectangle, which is what a rotation changes. One pixel of slack for the
+            // sub-pixel rounding a fractional viewport produces, and no more.
+            const box = node.getBoundingClientRect()
+            if (
+              box.left < bounds.left - 1 ||
+              box.right > bounds.right + 1 ||
+              box.top < bounds.top - 1 ||
+              box.bottom > bounds.bottom + 1
+            ) {
+              over.push(
+                `${node.querySelector('.card__name')?.textContent ?? '?'}: ` +
+                  `${Math.round(box.left)}…${Math.round(box.right)} in ` +
+                  `${Math.round(bounds.left)}…${Math.round(bounds.right)}`,
+              )
+            }
+          }
+        }
+        return over
+      })
+      expect(escaped).toEqual([])
+
+      // And the fixture really does have something turned at this size, so the assertion above is
+      // about a board with a turn in it rather than about one without.
+      const marked = await page
+        .locator('.card--tapped')
+        .evaluateAll((nodes) =>
+          nodes.map((node) => getComputedStyle(node as HTMLElement).transform),
+        )
+      expect(marked.length).toBeGreaterThan(0)
+    })
+  }
+})
+
+/**
  * The one exemption §3 grants, stated where it can be seen rather than left to a selector.
  *
  * A pile opened on demand is not the board: it is a list a player asked for, it can be fifty

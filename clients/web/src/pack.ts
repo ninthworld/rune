@@ -7,16 +7,23 @@
  * half. Fifteen permanents in a field sized for six do not make the field taller: they make the
  * cards smaller, then overlapped, then chips, and the box never moves.
  *
- * The arithmetic is §5's, unchanged:
+ * The arithmetic is §5's, over the **turned footprint** rather than the upright width:
  *
  * ```
- * ideal   = the band's designed card width
- * fitted  = (W - (N-1)·g) / N
- * width   = clamp(FLOOR, fitted, ideal)
+ * ideal     = the band's designed card height
+ * fitted    = (W - (N-1)·g) / N
+ * footprint = clamp(FLOOR, fitted, ideal)
  * ```
+ *
+ * A tapped permanent is a quarter turn (§6), so the room a permanent takes along its row is its
+ * own height, and the row charges it **whether or not anything is currently tapped** — a
+ * reservation that appeared when a creature attacked would slide every other card on the board,
+ * which §5 forbids outright. Height is therefore what a turn costs: a crowded row draws a shorter
+ * card than the same room would have drawn upright, and the printed 63:88 takes the width from
+ * there.
  *
  * When `fitted` falls under the floor the row stops spacing and starts **overlapping**: the pitch
- * becomes `(W - width) / (N - 1)` and the cards keep their size. That direction is the whole
+ * becomes `(W - footprint) / (N - 1)` and the cards keep their size. That direction is the whole
  * point — a card below the floor is unreadable everywhere at once, while an overlapped row is
  * unreadable only where it is covered, and what stays exposed is the top-left strip, which is the
  * name band. A fanned row is read as its names.
@@ -66,13 +73,26 @@ export interface PackedRow {
   width: number
   height: number
   /**
+   * The room one tile reserves along the row, which is the width it takes **turned**.
+   *
+   * A tapped permanent is a quarter turn (§6), so the space a permanent occupies is its own
+   * height rather than its width — and it is charged whether or not anything is currently tapped,
+   * because a reservation that appeared when a creature attacked would move every other card on
+   * the board, which §5 forbids. The tile is drawn `width × height` inside it, centred.
+   */
+  footprint: number
+  /**
    * The distance from one tile's left edge to the next one's.
    *
-   * Greater than the width while there is room to space them and less than it once there is not,
-   * which is the whole of §3's step 4: the row stops being a sequence and starts being a fan.
+   * Greater than the footprint while there is room to space them and less than it once there is
+   * not, which is the whole of §3's step 4: the row stops being a sequence and starts being a fan.
    */
   pitch: number
-  /** Whether the tiles cover one another. `pitch < width`, stated so a caller need not derive it. */
+  /**
+   * Whether the tiles cover one another. `pitch < footprint`, stated so a caller need not derive
+   * it — and measured against the turned footprint rather than the upright width, because a row
+   * whose tiles have no room to turn is one where tapping covers a neighbour.
+   */
   overlapped: boolean
   /** How many lines of tiles the row uses. More than one only where the height is going spare. */
   lines: number
@@ -206,6 +226,10 @@ export function packRow(box: Box, count: number, opts: { chip?: boolean } = {}):
   const block = lines * solved.height + (lines - 1) * gap
   const top = Math.max(0, Math.floor((tall - block) / 2))
 
+  // The tile inside its own reserved footprint: half the turn's extra width on each side, so a
+  // permanent that turns grows symmetrically into room that was already its.
+  const inset = Math.round((solved.footprint - solved.width) / 2)
+
   const positions: Point[] = []
   for (let index = 0; index < many; index++) {
     const line = Math.floor(index / perLine)
@@ -213,7 +237,7 @@ export function packRow(box: Box, count: number, opts: { chip?: boolean } = {}):
     positions.push({
       // Clamped as well as computed: a fractional pitch rounded up on the last tile of a line is
       // a pixel of overflow, and overflow is the one thing this file is not allowed to produce.
-      x: Math.min(Math.max(0, room - solved.width), Math.round(column * solved.pitch)),
+      x: inset + Math.min(Math.max(0, room - solved.footprint), Math.round(column * solved.pitch)),
       y: top + line * (solved.height + gap),
     })
   }
@@ -221,6 +245,7 @@ export function packRow(box: Box, count: number, opts: { chip?: boolean } = {}):
   return {
     width: solved.width,
     height: solved.height,
+    footprint: solved.footprint,
     pitch: solved.pitch,
     overlapped: solved.overlapped,
     lines,
@@ -237,6 +262,7 @@ const lineTall = (tall: number, lines: number, chip: boolean): number =>
 interface Solved {
   width: number
   height: number
+  footprint: number
   pitch: number
   overlapped: boolean
 }
@@ -259,38 +285,50 @@ const better = (candidate: Solved, best: Solved): boolean =>
  * §5's clamp, for one line of `count` tiles in a box `room` wide and `tall` high.
  *
  * ```
- * ideal   = the band's designed card width
+ * ideal   = the band's designed footprint
  * fitted  = (W - (N-1)·g) / N
- * width   = clamp(FLOOR, fitted, ideal)
+ * footprint = clamp(FLOOR, fitted, ideal)
  * ```
  *
- * The ideal is the printed proportion applied to the height the line got, never a number of its
- * own: a short line produces a narrow card however much width is going spare, because the
- * alternative is a card lying half in the line below it.
+ * **What is divided up is the turned footprint, not the upright width.** A tapped permanent is a
+ * quarter turn (§6), so what a permanent occupies along a row is its own *height* — and the row
+ * charges it whether or not anything is tapped, since a footprint that appeared when a creature
+ * attacked would slide every other card on the board (§5). Height is therefore what a turn costs:
+ * where the row is crowded enough for the clamp to bite, the tile it can afford is a shorter card
+ * than the same room would have drawn upright, and the printed proportion takes the width from
+ * there.
+ *
+ * The ideal is the height the line got, never a number of its own: a short line produces a narrow
+ * card however much width is going spare, because the alternative is a card lying half in the line
+ * below it.
  */
 function solve(room: number, tall: number, count: number, chip: boolean): Solved {
   // A chip is landscape and fixed: it is already the floor, so there is nothing under it to
-  // shrink to and a crowded chip row overlaps from the start.
+  // shrink to and a crowded chip row overlaps from the start. It never turns either — a 96×30
+  // chip is already lying down — so its footprint is simply its width.
   const ideal = chip
     ? CHIP.width
-    : Math.max(CARD_FLOOR.width, Math.min(CARD_DESIGNED.width, Math.floor(tall * RATIO)))
-  const floor = chip ? CHIP.width : CARD_FLOOR.width
+    : Math.max(CARD_FLOOR.height, Math.min(CARD_DESIGNED.height, tall))
+  const floor = chip ? CHIP.width : CARD_FLOOR.height
 
   // The gap here is the minimum §5 divides by; the drawn one is decided below, out of whatever
   // the clamp left behind.
   const fitted = count === 0 ? ideal : Math.floor((room - (count - 1) * GAP_MIN) / count)
   // A box narrower than one tile is a box sized wrong (§6). The tile is drawn at what there is
   // rather than hanging over the edge, because the fix belongs to whatever chose the box.
-  const width = Math.min(room, Math.max(floor, Math.min(fitted, ideal)))
-  const height = chip ? tall : Math.min(tall, Math.round(width / RATIO))
+  const footprint = Math.min(room, Math.max(floor, Math.min(fitted, ideal)))
+  const height = chip ? tall : Math.min(tall, footprint)
+  const width = chip
+    ? footprint
+    : Math.min(footprint, Math.max(CARD_FLOOR.width, Math.floor(height * RATIO)))
 
   const gap = Math.min(GAP_MAX, Math.max(GAP_MIN, Math.round(width * GAP_SHARE)))
-  const spread = count > 1 ? (room - width) / (count - 1) : 0
+  const spread = count > 1 ? (room - footprint) / (count - 1) : 0
   // Spacing while it fits, overlap once it does not — and in between, a gap that compresses
   // rather than a card that shrinks. All three come out of one `min`, so there is no threshold
   // for a rounding error to fall either side of.
-  const pitch = count > 1 ? Math.min(width + gap, spread) : 0
-  return { width, height, pitch, overlapped: count > 1 && pitch < width }
+  const pitch = count > 1 ? Math.min(footprint + gap, spread) : 0
+  return { width, height, footprint, pitch, overlapped: count > 1 && pitch < footprint }
 }
 
 /**

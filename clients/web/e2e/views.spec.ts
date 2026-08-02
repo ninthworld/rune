@@ -1080,7 +1080,7 @@ test.describe('the keyboard, and what the frame draws', () => {
     await expect(bolt.getByRole('img', { name: 'red mana' })).toBeVisible()
   })
 
-  test('marks a tapped permanent across the face, and never turns it', async ({ page }) => {
+  test('turns a tapped permanent a quarter, and leaves the row where it was', async ({ page }) => {
     await serveFrames(page, [fixture('gameview.json')])
     await page.goto('/')
 
@@ -1088,41 +1088,84 @@ test.describe('the keyboard, and what the frame draws', () => {
     const bear = field.getByRole('button', { name: /^Grizzly Bears/ })
     const thopter = field.getByRole('button', { name: /^Thopter/ })
 
-    // Nothing is turned. Asserted as the matrix the browser resolved rather than as a
-    // declaration, so a rotation reintroduced anywhere above this element fails here.
-    await expect.poll(() => bear.evaluate((card) => getComputedStyle(card).transform)).toBe('none')
-
-    // The mark itself, read off the frame's own layer. A *pattern*, not a tint: every fact on
-    // this board has to survive being seen without colour, and a hatch does where a wash of
-    // Canvas would not.
-    const mark = (card: typeof bear) =>
-      card.evaluate((node) => {
-        const style = getComputedStyle(node, '::after')
-        return { opacity: style.opacity, image: style.backgroundImage }
-      })
+    // The turn itself, asserted as the matrix the browser resolved rather than as a declaration,
+    // so it is the drawn card that answers. `rotate(90deg)` is `matrix(0, 1, -1, 0, 0, 0)`.
     await expect
-      .poll(() => mark(bear))
-      .toMatchObject({
-        opacity: '1',
-        image: expect.stringContaining('repeating-linear-gradient'),
-      })
-    // And it is the tap that draws it, not the frame: the untapped permanent beside it carries
-    // the same layer, unpainted.
-    await expect.poll(() => mark(thopter)).toMatchObject({ opacity: '0' })
+      .poll(() => bear.evaluate((card) => getComputedStyle(card).transform))
+      .toMatch(/^matrix\(0, 1, -1, 0/)
+    // And it *animates* into it: motion here is not decoration, it says a permanent tapped
+    // rather than having been drawn already tapped.
+    await expect(bear).toHaveCSS('transition-duration', '0.5s')
 
-    // One shape per tile whatever the server said about it. A tapped permanent that cost more
-    // room than an untapped one is the landscape footprint coming back by another route.
-    const [tapped, upright] = [await bear.boundingBox(), await thopter.boundingBox()]
-    expect(tapped?.width).toBeCloseTo(upright?.width ?? 0, 0)
-    expect(tapped?.height).toBeCloseTo(upright?.height ?? 0, 0)
+    // Nothing else is turned, and the frame carries no second statement of the same fact: the
+    // hatch that stood in for the turn is not painted over a card that made it.
+    await expect
+      .poll(() => thopter.evaluate((card) => getComputedStyle(card).transform))
+      .toBe('none')
+    await expect
+      .poll(() => bear.evaluate((card) => getComputedStyle(card, '::after').opacity))
+      .toBe('0')
 
-    // The name is horizontal and whole, which is the entire reason the turn went away.
+    // **The tile is the same box either way.** The turn is a transform, and the room it turns
+    // into was reserved for every tile in the row whether or not anything is tapped (`pack.ts`) —
+    // which is what keeps the board from moving when a creature attacks.
+    const laidOut = (card: typeof bear) =>
+      card.evaluate((node: HTMLElement) => ({ width: node.offsetWidth, height: node.offsetHeight }))
+    expect(await laidOut(bear)).toEqual(await laidOut(thopter))
+
+    // The name is whole, which is the cost of the turn and the thing it may not take.
     await expect(bear.locator('.card__name')).toHaveText('Grizzly Bears')
 
-    // The badge is gone with it: the mark is the statement, and a pill repeating it spent the
-    // frame's scarcest room on a fact the card already shows.
+    // The badge is gone: the turn is the statement, and a pill repeating it spent the frame's
+    // scarcest room on a fact the card already shows.
     await expect(page.locator('.badge--tapped')).toHaveCount(0)
     await expect(bear).toHaveAccessibleName(/Tapped/)
+  })
+
+  /**
+   * §5's promise, at the one event that used to break it.
+   *
+   * A tapped permanent used to be wrapped in a slot that widened when it turned, so a creature
+   * attacking slid every card beside it. The reservation is unconditional now, so the assertion is
+   * the strongest one available: **the same view with one permanent's `tapped` flipped lays every
+   * tile out at exactly the same place and the same size.**
+   */
+  test('does not move the board when a permanent taps or untaps', async ({ page }) => {
+    const view = fixture('gameview-board.json')
+    const flipped = {
+      ...view,
+      battlefield: (view.battlefield as Record<string, unknown>[]).map((permanent) => ({
+        ...permanent,
+        tapped: permanent.controller === 'p1' ? !permanent.tapped : permanent.tapped,
+      })),
+    }
+
+    const served = await serveFrames(page, [view])
+    await page.goto('/')
+    const field = page.getByRole('region', { name: 'Your battlefield' })
+    await expect(field.getByRole('listitem').first()).toBeVisible()
+
+    // Read from the list item rather than the card, because the tile is what the packing placed
+    // and the card is what turns inside it.
+    const tiles = () =>
+      field.getByRole('listitem').evaluateAll((nodes) =>
+        nodes.map((node) => {
+          const tile = node as HTMLElement
+          return `${tile.offsetLeft},${tile.offsetTop} ${tile.offsetWidth}×${tile.offsetHeight}`
+        }),
+      )
+
+    const before = await tiles()
+    expect(before.length).toBeGreaterThan(3)
+    // Untapped in the fixture, tapped in the frame about to be served — the flip this waits on,
+    // so an unchanged board cannot pass by being measured before the new view arrived.
+    const serra = field.getByRole('button', { name: /^Serra Angel/ })
+    await expect(serra).not.toHaveClass(/card--tapped/)
+
+    served.push(flipped)
+    await expect(serra).toHaveClass(/card--tapped/)
+
+    expect(await tiles()).toEqual(before)
   })
 })
 
