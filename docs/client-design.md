@@ -44,6 +44,27 @@ obtainable.** Everything else is a question of how much of it is on screen at on
 
 Three tiers. What moves between them as room runs out is §3.
 
+### 2.1 Say it once
+
+Everything below is about *what must be on screen*. This is about how much of it to write, and it
+applies to every surface in the client — the table as much as the lobby.
+
+1. **A control says what it does. It does not explain itself.** A description of an option belongs
+   where a player asks for it — on the option, at the moment of choosing — not printed beside the
+   control forever.
+2. **State is shown, not narrated.** If a fact needs a sentence to be legible, the thing drawing it
+   is wrong; the sentence is not the fix.
+3. **No identifier a player has no use for.** A room id, an object id, a seat id: those belong in a
+   log.
+4. **One box.** A panel inside a panel inside a panel, each with a heading, is a document's way of
+   grouping. Grouping is what space and alignment are for.
+5. **Ask a question once.** A heading, a legend, and a set of buttons that all say the same thing
+   are one question written three times, and the buttons are the only one a player acts on.
+
+The failure these describe is a single one, and it is not fixed by writing better sentences: **a
+surface that narrates is a surface that has not been drawn.** Prose is what a document uses when it
+cannot show something. This client can show it.
+
 ### Tier 1 — always visible, no gesture
 
 | What | Why it cannot wait for a gesture |
@@ -335,11 +356,21 @@ a 100px card spends 45px on `{1}{U}{U}` and leaves 20px for the name.
    at all** — that is where a player chooses, and XMage's hand shows `Simian Spirit Guide` and
    `Temple of Deceit` complete at ~118px wide. On the battlefield an abbreviation must still leave a
    recognisable card: XMage's `Troll Asce` is one, `C…` is not.
-2. **Cost.** Overlaid on the art's top-right corner, out of the name's row. Pips are graphic and
-   read at sizes text does not — no baseline, no wrapping, no hyphenation. Below the chip threshold
-   (§3, step 5) the cost drops entirely: the server already states what is playable through
-   `valid_actions`, so cost is reference rather than a decision input. This is a presentation
-   judgment and not a rules one — the client still computes no affordability.
+2. **Cost.** **In the name band, at its trailing edge** — where a printed card puts it, and where a
+   player's eye already goes. Pips are graphic and read at sizes text does not: no baseline, no
+   wrapping, no hyphenation.
+
+   An earlier draft overlaid the cost on the art's top-right corner to stop it eating the name. That
+   solved the right problem the wrong way. The name was losing because the band was divided before
+   either part was fitted, and the fix for that is the fitting policy — not moving the cost somewhere
+   nobody looks, over art it tints against, in a corner that means nothing.
+
+   **The band is fitted in priority order: the name first, against the width the cost would leave;
+   and if that would push the name below its floor, the cost goes — never the name.** Identity
+   outranks reference, which is §2's tier ordering applied inside one band instead of across the
+   screen. Below the chip threshold (§3) the cost is gone regardless: the server already states what
+   is playable through `valid_actions`, so cost is reference rather than a decision input. Dropping
+   it is a presentation judgment and not a rules one — the client still computes no affordability.
 3. **Art window.** Fixed proportion, the largest single element. Procedural composition by default,
    a player-supplied illustration over it when one is present.
 4. **Type line.** Degrades **by rule, not by ellipsis**: drop the subtype after the em-dash first,
@@ -353,17 +384,33 @@ a 100px card spends 45px on `{1}{U}{U}` and leaves 20px for the name.
 
 ### Tapped
 
-**Tapped is drawn as an overlay mark on an upright card, not as a rotation.** XMage does exactly
-this on a crowded board — a mark across the face — and it is why its permanents stay readable in
-the state they spend most of the game in. Rotating a card whose identity is *text* destroys the
-identity to communicate one bit, and it costs a landscape footprint on top of that.
+**Tapped is a quarter turn.** The card rotates 90°, and it animates into it, because that is what
+tapping *is* — the single most universal convention in the game, the one every player and every
+client already shares. A pattern laid over an upright card is a private language nobody has learnt,
+and no amount of internal consistency makes it read.
 
-Two consequences. The name survives while tapped. And **the "Tapped" badge disappears**: the mark
-is the statement, and today the badge is a rotated pill laid over the art of a card whose name is
-already sideways. The word stays for assistive technology, which can see neither a mark nor a
-rotation.
+An earlier draft of this section replaced the turn with a hatch, reasoning that rotating a card
+whose identity is text takes the text sideways, and that a landscape footprint is a case the row
+packer would have to model. The first is true and is a real cost; it is simply outweighed. **A
+tapped permanent is one you are not currently reading** — you know what it is, and what you need
+from it at a glance is precisely the one bit the turn communicates better than anything else can.
+The second argument has expired: the packer exists, and reserving the rotated footprint is now an
+ordinary part of laying out a row rather than a special case bolted onto flow layout.
 
-Rotation may return at the Full presentation, where the card is large enough that nothing is lost.
+Two things follow.
+
+**The row reserves the turned footprint**, so a tapped permanent never collides with its
+neighbours and a row does not reflow when something taps. Height is what a rotated card costs, and
+it is charged whether or not anything is currently tapped — otherwise the board moves when a
+creature attacks, which §5 forbids.
+
+**The "Tapped" badge stays deleted.** The turn is the statement; a pill that says the word is the
+same fact twice (§2.1). The word remains for assistive technology, which can perceive neither a
+turn nor a mark.
+
+**At the chip tier there is no turn.** A 96×30 chip is already landscape, so rotating it says
+nothing. There, and only there, tapped is a mark — and it must be a pattern or a glyph rather than
+a tint alone, because every fact has to survive without colour.
 
 ### The four presentations
 
@@ -412,6 +459,60 @@ roughly 13 characters a line and 26 across two — enough for `Exclusion Ritual`
 sizing defect to fix in §5, not a permitted state.
 
 ---
+
+## 6.5 The dock, and how a question is asked
+
+Every region got a degradation ladder in §3. The dock's *contents* never did — so when a question
+is bigger than the dock's band, `overflow: hidden` cuts it, and a player loses the controls they
+were being asked to use. That is the defect; the verbosity below is why the question was too big in
+the first place.
+
+### What is on screen today
+
+Asking a player to keep or mulligan currently states the same fact four times:
+
+| | |
+| --- | --- |
+| the dock's tone line | *"The game is waiting on your answer"* |
+| a heading | *"Keep or mulligan"* |
+| a fieldset legend | *"Keep this hand or take a mulligan?"* |
+| two buttons | `Keep this hand` · `Mulligan` |
+
+**The buttons are the question.** The other three are chrome, and together they push the row of
+controls beneath them out of the band. This is §2.1 rules 4 and 5, in the game rather than the
+lobby.
+
+### The board answers; the dock stays small
+
+**A question about objects on the screen is answered on the screen.** The objects that can answer it
+are highlighted, clicking one answers it, and the dock carries only what the board cannot: a tally
+of what has been chosen against what is needed, the way to commit, and the way to cancel.
+
+That is how the question is asked at a real table — you point at the creature — and it is already
+what `interaction.ts` does. What changes is that the dock stops *also* listing every subject as a
+button, which is what makes it grow without limit.
+
+The dock is then bounded by the *shape* of a question rather than by its size: a tally and two
+controls is the same height whether there are two legal blockers or twenty. Nothing has to clip
+because nothing has to grow.
+
+**The fallback is not optional.** A subject no surface draws — a card in a face-down pile, an
+ability with no permanent, a choice that is not about an object at all — has nothing to click, and
+those subjects must remain reachable. They stay in the dock as controls, and the existing
+disclosure of every action stays exactly as it is: it is the guarantee that no action is reachable
+only by finding its object.
+
+### The rules
+
+1. **The prompt is drawn once, in one place, or not at all.** Where the options state the question,
+   the options *are* the question.
+2. **The tone is shown, not written.** A dock that is asking looks like it is asking; it does not
+   also say so in a sentence.
+3. **A question never scrolls and is never clipped.** If it does not fit, the fault is that
+   subjects are being listed that the board could have answered.
+4. **Everything reachable by pointer is reachable by keyboard**, including answering on the board.
+5. The dock's own band is `scene()`'s, as with every other region. It responds to *whether the game
+   is asking* — a change of mode — and never to how much there is to ask about (§5).
 
 ## 7. Type
 
@@ -502,20 +603,10 @@ Worth recording precisely, because every rule below is an answer to something on
 
 ### 9.2 The rules the lobby is drawn by
 
-1. **A control says what it does. It does not explain itself.** *"Plays a random legal action each
-   decision. A simple sparring partner"* is a description of an option, and it belongs where a
-   player asks for it — on the option, when they are choosing between options — not printed beside
-   the control forever.
-2. **State is shown, not narrated.** *"Waiting on — Seat 1 — No deck yet"* restates in prose what
-   the seat rows directly above already say. If a fact needs a sentence to be legible, the thing
-   drawing it is wrong; the sentence is not the fix.
-3. **No identifier a player has no use for.** A room id belongs in a log.
-4. **One box.** A panel inside a panel inside a panel, each with a heading, is a document's way of
-   grouping. Grouping is what space and alignment are for.
-5. **Setup happens in setup.** A task performed once does not live in the chrome of every screen.
-6. **Everything about the device is one destination**, not a scatter of buttons. See §9.6.
-7. Everything in §7 applies: fitted text, the 11px chrome floor, and **no native form control** —
-   a `<select>` that clips its own arrow at 120% zoom is the whole argument.
+These were written for the lobby and they are **not lobby rules** — they are §2.1, applied here.
+Read them there. The two that are specific to a pre-game screen: **setup happens in setup**, so a
+task performed once does not live in the chrome of every screen; and **everything about the device
+is one destination** rather than a scatter of buttons (§9.6).
 
 ### 9.3 Connect
 
