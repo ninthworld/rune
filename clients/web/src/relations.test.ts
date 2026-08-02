@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { GameView, type Permanent, type StackItem } from './protocol'
 import { entityNames, relationLines, relations } from './relations'
 import { list } from './normalize'
+import { seats } from './table'
 
 const card = (id: string, name: string) => ({ id, name, type_line: 'Creature — Bear' })
 
@@ -49,7 +50,7 @@ describe('reading the board both ways', () => {
         kind: 'attacking',
         direction: 'from',
         label: 'attacking',
-        ends: [{ id: 'p2', name: 'Bo (p2)' }],
+        ends: [{ id: 'p2', name: 'Bo' }],
       },
       {
         kind: 'blocking',
@@ -178,7 +179,7 @@ describe('the stack, as relationships', () => {
         label: 'targeting',
         ends: [
           { id: 'perm_bear', name: 'Grizzly Bears' },
-          { id: 'p2', name: 'Bo (p2)' },
+          { id: 'p2', name: 'Bo' },
         ],
       },
       {
@@ -371,8 +372,8 @@ describe('naming the other end of a relationship', () => {
       perm_axe: "Marauder's Axe",
       s7: 'Equipped creature deals 1 damage to each of two targets.',
       emblem_1: 'Emblem',
-      p1: 'Ada (p1)',
-      p2: 'Bo (p2)',
+      p1: 'Ada',
+      p2: 'Bo',
     })
   })
 
@@ -399,31 +400,41 @@ describe('naming the other end of a relationship', () => {
   it('takes a seat’s name from the same place the seat’s own panel takes it', () => {
     // A seat is an end like any other, and it must not be called two things by two surfaces.
     const board = view({
+      you: 'p1',
+      seat_order: ['p1', 'p2', 'p3'],
       opponents: [{ player_id: 'p3', hand_size: 4, life: 20, library_size: 28, graveyard_size: 0 }],
     })
 
-    // Named by the server, and named by nobody: the second is not a leaked identifier here,
-    // because it is the string the seat's panel, its field, and its life total all carry.
-    expect(entityNames(board).get('p2')).toBe('Bo (p2)')
-    expect(entityNames(board).get('p3')).toBe('p3')
+    // Named by the server, and named by nobody: the second is what `playerLabel` calls a seat
+    // nobody named, which is the string that seat's panel, its field and its life total carry —
+    // and, since #692, is a phrase rather than the wire's key for it.
+    expect(entityNames(board).get('p1')).toBe('Ada')
+    expect(entityNames(board).get('p2')).toBe('Bo')
+    expect(entityNames(board).get('p3')).toBe('Opponent 3')
   })
 })
 
 /**
- * The guard that keeps #674 from coming back in a shape nobody anticipated.
+ * The guard that keeps #674 and #692 from coming back in a shape nobody anticipated.
  *
- * Structural rather than a list of the three strings that happened to leak: the forbidden set is
- * read *out of each fixture* — every id it addresses an object by — and the trail is swept for
- * every object in it. Anything the join fails to name and prints anyway is caught whatever it is
- * called.
+ * Structural rather than a list of the strings that happened to leak: the forbidden set is read
+ * *out of each fixture* — every id it addresses an object or a seat by — and everything a player
+ * reads about a relationship or a seat is swept against it. Anything the client fails to name and
+ * prints anyway is caught whatever it is called.
  *
- * The reductions are what make the sweep bite. A fixture as sent describes every object its own
- * relationships name, so it can never leak; the defect appears exactly when a relationship
+ * Two surfaces, because there were two defects and one rule (`docs/client-design.md` §2.1, rule
+ * 3): the **trail** under every object with a relationship, and the **name every seat is drawn
+ * under** — the string its panel, its battlefield's region label and its life total all share.
+ *
+ * The reductions are what make the trail half bite. A fixture as sent describes every object its
+ * own relationships name, so it can never leak; the defect appears exactly when a relationship
  * outlives the description of its other end, which is a board where the opponent controls no
  * permanents, a pile the server stopped itemizing, or a seat this client can see nothing of. The
  * relationships stay the fixture's own throughout — only what is available to name them shrinks.
+ * The seat half needs no reduction: most committed fixtures carry no `player_names` at all, which
+ * is already the case where the client has to find a seat a word of its own.
  */
-describe('no identifier reaches the trail, on any committed fixture', () => {
+describe('no identifier reaches a player, on any committed fixture', () => {
   const FIXTURES = join(
     dirname(fileURLToPath(import.meta.url)),
     '../../../crates/sage-protocol/fixtures',
@@ -438,11 +449,7 @@ describe('no identifier reaches the trail, on any committed fixture', () => {
    * Fields that address an object rather than describing one.
    *
    * `id` wherever it appears, plus the four relationship fields, which is how an id that is only
-   * ever *pointed at* — a permanent the view no longer carries — still lands in the forbidden
-   * set. Player ids are deliberately not here: `p2` is the string this client labels that seat
-   * with on its panel, its battlefield, and its life total (`normalize.playerLabel`), so it is a
-   * name and not an unused identifier. Whether a nameless seat should read better than `p2` is a
-   * question about seat naming, not about this trail.
+   * ever *pointed at* — a permanent the view no longer carries — still lands in the forbidden set.
    */
   const ADDRESSES = new Set([
     'id',
@@ -453,15 +460,45 @@ describe('no identifier reaches the trail, on any committed fixture', () => {
     'physical_card',
   ])
 
-  const objectIds = (value: unknown, into = new Set<string>()): Set<string> => {
+  /**
+   * Fields that address a **seat**.
+   *
+   * These were deliberately left out when this guard was written for #674, on the argument that
+   * `p2` was the string the client labelled that seat with everywhere and so functioned as a
+   * name. #692 is the answer to that: it is the *wire's* key, a player has never seen the
+   * protocol, and consistency is a reason it was tolerable rather than a reason it was right. A
+   * seat id is now as forbidden as any other, which is what makes this one guard instead of two.
+   */
+  const SEATS = new Set([
+    'you',
+    'player_id',
+    'player',
+    'controller',
+    'owner',
+    'attacking_player',
+    'active_player',
+    'priority_player',
+    'winner',
+  ])
+
+  /** Lists whose entries are seats, and the map whose *keys* are. */
+  const SEAT_LISTS = new Set(['seat_order', 'losers'])
+
+  const forbiddenIds = (value: unknown, into = new Set<string>()): Set<string> => {
     if (Array.isArray(value)) {
-      for (const item of value) objectIds(item, into)
+      for (const item of value) forbiddenIds(item, into)
       return into
     }
     if (value !== null && typeof value === 'object') {
       for (const [key, entry] of Object.entries(value)) {
-        if (typeof entry === 'string' && ADDRESSES.has(key)) into.add(entry)
-        else objectIds(entry, into)
+        if (typeof entry === 'string' && (ADDRESSES.has(key) || SEATS.has(key))) into.add(entry)
+        else if (SEAT_LISTS.has(key) && Array.isArray(entry)) {
+          for (const seat of entry) if (typeof seat === 'string') into.add(seat)
+        } else if (key === 'player_names' && entry !== null && typeof entry === 'object') {
+          // The one place a seat id is a *key* rather than a value — and the values beside them
+          // are the display names, which are the one thing here that is allowed on screen.
+          for (const seat of Object.keys(entry)) into.add(seat)
+        } else forbiddenIds(entry, into)
       }
     }
     return into
@@ -516,23 +553,47 @@ describe('no identifier reaches the trail, on any committed fixture', () => {
     )
   }
 
+  /**
+   * The other surface: what every seat at this table is *called*.
+   *
+   * One string per seat, because it is one string per seat on screen — `table.ts` joins it once
+   * and the panel's heading, the battlefield's region label and the life total's owner are the
+   * same value read three times. Sweeping it here covers all three.
+   */
+  const seatNames = (from: GameView): readonly string[] => seats(from).map((seat) => seat.name)
+
   it.each(
     GAMEVIEWS.flatMap((name) => REDUCTIONS.map(([how, reduce]) => [name, how, reduce] as const)),
   )('%s, %s', (name, _how, reduce) => {
     const from = GameView.parse(readFixture(name))
-    const forbidden = objectIds(readFixture(name))
+    const forbidden = forbiddenIds(readFixture(name))
+    const reduced = reduce(from)
 
-    for (const text of drawn(from, reduce(from))) {
+    for (const text of [...drawn(from, reduced), ...seatNames(reduced)]) {
       const leaked = [...forbidden].filter((id) => text === id || text.split(' ').includes(id))
       expect(leaked).toEqual([])
     }
   })
 
-  it('sweeps a trail that has something in it', () => {
+  it('sweeps a trail that has something in it, and a table with somebody at it', () => {
     // Without this the whole suite above could pass by finding nothing to check — the one way a
-    // guard like this goes quietly blind.
+    // guard like this goes quietly blind. Both surfaces, because both are swept.
     const board = GameView.parse(readFixture('gameview-board.json'))
     expect(drawn(board, board).length).toBeGreaterThan(20)
+    expect(seatNames(board)).toEqual(['Ada', 'Bo'])
+  })
+
+  it('forbids the seat ids as well as the object ids', () => {
+    // The half added by #692, and the half that would go blind first: the sweep is only as wide
+    // as the set it sweeps against, and a `SEATS` entry quietly dropped would take every seat
+    // surface out of this guard while every assertion above still passed.
+    const forbidden = forbiddenIds(readFixture('gameview-board.json'))
+    expect([...forbidden]).toEqual(expect.arrayContaining(['p1', 'p2', 'perm_vivien']))
+
+    // And a table nobody named still contributes its seats, which is where the defect lived.
+    expect([...forbiddenIds(readFixture('gameview-actions.json'))]).toEqual(
+      expect.arrayContaining(['p0', 'p1']),
+    )
   })
 
   it('has a reduction that actually takes the names away', () => {
@@ -542,7 +603,7 @@ describe('no identifier reaches the trail, on any committed fixture', () => {
     const board = GameView.parse(readFixture('gameview-board.json'))
     const stripped = REDUCTIONS.at(-1)![1](board)
 
-    expect(drawn(board, stripped)).toEqual(expect.arrayContaining(['Bo (p2)', 'attacking Bo (p2)']))
+    expect(drawn(board, stripped)).toEqual(expect.arrayContaining(['Bo', 'attacking Bo']))
     expect(drawn(board, stripped).length).toBeLessThan(drawn(board, board).length)
   })
 })

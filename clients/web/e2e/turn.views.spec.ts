@@ -132,8 +132,8 @@ test.describe('who the game is waiting for', () => {
 
     const match = page.getByRole('banner').or(page.locator('.match'))
     await expect(match).toContainText('Your move.')
-    await expect(match).toContainText('Turn: Alice (p0)')
-    await expect(match).toContainText('Priority: Alice (p0)')
+    await expect(match).toContainText('Turn: Alice')
+    await expect(match).toContainText('Priority: Alice')
 
     // The clock is projected as seconds remaining at the moment the view was built; it ticks
     // locally so a stretch with no frames does not freeze it at a number that is no longer true.
@@ -151,7 +151,7 @@ test.describe('who the game is waiting for', () => {
     ])
     await page.goto('/')
 
-    await expect(page.locator('.match')).toContainText('Waiting for Bob (p1).')
+    await expect(page.locator('.match')).toContainText('Waiting for Bob.')
   })
 
   test('leaves the game as the subject when no seat holds priority', async ({ page }) => {
@@ -213,14 +213,14 @@ test.describe('what the settle did on your behalf', () => {
     // A step change divides the column; the entries between two of them belong to that turn.
     await expect(log.locator('.log__entry--step')).toHaveCount(2)
     await expect(log.locator('.log__entry--step').last()).toContainText('Turn 4, Upkeep')
-    await expect(log.locator('.log__entry--life')).toContainText('Alice (p0) takes 2 damage')
+    await expect(log.locator('.log__entry--life')).toContainText('Alice takes 2 damage')
   })
 
   test('shows a seat that has dropped without hiding anything about it', async ({ page }) => {
     await serveFrames(page, [turn()])
     await page.goto('/')
 
-    const opponent = page.getByRole('region', { name: /Bob .* seat/ })
+    const opponent = page.getByRole('region', { name: /Bob seat/ })
     await expect(opponent).toContainText('disconnected')
     await expect(opponent).toContainText('20 life')
   })

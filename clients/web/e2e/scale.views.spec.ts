@@ -648,9 +648,7 @@ for (const viewport of VIEWPORTS) {
       await expect(
         page.getByRole('region', { name: 'Your seat' }).getByText('14 life'),
       ).toBeVisible()
-      await expect(
-        page.getByRole('region', { name: 'Bo (p2) seat' }).getByText('9 life'),
-      ).toBeVisible()
+      await expect(page.getByRole('region', { name: 'Bo seat' }).getByText('9 life')).toBeVisible()
 
       // The stack is seven deep, so it is the most urgent thing on screen, and §3 says its top
       // item by name never degrades. The client names it "Resolves next" rather than leaving a

@@ -299,7 +299,7 @@ test.describe('acting by clicking the table', () => {
         .getByRole('button', { name: /^Llanowar Elves/ }),
     ).toHaveClass(/card--candidate/)
     await expect(
-      page.getByRole('region', { name: 'p1 seat' }).getByRole('button', { name: 'p1' }),
+      page.getByRole('region', { name: 'Opponent seat' }).getByRole('button', { name: 'Opponent' }),
     ).toHaveClass(/card--candidate/)
     await expect(hand.getByRole('button', { name: /^Forest/ })).not.toHaveClass(/card--candidate/)
   })
@@ -513,7 +513,7 @@ test.describe('declaring combat', () => {
     await page.getByRole('button', { name: 'Declare attackers', exact: true }).click()
     const choices = page.getByRole('region', { name: 'Choices' })
     const yourBoard = page.getByRole('region', { name: 'Your battlefield' })
-    const theirBoard = page.getByRole('region', { name: 'p1 battlefield' })
+    const theirBoard = page.getByRole('region', { name: 'Opponent battlefield' })
 
     // Both questions are open at once, so both slots' candidates light up. There is no cursor
     // to advance and no order to guess: the bear is in `attackers`, Ajani is in the bear's
@@ -597,7 +597,7 @@ test.describe('declaring combat', () => {
 
     // A permutation is only complete when every item has a place, and where each one sits has
     // to be readable from the control itself.
-    const opponentBoard = page.getByRole('region', { name: 'p1 battlefield' })
+    const opponentBoard = page.getByRole('region', { name: 'Opponent battlefield' })
     await opponentBoard.getByRole('button', { name: /^Onakke Ogre/ }).click()
     await expect(page.getByRole('button', { name: 'Confirm' })).toBeDisabled()
     await opponentBoard.getByRole('button', { name: /^Wall of Vines/ }).click()
@@ -696,7 +696,10 @@ test.describe('a choice the game will not proceed past', () => {
     // Still named for anyone who is not looking at the highlighted trigger.
     await expect(choices).toHaveAttribute('aria-label', /loses 1 life/)
 
-    await page.getByRole('region', { name: 'p1 seat' }).getByRole('button', { name: 'p1' }).click()
+    await page
+      .getByRole('region', { name: 'Opponent seat' })
+      .getByRole('button', { name: 'Opponent' })
+      .click()
     await page.getByRole('button', { name: 'Confirm' }).click()
 
     await expect.poll(() => submissions(sent)).toHaveLength(1)
@@ -775,10 +778,10 @@ test.describe('the table as a composition', () => {
     await serveFrames(page, [fixture('gameview-commander.json')])
     await page.goto('/')
 
-    await expect(page.getByRole('region', { name: /^Bob .* battlefield/ })).toContainText(
+    await expect(page.getByRole('region', { name: /^Bob battlefield/ })).toContainText(
       'Lathliss, Dragon Queen',
     )
-    await expect(page.getByRole('region', { name: /^Random .* battlefield/ })).toContainText(
+    await expect(page.getByRole('region', { name: /^Random battlefield/ })).toContainText(
       'Grizzly Bears',
     )
     // Yours is empty — and the way that is said is by *being* empty. §5: "the sentence goes; the
@@ -792,8 +795,8 @@ test.describe('the table as a composition', () => {
 
     // Each seat's own totals sit with that seat.
     await expect(page.getByRole('region', { name: 'Your seat' })).toContainText('eliminated')
-    await expect(page.getByRole('region', { name: /^Bob .* seat/ })).toContainText('disconnected')
-    await expect(page.getByRole('region', { name: /^Random .* seat/ })).toContainText('AI')
+    await expect(page.getByRole('region', { name: /^Bob seat/ })).toContainText('disconnected')
+    await expect(page.getByRole('region', { name: /^Random seat/ })).toContainText('AI')
   })
 
   test('lays out an empty board as a whole table, not a blank page', async ({ page }) => {
@@ -817,7 +820,7 @@ test.describe('the table as a composition', () => {
     ])
     await page.goto('/')
 
-    for (const name of ['Your seat', 'p2 seat', 'Your battlefield', 'p2 battlefield']) {
+    for (const name of ['Your seat', 'Opponent seat', 'Your battlefield', 'Opponent battlefield']) {
       await expect(page.getByRole('region', { name })).toBeVisible()
     }
     await expect(page.getByRole('region', { name: 'Your hand' })).toContainText('empty')
@@ -851,7 +854,7 @@ test.describe('the table as a composition', () => {
       return rect
     }
     const mine = await box('Your battlefield')
-    const theirs = await box(/^Bob .* battlefield/)
+    const theirs = await box(/^Bob battlefield/)
 
     expect(mine.height).toBeGreaterThan(0)
     expect(Math.abs(mine.height - theirs.height)).toBeLessThanOrEqual(1)
@@ -915,7 +918,7 @@ test.describe('the table as a composition', () => {
     await mine.getByRole('button', { name: 'Exile (1)' }).click()
     await expect(page.getByRole('region', { name: 'Exile' })).toContainText('Path to Exile')
 
-    await expect(page.getByRole('region', { name: 'p2 seat' })).toContainText('Graveyard (1)')
+    await expect(page.getByRole('region', { name: 'Opponent seat' })).toContainText('Graveyard (1)')
   })
 })
 

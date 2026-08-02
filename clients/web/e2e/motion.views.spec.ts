@@ -49,7 +49,7 @@ test.describe('a life total that moved', () => {
     await expect(mySeat(page).getByText('−3')).toBeVisible()
     await expect(mySeat(page).getByText('lost 3 life')).toBeAttached()
 
-    const theirs = page.getByRole('region', { name: 'p2 seat' })
+    const theirs = page.getByRole('region', { name: 'Opponent seat' })
     await expect(theirs.getByText('+2')).toBeVisible()
     await expect(theirs.getByText('gained 2 life')).toBeAttached()
   })
@@ -72,7 +72,7 @@ test.describe('a life total that moved', () => {
     await expect(mySeat(page)).toContainText('20')
     served.push({ ...at(20, 18), turn: 4 })
 
-    await expect(page.getByRole('region', { name: 'p2 seat' }).getByText('−2')).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Opponent seat' }).getByText('−2')).toBeVisible()
     await expect(mySeat(page).locator('.seat__delta')).toHaveCount(0)
   })
 })
