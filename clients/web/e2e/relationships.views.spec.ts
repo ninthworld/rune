@@ -354,6 +354,100 @@ test.describe('a board with relationships to trace', () => {
 })
 
 /**
+ * The board of #674: the same dense fixture with the opponent controlling nothing.
+ *
+ * Every relationship the server stated survives — the Ogre is still attacking Vivien Reid, the
+ * Aura is still attached to Gearsmith Guardian, the equipment ability is still aimed at Air
+ * Elemental — and this view describes none of those objects. That is the case the trail used to
+ * answer with `attacking perm_vivien`, which is a log line under a card and, worse, looks like a
+ * card name to anyone who has not seen the wire (`docs/client-design.md` §9.2).
+ *
+ * The check is a sweep rather than three strings: the forbidden set is read *out of the fixture*,
+ * so an identifier leaking through a surface nobody thought about is caught whatever it is called.
+ */
+test.describe('a board whose other half the view no longer describes', () => {
+  /** Fields that address an object rather than describing one — see `relations.test.ts`. */
+  const ADDRESSES = new Set([
+    'id',
+    'attached_to',
+    'blocking',
+    'attacking_planeswalker',
+    'source',
+    'physical_card',
+  ])
+
+  const objectIds = (value: unknown, into = new Set<string>()): Set<string> => {
+    if (Array.isArray(value)) {
+      for (const item of value) objectIds(item, into)
+      return into
+    }
+    if (value !== null && typeof value === 'object') {
+      for (const [key, entry] of Object.entries(value)) {
+        if (typeof entry === 'string' && ADDRESSES.has(key)) into.add(entry)
+        else objectIds(entry, into)
+      }
+    }
+    return into
+  }
+
+  /** Everything a player can read on this page: the words on it, and the words behind them. */
+  const readable = (page: Page) =>
+    page.evaluate(() => {
+      const parts = [document.body.textContent ?? '']
+      for (const element of document.querySelectorAll('[aria-label]'))
+        parts.push(element.getAttribute('aria-label') ?? '')
+      return parts.join('\n')
+    })
+
+  test('names every end it can, and prints no identifier for the ends it cannot', async ({
+    page,
+  }) => {
+    await page.setViewportSize(DESKTOP)
+    const base = fixture('gameview-board.json')
+    await serveFrames(page, [
+      {
+        ...base,
+        battlefield: (base.battlefield as Record<string, unknown>[]).filter(
+          (permanent) => permanent.controller === 'p1',
+        ),
+      },
+    ])
+    await page.goto('/')
+
+    const mine = page.getByRole('region', { name: 'Your battlefield' })
+    const ogre = mine
+      .getByRole('listitem')
+      .filter({ has: page.getByRole('button', { name: /^Onakke Ogre/ }) })
+
+    // The phrase stays — the attack is a fact the server stated and the trail is its accessible
+    // copy — and there is nothing to click through to, because there is nothing to name.
+    await expect(ogre).toContainText('attacking')
+    await expect(ogre.getByRole('button', { name: /^attacking/ })).toHaveCount(0)
+
+    // And what *can* still be named is still named. The seat is here, so the ability that names
+    // both a vanished permanent and a seat reads as the half that survived.
+    await expect(
+      page
+        .getByRole('region', { name: 'Stack' })
+        .getByRole('button', { name: 'targeting Bo (p2)' })
+        .first(),
+    ).toBeVisible()
+
+    // The dock's fallback controls are the other place an id used to reach a player: this
+    // action's candidates are three permanents the view no longer carries, so every one of them
+    // has to be answered here and none of them can be answered with an id.
+    await page
+      .getByRole('region', { name: 'Your hand' })
+      .getByRole('button', { name: /^Lightning Strike/ })
+      .click()
+    await expect(page.getByRole('region', { name: 'Choices' })).toBeVisible()
+
+    const tokens = new Set((await readable(page)).split(/[^A-Za-z0-9_]+/))
+    expect([...objectIds(base)].filter((id) => tokens.has(id))).toEqual([])
+  })
+})
+
+/**
  * The same board, for a player who has asked their system for less motion.
  *
  * The request is honoured by arriving at the same state instantly rather than by arriving

@@ -68,7 +68,7 @@ import {
   type CardFace,
   type CardFaceLink,
 } from './../card-face'
-import { relationLines, relations } from './../relations'
+import { entityNames, relationLines, relations, UNNAMED } from './../relations'
 import {
   IDLE,
   arm,
@@ -213,18 +213,22 @@ export function Game({
   // stated. Both the trails under the cards and the emphasis on a focused subset read from this
   // one graph, so the board and the stack cannot describe the same edge differently.
   const related = relations(view)
+  // And what to call each of them. Joined from the view's own contents, never resolved
+  // client-side, and never falling back to the id a relationship is addressed by
+  // (`docs/client-design.md` §9.2: no identifier a player has no use for).
+  const names = entityNames(view)
   const handFaces = list(view.my_hand).map(cardFace)
   const revealedFaces = list(view.revealed).map(cardFace)
   const stackEntries = list(view.stack).map((item) => ({
     item,
     face: stackFace(item),
-    lines: relationLines(related, item.id),
+    lines: relationLines(related, item.id, names),
   }))
   const emblemEntries = list(view.emblems).map((emblem) => ({ emblem, face: emblemFace(emblem) }))
   const fieldEntries: readonly FieldEntry[] = list(view.battlefield).map((permanent) => ({
     permanent,
     face: permanentFace(permanent),
-    lines: relationLines(related, permanent.id),
+    lines: relationLines(related, permanent.id, names),
   }))
 
   // One face per card-shaped object on screen, so the hand, the board, the piles, and the
@@ -257,15 +261,6 @@ export function Game({
     ...emblemEntries.map((entry) => entry.face.id),
     ...table.map((seat) => seat.id),
   ])
-
-  // Names for entity ids the surfaces and the dock mention. The server labels players; cards and
-  // permanents are named from the view's own contents, never resolved client-side.
-  const names = new Map<string, string>()
-  for (const face of faces.values()) names.set(face.id, face.name)
-  // The stack's own description, not its card's name: a target on the stack reads better as
-  // "Counterspell targeting Twin Bolt" than as "Counterspell".
-  for (const item of list(view.stack)) names.set(item.id, item.description)
-  for (const seat of table) names.set(seat.id, seat.name)
 
   /** Send one action, and start waiting on the answer. */
   const dispatch = (action: ValidAction, draft: Draft) => {
@@ -454,7 +449,7 @@ export function Game({
       }
     },
     inspect: setInspecting,
-    labelFor: (id: string) => names.get(id) ?? id,
+    labelFor: (id: string) => names.get(id) ?? UNNAMED,
   }
 
   // Opponents across the table, you nearest. With no seat the server named as yours, everyone
@@ -522,7 +517,7 @@ export function Game({
   const seatPanel = (seat: Seat) => (
     <PlayerPanel
       seat={seat}
-      lines={relationLines(related, seat.id)}
+      lines={relationLines(related, seat.id, names)}
       life={moved.life.get(seat.id)}
       folded={collapsed}
       open={browsing?.seat === seat.id ? browsing.zone : undefined}
