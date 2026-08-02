@@ -59,10 +59,12 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   one `scene()` call, and every region placed at the box it returned.
 - `src/pack.ts` — the other half of §5, and pure like the scene: `scene.ts` says how much room a
   field gets, this says what happens to the permanents inside it. **A region is sized by the
-  viewport and a count is absorbed by the cards** — `width = clamp(FLOOR, (W − (N−1)·g)/N, ideal)`,
-  a second line while the row's own height affords one at the same tile size, and overlap after
-  that, fanned so the exposed strip is the name band. Cards never shrink below 72×100; below a
-  100px row they are 96×30 chips (§3, step 6), and the printed 63:88 holds at every size. It reads
+  viewport and a count is absorbed by the cards** — `footprint = clamp(FLOOR, (W − (N−1)·g)/N,
+  ideal)` over the **turned** footprint a tapped permanent needs, charged whether or not anything
+  is tapped (§6); a second line while the row's own height affords one at the same tile size, and
+  overlap after that, fanned so the exposed strip is the name band. Cards never shrink below
+  72×100; below a 100px row they are 96×30 chips (§3, step 6), and the printed 63:88 holds at
+  every size. It reads
   no card and decides no row membership — that is `board.ts`'s answer from the server's
   `card_types`, and the order inside a row is the server's.
 - `src/board.ts` — a battlefield, as rows. Groups permanents into creatures, other permanents,
@@ -202,7 +204,7 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   reconnect and adopting it would discard the token that owns the seat. Leaving a finished game
   is the deliberate opposite: forget the token, and connect as somebody new.
 - `src/ui/` — the screens. The table is drawn: `Card.tsx` is one frame at a printed card's
-  proportions — a name band that owns its row, the cost over the art's corner, an art window, a
+  proportions — a name band the name leads and the cost follows, an art window, a
   type line, a text box, and the stat in the corner — which **measures its own box and asks
   `fit.ts` what goes in it**, so there is no variant for a caller to pass and a battlefield card
   and a hand card of the same size are the same card. Each surface's stylesheet states the box;

@@ -1,7 +1,7 @@
 /* Cards.
 
-   One frame, four presentations, and a real card's anatomy: a name band that owns its row, a cost
-   over the art's corner, an art window that takes what is left, a type line, a text box, and a
+   One frame, four presentations, and a real card's anatomy: a name band the name leads and the
+   cost follows, an art window that takes what is left, a type line, a text box, and a
    stat in the corner — at the proportions a card is actually printed at. What that buys is
    scanning: a board of forty permanents is read by shape, colour, and position long before it is
    read by text, and a grid of same-coloured rectangles gives a player none of those.
