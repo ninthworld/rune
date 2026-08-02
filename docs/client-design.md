@@ -527,8 +527,11 @@ a 100px card spends 45px on `{1}{U}{U}` and leaves 20px for the name.
 
 ### Anatomy, from the top
 
-1. **Name band.** Full width, and it is fitted rather than clipped: shrink toward the 9px floor,
-   then wrap to a second line, and only then abbreviate. **In the hand, a name is never abbreviated
+1. **Name band.** Full width, and it is fitted rather than clipped, by §2's rule: the largest size
+   at which the name fits within the lines the band can afford, one line preferred at equal size,
+   and abbreviation only at the floor. Not *shrink to the floor, then wrap* — an earlier draft said
+   that here, and §2 forbids it in the same breath as stating the rule, because it hands a wider
+   band smaller text than a narrow one. **In the hand, a name is never abbreviated
    at all** — that is where a player chooses, and XMage's hand shows `Simian Spirit Guide` and
    `Temple of Deceit` complete at ~118px wide. On the battlefield an abbreviation must still leave a
    recognisable card: XMage's `Troll Asce` is one, `C…` is not.
@@ -733,8 +736,10 @@ Card text floors lower than chrome text on purpose: a card is read at a glance a
 XMage demonstrates that ~9px is legible for it. Chrome is read across the screen and holds its
 larger floor.
 
-Fitting order is **shrink → wrap → abbreviate**, and the third step is a defect anywhere a player
-chooses from what they are reading.
+What gets sacrificed, in order, is **size → line count → completeness**, and the third is a defect
+anywhere a player chooses from what they are reading. That is an order of sacrifice, not a sequence
+of passes: wrapping is one of the ways text fits at a given size, never a step taken after shrinking
+has run out (§2).
 
 ---
 
