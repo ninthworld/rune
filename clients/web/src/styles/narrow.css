@@ -1,0 +1,178 @@
+/* ---- narrow / phone-ish mode ---- */
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 32px auto minmax(0, 5fr) auto minmax(0, 2fr);
+    grid-template-areas:
+      'topbar'
+      'phasetop'
+      'battlefield'
+      'actionbar'
+      'hand';
+  }
+
+  .phase-bar.phase-top {
+    display: flex;
+    grid-area: phasetop;
+    padding: 4px 8px;
+  }
+
+  .phase-top .phase-pills {
+    margin: 0;
+  }
+
+  /* the prototype's own knobs give up their width first */
+  .topbar {
+    gap: 6px;
+    padding: 0 6px;
+  }
+
+  .seat-step {
+    gap: 2px;
+  }
+
+  .seat-num {
+    min-width: 0;
+    font-size: 10px;
+  }
+
+  .phase-mid {
+    display: none;
+  }
+
+  /* seats stack rather than spread — two across at most */
+  .field-opponents {
+    grid-template-columns: repeat(var(--opp-cols-n), minmax(0, 1fr));
+    grid-template-rows: repeat(var(--opp-rows-n), minmax(0, 1fr));
+  }
+
+  /* the phase bar has moved to the top, so the board is only the stacked
+     opponents and me — keeping its empty track here would auto-place my
+     field into it and leave the last one hoarding height above the hand */
+  .battlefield {
+    grid-template-rows: minmax(0, var(--opp-band-n)) minmax(0, 1fr);
+  }
+
+  .field-mine {
+    border-top: 1px solid #24272e;
+  }
+
+  /* compact player bars: the name goes over the life, and the zones fall
+     into two columns */
+  .player-bar {
+    width: 74px;
+    padding: 5px;
+    gap: 4px;
+  }
+
+  .player-target {
+    flex-wrap: wrap;
+    gap: 0 4px;
+  }
+
+  .player-name {
+    font-size: 11px;
+    flex-basis: 100%;
+  }
+
+  .player-life {
+    font-size: 15px;
+  }
+
+  /* three across on a phone: five zones in two rows rather than three,
+     so the bar still has room for the mana pool under them */
+  .zone-grid {
+    grid-template-columns: repeat(auto-fit, minmax(19px, 1fr));
+    gap: 2px;
+  }
+
+  /* a collapsed seat on a phone is only who it is and what they are on:
+     its zone counts are what the focused seat needs the width for */
+  .opp-focused .field-collapsed .player-bar {
+    width: 54px;
+  }
+
+  .opp-focused .field-collapsed .zone-grid,
+  .opp-focused .field-collapsed .mana-pool {
+    display: none;
+  }
+
+  .glyph {
+    width: 12px;
+    height: 12px;
+  }
+
+  /* hand swipes horizontally */
+  .hand-scroll {
+    justify-content: flex-start;
+  }
+
+  .action-bar {
+    padding: 6px 10px;
+  }
+
+  .action-text {
+    min-width: 0;
+  }
+
+  .action-prompt,
+  .action-phase {
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .action-done {
+    flex-shrink: 0;
+  }
+
+  /* the log column becomes a slide-in overlay */
+  .log {
+    display: flex;
+    position: fixed;
+    top: 32px;
+    right: 0;
+    bottom: 0;
+    width: min(300px, 85vw);
+    z-index: 20;
+    transform: translateX(100%);
+    transition: transform 0.15s ease-out;
+    /* a drawer over the board, so this one is real glass too */
+    background: linear-gradient(180deg, rgba(24, 28, 36, 0.88) 0, rgba(14, 16, 20, 0.9) 56px);
+    backdrop-filter: var(--blur);
+    box-shadow:
+      var(--lit),
+      -10px 0 30px rgba(0, 0, 0, 0.55);
+  }
+
+  .log-open {
+    transform: none;
+  }
+
+  .preview-section {
+    display: none;
+  }
+
+  /* a zone takes the whole phone rather than floating in the middle */
+  .zone-view {
+    padding: 6px;
+  }
+
+  .zone-panel {
+    width: 100%;
+    height: 100%;
+  }
+
+  .zone-body {
+    gap: 8px;
+    padding: 8px;
+  }
+
+  /* the hint takes its own line rather than being squeezed to an ellipsis */
+  .zone-foot {
+    flex-wrap: wrap;
+  }
+
+  .zone-hint {
+    flex-basis: 100%;
+  }
+}

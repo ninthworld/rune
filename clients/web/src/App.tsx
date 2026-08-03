@@ -1,39 +1,43 @@
 /**
- * The root: which contract the server put this connection on, and which destination the player
- * asked for.
+ * The root: which contract the server put this connection on, and the two things that sit over
+ * every screen whatever it is.
  *
- * **Which destination you are on is the client's answer. Which contract you are on is the
- * server's.** That is the whole rule this file implements, and it is the sharper form of "there
- * is no router and no client-held phase". A `GameView` arriving replaces everything below,
- * because the contract changed and the shell is not the table. Choosing Decks replaces nothing,
- * because nothing about the connection changed — a destination is a question about what the
- * player is looking at, never a second opinion about what the server said. Nothing derived from
- * a view is held here; the destination is not derived from a view at all.
+ * **Which screen you are on is the server's answer.** A `GameView` arriving replaces everything
+ * below, because the contract changed. There is no router, no client-held phase, and — since
+ * `docs/client-design.md` §9.0 — no shell either: the topbar of each screen is its navigation,
+ * and settings is a dialog over whatever you were already on, which is that guarantee in its
+ * strongest form.
  *
- * Before either of those there is **connect** (`docs/client-design.md` §9.3): a name, a server,
- * and a gear that reaches settings, so a player arrives at the lobby already being somebody. The
- * socket opens to the resolved address as it always has — the precedence in `socket.ts` is
- * untouched — and the connect screen is what stands in front of the shell until the player has
- * said who they are. **A tab that already holds a session token skips it**, because that tab is
- * already somebody: a reload mid-match must land back in the match, and asking a returning
- * player to re-introduce themselves would be the reconnect failing in a politer way.
+ * Before either contract there is **connect** (§9.3): a name, a server, and a gear, so a player
+ * arrives at the lobby already being somebody. The socket opens to the resolved address as it
+ * always has — the precedence in `socket.ts` is untouched — and the connect screen is what stands
+ * in front of the lobby until the player has said who they are. **A tab that already holds a
+ * session token skips it**, because that tab is already somebody: a reload mid-match must land
+ * back in the match, and asking a returning player to re-introduce themselves would be the
+ * reconnect failing in a politer way.
  *
  * A dropped connection changes none of it. The session reconnects on its own and the server
  * holds the seat open, so a game already on screen stays on screen with the last view the server
  * sent; the banner says the connection is down, and the view is replaced the moment a real one
  * arrives. Blanking the board would throw away the only accurate picture the player has and
  * teach them to reload, which is the one thing reconnection exists to stop.
+ *
+ * Three things are mounted here rather than per screen, because a card is a card everywhere: the
+ * pip gradients every pip on the page points at, the press-to-read gesture, and the card it
+ * opens.
  */
 import { useCallback, useState } from 'react'
 
+import type { CardFace } from './card-face'
 import { initialAddress, readConnection, writeConnection } from './connect'
 import { list } from './normalize'
-import type { Destination } from './shell'
-import { Game } from './ui/Game'
-import { Lobby } from './ui/Lobby'
+import { Board } from './ui/game/Board'
 import { Connect } from './ui/Connect'
-import { Shell } from './ui/shell/Shell'
-import { SettingsScreen } from './ui/shell/SettingsScreen'
+import { Pregame } from './ui/pregame/Pregame'
+import { Settings } from './ui/Settings'
+import { Card } from './ui/card/Card'
+import { PipDefs } from './ui/card/Pips'
+import { PeekContext } from './ui/card/peek'
 import { heldSession, useSession } from './useSession'
 
 /** Absent in a browser with storage disabled, which is a normal way to run. */
@@ -50,14 +54,13 @@ export function App() {
   const [name, setName] = useState(() => readConnection(deviceStorage()).name)
   // A tab holding a token is a tab that has already introduced itself.
   const [connected, setConnected] = useState(() => heldSession() !== undefined)
-  const [destination, setDestination] = useState<Destination>('play')
-  // Settings before there is a rail to reach it by. It is the same screen either way.
-  const [settingsFromConnect, setSettingsFromConnect] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [peeked, setPeeked] = useState<CardFace | undefined>(undefined)
 
   const session = useSession(address)
 
   // A game view is the server saying this connection is seated. Whoever it belongs to has
-  // plainly already connected, so leaving that game returns them to the shell rather than to a
+  // plainly already connected, so leaving that game returns them to the lobby rather than to a
   // screen asking them to introduce themselves to the server they are still talking to. Set
   // during render rather than in an effect: it is state adjusted from what just arrived, and an
   // effect would draw the connect screen for one frame first.
@@ -68,37 +71,11 @@ export function App() {
     setName(chosen)
     setAddress(chosenAddress)
     setConnected(true)
-    setSettingsFromConnect(false)
   }, [])
 
-  const rename = useCallback((next: string) => {
-    writeConnection(deviceStorage(), { name: next, server: initialAddress(deviceStorage()) })
-    setName(next)
-  }, [])
-
-  // The contract in force outranks everything: a game view is the server saying this socket is
-  // no longer speaking the lobby's language.
-  if (session.game) {
-    return (
-      <main>
-        <Game
-          view={session.game}
-          connection={session.status}
-          epoch={session.epoch}
-          send={session.send}
-          leave={session.restart}
-        />
-      </main>
-    )
-  }
-
-  if (session.spectator) {
-    return (
-      <main>
-        <p>Watching — the spectator screen is not built yet.</p>
-      </main>
-    )
-  }
+  const settings = settingsOpen && (
+    <Settings cards={list(session.catalog?.cards)} onClose={() => setSettingsOpen(false)} />
+  )
 
   const notices = (
     <>
@@ -116,50 +93,57 @@ export function App() {
     </>
   )
 
-  return (
-    <main>
-      <div className="app">
-        {notices}
-        {!connected ? (
-          settingsFromConnect ? (
-            <SettingsScreen onBack={() => setSettingsFromConnect(false)} />
-          ) : (
-            <Connect
-              name={name}
-              address={address}
-              status={session.status}
-              onConnect={enter}
-              onSettings={() => setSettingsFromConnect(true)}
-            />
-          )
-        ) : (
-          <Shell
-            destination={destination}
-            onDestination={setDestination}
-            identity={session.lobby?.name ?? (name || session.lobby?.you) ?? '…'}
-          >
-            {destination === 'settings' ? (
-              <SettingsScreen
-                name={session.lobby?.name ?? name}
-                {...(list(session.lobby?.valid_commands).includes('set_name')
-                  ? { onName: rename }
-                  : {})}
-              />
-            ) : (
-              <Lobby
-                view={session.lobby}
-                catalog={session.catalog}
-                error={session.lobbyError}
-                epoch={session.epoch}
-                name={name}
-                destination={destination}
-                onDestination={setDestination}
-                send={session.send}
-              />
-            )}
-          </Shell>
-        )}
+  const screen = session.game ? (
+    <Board
+      view={session.game}
+      connection={session.status}
+      epoch={session.epoch}
+      send={session.send}
+      leave={session.restart}
+      onSettings={() => setSettingsOpen(true)}
+    />
+  ) : session.spectator ? (
+    <div className="lobby">
+      <div className="lobby-main">
+        <div className="zone-empty">Watching — the spectator screen is not built yet.</div>
       </div>
-    </main>
+    </div>
+  ) : !connected ? (
+    <Connect
+      name={name}
+      address={address}
+      status={session.status}
+      onConnect={enter}
+      onSettings={() => setSettingsOpen(true)}
+    />
+  ) : (
+    <Pregame
+      {...(session.lobby === undefined ? {} : { view: session.lobby })}
+      {...(session.catalog === undefined ? {} : { catalog: session.catalog })}
+      {...(session.lobbyError === undefined ? {} : { error: session.lobbyError })}
+      epoch={session.epoch}
+      name={session.lobby?.name ?? name}
+      server={address}
+      onSettings={() => setSettingsOpen(true)}
+      onDisconnect={() => {
+        setConnected(false)
+        session.restart()
+      }}
+      send={session.send}
+    />
+  )
+
+  return (
+    <PeekContext.Provider value={setPeeked}>
+      {screen}
+      {notices}
+      {settings}
+      {peeked && (
+        <div className="peek" onClick={() => setPeeked(undefined)}>
+          <Card face={peeked} />
+        </div>
+      )}
+      <PipDefs />
+    </PeekContext.Provider>
   )
 }

@@ -1,0 +1,209 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: #16181c;
+  color: #d6d8dc;
+  font-family: system-ui, sans-serif;
+  overflow: hidden;
+}
+
+/* The chrome's material — the targeting arrow's construction at panel
+   scale. Every pane is a tinted surface lit along its top edge, the tint
+   falling away below it, casting onto whatever it sits over. The light
+   comes from above and only from above: that is what makes a run of
+   unrelated bars read as one material rather than as seven boxes.
+
+   The falloff is in px rather than %, so a 32px top bar and a full-height
+   sidebar are lit the same amount and a tall pane doesn't wash out. */
+:root {
+  /* the flat run past the falloff has to stay darker than the table, or a
+     tall pane stops reading as a pane below its own lit edge */
+  --pane: linear-gradient(180deg, #1c212b 0, #101319 64px);
+  --pane-deep: linear-gradient(180deg, #171b23 0, #0b0d11 64px);
+  --pane-btn: linear-gradient(180deg, #232833 0, #1a1e26 100%);
+  --pane-btn-hi: linear-gradient(180deg, #2c323e 0, #22262f 100%);
+  /* a recess rather than a pane: mana pools, the helper strip */
+  --well: rgba(0, 0, 0, 0.26);
+  --well-lit: inset 0 1px 3px rgba(0, 0, 0, 0.55);
+  --line: #2c313b;
+  --line-soft: #24272e;
+  --lit: inset 0 1px 0 rgba(214, 226, 244, 0.08);
+  --lit-btn: inset 0 1px 0 rgba(214, 226, 244, 0.07);
+  --cast-down: 0 6px 18px -6px rgba(0, 0, 0, 0.66);
+  --cast-up: 0 -6px 18px -6px rgba(0, 0, 0, 0.6);
+  --cast-right: 6px 0 18px -6px rgba(0, 0, 0, 0.55);
+  --cast-left: -6px 0 18px -6px rgba(0, 0, 0, 0.55);
+  --cast-btn: 0 1px 2px rgba(0, 0, 0, 0.45);
+  /* only where something actually passes behind */
+  --blur: blur(16px) saturate(135%);
+}
+
+/* first in the DOM, so it needs a layer of its own to cast onto the
+   board rather than being painted over by it */
+.topbar {
+  grid-area: topbar;
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 0 10px;
+  background: var(--pane-deep);
+  border-bottom: 1px solid var(--line-soft);
+  box-shadow: var(--lit), var(--cast-down);
+}
+
+.settings-btn {
+  background: none;
+  border: none;
+  color: #8b8f98;
+  font-size: 18px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.settings-btn:hover {
+  color: #d6d8dc;
+}
+
+.menu-btn {
+  background: none;
+  border: none;
+  color: #8b8f98;
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.topbar-fill {
+  flex: 1;
+}
+
+/* player-count stepper — a prototype knob, not a game control */
+.seat-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.step-btn {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  background: var(--pane-btn);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: var(--lit-btn), var(--cast-btn);
+  color: #a8acb4;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.step-btn:hover:not(:disabled) {
+  background: var(--pane-btn-hi);
+  color: #d6d8dc;
+}
+
+.step-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.seat-num {
+  min-width: 62px;
+  text-align: center;
+  white-space: nowrap;
+  font-size: 11px;
+  color: #8b8f98;
+}
+
+/* a segmented switch — one control, one choice of three */
+.seg {
+  display: flex;
+  flex: none;
+  background: var(--pane-btn);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  box-shadow: var(--lit-btn), var(--cast-btn);
+  overflow: hidden;
+}
+
+.seg-btn {
+  padding: 3px 9px;
+  background: none;
+  border: none;
+  color: #a8acb4;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.seg-btn + .seg-btn {
+  border-left: 1px solid var(--line);
+}
+
+.seg-btn:hover {
+  color: #d6d8dc;
+}
+
+.seg-on {
+  background: linear-gradient(180deg, #1b3454 0, #14263e 100%);
+  box-shadow: inset 0 1px 0 rgba(207, 224, 244, 0.14);
+  color: #cfe0f4;
+}
+
+.view-btn {
+  white-space: nowrap;
+  background: var(--pane-btn);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: var(--lit-btn), var(--cast-btn);
+  color: #a8acb4;
+  font-size: 11px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.view-btn:hover {
+  background: var(--pane-btn-hi);
+  color: #d6d8dc;
+}
+
+/* the topbar of a screen that has nowhere to go: connect, which carries
+   only the gear */
+.bare-topbar {
+  flex: none;
+  height: 32px;
+  justify-content: flex-start;
+}
+
+/* Something about the connection rather than about the game: laid over whatever screen is on,
+   at the top edge, because it is true of all of them. */
+.notice {
+  position: fixed;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  max-width: min(520px, calc(100vw - 24px));
+  padding: 6px 14px;
+  background: var(--pane-deep);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: var(--lit), var(--cast-down);
+  font-size: 11px;
+  color: #b9bec7;
+  text-align: center;
+}

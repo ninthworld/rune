@@ -36,6 +36,36 @@
 import { focus, owedActions, type Interaction, type Slot } from './interaction'
 import type { GameResult, ValidAction } from './protocol'
 
+/**
+ * The tone the action bar is tinted in: **where in the turn you are**, never how urgent the ask
+ * is (`docs/client-design.md` §6.5).
+ *
+ * Green for the turn's bookends, blue while you may cast at will, red once combat is live and the
+ * choice costs something. A step this build does not recognise is green, because the bookends are
+ * where an unknown step most likely belongs and a wrong red is the expensive direction to be
+ * wrong in.
+ *
+ * The distinction the tone used to carry — what the controls are currently *for* — is still drawn
+ * and still `dockTone` below; it is drawn in the **words**. What colour is for is telling a player
+ * at a glance that the game has moved somewhere different, and tying it to the turn means the bar
+ * changes when the situation does rather than flickering between two shades of "asking" inside one
+ * step.
+ */
+export type BarTone = 'green' | 'blue' | 'red'
+
+const BAR_TONES: Record<string, BarTone> = {
+  precombat_main: 'blue',
+  postcombat_main: 'blue',
+  begin_combat: 'red',
+  declare_attackers: 'red',
+  declare_blockers: 'red',
+  combat_damage: 'red',
+  end_combat: 'red',
+}
+
+export const barTone = (phase: string | undefined): BarTone =>
+  (phase === undefined ? undefined : BAR_TONES[phase]) ?? 'green'
+
 export type DockTone = 'over' | 'confirm' | 'sent' | 'asking' | 'yours' | 'waiting'
 
 export function dockTone(

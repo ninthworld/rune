@@ -21,15 +21,22 @@
 export type ArtSourceId = 'procedural' | 'scryfall'
 
 /**
- * How a resolved image is presented.
+ * How much of a card's face is ours (`docs/client-design.md` §6, §9.6).
  *
+ * - `frame`: the card is entirely SAGE's and nothing is fetched at all. The art window is a
+ *   field tinted by the printed cost — which is what the design settled on in place of the
+ *   procedural composition an earlier draft drew there.
  * - `window`: only the illustration is drawn, inside SAGE's own frame. The name band, the pips,
  *   the type line, and the stat are still SAGE's.
  * - `full`: the whole card image is the face. The printed text is suppressed because it is on
  *   the image — but every server-computed overlay stays on top of it, so a buffed 4/4 never
  *   reads as its printed 2/2.
+ *
+ * The style and the source govern each other, and the rule is §9.6's: turning the source off
+ * returns the style to `frame`, because the two faces that need pictures cannot be drawn without
+ * one.
  */
-export type ArtStyle = 'window' | 'full'
+export type ArtStyle = 'frame' | 'window' | 'full'
 
 export interface ArtPreference {
   source: ArtSourceId
@@ -37,7 +44,7 @@ export interface ArtPreference {
 }
 
 /** What a device with no stored preference has: nothing downloads, and offline play is normal. */
-export const DEFAULT_ART: ArtPreference = { source: 'procedural', style: 'window' }
+export const DEFAULT_ART: ArtPreference = { source: 'procedural', style: 'frame' }
 
 const KEY = 'sage.art.preference.v1'
 
@@ -56,7 +63,7 @@ export function readArtPreference(storage: Storage | undefined): ArtPreference {
     const stored = raw as Partial<ArtPreference>
     return {
       source: stored.source === 'scryfall' ? 'scryfall' : 'procedural',
-      style: stored.style === 'full' ? 'full' : 'window',
+      style: stored.style === 'full' ? 'full' : stored.style === 'window' ? 'window' : 'frame',
     }
   } catch {
     return DEFAULT_ART

@@ -1,202 +1,37 @@
-/* The page, in seven files.
+/* The page, in ten files.
 
-   Split along the surfaces it dresses rather than by property: this file is the page itself —
-   the reset, the type scale, the shared tokens, and the handful of primitives every screen
-   shares — and each import below dresses one surface. `game.css` is the table's own geometry and
-   the regions in it; `dock.css` and `side.css` are the two surfaces that had grown large enough
-   inside it to be their own files. `shell.css` is the client shell — connect, the rail, the
-   content region, and the controls those are made of — and `lobby.css` is the pre-game surfaces
-   inside it, split for the same reason.
+   Split along the surfaces it dresses rather than by property, and every rule in them is the
+   prototype's — the sandbox `docs/client-design.md` describes, which is the authority above the
+   document. This file is the page itself: the imports, and the one declaration that is about
+   the document rather than about any surface.
+
+   `material.css` is §5.5 — the panes, the recesses, and the buttons every screen is built out
+   of — and it comes first because everything else is drawn on top of it. Then the card
+   (`cards.css`, §6), the table (`board.css`), one file per pre-game screen (`connect`, `lobby`,
+   `room`, `settings`, `deck`), one for the three surfaces that layer over any of them
+   (`overlay.css`: a pile, an arrow, a held card), and `narrow.css` last, because the
+   phone-sized board is the same rules with less room and it has to win over the ones above it.
 
    The imports come first, as the cascade requires, so a later rule in this file wins over the
    same specificity in one of them. */
+@import './styles/material.css';
 @import './styles/cards.css';
-@import './styles/game.css';
-@import './styles/dock.css';
-@import './styles/side.css';
-@import './styles/shell.css';
+@import './styles/board.css';
+@import './styles/connect.css';
 @import './styles/lobby.css';
+@import './styles/room.css';
+@import './styles/settings.css';
+@import './styles/deck.css';
+@import './styles/overlay.css';
+@import './styles/narrow.css';
 
+/* The table is dark, and says so rather than following the system.
+
+   A card is an object lying on a surface: it needs a surface darker than itself to lie on, it
+   carries its own colour, and card art is made for a dark ground. A page that flipped to white
+   would not be the same design with different values — it would be a different design, and
+   maintaining both is how neither gets good. Declaring the scheme is what keeps the system
+   colours (form controls, scrollbars, focus rings) in step with it. */
 :root {
-  /* The table is dark, and says so rather than following the system.
-     A card is an object lying on a surface: it needs a surface darker than itself to lie on,
-     it carries its own colour, and card art is made for a dark ground. A page that flipped to
-     white would not be the same design with different values — it would be a different design,
-     and maintaining both is how neither gets good. Declaring the scheme is what keeps the
-     system colours (`Canvas`, `CanvasText`, form controls, scrollbars) in step with it, so
-     nothing has to be repainted by hand. */
   color-scheme: dark;
-  font-family: system-ui, sans-serif;
-  line-height: 1.4;
-}
-
-/* The tokens.
-
-   Every colour and every card measurement the client draws with lives here, once. Two reasons
-   it is a palette rather than values at the point of use: the same card is drawn by five
-   different surfaces and must be washed identically by all of them, and a page that respects
-   `color-scheme: light dark` needs its own hues to sit against either `Canvas` — which they do
-   because each one is mixed *with* `Canvas` at the point it is painted, never pasted over it.
-
-   The mana hues are the project's own approximations of the five colours as players name them.
-   No official symbol, frame, or palette is reproduced; a pip is a disc, a letter, and CSS. */
-:root {
-  --mana-w: #e8dfbe;
-  --mana-w-ink: #23201a;
-  --mana-u: #3a86bd;
-  --mana-u-ink: #f3f8fc;
-  --mana-b: #4a4551;
-  --mana-b-ink: #f1eef4;
-  --mana-r: #cd5341;
-  --mana-r-ink: #fdf2ef;
-  --mana-g: #3f915a;
-  --mana-g-ink: #f0f8f2;
-  --mana-c: #aaa398;
-  --mana-c-ink: #23201a;
-  --mana-gold: #c6a244;
-  --mana-gold-ink: #23201a;
-
-  /* The hand's card width; its height follows from the printed 63:88, so a card is a card at
-     whatever size the surface can afford.
-
-     It is the **smaller** of a comfortable reading size and a share of the viewport's height,
-     and the second half is what stops the layout falling apart. A card's height is what it costs
-     the screen — the hand and the two halves of the board are stacked, and they are competing
-     for one viewport. Sized in `rem` alone, zooming in grows every card while the viewport it
-     has to fit in does not, so the hand eats the board and the lands scroll out from under it.
-     Sized against `vh` as well, a card gives ground when there is less screen to have: it stays
-     as large as it can be and no larger. It is floored at the 100px box `docs/client-design.md`
-     §5 states for a hand card, below which a frame is not a smaller card but an unreadable one.
-
-     There is no width here for a permanent any more, and its absence is the point: the
-     battlefield's tiles come from `pack.ts`, which is handed the field's own box and the number
-     of permanents in it. A token in a stylesheet cannot know either, which is why a board of
-     four permanents left 500px of gap and a board of fifteen ran off the bottom of the same
-     field. */
-  --card-hand-w: clamp(6.25rem, 13vh, 8.6rem);
-  --card-hand-h: calc(var(--card-hand-w) * 88 / 63);
-
-  /* How long the mark that says a permanent tapped takes to come up, and the curve it comes up
-     on (`cards.css`). Half a second, because it is the one thing on the board that reports an
-     event rather than a state: a card is drawn already tapped when a player arrives at the
-     board, and *taps* in front of them when it happens. */
-  --tap-duration: 500ms;
-  --tap-easing: cubic-bezier(0.2, 0.7, 0.3, 1);
-
-  /* How long the lines across the board take to come up under the pointer. Short, because it
-     follows the *look*: a player moving down a row of blockers is asking a question per card,
-     and a fade they have to wait out is a fade that answers the previous one. */
-  --trace-duration: 120ms;
-
-  /* The table itself.
-
-     Three depths, and the order matters: the felt is furthest back, a seat's half of the board
-     sits on it, and a card sits on that. Each step is a small lift rather than a border,
-     because a board that separates its regions with lines reads as a form and a board that
-     separates them with depth reads as a table. */
-  --felt: #101416;
-  --board: #171c20;
-  --board-you: #232c36;
-  --panel: #232a30;
-  --line: #ffffff1f;
-  --ink: #e9e7e3;
-  --ink-dim: #e9e7e399;
-  --ink-faint: #e9e7e366;
-  /* The one saturated colour in the chrome, spent only on "the game is waiting for you". */
-  --accent: #e0b64a;
-
-  /* What the controls are currently for (`dock.ts`), as colour. Six states a player learns in
-     one game, each also stated in words on the same band — a colour is a shortcut to something
-     already written, never the only copy of it. Kept far enough apart in hue *and* lightness
-     that they survive the common colour-vision deficiencies, which red-and-green alone do not. */
-  --tone-yours: #4f9d61;
-  --tone-asking: #4a8fc2;
-  --tone-sent: #b08a3c;
-  --tone-confirm: #c8503c;
-  --tone-waiting: #5b6670;
-  --tone-over: #7a6f86;
-
-  /* A type scale, because the loudest problem with a screen where everything is 0.7rem is that
-     nothing is. Sizes are named for the job, not the number.
-
-     `xs` is the chrome floor and is 11px exactly (§7), not a hair under it: at 0.66rem it drew
-     at 10.56px, which is below the floor everywhere it was used — the seat's mana pool, the zone
-     counts, the settle's path. Card text floors lower, at 9px, and gets there through `fit.ts`
-     rather than through this scale, because a card's type is *computed* against the box it is
-     drawn in and chrome's is not. */
-  --text-xs: 0.6875rem;
-  --text-sm: 0.76rem;
-  --text-md: 0.88rem;
-  --text-lg: 1.1rem;
-  --text-xl: 1.5rem;
-}
-
-/* Motion is the one thing here that is not decoration: it says a permanent tapped. Honour the
-   request to do without it by arriving at the same state instantly rather than not at all. */
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --tap-duration: 1ms;
-    --trace-duration: 1ms;
-  }
-}
-
-body {
-  margin: 0;
-  padding: 1.5rem;
-  background: var(--felt);
-  color: var(--ink);
-}
-
-main {
-  max-width: 70rem;
-  margin: 0 auto;
-}
-
-h1 {
-  font-size: 1.4rem;
-}
-
-h2 {
-  font-size: 1.1rem;
-  margin-block: 1.25rem 0.35rem;
-}
-
-h3 {
-  font-size: 0.95rem;
-  margin-block: 0.75rem 0.25rem;
-}
-
-section {
-  border-top: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-}
-
-ul,
-ol {
-  margin-block: 0.25rem;
-  padding-inline-start: 1.5rem;
-}
-
-p {
-  margin-block: 0.35rem;
-}
-
-.notice {
-  border: 1px solid currentColor;
-  padding: 0.5rem 0.75rem;
-  margin-block: 0.75rem;
-}
-
-button,
-input,
-select {
-  font: inherit;
-}
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
 }

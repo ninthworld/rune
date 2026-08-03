@@ -1,0 +1,507 @@
+/**
+ * The card: one drawing, in its own 207×291 grid, at every size it is ever asked for.
+ *
+ * `docs/client-design.md` §6. There is **one presentation** — a card in a hand, a permanent on a
+ * battlefield, a thumbnail beside a stack item, and the preview at the side of the board are the
+ * same SVG scaled, and the surface's stylesheet is what states the box. Nothing here reads how
+ * big it ended up on screen, and there is no variant for a caller to pass.
+ *
+ * That works because every run of text is fitted *in the card's own grid*: inside each
+ * `foreignObject` one CSS pixel is one reference pixel, so the same "9px" line is 18 device
+ * pixels in the preview and 3 on a board card. Each run picks the largest size that fits its box
+ * by bisection — the title and type line only ever shrink, because they must clear the mana pips
+ * and their bars are a fixed height, while the rules text has no design size at all and is
+ * simply set as large as its box will take. Two words of reminder text therefore fill the same
+ * field a paragraph needs, and no card carries a half-empty text box.
+ *
+ * The frame is drawn under the same light as the chrome (§5.5): what is raised off the ivory
+ * slab — the title bar, the type bar, the stat plaque — is lit along its top edge, and what is
+ * sunk into it — the art window, the text field — is shadowed along the same one.
+ *
+ * **Everything drawn here was stated by the server.** The face comes from `card-face.ts`, the
+ * pips from the cost string `mana.ts` tokenized, and the counters, damage and markers from the
+ * view. This file decides no rule: the tint is the colours of the printed pips and nothing more
+ * (`mana.ts`), and a card with no rules text is drawn with an empty field rather than a
+ * placeholder, because the client cannot tell "no abilities" from "not sent".
+ */
+import {
+  useId,
+  useLayoutEffect,
+  useRef,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
+} from 'react'
+
+import type { CardFace, CardFaceLink, CardFaceState } from './../../card-face'
+import { faceSummary } from './../../card-face'
+import { costTint, inlineSymbols, manaSymbols, spokenSymbol } from './../../mana'
+import { useCardArt } from './../art'
+import { Pip } from './Pips'
+import { PEEK_MS, PEEK_SLOP, usePeek } from './peek'
+
+/**
+ * Rules text: paragraphs split on newlines, `{X}` tokens drawn as the pips they name, and a lone
+ * keyword line set bold — the wording is the server's, byte for byte, and only the parts between
+ * braces change (`mana.ts`).
+ */
+function RulesText({ text }: { text: string }) {
+  return (
+    <>
+      {text.split('\n').map((para, index) => {
+        const bare = para.replace(/\{[^}]+\}/g, '').trim()
+        const keyword = !bare.includes(' ')
+        return (
+          <p key={index} className={keyword ? 'c-kw' : undefined}>
+            {inlineSymbols(para).map((token, i) =>
+              token.kind === 'symbol' ? (
+                <Pip
+                  key={i}
+                  symbol={token.symbol.glyph}
+                  label={spokenSymbol(token.symbol)}
+                  inline
+                />
+              ) : (
+                <span key={i}>{token.text}</span>
+              ),
+            )}
+          </p>
+        )
+      })}
+    </>
+  )
+}
+
+/**
+ * The one dial: the point past which body text stops being body text, for the card that has two
+ * words to say. Everything else fits between a floor and its own ceiling.
+ */
+const RULES_MAX = 22
+/** The stat is the number the game is played on, so it takes the whole plaque until it cannot. */
+const PT_SIZE = 20
+const STEPS = 7
+
+const tooWide = (el: HTMLElement) => el.scrollWidth > el.clientWidth
+const tooBig = (el: HTMLElement) =>
+  el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth
+
+function fit(
+  ref: RefObject<HTMLElement | null>,
+  hi: number,
+  lo: number,
+  overflows: (el: HTMLElement) => boolean,
+): void {
+  const el = ref.current
+  if (!el) return
+  el.style.fontSize = `${hi}px`
+  if (!overflows(el)) return
+  let fits = lo
+  let over = hi
+  for (let i = 0; i < STEPS; i += 1) {
+    const mid = (fits + over) / 2
+    el.style.fontSize = `${mid}px`
+    if (overflows(el)) over = mid
+    else fits = mid
+  }
+  el.style.fontSize = `${fits}px`
+}
+
+/**
+ * A bar is a sharp-edged rectangle whose short ends are circular arcs bulging outward by `b`;
+ * the arc meets the straight edges at hard corners — this is not a `border-radius`.
+ */
+function barPath(w: number, h: number, b: number): string {
+  const x0 = b
+  const x1 = w - b
+  const chord = h - 1
+  const r = (chord * chord) / (8 * b) + b / 2
+  return (
+    `M ${x0} 0.5 L ${x1} 0.5 A ${r} ${r} 0 0 1 ${x1} ${h - 0.5} ` +
+    `L ${x0} ${h - 0.5} A ${r} ${r} 0 0 1 ${x0} 0.5 Z`
+  )
+}
+
+/**
+ * The ivory slab: gently rounded on top, rounded bottom corners ending high above the card
+ * bottom; the text box overhangs it into the dark.
+ */
+const SLAB =
+  'M 9 7 H 197 A 2 2 0 0 1 199 9 V 250 A 8 8 0 0 1 191 258 ' +
+  'H 15 A 8 8 0 0 1 7 250 V 9 A 2 2 0 0 1 9 7 Z'
+
+const TITLE = barPath(183, 16.5, 2.5)
+const TYPE = barPath(183, 17, 2.5)
+const PT_OUTER = barPath(63, 30, 3)
+const PT_INNER = barPath(58, 25, 2.5)
+
+/** The tint class the frame is washed in — the colours of the pips that were printed. */
+const TINT: Record<string, string> = {
+  w: 'card-w',
+  u: 'card-u',
+  b: 'card-b',
+  r: 'card-r',
+  g: 'card-g',
+  multicolor: 'card-gold',
+  colorless: 'card-c',
+}
+
+export function Card({
+  face,
+  style,
+  anchor,
+  state,
+  link,
+  onTrace,
+  onActivate,
+  onInspect,
+  /** Drawn over whatever face is underneath: true of the permanent, not printed on the card. */
+  overlay = true,
+}: {
+  face: CardFace
+  style?: CSSProperties
+  /** What a targeting arrow aims at, when this card is one of its ends. */
+  anchor?: string
+  state?: CardFaceState
+  link?: CardFaceLink
+  onTrace?(id: string | undefined): void
+  onActivate?(id: string): void
+  onInspect?(id: string): void
+  overlay?: boolean
+}) {
+  const uid = useId()
+  const peek = usePeek()
+  const art = useCardArt(face)
+  const cost = manaSymbols(face.manaCost)
+  const held = useRef<{ timer: number; x: number; y: number } | null>(null)
+
+  // Holding a card opens it big enough to read. The pointer's hover answers this on a desktop,
+  // but a finger has no hover — so the gesture is a press, and it is the same one everywhere.
+  const startHold = (event: ReactPointerEvent) => {
+    if (!peek || event.button !== 0) return
+    held.current = {
+      timer: window.setTimeout(() => peek(face), PEEK_MS),
+      x: event.clientX,
+      y: event.clientY,
+    }
+  }
+  const endHold = () => {
+    if (held.current) window.clearTimeout(held.current.timer)
+    held.current = null
+  }
+  const moveHold = (event: ReactPointerEvent) => {
+    const at = held.current
+    if (!at) return
+    if (Math.hypot(event.clientX - at.x, event.clientY - at.y) > PEEK_SLOP) endHold()
+  }
+
+  const nameRef = useRef<HTMLSpanElement>(null)
+  const typeRef = useRef<HTMLSpanElement>(null)
+  const textRef = useRef<HTMLDivElement>(null)
+  const ptRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    fit(nameRef, 10, 6, tooWide)
+    fit(typeRef, 8.5, 5.5, tooWide)
+    fit(textRef, RULES_MAX, 4.5, tooBig)
+    fit(ptRef, PT_SIZE, 7, tooWide)
+  })
+
+  const interactive = onActivate !== undefined
+  const shell = {
+    className: [
+      'card',
+      TINT[costTint(face.manaCost)] ?? 'card-c',
+      state && state !== 'idle' ? `card-${state}` : '',
+      link ? `card-${link}` : '',
+      interactive ? 'card-live' : '',
+    ]
+      .filter(Boolean)
+      .join(' '),
+    viewBox: '0 0 207 291',
+    style,
+    'data-anchor': anchor,
+    'data-card': face.id,
+    role: interactive ? 'button' : 'img',
+    tabIndex: interactive ? 0 : undefined,
+    'aria-label': faceSummary(face),
+    'aria-pressed': state === 'selected' ? true : undefined,
+    onMouseEnter: onTrace && (() => onTrace(face.id)),
+    onMouseLeave: onTrace && (() => onTrace(undefined)),
+    onClick: onActivate && (() => onActivate(face.id)),
+    onKeyDown:
+      onActivate &&
+      ((event: React.KeyboardEvent) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        onActivate(face.id)
+      }),
+    onPointerDown: startHold,
+    onPointerMove: moveHold,
+    onPointerUp: endHold,
+    onPointerCancel: endHold,
+    onPointerLeave: endHold,
+    // Right-click reads. It is the one gesture with no keyboard equivalent, which is why the
+    // click is left free to act.
+    onContextMenu: (event: ReactMouseEvent) => {
+      if (!onInspect && !peek) return
+      event.preventDefault()
+      if (onInspect) onInspect(face.id)
+      else if (peek) peek(face)
+    },
+  }
+
+  /* What is on the permanent rather than printed on the card. There are a great many kinds of
+     counter and no chance of drawing a mark for each, so a counter is a label and a count in a
+     plain dark pill — one shape any kind fits, named the way the server names it. Damage and the
+     server's markers wear the same pill, because they are the same kind of fact. */
+  const pills = [
+    ...face.counters.map((counter) => ({
+      key: `counter:${counter.kind}`,
+      text: counter.kind,
+      count: counter.count > 1 ? `×${counter.count}` : null,
+    })),
+    ...(face.damage === undefined
+      ? []
+      : [{ key: 'damage', text: 'damage', count: `${face.damage}` }]),
+    ...face.markers.map((marker) => ({ key: `marker:${marker}`, text: marker, count: null })),
+  ]
+
+  const overlays = overlay && pills.length > 0 && (
+    <foreignObject x="18" y="133" width="170" height="24">
+      <div className="c-counters">
+        {pills.map((pill) => (
+          <span key={pill.key} className="c-ct">
+            {pill.text}
+            {pill.count && <b>{pill.count}</b>}
+          </span>
+        ))}
+      </div>
+    </foreignObject>
+  )
+
+  /* The printed card, whole: none of the frame below is drawn, because none of it is ours in
+     this view (§6, and ADR 0012's opt-in pipeline). */
+  if (art?.style === 'full') {
+    return (
+      <svg {...shell}>
+        <defs>
+          <clipPath id={`${uid}-round`}>
+            <rect x="0" y="0" width="207" height="291" rx="7" />
+          </clipPath>
+        </defs>
+        <image
+          href={art.url}
+          x="0"
+          y="0"
+          width="207"
+          height="291"
+          preserveAspectRatio="xMidYMid slice"
+          clipPath={`url(#${uid}-round)`}
+        />
+        {overlays}
+      </svg>
+    )
+  }
+
+  return (
+    <svg {...shell}>
+      <defs>
+        <linearGradient id={`${uid}-slab`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" style={{ stopColor: 'var(--panel)' }} />
+          <stop offset="60%" style={{ stopColor: 'var(--panel)' }} />
+          <stop offset="100%" style={{ stopColor: 'var(--panel-deep)' }} />
+        </linearGradient>
+        <clipPath id={`${uid}-tb`}>
+          <path d={TITLE} />
+        </clipPath>
+        <clipPath id={`${uid}-ty`}>
+          <path d={TYPE} />
+        </clipPath>
+        <filter id={`${uid}-sh`} x="-30%" y="-30%" width="160%" height="160%">
+          <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" floodOpacity="0.55" />
+        </filter>
+
+        <linearGradient id={`${uid}-bar`} x1="0" y1="0" x2="0" y2="1">
+          <stop
+            offset="0%"
+            style={{ stopColor: 'color-mix(in srgb, var(--title-b) 84%, #ffffff)' }}
+          />
+          <stop offset="55%" style={{ stopColor: 'var(--title-b)' }} />
+          <stop
+            offset="100%"
+            style={{ stopColor: 'color-mix(in srgb, var(--title-b) 91%, #000000)' }}
+          />
+        </linearGradient>
+        <linearGradient id={`${uid}-chip`} x1="0" y1="0" x2="0" y2="1">
+          <stop
+            offset="0%"
+            style={{ stopColor: 'color-mix(in srgb, var(--field) 86%, #ffffff)' }}
+          />
+          <stop
+            offset="100%"
+            style={{ stopColor: 'color-mix(in srgb, var(--field) 93%, #000000)' }}
+          />
+        </linearGradient>
+        <linearGradient id={`${uid}-rim`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="rgba(255, 255, 255, 0.30)" />
+          <stop offset="34%" stopColor="rgba(255, 255, 255, 0.04)" />
+          <stop offset="100%" stopColor="rgba(255, 255, 255, 0)" />
+        </linearGradient>
+        <linearGradient id={`${uid}-recess`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="rgba(0, 0, 0, 0.5)" />
+          <stop offset="20%" stopColor="rgba(0, 0, 0, 0)" />
+        </linearGradient>
+        {/* one raking highlight across the whole face, so the parts read as one sheet of glass
+            rather than five lit pieces */}
+        <linearGradient id={`${uid}-sheen`} x1="0" y1="0" x2="0.85" y2="1">
+          <stop offset="0%" stopColor="rgba(255, 255, 255, 0.10)" />
+          <stop offset="40%" stopColor="rgba(255, 255, 255, 0.02)" />
+          <stop offset="100%" stopColor="rgba(255, 255, 255, 0)" />
+        </linearGradient>
+      </defs>
+
+      {/* black card and slab; the area below the slab is the plain border black */}
+      <rect x="0" y="0" width="207" height="291" rx="7" style={{ fill: 'var(--bg)' }} />
+      <path d={SLAB} fill={`url(#${uid}-slab)`} />
+
+      {/* art window: flush under the title bar, type bar sitting on its foot */}
+      <rect x="14" y="28" width="179" height="132.5" style={{ fill: 'var(--key)' }} />
+      <rect
+        x="15"
+        y="28"
+        width="177"
+        height="131.5"
+        style={{ fill: 'color-mix(in srgb, var(--f2) 30%, #23262b)' }}
+      />
+      {/* the picture, when a player has supplied one — cropped to fill the window rather than
+          letterboxed inside it */}
+      {art && (
+        <image
+          href={art.url}
+          x="15"
+          y="28"
+          width="177"
+          height="131.5"
+          preserveAspectRatio="xMidYMid slice"
+        />
+      )}
+      {/* the art is sunk into the card, so it takes the shadow of the title bar above it */}
+      <rect x="15" y="28" width="177" height="131.5" fill={`url(#${uid}-recess)`} />
+
+      {/* rules text field: sharp box, tucked under the type bar at the same remove the type bar
+          keeps from the art, its lower third overhanging the slab into the dark well. On a
+          creature the text stops short of the stat plaque rather than running under it. */}
+      <rect x="13" y="179" width="181" height="92" style={{ fill: 'var(--accent)' }} />
+      <rect
+        x="14.5"
+        y="180.5"
+        width="178"
+        height="89"
+        strokeWidth="1"
+        style={{ fill: 'var(--field)', stroke: 'var(--key)' }}
+      />
+      {/* the same shadow on the text field, at a third the strength — any more and it dirties
+          the ivory the rules text has to read off */}
+      <rect
+        x="14.5"
+        y="180.5"
+        width="178"
+        height="89"
+        fill={`url(#${uid}-recess)`}
+        opacity="0.34"
+      />
+      <foreignObject x="15" y="182" width="177" height={face.stat ? 72 : 86}>
+        <div className="c-text" ref={textRef}>
+          {face.rulesText !== undefined && <RulesText text={face.rulesText} />}
+        </div>
+      </foreignObject>
+
+      {/* type bar: black top edge overlapping the art's foot */}
+      <g transform="translate(12 162)">
+        <path
+          d={TYPE}
+          strokeWidth="3.5"
+          style={{ fill: 'var(--accent)', stroke: 'var(--accent)' }}
+        />
+        <path d={TYPE} fill={`url(#${uid}-bar)`} />
+        <g clipPath={`url(#${uid}-ty)`}>
+          <rect x="0" y="16" width="183" height="1" style={{ fill: 'var(--key-soft)' }} />
+        </g>
+        <path d={TYPE} fill="none" strokeWidth="1" style={{ stroke: 'var(--key)' }} />
+        <foreignObject x="6" y="2" width="171" height="13.5">
+          <div className="c-type-row">
+            <span className="c-typeline" ref={typeRef}>
+              {face.typeLine ?? ''}
+            </span>
+          </div>
+        </foreignObject>
+      </g>
+
+      {/* title bar: sits on the slab with a sliver of it showing above. The cost keeps its
+          constant width and the name is fitted into what is left, because a name that pushed the
+          pips off the bar would drop the one thing on the card that is not text. */}
+      <g transform="translate(12 9.5)">
+        <path
+          d={TITLE}
+          strokeWidth="3.5"
+          style={{ fill: 'var(--accent)', stroke: 'var(--accent)' }}
+        />
+        <path d={TITLE} fill={`url(#${uid}-bar)`} />
+        <g clipPath={`url(#${uid}-tb)`}>
+          <rect x="0" y="15.5" width="183" height="1" style={{ fill: 'var(--key-soft)' }} />
+        </g>
+        <path d={TITLE} fill="none" strokeWidth="1" style={{ stroke: 'var(--key)' }} />
+        <foreignObject x="5" y="1.5" width="173" height="13.5">
+          <div className="c-title-row">
+            <span className="c-name" ref={nameRef}>
+              {face.name}
+            </span>
+            <span className="c-cost">
+              {cost.map((symbol, i) => (
+                <Pip key={i} symbol={symbol.glyph} label={spokenSymbol(symbol)} />
+              ))}
+            </span>
+          </div>
+        </foreignObject>
+      </g>
+
+      {/* the stat plaque: same bulged-end construction — white outer bar, dark keyline, ivory
+          fill. Power and toughness, or a planeswalker's loyalty; both are the server's number. */}
+      {face.stat && (
+        <g transform="translate(142 255)" filter={`url(#${uid}-sh)`}>
+          <path d={PT_OUTER} style={{ fill: 'var(--accent)' }} />
+          <g transform="translate(2.5 2.5)">
+            <path
+              d={PT_INNER}
+              strokeWidth="1.2"
+              style={{ fill: `url(#${uid}-chip)`, stroke: 'var(--key)' }}
+            />
+            {/* inset from the plaque, so a long stat shrinks to a margin rather than to the
+                keyline */}
+            <foreignObject x="3" y="0" width="52" height="25">
+              <div ref={ptRef} className="c-pt-num">
+                {face.stat.value}
+              </div>
+            </foreignObject>
+          </g>
+        </g>
+      )}
+
+      {/* last, so they lie over every part: one sheet of glass across the face, and the lit edge
+          the chrome's panes all carry */}
+      <rect x="0" y="0" width="207" height="291" rx="7" fill={`url(#${uid}-sheen)`} />
+      <rect
+        x="0.6"
+        y="0.6"
+        width="205.8"
+        height="289.8"
+        rx="6.6"
+        fill="none"
+        strokeWidth="1.2"
+        stroke={`url(#${uid}-rim)`}
+      />
+
+      {overlays}
+    </svg>
+  )
+}

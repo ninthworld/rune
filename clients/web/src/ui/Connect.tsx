@@ -1,25 +1,26 @@
 /**
- * The first screen: who you are, and where you are playing.
+ * The first screen (`docs/client-design.md` §9.3).
  *
- * It exists so a player arrives at the lobby **already being somebody**, rather than finding an
- * input box in the header asking who they are — `docs/client-design.md` §9.2 rule 5, setup
- * happens in setup. The name is prefilled with the last one this device used, so a returning
- * player presses one key; the server list carries each entry's region, because "which of these
- * is near me" is the only question a list of addresses raises.
+ * It exists because a player should arrive at the lobby already being somebody, rather than
+ * finding an input box in the header asking who they are. One panel on the dark ground carrying
+ * the wordmark, a name prefilled with the last one this device used, the server list, and one
+ * button — cut into the panel as a recess while the form is incomplete and raised as a pane the
+ * moment it is not, because a disabled state is a state of the material rather than a greyed-out
+ * button.
  *
- * **Neither field is a wire change.** `hello` carries a token and nothing else, and the name is
- * set by `set_name`, the command this client already sent — from the header of every screen,
- * forever, which is the thing being fixed.
+ * The gear is here too, so card art can be set up before ever joining a table.
  *
- * The gear is here too, so card art can be chosen before ever joining a table. That is the whole
- * of why settings is a destination rather than a dialog: it has to be reachable from a screen
- * that has no rail yet.
+ * The server list is `connect.ts`'s: client-side configuration, and never a protocol directory.
+ * Choosing `Another address` reveals its field directly beneath the list, so the address is
+ * adjacent to the choice it belongs to rather than parked elsewhere in the form.
+ *
+ * Neither field is a wire change. `hello` carries a token and nothing else, and the name is set
+ * by the command this client already sends.
  */
 import { useState } from 'react'
 
-import { CUSTOM, entryFor, serverChoices, type ServerEntry } from './../connect'
+import { CUSTOM, entryFor, hostOf, serverChoices } from './../connect'
 import type { ConnectionStatus } from './../socket'
-import { Choice, TextField } from './controls'
 
 export function Connect({
   name: remembered,
@@ -28,93 +29,103 @@ export function Connect({
   onConnect,
   onSettings,
 }: {
-  /** The last name this device used, or empty. */
   name: string
-  /** The address this client would open with — configuration, or what was chosen last. */
   address: string
   status: ConnectionStatus
   onConnect(name: string, address: string): void
   onSettings(): void
 }) {
-  const [choices] = useState<readonly ServerEntry[]>(serverChoices)
-  const opening = entryFor(address, choices)
+  const choices = serverChoices()
   const [name, setName] = useState(remembered)
-  const [chosen, setChosen] = useState(opening.id)
-  // Seeded with the address only when it is *already* a custom one, so choosing the custom entry
-  // opens an empty field rather than one prefilled with somebody else's server.
-  const [typed, setTyped] = useState(opening.id === CUSTOM ? address : '')
+  const [pick, setPick] = useState(() => entryFor(address, choices).id)
+  const [custom, setCustom] = useState(() =>
+    entryFor(address, choices).id === CUSTOM ? address : '',
+  )
 
-  const entry = choices.find((candidate) => candidate.id === chosen) ?? opening
-  const url = entry.id === CUSTOM ? typed.trim() : entry.url
-  const connect = () => url.length > 0 && onConnect(name.trim(), url)
+  const chosen = choices.find((entry) => entry.id === pick)
+  const host = pick === CUSTOM ? custom.trim() : (chosen?.url ?? '')
+  const ready = name.trim() !== '' && host !== ''
 
   return (
     <div className="connect">
-      <div className="connect__panel">
-        <header className="connect__head">
-          <h1>SAGE</h1>
-          <button
-            type="button"
-            className="connect__gear"
-            aria-label="Settings"
-            onClick={onSettings}
-          >
-            <span aria-hidden="true">⚙</span>
-          </button>
-        </header>
+      <div className="topbar bare-topbar">
+        <span className="topbar-fill" />
+        <button className="settings-btn" title="Settings" onClick={onSettings}>
+          ⚙
+        </button>
+      </div>
+      <div className="connect-stage">
+        <form
+          className="connect-panel"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (ready) onConnect(name.trim(), host)
+          }}
+        >
+          <div className="connect-mark">
+            <h1 className="connect-title">SAGE</h1>
+            <div className="connect-sub">
+              <b>S</b>erver <b>A</b>uthoritative <b>G</b>ame <b>E</b>ngine
+            </div>
+          </div>
 
-        <TextField
-          label="Name"
-          value={name}
-          maxLength={32}
-          autoFocus
-          placeholder="what the table calls you"
-          onChange={setName}
-          onEnter={connect}
-        />
+          <label className="connect-field">
+            <span className="connect-label">Name</span>
+            <input
+              className="connect-input"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="How the table sees you"
+              maxLength={24}
+              autoFocus
+            />
+          </label>
 
-        <div className="connect__servers">
-          <span className="field__label">Server</span>
-          <Choice
-            label="Server"
-            columns
-            value={entry.id}
-            options={choices.map((candidate) => ({
-              value: candidate.id,
-              label: candidate.label,
-              ...(candidate.region ? { detail: candidate.region } : {}),
-            }))}
-            onChange={setChosen}
-          />
-        </div>
+          <div className="connect-field">
+            <span className="connect-label">Server</span>
+            <div className="server-list" role="radiogroup" aria-label="Server">
+              {choices.map((server) => (
+                <button
+                  key={server.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={pick === server.id}
+                  className={`server-row${pick === server.id ? ' server-on' : ''}`}
+                  onClick={() => setPick(server.id)}
+                >
+                  <span className="server-dot" />
+                  <span className="server-name">{server.label}</span>
+                  <span className="server-host">
+                    {server.id === CUSTOM ? custom || '—' : hostOf(server.url)}
+                  </span>
+                  <span className="server-ping">{server.region ?? ''}</span>
+                </button>
+              ))}
+            </div>
+            {pick === CUSTOM && (
+              <input
+                className="connect-input"
+                aria-label="Address"
+                value={custom}
+                onChange={(event) => setCustom(event.target.value)}
+                placeholder="ws://host:port"
+              />
+            )}
+          </div>
 
-        {entry.id === CUSTOM && (
-          <TextField
-            label="Address"
-            value={typed}
-            placeholder="ws://host:9000"
-            onChange={setTyped}
-            onEnter={connect}
-          />
-        )}
+          {/* The socket is already open to the address this page resolved, so the only thing
+              worth saying is when it is not: a player pressing Connect against a server that is
+              not answering should be told rather than left waiting. */}
+          {status !== 'open' && (
+            <p className="connect-note" role="status">
+              {status === 'connecting' ? 'Reaching the server…' : 'The server is not answering.'}
+            </p>
+          )}
 
-        <p className="connect__go">
-          <button
-            type="button"
-            className="connect__connect"
-            disabled={url.length === 0}
-            onClick={connect}
-          >
+          <button className="action-done connect-go" disabled={!ready}>
             Connect
           </button>
-          {/* The connection's own state, where it belongs — on the screen whose one button
-              opens one. It is drawn only when it is not the ordinary answer. */}
-          {status !== 'open' && (
-            <span role="status" className="connect__status">
-              {status === 'connecting' ? 'Reaching the server…' : 'The server is not answering'}
-            </span>
-          )}
-        </p>
+        </form>
       </div>
     </div>
   )

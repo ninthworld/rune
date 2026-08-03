@@ -70,3 +70,46 @@ export function boardRows<T>(
     return inRow.length === 0 ? [] : [{ row, label: LABELS[row], entries: inRow }]
   })
 }
+
+/**
+ * The rows a *field* draws, which is not the same question as which rows have anything in them.
+ *
+ * `docs/client-design.md` §5: **a region's height is a function of the viewport alone.** A row
+ * that appeared when the first creature was cast would resize every land under it, and the
+ * layout a player learns on their first turn is the one they have on their twentieth. So
+ * creatures and lands are drawn whether or not anything is in them, and they keep their share of
+ * the field's height either way.
+ *
+ * The third row is the exception the same rule allows: it appears when the server states a
+ * *kind* of permanent that is neither — an artifact, an enchantment, a planeswalker — which is a
+ * fact about what is in the game rather than a count of what is in a row. It is the only thing
+ * on the board whose presence can change a box, and it changes it at most once.
+ *
+ * `share` is the fraction of the field's height, as a grid `fr`. Creatures take the larger one,
+ * because that is the row a game is played in.
+ */
+export interface FieldRow<T> {
+  row: BoardRow
+  label: string
+  share: number
+  entries: readonly T[]
+}
+
+const SHARE: Record<BoardRow, number> = { creatures: 3, other: 2, lands: 2 }
+const ALWAYS: readonly BoardRow[] = ['creatures', 'lands']
+
+export function fieldRows<T>(
+  entries: readonly T[],
+  typesOf: (entry: T) => readonly CardType[],
+  { mirrored = false }: { mirrored?: boolean } = {},
+): readonly FieldRow<T>[] {
+  const rows = ORDER.filter(
+    (row) => ALWAYS.includes(row) || entries.some((entry) => rowOf(typesOf(entry)) === row),
+  ).map((row) => ({
+    row,
+    label: LABELS[row],
+    share: SHARE[row],
+    entries: entries.filter((entry) => rowOf(typesOf(entry)) === row),
+  }))
+  return mirrored ? [...rows].reverse() : rows
+}

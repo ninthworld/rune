@@ -60,6 +60,25 @@ describe('the table directory', () => {
     expect(tables(joiner).map((row) => row.reach)).toEqual(['join_room', undefined, undefined])
   })
 
+  it('says whether a table is invite-only, and reads an absent field as open', () => {
+    // `RoomConfig::visibility` rides the wire only when private, so absence is `public` — and
+    // the lock beside a table's name is drawn off this and nothing else.
+    const rows = tables(view('lobbyview-open.json'))
+    expect(rows.every((row) => row.private)).toBe(false)
+    const closed = {
+      ...view('lobbyview-open.json'),
+      directory: [
+        {
+          room_id: 'r_9',
+          config: { seats: 2, game_setup: '1v1', visibility: 'private' as const },
+          filled: 1,
+          state: 'gathering' as const,
+        },
+      ],
+    }
+    expect(tables(closed)[0]?.private).toBe(true)
+  })
+
   it('reads a view with no directory as no tables', () => {
     expect(tables({ you: 'p1' })).toEqual([])
   })

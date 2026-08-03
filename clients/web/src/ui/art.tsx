@@ -100,20 +100,39 @@ export function useArtPreference(): {
 }
 
 /**
- * How many cards this device has cached, live.
+ * What this device is holding and what it is still fetching, live, with the two bulk controls.
  *
- * The settings surface asks what is on the device and offers to clear it (§9.6), and both halves
- * of that have to move together — a count that did not fall to zero when the button was pressed
- * would read as a button that did nothing.
+ * The settings surface asks what is on the device, offers to fill it, offers to stop, and offers
+ * to clear it (§9.6). All four have to move together — a count that did not fall to zero when
+ * Clear was pressed would read as a button that did nothing, and a download with no visible
+ * progress reads as a hang.
  */
-export function useArtCache(): number {
+export function useArtCache(): {
+  cached: number
+  waiting: number
+  download(cards: readonly { key: string; name: string }[]): void
+  stop(): void
+} {
   const { store } = useContext(ArtContext)
   const subscribe = useCallback((listener: () => void) => store.subscribe(listener), [store])
-  return useSyncExternalStore(
+  const cached = useSyncExternalStore(
     subscribe,
     () => store.cached(),
     () => 0,
   )
+  const waiting = useSyncExternalStore(
+    subscribe,
+    () => store.waiting(),
+    () => 0,
+  )
+  const download = useCallback(
+    (cards: readonly { key: string; name: string }[]) => {
+      for (const card of cards) store.request(card.key, card.name)
+    },
+    [store],
+  )
+  const stop = useCallback(() => store.stop(), [store])
+  return { cached, waiting, download, stop }
 }
 
 /** A texture for one card, and how it should be presented. `undefined` means draw procedurally. */
@@ -125,8 +144,12 @@ export interface CardArtTexture {
 export function useCardArt(face: CardFace): CardArtTexture | undefined {
   const { preference, store } = useContext(ArtContext)
   // A token has no card identity (CR 111), so there is nothing to key a cache by and nothing to
-  // look up. It keeps its procedural face, which is the only stable one it can have.
-  const key = face.artKey
+  // look up. It keeps the frame, which is the only stable face it can have.
+  //
+  // `frame` is the other way there is nothing to look up, and it is the default: a device that
+  // has chosen no picture asks for none, so the whole pipeline costs exactly nothing until a
+  // player turns it on (§9.6).
+  const key = preference.style === 'frame' ? undefined : face.artKey
 
   const subscribe = useCallback((listener: () => void) => store.subscribe(listener), [store])
   const entry = useSyncExternalStore(subscribe, () =>
