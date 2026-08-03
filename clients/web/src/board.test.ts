@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { boardRows, rowOf } from './board'
+import { boardRows, fieldRows, rowOf } from './board'
 import type { CardType } from './protocol'
 
 const perm = (name: string, ...types: CardType[]) => ({ name, types })
@@ -73,5 +73,54 @@ describe('arranging a battlefield', () => {
 
   it('is empty for an empty battlefield', () => {
     expect(boardRows([], typesOf)).toEqual([])
+  })
+})
+
+describe('the rows a field draws', () => {
+  const typed = (types: CardType[]) => ({ name: 'x', types })
+
+  it('draws creatures and lands on an empty board', () => {
+    // §5: a region's height is a function of the viewport alone. A row that appeared with the
+    // first creature would resize every land under it.
+    expect(fieldRows([], typesOf).map((row) => row.row)).toEqual(['creatures', 'lands'])
+  })
+
+  it('keeps both rows when only one of them has anything in it', () => {
+    const rows = fieldRows([typed(['land'])], typesOf)
+    expect(rows.map((row) => row.row)).toEqual(['creatures', 'lands'])
+    expect(rows[0]?.entries).toEqual([])
+  })
+
+  it('adds the third row only when the server states that kind of permanent', () => {
+    expect(fieldRows([typed(['artifact'])], typesOf).map((row) => row.row)).toEqual([
+      'creatures',
+      'other',
+      'lands',
+    ])
+  })
+
+  it('gives creatures the larger share, and the same share whatever is in the row', () => {
+    const empty = fieldRows([], typesOf)
+    const full = fieldRows([typed(['creature']), typed(['creature'])], typesOf)
+    expect(empty.map((row) => row.share)).toEqual(full.map((row) => row.share))
+    expect(empty[0]?.share).toBeGreaterThan(empty[1]?.share ?? 0)
+  })
+
+  it('mirrors for the seat across the table, so both sets of creatures meet in the middle', () => {
+    expect(fieldRows([], typesOf, { mirrored: true }).map((row) => row.row)).toEqual([
+      'lands',
+      'creatures',
+    ])
+  })
+
+  it('keeps the server’s order inside a row', () => {
+    const rows = fieldRows(
+      [
+        { name: 'second', types: ['creature'] as CardType[] },
+        { name: 'first', types: ['creature'] as CardType[] },
+      ],
+      typesOf,
+    )
+    expect(rows[0]?.entries.map((entry) => entry.name)).toEqual(['second', 'first'])
   })
 })

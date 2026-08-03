@@ -38,6 +38,8 @@ export interface TableEntry {
   seats: number
   /** Seats with nobody in them. Arithmetic on two stated counts, not a legality claim. */
   open: number
+  /** Whether the host made it invite-only. Absent on the wire means `public`. */
+  private: boolean
   spectators: number
   state: RoomState
   stateLabel: string
@@ -81,6 +83,7 @@ export function tables(view: LobbyView): readonly TableEntry[] {
       filled: summary.filled,
       seats,
       open,
+      private: summary.config.visibility === 'private',
       spectators: summary.spectators ?? 0,
       state: summary.state,
       stateLabel: STATE_LABELS[summary.state],

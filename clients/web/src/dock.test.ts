@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  barTone,
   dockCandidates,
   dockDensity,
   dockNarrates,
@@ -207,5 +208,41 @@ describe('how much of its drawing the dock’s band can afford', () => {
   it('reads only the height it was handed, so no count can reach it', () => {
     expect(dockDensity(44)).toEqual(dockDensity(44))
     expect(dockDensity(160)).not.toEqual(dockDensity(44))
+  })
+})
+
+describe('the tone the action bar wears', () => {
+  it('is green on the turn’s bookends', () => {
+    for (const phase of ['untap', 'upkeep', 'draw', 'end', 'cleanup']) {
+      expect(barTone(phase)).toBe('green')
+    }
+  })
+
+  it('is blue in a main phase, where you may cast at will', () => {
+    expect(barTone('precombat_main')).toBe('blue')
+    expect(barTone('postcombat_main')).toBe('blue')
+  })
+
+  it('is red once combat is live', () => {
+    for (const phase of [
+      'begin_combat',
+      'declare_attackers',
+      'declare_blockers',
+      'combat_damage',
+      'end_combat',
+    ]) {
+      expect(barTone(phase)).toBe('red')
+    }
+  })
+
+  it('tracks the turn and not what the controls are for', () => {
+    // The same step, whatever the game is currently asking: the colour says the game moved
+    // somewhere different, and the words say what is being asked.
+    expect(barTone('precombat_main')).toBe(barTone('precombat_main'))
+  })
+
+  it('falls to green for a step this build has never heard of', () => {
+    expect(barTone('some_future_step')).toBe('green')
+    expect(barTone(undefined)).toBe('green')
   })
 })

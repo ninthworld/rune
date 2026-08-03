@@ -1,431 +1,397 @@
-/* The pre-game surfaces inside the shell: the tables, the table you are at, the deck, and the
-   builder. The shell itself — connect, the rail, the content region, and the controls all three
-   are made of — is `shell.css`.
+/* ---- lobby ---- */
+.lobby {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  grid-template-rows: 32px minmax(0, 1fr);
+  grid-template-areas:
+    'topbar topbar'
+    'main   side';
+}
 
-   One idea runs through all of it, and it is `docs/client-design.md` §9.2 rule 4: **one box.** A
-   panel inside a panel inside a panel, each with its own heading, is a document's way of
-   grouping, and grouping is what space and alignment are for. So a table row is a row on the
-   felt rather than a card in a box in a section; the seats and the deck sit side by side on the
-   same surface rather than in two bordered regions with two headings; and what used to be four
-   nested frames carrying six facts is one list.
+.lobby-topbar {
+  grid-area: topbar;
+  justify-content: flex-start;
+}
 
-   The facts on a row are drawn rather than written wherever drawing is shorter. Occupancy is a
-   run of pips, because "is there room" is answered by looking; what a seat still owes is a mark
-   on that seat, lit or unlit, because the sentence underneath was restating the row above it. */
-
-/* ---------------------------------------------------------------------------
-   The tables
-   --------------------------------------------------------------------------- */
-
-.app .tables {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.lobby-who {
   display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.app .table {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.4rem;
-  border: 1px solid transparent;
-  background: color-mix(in srgb, var(--panel) 80%, var(--felt));
-  transition: background var(--trace-duration) ease;
-}
-
-.app .table:hover {
-  background: var(--panel);
-}
-
-.app .table__main {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-}
-
-.app .table__name {
-  font-size: var(--text-md);
-  font-weight: 700;
-  overflow-wrap: anywhere;
-}
-
-.app .table__about {
-  display: flex;
-  flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.15rem 0.5rem;
-  font-size: var(--text-xs);
-  color: var(--ink-faint);
+  gap: 7px;
+  font-size: 12px;
+  color: #6b6f78;
 }
 
-.app .table__state {
-  color: var(--ink-dim);
-}
-
-/* One pip per seat: filled where somebody is sitting. A count read at a glance rather than a
-   fraction read as text — the fraction is still the row's accessible name. */
-.app .table__seats {
-  display: flex;
-  gap: 0.2rem;
-  flex: 0 0 auto;
-}
-
-.app .pip {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 50%;
-  border: 1px solid var(--ink-faint);
-}
-
-.app .pip--taken {
-  background: var(--ink-dim);
-  border-color: var(--ink-dim);
-}
-
-.app .table__reach {
-  flex: 0 0 auto;
-}
-
-.app .tables__by-id {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin: 0;
-}
-
-.app .tables__by-id input {
-  flex: 0 1 12rem;
-}
-
-/* ---------------------------------------------------------------------------
-   The table you are at
-   --------------------------------------------------------------------------- */
-
-/* Seats and deck on one surface, side by side where there is width for it. Two panels with two
-   headings was the nesting §9.2 rule 4 retires; the split between them is space. */
-.app .table-at {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-  gap: 1rem 1.5rem;
-  align-items: start;
-}
-
-@media (max-width: 52rem) {
-  .app .table-at {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.app .seats__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.app .seat {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.7rem;
-  border-radius: 0.4rem;
-  border: 1px solid transparent;
-  background: color-mix(in srgb, var(--panel) 80%, var(--felt));
-}
-
-/* Your own seat, marked the way the near half of the board is: brighter, because it is yours. */
-.app .seat--you {
-  background: var(--board-you);
-}
-
-.app .seat--empty {
-  background: color-mix(in srgb, var(--panel) 40%, var(--felt));
-  border-style: dashed;
-  border-color: var(--line);
-}
-
-.app .seat__index {
-  width: 1.3rem;
-  height: 1.3rem;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--ink) 10%, transparent);
-  font-size: var(--text-xs);
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-dim);
-  flex: 0 0 auto;
-}
-
-.app .seat__who {
-  font-size: var(--text-md);
+.lobby-who b {
   font-weight: 600;
+  color: #cfe0f4;
+}
+
+.lobby-server {
+  font-size: 11px;
+}
+
+.lobby-main {
+  grid-area: main;
   min-width: 0;
-  overflow-wrap: anywhere;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
 }
 
-.app .seat--empty .seat__who {
-  font-weight: 400;
-  color: var(--ink-faint);
-}
-
-.app .seat__you {
-  font-weight: 400;
-  color: var(--ink-faint);
-}
-
-.app .seat__kind {
-  padding: 0.05rem 0.35rem;
-  border-radius: 0.8rem;
-  background: color-mix(in srgb, var(--tone-waiting) 55%, transparent);
-  font-size: var(--text-xs);
-  letter-spacing: 0.06em;
-}
-
-/* What a seat still owes, on the seat. Unlit is the whole statement of "not yet"; the word does
-   not change, so the pair is scanned rather than read. */
-.app .seat__marks {
+.lobby-head {
   display: flex;
-  gap: 0.25rem;
-  margin-inline-start: auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px 10px;
 }
 
-.app .mark {
-  padding: 0.1rem 0.45rem;
-  border-radius: 0.8rem;
-  border: 1px solid var(--line);
-  font-size: var(--text-xs);
-  color: var(--ink-faint);
-  white-space: nowrap;
+.lobby-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #d6d8dc;
 }
 
-.app .mark--met {
-  border-color: color-mix(in srgb, var(--tone-yours) 60%, transparent);
-  background: color-mix(in srgb, var(--tone-yours) 25%, transparent);
-  color: var(--ink);
-}
-
-.app .seat__controls {
-  display: flex;
-  gap: 0.3rem;
-}
-
-/* Choosing an opponent happens on the seat being filled, when the choice is being made — never
-   as a description printed beside a control forever (§9.2 rule 1). */
-.app .seat__fill {
-  flex-basis: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding-block-start: 0.5rem;
-  border-block-start: 1px solid var(--line);
-}
-
-.app .seat__fill-go {
-  display: flex;
-  gap: 0.4rem;
-  margin: 0;
-}
-
-/* ---------------------------------------------------------------------------
-   The deck
-   --------------------------------------------------------------------------- */
-
-.app .deck {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  min-width: 0;
-}
-
-.app .deck__count {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin: 0;
-}
-
-.app .deck__cards {
-  font-size: var(--text-xl);
+.lobby-tally {
+  margin-right: auto;
+  font-size: 12px;
+  color: #6b6f78;
   font-variant-numeric: tabular-nums;
 }
 
-.app .deck__unit,
-.app .deck__different,
-.app .deck__commander {
-  font-size: var(--text-xs);
-  color: var(--ink-dim);
+.lobby-new {
+  --act-btn: #2e5c94;
+  --act-btn-line: #4a7cb8;
+  --act-btn-hover: #3a6ca8;
+  padding: 6px 14px;
+  font-size: 13px;
 }
 
-.app .deck__advice {
-  /* Advice, not a verdict: the server's rejection is the only thing that gets the alert role. */
-  margin: 0;
-  font-size: var(--text-xs);
-  font-style: italic;
-  color: var(--ink-dim);
-}
-
-.app .deck__rules {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  margin: 0;
-}
-
-.app .deck__starters {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.app .deck__controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin: 0;
-}
-
-.app .deck__rejected {
-  font-size: var(--text-sm);
-  margin: 0;
-}
-
-/* ---------------------------------------------------------------------------
-   The builder
-   --------------------------------------------------------------------------- */
-
-.app .builder {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-
-.app .builder__head {
+/* the filters sit in the same recess the helper strip does */
+.filter-strip {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--well);
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  box-shadow: var(--well-lit);
 }
 
-.app .builder__head h3 {
-  margin: 0;
-  font-size: var(--text-lg);
-  color: var(--ink-dim);
+.filter-search {
+  flex: 1 1 180px;
+  min-width: 0;
+  max-width: 280px;
+  padding: 5px 9px;
+  font-size: 12px;
 }
 
-.app .builder__body {
+/* the only region that scrolls; the page itself never does */
+.table-list {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* one grid per row, so every column lines up down the list */
+.table-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 18rem;
-  gap: 0.75rem;
-  align-items: start;
+  /* fixed tracks, because each row is its own grid: an auto seats column
+     would be as wide as that row's seat count and the list would stagger */
+  grid-template-columns: 8px minmax(0, 1fr) 88px 96px 74px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--pane-btn);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  box-shadow: var(--lit-btn), var(--cast-btn);
 }
 
-@media (max-width: 60rem) {
-  .app .builder__body {
-    grid-template-columns: minmax(0, 1fr);
+.table-row:hover {
+  background: var(--pane-btn-hi);
+  border-color: #3a4250;
+}
+
+.table-full {
+  background: var(--well);
+  border-color: var(--line-soft);
+  box-shadow: var(--well-lit);
+}
+
+.table-full:hover {
+  background: var(--well);
+  border-color: var(--line-soft);
+}
+
+.table-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #6da0e0;
+  box-shadow: 0 0 6px rgba(109, 160, 224, 0.7);
+}
+
+.dot-full {
+  background: #3a4250;
+  box-shadow: none;
+}
+
+.table-id {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.table-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #d6d8dc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table-full .table-name {
+  color: #8b8f98;
+}
+
+.table-lock {
+  font-size: 9px;
+  filter: grayscale(1) brightness(1.5);
+}
+
+.table-host {
+  font-size: 11px;
+  color: #6b6f78;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table-format {
+  font-size: 11px;
+  color: #8b8f98;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.seats {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.seat-count {
+  width: 26px;
+  text-align: right;
+}
+
+.seat-dots {
+  display: flex;
+  gap: 2px;
+}
+
+.seat-dot {
+  width: 5px;
+  height: 7px;
+  border-radius: 1.5px;
+  background: rgba(0, 0, 0, 0.4);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.5);
+}
+
+.seat-taken {
+  background: #8aa8cc;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.table-full .seat-taken {
+  background: #5c606a;
+}
+
+.seat-count {
+  font-size: 11px;
+  color: #8b8f98;
+  font-variant-numeric: tabular-nums;
+}
+
+.table-join {
+  padding: 5px 0;
+  font-size: 12px;
+}
+
+.table-join:disabled {
+  background: var(--well);
+  border-color: var(--line);
+  box-shadow: var(--well-lit);
+  color: #5c606a;
+  cursor: default;
+}
+
+/* the board sidebar's material, but its own pane: reusing .log would
+   drag that grid-area along with it */
+.lobby-side {
+  grid-area: side;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--pane-deep);
+  border-left: 1px solid var(--line-soft);
+  box-shadow: var(--lit), var(--cast-left);
+}
+
+.roster-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  font-size: 12px;
+}
+
+.roster-name {
+  flex: none;
+  font-weight: 600;
+  color: #d6d8dc;
+}
+
+.roster-where {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font-size: 11px;
+  color: #6b6f78;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* new-table dialog: the zone view's glass, at form width */
+.zone-panel.new-table {
+  width: min(420px, 100%);
+}
+
+.new-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+}
+
+.new-seg {
+  align-self: flex-start;
+  flex-wrap: wrap;
+}
+
+.new-seg .seg-btn {
+  padding: 5px 11px;
+  font-size: 12px;
+}
+
+.new-note {
+  font-size: 11px;
+  color: #6b6f78;
+  line-height: 1.35;
+}
+
+.new-step {
+  align-self: flex-start;
+}
+
+/* the topbar's stepper is a prototype knob; in a form it is a field */
+.new-step {
+  gap: 8px;
+}
+
+.new-step .step-btn {
+  width: 26px;
+  height: 26px;
+  font-size: 15px;
+}
+
+.new-step .seat-num {
+  min-width: 68px;
+  font-size: 13px;
+  color: #d6d8dc;
+}
+
+@media (min-width: 901px) {
+  .lobby.side-hidden {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'topbar'
+      'main';
+  }
+
+  .lobby.side-hidden .lobby-side {
+    display: none;
   }
 }
 
-.app .builder__pool,
-.app .builder__deck {
-  padding: 0.6rem;
-  border-radius: 0.4rem;
-  background: color-mix(in srgb, var(--panel) 60%, var(--felt));
-  min-width: 0;
-}
+@media (max-width: 900px) {
+  .lobby {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'topbar'
+      'main';
+  }
 
-/* One row of pool tiles is as tall as its tallest card, so every Add sits on the same line
-   rather than hanging off the bottom of a short one. */
-.app .builder__results {
-  align-items: stretch;
-}
+  /* the panel becomes the drawer the board's log is */
+  .lobby-side {
+    position: fixed;
+    top: 32px;
+    right: 0;
+    bottom: 0;
+    width: min(300px, 85vw);
+    z-index: 20;
+    transform: translateX(100%);
+    transition: transform 0.15s ease-out;
+    background: linear-gradient(180deg, rgba(24, 28, 36, 0.88) 0, rgba(14, 16, 20, 0.9) 56px);
+    backdrop-filter: var(--blur);
+    box-shadow:
+      var(--lit),
+      -10px 0 30px rgba(0, 0, 0, 0.55);
+  }
 
-.app .builder__results > li {
-  justify-content: space-between;
-  width: 9rem;
-}
+  .lobby-side.side-open {
+    transform: none;
+  }
 
-/* Both columns scroll inside themselves. A three-hundred-card pool must not push the deck
-   column, or the controls under it, off the bottom of the content region. */
-.app .builder__results,
-.app .builder__deck {
-  max-height: 60vh;
-  overflow-y: auto;
-}
+  .lobby-head,
+  .filter-strip,
+  .table-list {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
 
-.app .builder__entries {
-  list-style: none;
-  padding: 0;
-  margin-block: 0.35rem;
-}
+  .lobby-who {
+    flex-direction: column;
+    gap: 0;
+    line-height: 1.2;
+  }
 
-.app .builder__add {
-  font-size: var(--text-xs);
-}
+  .filter-search {
+    max-width: none;
+  }
 
-.app .builder__search {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
-}
+  /* the host line and the format column are what a phone gives up */
+  .table-row {
+    grid-template-columns: 8px minmax(0, 1fr) 92px 64px;
+    gap: 9px;
+    padding: 7px 9px;
+  }
 
-.app .builder__count,
-.app .builder__rules,
-.app .builder__empty {
-  font-size: var(--text-xs);
-  color: var(--ink-dim);
-}
-
-.app .builder__advice {
-  font-size: var(--text-xs);
-  font-style: italic;
-  color: var(--ink-dim);
-}
-
-.app .deck-entry {
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  padding: 0.2rem 0.4rem;
-  border-radius: 0.3rem;
-}
-
-.app .deck-entry:hover {
-  background: color-mix(in srgb, var(--panel) 90%, var(--felt));
-}
-
-.app .deck-entry__count {
-  min-width: 2rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-dim);
-}
-
-.app .deck-entry__name {
-  /* A name that opens the inspector; a button so the keyboard reaches it, styled as text. */
-  border: none;
-  background: none;
-  padding: 0;
-  font: inherit;
-  color: inherit;
-  text-align: start;
-  text-decoration: underline dotted;
-  cursor: pointer;
-  overflow-wrap: anywhere;
-}
-
-.app .deck-entry__controls {
-  margin-inline-start: auto;
-  display: flex;
-  gap: 0.2rem;
+  .table-host,
+  .table-format {
+    display: none;
+  }
 }

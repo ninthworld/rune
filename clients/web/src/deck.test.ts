@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest'
 import {
   EMPTY_CATALOG,
   cardName,
+  deckColors,
   collect,
   copiesOf,
   deckRules,
@@ -224,5 +225,32 @@ describe('advice, and the verdict that is not ours', () => {
     expect(
       rejectionText({ code: 'unknown_card', reason: 'not a card', card: 'made_up' }, catalog),
     ).toBe('not a card (made_up)')
+  })
+})
+
+describe('the colours a deck is drawn as', () => {
+  const identity = (name: string) =>
+    catalog.cards.find((card) => card.name === name)?.functional_id ?? name
+
+  it('is the colours of the pips its cards print, in a fixed order', () => {
+    const white = catalog.cards.find((card) => card.mana_cost?.includes('{W}'))
+    const green = catalog.cards.find((card) => card.mana_cost?.includes('{G}'))
+    if (!white || !green) return
+    const draft = withCard(withCard(EMPTY_DECK, green.functional_id), white.functional_id)
+    // Ordered, not in the order they were added: two decks with the same colours draw the same
+    // row of pips.
+    expect(deckColors(draft, catalog)).toEqual(['w', 'g'])
+  })
+
+  it('says nothing about a deck of cards with no coloured pips', () => {
+    const colorless = catalog.cards.find(
+      (card) => card.mana_cost === undefined || !/\{[^}]*[WUBRG]/.test(card.mana_cost),
+    )
+    if (!colorless) return
+    expect(deckColors(withCard(EMPTY_DECK, colorless.functional_id), catalog)).toEqual([])
+  })
+
+  it('says nothing about a card the catalog has not arrived for', () => {
+    expect(deckColors(withCard(EMPTY_DECK, identity('nothing_here')), EMPTY_CATALOG)).toEqual([])
   })
 })

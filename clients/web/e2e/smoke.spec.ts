@@ -23,56 +23,61 @@ test('a fresh page to a played action, a reload, and a conceded game', async ({ 
 
   await page.goto('/')
 
-  // 1. Connect: a name and a server, before the shell (`docs/client-design.md` §9.3). The
-  //    socket is already open to the address `socket.ts` resolved, so this is the client
-  //    saying who it is on a connection the server has already answered.
+  // 1. Connect: a name and a server, before anything else (`docs/client-design.md` §9.3). The
+  //    socket is already open to the address `socket.ts` resolved, so this is the client saying
+  //    who it is on a connection the server has already answered.
   await expect(page.getByRole('heading', { name: 'SAGE' })).toBeVisible()
   await page.getByLabel('Name').fill('Smoke')
   await page.getByRole('button', { name: 'Connect' }).click()
 
-  // The shell, and the name the server took: `set_name` is a real round trip on the lobby
-  // contract, and the rail's foot shows what came back rather than what was typed.
-  const rail = page.getByRole('navigation', { name: 'Destinations' })
-  await expect(rail).toContainText('Smoke')
+  // The lobby, and the name the server took: `set_name` is a real round trip on the lobby
+  // contract, and the topbar shows what came back rather than what was typed.
+  await expect(page.getByRole('heading', { name: 'Open tables' })).toBeVisible()
+  await expect(page.locator('.lobby-who')).toContainText('Smoke')
 
-  // 2. A table, created from the server's own catalog. The format list is not in this build:
-  //    it arrives in the `CatalogView` answering the `request_catalog` this screen sends, so
-  //    the control being populated at all is another real round trip on the lobby contract.
-  await page.getByRole('button', { name: 'New table' }).click()
+  // 2. A table, created from the server's own catalog. The format list is not in this build: it
+  //    arrives in the `CatalogView` answering the `request_catalog` this screen sends, so the
+  //    control being populated at all is another real round trip on the lobby contract.
+  await page.getByRole('button', { name: '+ Create table' }).click()
+  const form = page.getByRole('dialog', { name: 'New table' })
   await expect(
-    page.getByRole('radiogroup', { name: 'Format' }).getByRole('radio').first(),
+    form.getByRole('radiogroup', { name: 'Format' }).getByRole('radio').first(),
   ).toBeVisible()
-  await page.getByRole('button', { name: 'Create the table' }).click()
-  await expect(page.getByRole('region', { name: 'Table', exact: true })).toBeVisible()
+  await form.getByRole('button', { name: 'Create the table' }).click()
+  await expect(page.getByRole('region', { name: 'Table' })).toBeVisible()
 
-  // 3. A deck, an opponent, and a ready signal — each gated on `valid_commands`, so each
-  //    control appearing at all is the server saying the step is available now.
-  await page.getByRole('button', { name: 'Starter deck' }).click()
-  await page.getByRole('option').first().click()
-  await page.getByRole('button', { name: 'Submit deck' }).click()
-  await expect(page.getByText('Deck submitted').first()).toBeVisible()
+  // 3. A deck, an opponent, and a ready signal — each gated on `valid_commands`, so each control
+  //    appearing at all is the server saying the step is available now. Choosing a deck submits
+  //    it: the server is what says a deck is legal.
+  await page.getByRole('button', { name: 'Change' }).click()
+  await page
+    .getByRole('dialog', { name: 'Choose a deck' })
+    .getByRole('button', { name: 'Choose' })
+    .click()
 
   // The AI kinds are the catalog's too, so seating one is only possible because the catalog
-  // arrived — and the deck it seats the bot with is validated exactly like a human's. The
-  // choice opens on the seat being filled, so it is two clicks: open it, then take it.
-  await page.getByRole('button', { name: 'Seat an AI opponent' }).click()
-  await page.getByRole('button', { name: 'Seat', exact: true }).click()
-  await expect(page.getByText('AI', { exact: true })).toBeVisible()
+  // arrived — and the deck it seats the bot with is validated exactly like a human's.
+  await page.getByRole('button', { name: 'Seat an AI opponent' }).first().click()
+  await page
+    .getByRole('dialog', { name: 'Seat an AI opponent' })
+    .getByRole('button', { name: 'Seat', exact: true })
+    .click()
+  await expect(page.getByRole('region', { name: 'Table' })).toContainText('AI')
 
-  await page.getByRole('button', { name: 'Ready' }).click()
+  await page.getByRole('button', { name: 'Ready', exact: true }).click()
 
-  // 4. The hand-off: the server switches this socket to the in-game contract by sending a
-  //    game view, and the screen follows the frame with no client-held phase.
+  // 4. The hand-off: the server switches this socket to the in-game contract by sending a game
+  //    view, and the screen follows the frame with no client-held phase.
   await expect(page.getByRole('heading', { name: /^Turn \d+ — / })).toBeVisible({ timeout: 20_000 })
   await expect(page.getByRole('region', { name: 'Your hand' })).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Your seat' })).toContainText('life')
+  await expect(page.getByRole('region', { name: 'Your battlefield' })).toBeVisible()
 
   // 5. Take the action the server offers, and see the game move.
   const actions = page.getByRole('region', { name: 'Actions' })
   const heading = page.getByRole('heading', { name: /^Turn \d+ — / })
 
-  // What the screen says now, so the change after acting is a real difference and not a
-  // hopeful timeout.
+  // What the screen says now, so the change after acting is a real difference and not a hopeful
+  // timeout.
   const signature = async () =>
     `${await heading.textContent()}|${(await actions.getByRole('button').allTextContents()).join(',')}`
   const before = await signature()
@@ -81,16 +86,12 @@ test('a fresh page to a played action, a reload, and a conceded game', async ({ 
   await expect(first).toBeVisible()
   await first.click()
 
-  // A mulligan decision opens a draft rather than submitting. Answer it by clicking candidates
-  // until the server's own counts are satisfied — which is exactly what `Confirm` becoming
-  // enabled means, so this needs no knowledge of the prompt it happens to have been handed.
+  // A mulligan decision opens a draft rather than submitting. Answer it by clicking the
+  // server's own options until `Confirm` is enabled — which is exactly what "the counts it
+  // published are satisfied" means, so this needs no knowledge of the prompt it was handed.
   const confirm = page.getByRole('button', { name: 'Confirm' })
   if (await confirm.isVisible().catch(() => false)) {
-    // Scoped to the slot fieldsets, so `Confirm` and `Cancel` are never among the candidates.
-    const candidates = page
-      .getByRole('region', { name: 'Choices' })
-      .getByRole('group')
-      .getByRole('button')
+    const candidates = actions.locator('.action-slots button')
     for (let i = 0; i < (await candidates.count()); i += 1) {
       if (await confirm.isEnabled()) break
       await candidates.nth(i).click()
@@ -104,10 +105,10 @@ test('a fresh page to a played action, a reload, and a conceded game', async ({ 
 
   // A rejected submission is a real failure here: the client built a message the server would
   // not take, which is exactly the class of bug this tier is for.
-  await expect(page.getByText('That action could not be taken')).toHaveCount(0)
+  await expect(page.getByText('could not be taken')).toHaveCount(0)
 
   // And the correlation closed. The client holds its click as pending until the server echoes
-  // the id back in `action_ack`, so a dock still saying "waiting" after a completed round trip
+  // the id back in `action_ack`, so a bar still saying "waiting" after a completed round trip
   // means the two ends disagree about correlation — which only a real server can prove.
   await expect(actions).not.toContainText('waiting for the server')
 
@@ -117,27 +118,29 @@ test('a fresh page to a played action, a reload, and a conceded game', async ({ 
   //    their own match — and the whole match comes back from one view.
   await page.reload()
   await expect(page.getByRole('heading', { name: /^Turn \d+ — / })).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByRole('region', { name: 'Your seat' })).toContainText('life')
-  await expect(page.getByRole('list', { name: 'Turn steps' }).getByRole('button')).toHaveCount(12)
+  await expect(page.getByRole('region', { name: 'Your hand' })).toBeVisible()
+  await expect(
+    page.getByRole('list', { name: 'Turn steps' }).first().getByRole('button'),
+  ).toHaveCount(12)
 
   // 7. Concede, which is the one action that ends a match on demand. It is asked twice, so the
   //    first click sends nothing; the second one ends the game.
-  const concede = page.getByRole('list', { name: 'Global actions' }).getByText('Concede')
+  const concede = page.getByRole('button', { name: 'Concede' })
   await expect(concede).toBeVisible({ timeout: 20_000 })
   await concede.click()
   await page.getByRole('button', { name: /^Yes, concede/ }).click()
 
   // 8. The result, from the server's own `GameView.result`.
-  const result = page.getByRole('region', { name: 'Game over' })
+  const result = page.getByRole('dialog', { name: 'Game over' })
   await expect(result).toBeVisible({ timeout: 20_000 })
   await expect(result).toContainText('By a concession.')
 
   // 9. And the way out: leaving gives up the token that holds the seat, so the next connection
   //    is a new session and lands in the lobby.
   await result.getByRole('button', { name: 'Back to the lobby' }).click()
-  // Back in the shell, not back at the connect screen: giving up a seat gives up a token, not
+  // Back in the lobby, not back at the connect screen: giving up a seat gives up a token, not
   // the server this tab is talking to.
-  await expect(rail).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('heading', { name: 'Open tables' })).toBeVisible({ timeout: 20_000 })
   await expect(page.getByRole('region', { name: 'Tables' })).toBeVisible({ timeout: 20_000 })
 
   expect(failures, 'the page threw while playing').toEqual([])

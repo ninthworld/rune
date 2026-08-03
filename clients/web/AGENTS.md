@@ -28,15 +28,15 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   drive different binaries, which is the failure ADR 0011 is about.
 - **[`docs/client-design.md`](../../docs/client-design.md) is the layout authority.** Read it
   before changing anything that occupies space. Its one-line summary: *zoom, resolution, and
-  aspect are the same problem; the board never scrolls vertically and never grows a scrollbar;
-  text is fitted, never truncated.* A region's geometry is computed from the **viewport alone**,
-  never inherited from whatever content happens to be in a box; a count is absorbed by the row.
-- **That document now describes `clients/prototype`, and this client is being rebuilt to it.**
-  Until that lands, the module notes below describe *the code as it stands*, and several of them
-  state design rules the prototype reversed — the four presentations, the 9px floor and the chip,
-  the fan, `clamp(FLOOR, fitted, ideal)`, the shell's rail. Where a note and the design document
-  disagree, the document is the target and the note is the present tense. §8's table lists every
-  such reversal in one place.
+  aspect are the same problem; no region of the board scrolls vertically or ever grows a
+  scrollbar, and a full row pans sideways instead; text is fitted, never truncated.* A region's
+  size is a function of the **viewport alone**, never of what is in it; a card's size is the
+  height of the region it is in; and a count is absorbed by the row.
+- **That document describes `clients/prototype`, and this client is built to it.** The prototype
+  is the authority above the document: where the two disagree, the prototype is what the client
+  follows, and the document's §8 lists every rule the prototype retired. The prototype is still
+  where a *new* screen is tried first — nothing ships from it, and it is not this client's
+  scaffolding.
 - **Dark, declared rather than followed.** A card is an object lying on a surface, it needs a
   ground darker than itself, and maintaining a light table as well is how neither gets good.
 - **An overlay renders the join and nothing else.** It is `aria-hidden`, because a drawn line is
@@ -52,31 +52,11 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   the discriminators are structural and order-sensitive; the rules are the protocol's.
 - `src/normalize.ts` — turns wire absence into values a renderer can use. Every documented
   default lives here, so no component invents its own reading of a missing field.
-- `src/scene.ts` — the arrangement: a viewport goes in, and every region's box comes out,
-  absolutely positioned. It is `docs/client-design.md` as arithmetic — §4's bands, §3's ladder,
-  §5's allocation — and it is pure, so every band is testable without a browser. **No output of it
-  can express overflow**: there is no field for it, and when the regions do not fit the ladder
-  tightens until they do. **A region's height and position are a function of the viewport alone**
-  (§5): its only inputs about the table are whether the stack is empty and whether the game is
-  asking something, both of which are *what is happening* rather than *how much there is*. Both
-  battlefields are therefore always the same height and the line across the middle of the table
-  does not move for any game event; a count is absorbed by the cards getting smaller and then
-  overlapping. `ui/game/frame.tsx` is the other half — one `ResizeObserver` on the root feeding
-  one `scene()` call, and every region placed at the box it returned.
-- `src/pack.ts` — the other half of §5, and pure like the scene: `scene.ts` says how much room a
-  field gets, this says what happens to the permanents inside it. **A region is sized by the
-  viewport and a count is absorbed by the cards** — `footprint = clamp(FLOOR, (W − (N−1)·g)/N,
-  ideal)` over the **turned** footprint a tapped permanent needs, charged whether or not anything
-  is tapped (§6); a second line while the row's own height affords one at the same tile size, and
-  overlap after that, fanned so the exposed strip is the name band. **The floor is soft downward
-  and hard sideways**: too many cards for the width overlap at full size, too short a row draws a
-  smaller card and *reports* it (`belowFloor`), and a tile stops being a card only where its name
-  band can no longer set a name at 9px — `fit.ts`'s answer from §2's type floor, never a second
-  constant here. The printed 63:88 holds at every size. **The row count is the board's, never the
-  card's**: one row per group `board.ts` made, falling below that only where a row could not draw
-  a tile at all (§3, step 6). It reads
-  no card and decides no row membership — that is `board.ts`'s answer from the server's
-  `card_types`, and the order inside a row is the server's.
+- **The arrangement is CSS.** There is no scene, no packer and no measured fitting module: the
+  board is a grid of `fr` rows (`styles/board.css`), a card is sized from the region it is in,
+  and a row that runs out of width pans. `scene.ts`, `pack.ts`, `fit.ts` and `overlay.ts` were
+  the arithmetic that did this before and are gone; what survived them is `board.ts`, which
+  answers which rows a field draws and what share of its height each takes.
 - `src/board.ts` — a battlefield, as rows. Groups permanents into creatures, other permanents,
   and lands from `CardView.card_types`, which the **server** states beside the type line it
   renders (`docs/protocol.md`) precisely so nothing here parses `"Artifact Creature — Thopter"`.
@@ -84,12 +64,20 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   one thing — and that is presentation with no rules content: a creature-land is drawn with the
   creatures, because a creature is what a player scans for. Rows mirror across the table so both
   sets of creatures meet at the dividing line, and inside a row the server's order is kept.
+  `fieldRows` is the other half and the one the board draws from: **creatures and lands are drawn
+  whether or not anything is in them**, because a row that appeared with the first creature would
+  resize every land under it (§5). The third row appears only when the server states a kind of
+  permanent that is neither, which is a fact about the game rather than a count.
 - `src/dock.ts` — what the controls are currently *for*, in one word: your move, the game is
   asking, in flight, confirm this, waiting, over. Decided in that order — a finished game outranks
   everything, a destructive question outranks a submission in flight, and a submission in flight
   outranks an action list, because the player has already answered. The dock draws it as colour
   *and* says it in words: a colour nobody has learnt, a colour two of which look alike, and a
-  colour a screen reader cannot see all say nothing on their own.
+  colour a screen reader cannot see all say nothing on their own. `barTone` is what the bar is
+  actually tinted by, and it is a different question with a different answer: **where in the turn
+  you are** (§6.5) — green on the bookends, blue in a main phase, red once combat is live — so the
+  bar changes colour when the situation changes rather than flickering between two shades of
+  "asking" inside one step.
 - `src/mana.ts` — a printed cost as symbols, and the tint a frame is washed in. Tokenizing
   `{2}{G/U}` is presentation of a string the server sent; the tint is **the colours of the pips
   that were printed** and deliberately none of the rules concepts it resembles — not colour, not
@@ -102,9 +90,10 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   possible is answered where the view is, out of `valid_actions`. The skip keys are **not** a
   client-side auto-pass: each sends one `set_stops` and one pass, and the pacing that follows is
   the server's settle acting on a preference it stores (ADR 0010). Nothing here loops or waits.
-- `src/art/` — ADR 0012's pipeline, keyed by `functional_id`. `procedural.ts` seeds a
-  composition from a card's own identity so the art window is never empty and nothing downloads;
-  `settings.ts` is the device preference, off by default; `source.ts` is the pluggable lookup
+- `src/art/` — ADR 0012's pipeline, keyed by `functional_id`. The art window with nothing in it
+  is a field tinted by the printed cost rather than a generated composition — the procedural
+  layer is retired (§8). `settings.ts` is the device preference, off by default, and its `style`
+  is the three faces of §9.6: `frame` fetches nothing at all; `source.ts` is the pluggable lookup
   (Scryfall today) and the only thing that ever crosses it is a card name; `store.ts` is the
   registry — one request per card ever, one at a time, spaced, with resolved URLs cached
   device-local. **Art is cache, never state**: every test here is offline, and the whole UI must
@@ -113,18 +102,6 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   `StackItem`, `Emblem`, `CatalogCard`) to one `CardFace`. Every surface renders that and nothing
   else, so the hand, the board, the stack, and the deck builder cannot disagree about the same
   object. Add a card-presentation rule here, not in a component.
-- `src/fit.ts` — what a card has room to say, given the box it was handed. The whole fitting
-  policy of `docs/client-design.md` §6, and pure: no DOM, no measurement, so it is testable
-  without a browser. **Shrink → wrap → abbreviate, floor 9px, and truncation is not a step in
-  it** — a hand may not abbreviate at all, and where the battlefield may it must leave a stem you
-  could still name the card by. A type line degrades by *rule* rather than by ellipsis, a text
-  box is drawn only when what goes in it fits whole, and the art window takes what is left,
-  because it is the one element that degrades to nothing without costing a fact. Which of the
-  four presentations a frame gets is `presentationFor()` reading the box and nothing else, so no
-  surface names its own tier. String widths are *estimated* from a small per-character table and
-  every ratio is rounded up: over-estimating costs a size or a line, under-estimating would clip.
-  Nothing here is a rules judgment — dropping a cost from a small tile is drawing, and the server
-  still states what is playable.
 - `src/table.ts` — joins the seats. Life and library arrive as `me` for you and `opponents[]`
   for everyone else, the piles as three arrays keyed by player, commander state as three more;
   they become one `Seat[]` here so no panel rebuilds that join or gets its absences wrong. A
@@ -140,6 +117,13 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   every `(id, name)` pair the view states, and a trail draws a word from that or draws nothing.
   **No server identifier reaches a surface a player reads** (`docs/client-design.md` §9.2), and
   an end the view named nowhere is never filled in with a kind concluded from the relationship.
+  `relationNote` is the same lines as one sentence, and it is what makes the drawn arrow safe: an
+  overlay is `aria-hidden`, so every line it draws is also in the accessible name of the object it
+  belongs to.
+- `src/arrows.ts` — which stated relationships are drawn over the board, and in which of the two
+  tones. The same split `overlay.ts` made and the reason it is kept: what decides *what* is
+  related knows nothing about pixels. An attachment is not drawn — the card behind the card says
+  it — and neither is an ability's source, which the stack item already carries.
 - `src/menu.ts` — whether an object's own actions belong *at* the object. The dock's list, from
   the same `actionsFor`, opened by the click that already produced `{kind: 'select'}` — no new
   gesture, and deliberately **not** a right-click menu: right-click is spent on the inspector,
@@ -155,13 +139,6 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   so a name join is the client deciding which one moved. Following a card concludes **nothing**
   about an object: CR 400.7 makes the two ends two different objects, and no counter, damage,
   attachment, or control crosses the gap.
-- `src/overlay.ts` — the same relationships as geometry: where the line between two objects
-  starts and ends, given a box for each. The split from `relations.ts` is the guarantee — what
-  decides *what* is related knows nothing about pixels, and what knows where everything is
-  decides nothing. An edge is drawn when both ends are on the screen and not when either is not:
-  an object in an unopened pile has no box, and one collapsed into a chip or a count clips to
-  nothing, because an arrow pointing confidently at a card nobody can see is worse than the
-  sentence that still names it.
 - `src/turn.ts` — turn flow: the steps of a turn, who the game is waiting for, where it will
   stop for this seat next time, and what a settle already did on their behalf. The stop controls
   read the *effective* lists the server reflects and send back the whole preference, because
@@ -204,10 +181,6 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   public yet, and the custom entry is what keeps a table in a file from being a limitation. It
   **extends** `socket.ts`'s address precedence rather than replacing it — `?server=` still
   outranks everything, then this device's choice, then the build-time value and the page's origin.
-- `src/shell.ts` — the three destinations, in order. **Which destination you are on is the
-  client's answer; which contract you are on is the server's.** That is what keeps "no
-  client-held phase" true while a player walks to their decks and back: a `GameView` arriving
-  replaces the whole shell because the contract changed; choosing Decks replaces nothing.
 - `src/socket.ts`, `src/useSession.ts` — the connection, and the latest frame it delivered. A
   dropped socket retries on its own and says `hello` with the stored token, which is what
   reclaims a held-open seat; the server answers by putting the connection back on whatever
@@ -216,86 +189,53 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   its `hello` is read, so a lobby frame carrying a different session is routine during a
   reconnect and adopting it would discard the token that owns the seat. Leaving a finished game
   is the deliberate opposite: forget the token, and connect as somebody new.
-- `src/ui/` — the screens. The table is drawn: `Card.tsx` is one frame at a printed card's
-  proportions — a name band the name leads and the cost follows, an art window, a
-  type line, a text box, and the stat in the corner — which **measures its own box and asks
-  `fit.ts` what goes in it**, so there is no variant for a caller to pass and a battlefield card
-  and a hand card of the same size are the same card. Each surface's stylesheet states the box;
-  `Mana.tsx` draws a cost as the project's own discs (never an official symbol, never a
-  downloaded one) and hands assistive technology words instead; `CardArt.tsx` fills the window
-  with the procedural composition and lays a player-supplied illustration over it; `art.tsx` is
-  the provider the whole app is wrapped in, because the preference and the cache belong to the
-  *device* and a lobby, a builder, and a table all draw the same card.
-  `src/ui/game/` holds the table surfaces — header, seat panels, the two battlefields, the
-  stack rail, hand, action dock, side panel. `Game.tsx` composes them and derives what they
-  need; a surface receives answers, never the view, so none of them can grow a second reading
-  of it. **The composition is chosen, not fixed** — `docs/client-design.md` §4 arranges the same
-  regions differently per band, and a surface is handed its box rather than claiming one. Chrome
-  is at the edges and the board is in the middle; where there is width the turn is a rail down the
-  left, because twelve steps is a lot of band to spend above a board and none of it is spent
-  there; the top is one line about the match; the bottom is your hand, with the controls *above*
-  it rather than below — between the board a player is looking at and the cards they are reaching
-  for, where XMage puts them and where a panel at the very bottom edge of the screen is not; and
-  one gear opens everything that is about the *device* rather than the board — pace, keys, card
-  art — because a header carrying each of them separately is a header nobody reads. Every region
-  is bounded, and what a region does when its content exceeds the box is **pack tighter and then
-  degrade** (§3), never scroll — a board a player has to scroll is a board they cannot read. The
-  dock follows the click — the selected object's actions, or the questions an armed action is
-  asking — and keeps two lists beside that: the global actions no object owns, and a disclosure
-  of every action, so a subject no surface happens to draw can still be reached. A relationship
-  the server projected is drawn twice and the copies are not alternatives: a trail of controls
-  under the object that carries it, and a line across the board in `RelationOverlay` — a sheet
-  that takes no clicks and is hidden from assistive technology, because the trail is the readable
-  copy and the picture is what is read at a glance. Every surface tags the objects it draws with
-  `anchorProps`, which is the whole of how a line finds its two ends — and the same anchors place
-  `ObjectMenu` and are what `Arrivals` animates, so a surface gets all three by tagging what it
-  draws. Looking at an object emphasises both — tracing follows the *look*, not the click,
-  because the objects most worth tracing own no action and a click on one opens the inspector
-  over the board the relationship crosses. An object's actions open beside the object as well as
-  in the dock; the dock keeps every one of them, because a subject may be in a collapsed pile or
-  in no rendered zone at all. Public piles open beside the table, never
-  over it; a hidden zone is a count with nothing to open. The header carries the whole turn as a
-  row of steps, and that row is also where stops are set — a preference divorced from the strip
-  it applies to is one nobody edits. The end of a match is the one panel that layers over the
-  board, and the one action asked twice before it is sent.
-  Three surfaces exist because reading a card had to stop costing a click: `CardPreview` over
-  the side column follows the *look*, `Shortcuts` writes the keys down, and `PacePresets` puts
-  the whole stop preference on the same row as the strip it applies to — each shortcut printed
-  on the control that duplicates it, because a shortcut nobody can find is a shortcut nobody
-  uses.
-  Before a game there is a **shell** and not a table (`docs/client-design.md` §9): `ui/Connect.tsx`
-  asks who you are and where — a name prefilled from the last one this device used, a server list
-  carrying each entry's region, and the gear, so card art can be chosen before ever joining;
-  `ui/shell/Shell.tsx` is the rail of destinations with identity at its foot, becoming a bar at
-  narrow widths with the same destinations in the same order; `ui/shell/SettingsScreen.tsx` is
-  everything about the device, sectioned, and is where card art stopped being a header button.
-  `ui/controls.tsx` is the reason none of it is a form: **no native form control** — a `<select>`
-  clips its own arrow at 120% zoom — so `Choice` (every option on screen) and `Picker` (a listbox
-  that opens, for the sets too long to show) are the two shapes a choice comes in, with the
-  keyboard parity a select has, and what an option *is* rides on the option rather than beside
-  the control forever.
-  `src/ui/lobby/` holds the pre-game content — the tables list, the table form, the seats, the
-  deck panel, the builder — with `Lobby.tsx` holding the two things both destinations need, the
-  catalog and the deck draft. Which of the two Play screens is on is the **server's** answer, not
-  a client-held phase: a `LobbyView` with a `room` is a table you are at, one without it is the
-  directory. What a table is waiting on is drawn as a mark **on the seat it belongs to**, never
-  summarised in a sentence underneath; occupancy is a run of pips; and no room id is printed
-  where a player has no use for one. One form serves creating *and* editing a table, because
-  `create_room` and `update_room` both carry a whole `RoomConfig`; every choice in it — the
-  formats, that format's seat range, the AI kinds, the starter decks — comes from the
-  `CatalogView` or the shared deck data, which is the reason nothing here hardcodes a
-  `game_setup` id. Decks is a destination whose only job is the route: it renders the builder and
-  knows nothing about how a deck is built. Submit is offered whenever `submit_deck` is advertised
-  and is never gated on the client's own arithmetic.
-- `src/index.css`, `src/styles/` — the dressing, split along the surfaces it covers: the page
-  itself, then `cards.css`, `game.css`, `dock.css`, `side.css`, `shell.css`, `lobby.css`. Imports
-  come first, as the cascade requires. The shell's rules are **scoped under `.app`** wherever they
-  name a word the board also uses — `field` is a battlefield, `seat` is a player's half of the
-  table, `pip` is a mana symbol — because one unscoped rule here restyles the game.
+- `src/ui/card/` — the card, which is one drawing everywhere it appears (§6). `Card.tsx` is one
+  SVG in the printed grid — a title bar the name leads and the cost follows, an art window, a
+  type bar, a text field, the stat on a plaque — and **there is no variant to pass**: the
+  surface's stylesheet states the box, and every run of text is fitted inside the card's own grid
+  by bisection, so a hand card and a board card of different sizes are the same drawing. `Pips.tsx`
+  draws every mana symbol from scratch in a 100×100 box (never an official symbol, never a
+  downloaded one) and hands assistive technology words instead; `Symbols.tsx` does the same for a
+  sentence the server wrote. `peek.ts` is press-to-read, `scrollStrip.ts` is the pan a full row
+  and a full hand share, and `art.tsx` is the provider the whole app is wrapped in, because the
+  preference and the cache belong to the *device*.
+- `src/ui/game/` — the table. `Board.tsx` composes and derives; a surface receives answers, never
+  the view, so none of them can grow a second reading of it. The arrangement is the stylesheet's
+  (`styles/board.css`): the opponents band takes one share per row of seats it holds, your half
+  takes the rest, the action bar is permanent above the hand, and the side column is fixed beside
+  all of it. Chrome is at the edges, the board is in the middle, the turn is a strip that is
+  always drawn and is also where stops are set, and one gear opens everything about the *device*.
+  The bar carries only what the board cannot answer — a tally, a commit, a cancel, and a control
+  for a subject no surface drew — which is what keeps a question with twenty blockers the same
+  height as one with two. A relationship the server projected is drawn twice and the copies are
+  not alternatives: an arrow on `Arrows.tsx`'s overlay, which takes no clicks and is hidden from
+  assistive technology, and the same words in the accessible name of the object that carries it.
+  Every surface tags what it draws with `data-anchor`, which is how a line finds its two ends,
+  where `ObjectMenu` opens, and what `Motion` moves — so a surface gets all three by tagging.
+  Public piles open as a dialog over the table and may scroll, because a pile is not the board.
+- `src/ui/pregame/` — the three screens in front of a game (§9), and `Pregame.tsx` holds the two
+  things they share: the catalog, and the deck this device has chosen. **Which screen is on is the
+  server's answer** — a `LobbyView` with a `room` is a table you are at, one without it is the
+  directory — and there is no shell, no rail and no Decks destination: the topbar of each screen
+  is its navigation, and `ui/Settings.tsx` is a dialog over whatever you were already on.
+  `ui/Connect.tsx` asks who you are and where, with the gear, so card art can be chosen before
+  ever joining. Nothing here is a native form control: a `<select>` clips its own arrow at 120%
+  zoom, so every choice is a segmented control, a radio list, or a picker dialog. **Two panels
+  have nothing behind them** — chat, and who is in the lobby or watching a table — and they are
+  drawn saying so rather than left out; nothing in them is faked.
+- `src/index.css`, `src/styles/` — the dressing, and **the arrangement**: every rule in it comes
+  from `clients/prototype`. `material.css` is §5.5 — the panes, the recesses and the buttons every
+  screen is built out of — and comes first because everything else is drawn on top of it; then the
+  card, the board, one file per pre-game screen, `overlay.css` for the three surfaces that layer
+  over any of them, and `narrow.css` last, because a phone-sized and a short-window board are the
+  same rules with less room and they have to win. Imports come first, as the cascade requires.
+  Class names are shared across screens on purpose — a `.card` is the same card everywhere, an
+  `.action-bar` does the same job before a game as during one — so a rule added here is a rule
+  added to every screen that borrows the name.
 - `e2e/smoke.spec.ts` — the blocking gate: one path against the real server.
-- `e2e/*views.spec.ts` — the non-blocking tier: committed fixtures replayed over an
-  intercepted socket, no server involved. More than one file, sharing `e2e/frames.ts`; the
-  `views` project matches on the suffix.
+- `e2e/*views.spec.ts` — the non-blocking tier: committed fixtures replayed over an intercepted
+  socket, no server involved. Four files sharing `e2e/frames.ts` — the board, the pre-game
+  screens, the card, and the sweep across viewports; the `views` project matches on the suffix.
 
 Keep logic out of components. Anything worth a test belongs in one of the modules above, which
 are pure and need neither React nor a browser.

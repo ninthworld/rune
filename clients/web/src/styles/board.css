@@ -1,0 +1,969 @@
+.layout {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  grid-template-rows: 32px minmax(0, 7fr) auto minmax(0, 3fr);
+  grid-template-areas:
+    'topbar topbar'
+    'battlefield log'
+    'actionbar log'
+    'hand log';
+}
+
+/* the phase bar under the top bar exists only in narrow mode */
+.phase-bar.phase-top {
+  display: none;
+}
+
+/* the opponents' band takes one share per row of seats it holds, so a
+   seat is the same height whether there are one or seven of them */
+.battlefield {
+  grid-area: battlefield;
+  display: grid;
+  grid-template-rows: minmax(0, var(--opp-band)) auto minmax(0, 1fr);
+}
+
+.field-opponents {
+  display: grid;
+  grid-template-columns: repeat(var(--opp-cols), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--opp-rows), minmax(0, 1fr));
+}
+
+/* seats wrap, so a shared edge is no longer expressible as one border:
+   each seat rings itself and adjacent rings land on the same hairline */
+.field-opponent {
+  box-shadow: 0 0 0 1px #24272e;
+}
+
+/* focus: one seat keeps its board and the rest fall back to their
+   sidebars, so the tiling collapses to a single row of bars plus the
+   seat you asked for */
+.field-opponents.opp-focused {
+  display: flex;
+  grid-template-columns: none;
+  grid-template-rows: none;
+}
+
+/* the focused seat claims its room first — otherwise a long row of
+   collapsed bars leaves nothing for the board you asked to look at */
+.opp-focused .field-opponent {
+  flex: 1 1 auto;
+  min-width: min(52%, 340px);
+}
+
+.opp-focused .field-collapsed {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.phase-bar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  padding: 3px 8px;
+  background: var(--pane);
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  box-shadow: var(--lit), var(--cast-down);
+}
+
+.turn-info {
+  font-size: 12px;
+  font-weight: 600;
+  color: #cfe0f4;
+  white-space: nowrap;
+  margin-right: 10px;
+}
+
+.phase-pills {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  row-gap: 2px;
+  margin: 0 auto;
+}
+
+.phase {
+  /* a step is also the control that sets a stop there, so the pill is a button — and a button
+     brings a background, a border and a colour of the browser's own, all of which have to go
+     before it is a pill again */
+  background: none;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 11px;
+  color: #6b6f78;
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.phase:hover {
+  color: #a8acb4;
+}
+
+/* the lit pill in a row of unlit ones — the same tinted pane the action
+   bar is, at label size */
+.phase-current {
+  background: linear-gradient(180deg, #1b3454 0, #14263e 100%);
+  border: 1px solid #3a6398;
+  box-shadow:
+    inset 0 1px 0 rgba(207, 224, 244, 0.14),
+    var(--cast-btn);
+  color: #cfe0f4;
+  font-weight: 600;
+}
+
+.helper-btn {
+  background: var(--pane-btn);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: var(--lit-btn), var(--cast-btn);
+  color: #a8acb4;
+  font-size: 11px;
+  padding: 4px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.helper-btn:hover {
+  background: var(--pane-btn-hi);
+  color: #d6d8dc;
+}
+
+.helper-concede {
+  background: linear-gradient(180deg, #2b1e22 0, #201619 100%);
+  border-color: #5c2c2c;
+  color: #c88a8a;
+}
+
+.helper-concede:hover {
+  background: linear-gradient(180deg, #45262a 0, #351e22 100%);
+  color: #e8b0b0;
+}
+
+.field {
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.field-active {
+  box-shadow: inset 0 0 0 2px #2a4a72;
+  background: rgba(42, 74, 114, 0.08);
+}
+
+.field-area {
+  flex: 1;
+  display: grid;
+  grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+  min-width: 0;
+}
+
+/* an opponent's field is the mirror of mine: their lands sit at the far
+   edge and their creatures face the middle, the way they would across a
+   table. The row shares swap with the rows. */
+.field-area-mirror {
+  grid-template-rows: minmax(0, 2fr) minmax(0, 3fr);
+}
+
+/* the row is the size container cards measure themselves from; the strip
+   inside it scrolls when a seat is too narrow to hold them all */
+.field-row {
+  container-type: size;
+  padding: 4px 0;
+  overflow: hidden;
+}
+
+.field-row + .field-row {
+  border-top: 1px dashed #24272e;
+}
+
+/* a strip of cards wider than its space — a battlefield row or the hand.
+   No bar: it would eat the height the cards are sized from, and a
+   scrollbar across the board is a defect. The masked edge is the tell,
+   and the cursor says it can be dragged. */
+.strip {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.strip::-webkit-scrollbar {
+  display: none;
+}
+
+.strip.scroll-l,
+.strip.scroll-r {
+  cursor: grab;
+}
+
+.strip.panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.strip.scroll-l {
+  mask-image: linear-gradient(90deg, transparent, #000 26px);
+}
+
+.strip.scroll-r {
+  mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent);
+}
+
+.strip.scroll-l.scroll-r {
+  mask-image: linear-gradient(90deg, transparent, #000 26px, #000 calc(100% - 26px), transparent);
+}
+
+.field-scroll {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+}
+
+/* one permanent's footprint. A pile is fitted to the row height, so its
+   cards are shorter by exactly what the cascade spends. */
+.perm {
+  --n: 1;
+  --dx: 0;
+  --dy: 0;
+  --spread: calc(1 + var(--dy) * (var(--n) - 1));
+  --ch: calc(100cqh / var(--spread));
+  --cw: calc(var(--ch) * 207 / 291);
+  --pw: calc(var(--cw) * (1 + var(--dx) * (var(--n) - 1)));
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--pw);
+  height: 100cqh;
+}
+
+/* tapped turns the whole permanent, attachments and all; the slot takes
+   the turned footprint so it never lies over the permanent beside it */
+.perm-tapped {
+  width: 100cqh;
+}
+
+.perm-inner {
+  position: relative;
+  flex: none;
+  width: var(--pw);
+  height: 100cqh;
+}
+
+.perm-tapped .perm-inner {
+  transform: rotate(90deg);
+}
+
+.perm .card {
+  --s: calc(var(--ch) / 600);
+  position: absolute;
+  top: calc(var(--i) * var(--dy) * var(--ch));
+  left: calc(var(--i) * var(--dx) * var(--cw));
+}
+
+.player-bar {
+  width: 110px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px;
+  position: relative;
+  z-index: 1;
+  background: var(--pane);
+  border-right: 1px solid var(--line-soft);
+  box-shadow: var(--lit), var(--cast-right);
+  /* a seat can be shorter than the bar wants; clip inside it rather than
+     spill over the seat below */
+  overflow: hidden;
+}
+
+.player-head {
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+  flex: none;
+}
+
+/* the player themself is a target: one area carrying name and life */
+.player-target {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 4px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.player-target:hover {
+  background: var(--pane-btn);
+  border-color: var(--line);
+  box-shadow: var(--lit-btn), var(--cast-btn);
+}
+
+.player-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #d6d8dc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-life {
+  font-size: 17px;
+  font-weight: 700;
+  color: #e8e0c8;
+}
+
+.focus-btn {
+  flex: none;
+  width: 22px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #6b6f78;
+  cursor: pointer;
+}
+
+.focus-btn:hover {
+  background: var(--pane-btn);
+  border-color: var(--line);
+  box-shadow: var(--lit-btn), var(--cast-btn);
+  color: #d6d8dc;
+}
+
+.focus-btn.focus-on {
+  background: linear-gradient(180deg, #1b3454 0, #14263e 100%);
+  border-color: #3a6398;
+  box-shadow:
+    inset 0 1px 0 rgba(207, 224, 244, 0.14),
+    var(--cast-btn);
+  color: #cfe0f4;
+}
+
+/* zones are icons with a count — the words were what made the bar taller
+   than a seat. Each stays a bounded box so it can take a target later. */
+.zone-grid {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(28px, 1fr));
+  gap: 3px;
+}
+
+.zone-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-width: 0;
+  padding: 3px 1px;
+  background: var(--pane-btn);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  box-shadow: var(--lit-btn), var(--cast-btn);
+  color: #8b8f98;
+  cursor: pointer;
+}
+
+.zone-btn:hover {
+  background: var(--pane-btn-hi);
+  border-color: #3a4250;
+  color: #d6d8dc;
+}
+
+.zone-btn[data-zone='commander'] {
+  color: #b79a55;
+}
+
+.zone-btn[data-zone='commander']:hover {
+  color: #e0c176;
+}
+
+.glyph {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.zone-count {
+  font-size: 10px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* mana the player has floating from abilities activated this step. The
+   one thing in the bar that is a recess rather than a raised pane — mana
+   sits *in* the pool, and lighting it from above would make it a button. */
+.mana-pool {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px 4px;
+  background: var(--well);
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  box-shadow: var(--well-lit);
+}
+
+.mana-pool .c-pip {
+  width: 13px;
+  height: 13px;
+  filter: none;
+}
+
+.player-status {
+  flex: 1;
+  min-height: 0;
+}
+
+.log {
+  grid-area: log;
+  background: var(--pane-deep);
+  border-left: 1px solid var(--line-soft);
+  box-shadow: var(--lit), var(--cast-left);
+  display: flex;
+  flex-direction: column;
+}
+
+/* wide mode: hiding the sidebar gives its column back to the board */
+@media (min-width: 901px) {
+  .layout.log-hidden {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'topbar'
+      'battlefield'
+      'actionbar'
+      'hand';
+  }
+
+  .log-hidden .log {
+    display: none;
+  }
+}
+
+/* the sidebar's tabbed lower half */
+.panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-tabs {
+  flex: none;
+  display: flex;
+  background: var(--well);
+  border-bottom: 1px solid var(--line-soft);
+  box-shadow: var(--well-lit);
+}
+
+.panel-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 4px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #8b8f98;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.panel-tab:hover {
+  color: #d6d8dc;
+}
+
+/* the live tab is lit the way the current phase pill is */
+.panel-tab-on {
+  background: linear-gradient(180deg, #1b3454 0, #14263e 100%);
+  border-bottom-color: #4a7cb8;
+  box-shadow: inset 0 1px 0 rgba(207, 224, 244, 0.14);
+  color: #cfe0f4;
+}
+
+/* something is waiting on the stack, wherever you happen to be looking */
+.panel-count {
+  min-width: 16px;
+  padding: 0 4px;
+  background: #2e5c94;
+  border-radius: 999px;
+  color: #f2f6fa;
+  font-size: 10px;
+  line-height: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.panel-empty {
+  padding: 22px 10px;
+  text-align: center;
+  font-size: 12px;
+  color: #6b6f78;
+}
+
+.stack-head {
+  padding: 2px 4px 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b6f78;
+}
+
+/* topmost first: the list reads in the order the stack resolves */
+.stack-item {
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+}
+
+.stack-item:hover {
+  background: var(--pane-btn);
+  border-color: var(--line);
+}
+
+.stack-item + .stack-item {
+  margin-top: 4px;
+}
+
+.stack-thumb {
+  flex: none;
+}
+
+.stack-thumb .card {
+  --s: calc(46px / 427);
+}
+
+.stack-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  justify-content: center;
+}
+
+.stack-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #d6d8dc;
+}
+
+.stack-kind {
+  font-size: 11px;
+  color: #8b8f98;
+}
+
+.stack-target {
+  font-size: 11px;
+  color: #8aa8cc;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.log-line,
+.chat-line {
+  padding: 2px 4px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #a8acb4;
+}
+
+.log-turn {
+  margin: 8px 0 3px;
+  padding: 2px 4px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #cfe0f4;
+}
+
+.log-turn:first-child {
+  margin-top: 0;
+  border-top: none;
+  padding-top: 2px;
+}
+
+.chat-who {
+  margin-right: 5px;
+  font-weight: 600;
+  color: #cfe0f4;
+}
+
+.chat-entry {
+  flex: none;
+  padding: 8px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.chat-input {
+  width: 100%;
+  padding: 5px 8px;
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: var(--well-lit);
+  color: #d6d8dc;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.chat-input:focus {
+  outline: none;
+  border-color: #4a7cb8;
+}
+
+/* hover preview: pane holds card proportions, card fills it */
+.preview-section {
+  position: relative;
+  flex: none;
+  aspect-ratio: 63 / 88;
+  container-type: size;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  overflow: hidden;
+}
+
+.preview-section .card {
+  --s: min(calc(100cqh / 600), calc(100cqw / 430));
+}
+
+/* a tray the buttons sit in, so a grid of small panes doesn't read as
+   eight loose chips on the sidebar */
+.helper-strip {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 8px 10px;
+  background: var(--well);
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  box-shadow: var(--well-lit);
+}
+
+/* The bar's tone says where in the turn you are — green on the turn's
+   bookends, blue while you may cast at will, red once combat is live. */
+.action-bar {
+  --act-bg: #14263e;
+  --act-line: #2a4a72;
+  --act-fg: #cfe0f4;
+  --act-sub: #8aa8cc;
+  --act-btn: #2e5c94;
+  --act-btn-line: #4a7cb8;
+  --act-btn-hover: #3a6ca8;
+  grid-area: actionbar;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  /* the pane an arrow is made of, at bar scale: the same tint, lit along
+     the top in the same accent an arrow is rimmed with */
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--act-bg) 86%, #ffffff) 0,
+    var(--act-bg) 60%,
+    color-mix(in srgb, var(--act-bg) 88%, #000000) 100%
+  );
+  border-top: 1px solid var(--act-btn-line);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--act-fg) 24%, transparent),
+    var(--cast-down);
+  color: var(--act-fg);
+}
+
+.action-green {
+  --act-bg: #16301f;
+  --act-line: #2f6440;
+  --act-fg: #cfe8d6;
+  --act-sub: #86b898;
+  --act-btn: #2f6b44;
+  --act-btn-line: #4a8f60;
+  --act-btn-hover: #3b8154;
+}
+
+.action-red {
+  --act-bg: #351d1c;
+  --act-line: #773932;
+  --act-fg: #f0d4ce;
+  --act-sub: #c39288;
+  --act-btn: #8a4038;
+  --act-btn-line: #b3594c;
+  --act-btn-hover: #a24d43;
+}
+
+.action-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.action-prompt {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* a cost in the prompt is the same pip the card prints */
+.action-prompt .c-pip {
+  width: 16px;
+  height: 16px;
+  filter: none;
+}
+
+.action-phase {
+  font-size: 12px;
+  color: var(--act-sub);
+}
+
+.action-btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.action-done {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--act-btn) 84%, #ffffff) 0,
+    var(--act-btn) 100%
+  );
+  border: 1px solid var(--act-btn-line);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    var(--cast-btn);
+  color: #f2f6fa;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 6px 22px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.action-done:hover {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--act-btn-hover) 80%, #ffffff) 0,
+    var(--act-btn-hover) 100%
+  );
+}
+
+/* the quieter half of a pair: declining, cancelling, mulliganing. Cut
+   out of the bar rather than raised off it — a hole, not a pane. */
+.action-alt {
+  background: var(--well);
+  border-color: var(--act-line);
+  box-shadow: var(--well-lit);
+  color: var(--act-sub);
+}
+
+.action-alt:hover {
+  background: color-mix(in srgb, var(--act-btn) 40%, transparent);
+  color: var(--act-fg);
+}
+
+.hand {
+  grid-area: hand;
+  container-type: size;
+  background: var(--pane-deep);
+  border-top: 1px solid var(--line-soft);
+  box-shadow: var(--lit);
+  padding: 10px 0;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.hand-scroll {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: safe center;
+  gap: 10px;
+  padding: 0 10px;
+}
+
+.hand .card {
+  --s: calc(100cqh / 600);
+}
+
+/* the connection, said in the one place that is about neither the board nor the game */
+.topbar-note {
+  font-size: 11px;
+  color: #b3958a;
+}
+
+/* the preview is pinned until it is released, and says which it is */
+.preview-unpin {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 2px 8px;
+  background: var(--pane-btn);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: var(--lit-btn), var(--cast-btn);
+  color: #a8acb4;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.preview-unpin:hover {
+  color: #d6d8dc;
+}
+
+/* a step this seat has told the server to stop at, and one a settle already passed for it */
+.phase-stop-own {
+  border-color: #3d5a7d;
+}
+
+.phase-stop-always {
+  border-color: #4a7cb8;
+  color: #b8c8dc;
+}
+
+.phase-passed {
+  opacity: 0.55;
+}
+
+/* what a seat is beyond its counts: the monarch, out of the game, gone from the socket */
+.player-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.player-flag {
+  padding: 1px 5px;
+  background: var(--well);
+  border-radius: 3px;
+  box-shadow: var(--well-lit);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: #8b8f98;
+}
+
+.player-out {
+  opacity: 0.6;
+}
+
+.zone-btn:disabled {
+  cursor: default;
+}
+
+.zone-btn:disabled:hover {
+  background: var(--well);
+  color: #8b8f98;
+}
+
+/* the questions an armed action is asking, in the bar rather than over the board. Only what the
+   board cannot answer is here (§6.5), which is why it is one row and not a panel. */
+.action-slots {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.slot-ask {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: #cfd6e2;
+}
+
+.slot-ask b {
+  font-weight: 600;
+  color: #9aa4b2;
+}
+
+.slot-number {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.slot-number input {
+  width: 64px;
+  padding: 3px 6px;
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: var(--well-lit);
+  color: #e4e7ec;
+  font: inherit;
+  font-size: 12px;
+}
+
+.action-chosen {
+  box-shadow: inset 0 1px 0 rgba(207, 224, 244, 0.18);
+  color: #eaf1fa;
+}
+
+/* the log, scannable by what a line is about */
+.log-combat {
+  color: #d8b3aa;
+}
+
+.log-life {
+  color: #b9c9a8;
+}
+
+.log-result {
+  color: #cfe0f4;
+}
+
+/* the strip is a list, so its steps are steps to a screen reader as well as pills to everyone
+   else; the item carries the pill and nothing of its own */
+.phase-pills > li {
+  display: flex;
+  min-width: 0;
+}

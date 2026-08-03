@@ -12,8 +12,8 @@
  * A flight in particular is a **join the server stated** — `physical_card`, the physical card
  * (CR 108.1) two projections are of — and it claims nothing about identity: under CR 400.7 the
  * two ends are two different objects, and all this does is move a picture between them. Objects
- * are found through the same `data-entity` anchor the drawn relationships and the action list
- * use, so a surface gets this for free by tagging what it draws, and one that draws nothing for
+ * are found through the same `data-anchor` the arrows and the object menu
+ * find their subjects by, so a surface gets this for free by tagging what it draws, and one that draws nothing for
  * an id simply has nothing to animate.
  *
  * A card *leaving* for nowhere is deliberately not here: it is already gone from the view, so
@@ -24,7 +24,6 @@
 import { useLayoutEffect, useRef } from 'react'
 
 import type { Changes } from './../../motion'
-import { ANCHOR } from './../../overlay'
 
 /** Short enough to be over before a player reaches for the next card, long enough to be seen. */
 const DURATION = 220
@@ -36,8 +35,8 @@ type Boxes = ReadonlyMap<string, DOMRect>
 
 const boxesNow = (): Boxes => {
   const boxes = new Map<string, DOMRect>()
-  for (const element of document.querySelectorAll<HTMLElement>(`[${ANCHOR}]`)) {
-    const id = element.dataset.entity
+  for (const element of document.querySelectorAll<HTMLElement>('[data-anchor]')) {
+    const id = element.dataset.anchor
     if (id !== undefined) boxes.set(id, element.getBoundingClientRect())
   }
   return boxes
@@ -68,8 +67,8 @@ export function Motion({ changes }: { changes: Changes }) {
     // mid-game, and the honest answer is always the current one.
     const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 
-    for (const element of document.querySelectorAll<HTMLElement>(`[${ANCHOR}]`)) {
-      const id = element.dataset.entity
+    for (const element of document.querySelectorAll<HTMLElement>('[data-anchor]')) {
+      const id = element.dataset.anchor
       if (id === undefined || played.current.has(id)) continue
 
       const flight = changes.flights.find((candidate) => candidate.to === id)

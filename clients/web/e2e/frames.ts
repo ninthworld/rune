@@ -82,8 +82,8 @@ export async function serveFrames(page: Page, frames: readonly unknown[]) {
 export async function open(page: Page, name = '') {
   await page.goto('/')
   const connect = page.getByRole('button', { name: 'Connect' })
-  const rail = page.getByRole('navigation', { name: 'Destinations' })
-  await expect(connect.or(rail).first()).toBeVisible()
+  const lobby = page.getByRole('heading', { name: 'Open tables' })
+  await expect(connect.or(lobby).first()).toBeVisible()
   // A second visit in the same tab carries the token the first was issued, and a tab that is
   // already somebody is never asked again — so this is a no-op there rather than a failure.
   if ((await connect.count()) === 0) return
@@ -113,21 +113,20 @@ export const pageFits = (page: Page) =>
   })
 
 /**
- * Open the drawer the side column becomes wherever the board wants the width back.
+ * Open the side column, wherever the board has taken the width back.
  *
- * `docs/client-design.md` §3 step 8 and §2's tier 3: the preview, the log, and the settle summary
- * are the last things on the screen to earn a permanent column, and a 224px column standing open
- * to say "Log / Nothing yet." is width the board can use. So they live behind one gesture at every
- * band except the widest, where there is genuinely room to spare and the column is already open —
- * which is why this is a no-op when there is no control to press.
+ * The column carries the preview, the pace, the stack and the log, and below the width a board
+ * needs it slides in over the table instead of standing beside it (`styles/narrow.css`). The
+ * toggle is in the topbar at every size, so this is one press either way — and it is a no-op
+ * where the column is already open.
  */
-export const openHistory = async (page: Page) => {
-  // Wait for the board first. The control exists only once a game view has arrived, and asking
-  // before that reads "there is no drawer" rather than "not yet" — which is a no-op that then
-  // fails several assertions later, in a test that has nothing to do with timing.
+export const openSide = async (page: Page) => {
+  // Wait for the board first. Asking before a game view has arrived reads "no column" rather
+  // than "not yet", which is a no-op that then fails assertions in a test about something else.
   await expect(page.getByRole('region', { name: 'Actions' })).toBeVisible()
-  const control = page.getByRole('button', { name: 'History' })
-  if ((await control.count()) > 0) await control.click()
+  const toggle = page.getByTitle('Stack, log and chat')
+  if ((await toggle.getAttribute('aria-expanded')) === 'true') return
+  await toggle.click()
 }
 
 /**

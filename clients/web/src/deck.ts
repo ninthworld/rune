@@ -23,6 +23,7 @@
  */
 import type { AiOption, CatalogCard, CatalogFormat, CatalogView, LobbyRejection } from './protocol'
 import { list } from './normalize'
+import { manaSymbols, type ManaColor } from './mana'
 
 // ---------------------------------------------------------------------------
 // The draft
@@ -165,6 +166,26 @@ export const formatOf = (catalog: Catalog, gameSetup: string): CatalogFormat | u
 /** A card's display name, falling back to its identity when the catalog has not arrived. */
 export const cardName = (catalog: Catalog, identity: string): string =>
   catalog.byId.get(identity)?.name ?? identity
+
+/**
+ * The colours a deck is drawn as, at a table (`docs/client-design.md` §9.5).
+ *
+ * The shallowest possible reading, exactly as `mana.ts`'s tint is: the colours of the pips
+ * printed on the cards in it, in a fixed order so two decks with the same colours draw the same
+ * row. It is **not** colour identity (CR 903.4) and it decides nothing — a seat's deck is
+ * checked by the server, and this only says what the row of pips shows.
+ */
+const COLOR_ORDER: readonly ManaColor[] = ['w', 'u', 'b', 'r', 'g']
+
+export function deckColors(draft: DeckDraft, catalog: Catalog): readonly ManaColor[] {
+  const found = new Set<ManaColor>()
+  for (const entry of draft.entries) {
+    for (const symbol of manaSymbols(catalog.byId.get(entry.identity)?.mana_cost)) {
+      for (const color of symbol.colors) found.add(color)
+    }
+  }
+  return COLOR_ORDER.filter((color) => found.has(color))
+}
 
 /** What a browser is filtering the card pool down to. */
 export interface CardQuery {

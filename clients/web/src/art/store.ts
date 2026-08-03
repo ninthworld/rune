@@ -111,6 +111,29 @@ export class ArtStore {
     return settled
   }
 
+  /**
+   * How many cards are still queued or in flight.
+   *
+   * What the bulk download in settings (§9.6) reports progress against, and the only thing that
+   * distinguishes "downloading" from "done" — the queue drains serially and spaced, so a player
+   * who asked for a whole catalog is waiting on a number that only falls.
+   */
+  waiting(): number {
+    return this.queue.length + (this.draining ? 1 : 0)
+  }
+
+  /**
+   * Stop asking for anything else, keeping everything already resolved.
+   *
+   * The way out of a bulk download. The request in flight is not aborted — it is one card, and a
+   * cancelled fetch would be remembered as a failure and re-asked later for no gain.
+   */
+  stop(): void {
+    if (this.queue.length === 0) return
+    this.queue = []
+    this.announce()
+  }
+
   /** Forget every resolved image, on this device. The next look re-asks. */
   clear(): void {
     this.entries = new Map()

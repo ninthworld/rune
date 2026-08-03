@@ -1,858 +1,255 @@
-/* Cards.
-
-   One frame, four presentations, and a real card's anatomy: a name band the name leads and the
-   cost follows, an art window that takes what is left, a type line, a text box, and a
-   stat in the corner — at the proportions a card is actually printed at. What that buys is
-   scanning: a board of forty permanents is read by shape, colour, and position long before it is
-   read by text, and a grid of same-coloured rectangles gives a player none of those.
-
-   **Which presentation a frame gets is decided from its box, in `fit.ts`, not here and not by the
-   surface that drew it** (`docs/client-design.md` §6). What this file does is state the box — each
-   surface below gives its frames a width, and the printed 63:88 gives the height — and then dress
-   whatever the fitting decided to put in it. Sizes that vary with the box arrive as inline styles
-   from the component, because a font size that has to be *computed* against a width cannot live in
-   a stylesheet that never sees one.
-
-   Two rules here are the whole of the redraw. Nothing truncates: no `text-overflow`, no
-   `line-clamp`, because the fitting drew only what fits and a CSS cut is how `Snapcaster Mage`
-   became `Sna…`. And the padding is near zero: §6's density is space spent on text, which is what
-   lets a 72×100 tile carry a complete name, a type line, and a P/T the way XMage's does.
-
-   The colour is `costTint` (`mana.ts`): the colours of the pips that were printed, and nothing
-   more. It is not colour, not colour identity, and not devotion — see that module's note. Every
-   frame is a wash *under* text that states the real thing, which is what makes a tint that
-   sometimes says less than the rules do a safe thing to draw.
-
-   The art window is ADR 0012's, and it is never empty: `art/procedural.ts` seeds a composition
-   from the card's own identity, and a player-supplied illustration covers it when there is one.
-   Nothing here downloads and nothing here is bundled. */
-
-.cards {
-  list-style: none;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  align-items: flex-start;
-}
-
-/* The three column layouts. `align-items` on a column flex container is the *horizontal* axis,
-   and the row layouts above want `flex-start` there so a card sizes to its own content. A column
-   wants the opposite: stretch to the track, so a fluid card fills the narrow rail it is in
-   instead of sizing to its longest line and being clipped by it. */
-.cards--stack,
-.cards--emblems {
-  flex-direction: column;
-  align-items: stretch;
-}
-
-/* A flex item's automatic minimum size is content-based, so a card with a long line pushes its
-   own row wider than the column it is in and is then clipped by the region that column belongs
-   to. These three layouts are narrow rails by design, so their items are told outright that the
-   track is the limit. */
-.cards--stack > li,
-.cards--emblems > li {
-  min-width: 0;
-  max-width: 100%;
-}
-
-.cards > li {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-
-.cards__aside {
-  margin: 0;
-  font-size: var(--text-xs);
-  color: var(--ink-faint);
-  max-width: 100%;
-}
-
-/* ---------------------------------------------------------------------------
-   The frame
-   --------------------------------------------------------------------------- */
-
+/* card — a single SVG drawn in the reference's 207x291 pixel grid.
+   All geometry lives in Card.tsx as paths; only sizing, the per-color
+   palette, and foreignObject typography live here. Inside each
+   foreignObject 1 CSS px = 1 reference pixel, so type is set in px. */
 .card {
-  /* The tint every part of the frame is mixed from. Overridden by the `card--tint-*` class the
-     component assigns; the neutral default is what a land, an artifact, and a card whose colour
-     the client was not told about all get. */
-  --tint: var(--mana-c);
-
-  /* A containing block for the corner stat, the badge strip, and the absolutely-positioned
-     screen-reader text inside. Without one, those spans resolve against the viewport, escape
-     every `overflow` on the way up — clipping only applies to an ancestor that is in the
-     containing-block chain — and a hand of twenty cards ends up growing the page by the width of
-     its own scroll area. */
-  position: relative;
-  /* And a stacking context, so the frame's own layering stays inside the frame. Every `z-index`
-     below is about one card's anatomy — the band over the picture, the marks over the art, the
-     text over a tapped card's hatch — and none of it is a claim about the *page*. Without this
-     they are all levels 1–3 of whatever context the board happens to sit in, and a hand of
-     full-art cards paints its name bands straight through a panel opened over the board. */
-  isolation: isolate;
-  display: flex;
-  flex-direction: column;
-  /* Near zero. A 108px tile that was mostly padding and art window is what showed `C…`; the
-     space padding used to hold is the space the name and the type line are drawn in now. */
-  gap: 2px;
-  padding: 2px;
-  text-align: start;
-  overflow: hidden;
-
-  /* The box. A frame fills the width its surface gave it and takes the printed 63:88 from
-     there, at every size (§5) — so a card is a card whether it is 336px or 72px wide, and the
-     component measures exactly the box this states. `border-box`, because the measurement is of
-     the border box and the arithmetic in `fit.ts` subtracts the padding from it. */
-  box-sizing: border-box;
-  inline-size: 100%;
-  aspect-ratio: 63 / 88;
-
-  border: 1px solid color-mix(in srgb, var(--tint) 55%, transparent);
-  border-radius: 0.35rem;
-  background: linear-gradient(
-    165deg,
-    color-mix(in srgb, var(--tint) 28%, Canvas),
-    color-mix(in srgb, var(--tint) 9%, Canvas) 60%,
-    color-mix(in srgb, var(--tint) 18%, Canvas)
-  );
-  box-shadow: 0 1px 2px color-mix(in srgb, CanvasText 25%, transparent);
-  color: inherit;
-  font: inherit;
-  /* The same 1.2 `fit.ts` budgets a line at. A frame whose lines are taller than the plan
-     assumed is a frame whose last line is clipped. */
-  line-height: 1.2;
-}
-
-.card * {
-  box-sizing: border-box;
-}
-
-.card--tint-w {
-  --tint: var(--mana-w);
-}
-.card--tint-u {
-  --tint: var(--mana-u);
-}
-.card--tint-b {
-  --tint: var(--mana-b);
-}
-.card--tint-r {
-  --tint: var(--mana-r);
-}
-.card--tint-g {
-  --tint: var(--mana-g);
-}
-.card--tint-multicolor {
-  --tint: var(--mana-gold);
-}
-
-button.card {
-  cursor: pointer;
-}
-
-button.card:hover {
-  border-color: var(--tint);
-}
-
-/* **The name leads the band; the cost follows it.** SAGE ships no card art and ADR 0012's is
-   opt-in and may be absent, so the printed name is the only thing that identifies a card — and
-   the cost is where a printed card puts it, at the band's trailing edge, which is where a
-   player's eye already goes. Which of the two gives way is decided in `fit.ts` and always the
-   same one: the cost is drawn in the width the name did not use, or not at all.
-
-   `flex-start` rather than a shared baseline: a name on two lines keeps the pips beside its
-   first line, where a printed cost sits. */
-.card__band {
-  flex: none;
-  display: flex;
-  align-items: flex-start;
-  gap: 2px;
-  font-weight: 600;
-  min-inline-size: 0;
-  /* Positioned so the tapped mark can be given a layer to sit *under*. The name is the one
-     element on the frame the mark is not allowed to cost. */
-  position: relative;
-}
-
-/* No `text-overflow`, no `white-space: nowrap`. The size and the line count arrive from `fit.ts`
-   as inline styles, and the whole point of that arithmetic is that what is drawn already fits;
-   the `overflow` here is a backstop against a font this build did not measure against, not the
-   fitting policy. */
-.card__name {
+  --s: 1px;
+  --u: calc(var(--s) * 600 / 291);
+  width: calc(207 * var(--u));
+  height: calc(291 * var(--u));
+  flex-shrink: 0;
   display: block;
-  flex: 1 1 auto;
-  min-inline-size: 0;
-  overflow: hidden;
+  border-radius: calc(7 * var(--u));
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  color: #131110;
+  /* per-color derived tones; --f1/--f2 come from the color class */
+  --panel: color-mix(in srgb, var(--f1) 32%, #f8f5e9);
+  --panel-deep: color-mix(in srgb, var(--f1) 45%, #eeebd6);
+  --field: color-mix(in srgb, var(--f1) 16%, #fdfcf6);
+  --title-b: color-mix(in srgb, var(--f1) 24%, #f8f7f2);
+  /* SAGE palette: always-black card ground, colored accent edging */
+  --bg: #1c1c1b;
+  --accent: color-mix(in srgb, var(--f1) 85%, #ffffff);
+  --key: color-mix(in srgb, var(--f2) 60%, #17150f);
+  --key-soft: color-mix(in srgb, var(--f2) 50%, #55534b);
 }
 
-/* The cost, at the band's trailing edge. Pips are graphic: they read at sizes text does not — no
-   baseline, no wrapping, no hyphenation — which is why this is the element that can be shrunk a
-   step, and dropped, without the row it is in losing a line. */
-.card__cost {
-  flex: none;
+/* per-color frame palettes */
+.card-w {
+  --f1: #d8d2b4;
+  --f2: #9a9172;
+}
+.card-u {
+  --f1: #89aed2;
+  --f2: #4a6a92;
+}
+.card-b {
+  --f1: #767081;
+  --f2: #3d3844;
+}
+.card-r {
+  --f1: #d29677;
+  --f2: #9a563d;
+}
+.card-g {
+  --f1: #9cb58c;
+  --f2: #5c7a4a;
+}
+.card-gold {
+  --f1: #d4bc78;
+  --f2: #9d8543;
+}
+.card-c {
+  --f1: #b0b0ac;
+  --f2: #737370;
 }
 
-/* The art window, and everything that lies on it: the cost, the state marks, the stat. It takes
-   what is left after the text rather than a fixed share (§6) — it is the only element that can
-   degrade to nothing without costing a fact, since identity lives in the name. */
-/* The printed illustration's share of the card, and the same share on every card (`fit.ts`,
-   `ART_RATIO`). `flex: 0 1` and not `none`: everything else in the frame is `flex: none`, so the
-   window is the only element that can give, which is exactly the one §2 says gives — if a font
-   this build did not measure against draws a hair taller than the arithmetic expected, the picture
-   loses a pixel rather than the rules text losing a line. */
-.card__window {
-  position: relative;
-  flex: 0 1 auto;
-  aspect-ratio: 63 / 47;
-  min-block-size: 0;
-  overflow: hidden;
-  border-radius: 0.15rem;
-}
-
-.card__art {
-  position: relative;
-  display: block;
-  inline-size: 100%;
-  block-size: 100%;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--tint) 40%, transparent);
-  border-radius: inherit;
-  /* Seeded per card by `art/procedural.ts`, which sets only the positions; every colour here is
-     the frame's own tint, so the same card is washed identically in the hand and on the board. */
-  background:
-    radial-gradient(
-      circle at var(--art-x1, 35%) var(--art-y1, 30%),
-      color-mix(in srgb, var(--tint) 88%, transparent),
-      transparent var(--art-r1, 60%)
-    ),
-    radial-gradient(
-      circle at var(--art-x2, 70%) var(--art-y2, 75%),
-      color-mix(in srgb, var(--tint) 60%, transparent),
-      transparent var(--art-r2, 55%)
-    ),
-    linear-gradient(
-      var(--art-angle, 200deg),
-      color-mix(in srgb, var(--tint) 40%, transparent) 0 var(--art-band, 50%),
-      color-mix(in srgb, CanvasText 12%, transparent) var(--art-band, 50%) 100%
-    ),
-    color-mix(in srgb, CanvasText 14%, Canvas);
-}
-
-/* A player-supplied illustration, over the procedural composition rather than instead of it: a
-   slow, broken, or transparent image leaves the generated face showing rather than a hole. */
-.card__illustration {
-  position: absolute;
-  inset: 0;
-  inline-size: 100%;
-  block-size: 100%;
-  object-fit: cover;
-}
-
-/* The whole card image as the face (ADR 0012). The frame gives up its own text — which is on the
-   picture — and keeps everything the *server* computed: the stat, the counters, the marked
-   damage, the state outlines, the tap. A buffed 4/4 never reads as its printed 2/2. */
-.card--image {
-  padding: 0;
-  gap: 0;
-  border-color: transparent;
-}
-
-.card--image .card__window {
-  border-radius: inherit;
-}
-
-.card--image .card__art {
-  border: 0;
-}
-
-/* The name, over the picture. SAGE keeps drawing it because the image's own title is set at a
-   size and in a typeface the image chose, at whatever scale a battlefield tile happens to be —
-   frequently unreadable, and never in the place a player's eye has learnt to look on this
-   board. Dark-to-transparent so it reads over any illustration without hiding one. */
-.card--image .card__band--over {
-  position: absolute;
-  z-index: 1;
-  inset-inline: 0;
-  inset-block-start: 0;
-  padding: 0.2rem 0.4rem 0.5rem;
-  background: linear-gradient(#000000d9, #00000094 60%, transparent);
-  color: #f4f2ee;
-  text-shadow: 0 1px 2px #000000cc;
-}
-
-/* Degraded by rule and never by ellipsis (§6): `Legendary Creature — Elf Druid` is drawn as
-   `Creature` rather than as `Legendary Cr…`, and where not even the card type fits it is dropped.
-   So there is nothing here to truncate with. */
-.card__type {
-  flex: none;
-  position: relative;
-  opacity: 0.85;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-/* The text box: one region, and one that is drawn **only when what goes in it fits whole**. A
-   blank band where the text did not fit is a container outliving its content, which is the
-   defect; the component draws no box at all in that case and the preview carries the prose. */
-.card__text {
-  flex: none;
-  position: relative;
+/* title bar content */
+.c-title-row {
   display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-  padding: 3px;
-  border-radius: 0.15rem;
-  background: color-mix(in srgb, Canvas 70%, transparent);
-}
-
-.card__rules {
-  display: block;
-}
-
-.card__keywords {
-  font-style: italic;
-  opacity: 0.85;
-}
-
-/* The state marks, along the bottom of the picture — the one surface on a dense frame with room
-   to spare, and out of the way of every line of text. Where there is no picture (an emblem, a
-   bare ability, a chip) the component puts them back in the flow. */
-.card__badges {
-  position: absolute;
-  z-index: 1;
-  inset-inline: 2px;
-  inset-block-end: 2px;
-  /* Clear of the corner stat, which never moves. */
-  padding-inline-end: 2.4rem;
-  display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0.15rem;
-  overflow: hidden;
+  gap: 3px;
+  height: 100%;
 }
-
-.badge {
-  font-size: 0.62rem;
-  padding: 0.05rem 0.25rem;
-  border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
-  border-radius: 0.6rem;
-  background: color-mix(in srgb, Canvas 75%, transparent);
-  white-space: nowrap;
-}
-
-.badge--counter,
-.badge--damage {
-  border-color: currentColor;
-  font-weight: 600;
-}
-
-/* The stat sits where the printed one does — bottom right — because it is the number a player
-   scans a whole board for, and a row that reflows is the wrong place to keep the one thing that
-   must stay findable. Over the picture's corner rather than the frame's, so it can never land on
-   a line of rules text. */
-.card__stat {
-  position: absolute;
-  z-index: 1;
-  inset-block-end: 2px;
-  inset-inline-end: 2px;
-  padding: 0 0.25rem;
-  border-radius: 0.5rem;
-  border: 1px solid color-mix(in srgb, var(--tint) 65%, transparent);
-  /* Opaque, because it sits in the card's own corner now and what is under it is usually the last
-     line of the rules text rather than a picture. A stat a player has to read *through* is the
-     one number on the frame that must never need reading twice. */
-  background: color-mix(in srgb, Canvas 96%, var(--tint));
+.c-name {
   font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.card__stat--loyalty::before {
-  content: '◈';
-  margin-inline-end: 0.15rem;
-  font-weight: 400;
-}
-
-/* ---------------------------------------------------------------------------
-   The four presentations
-   --------------------------------------------------------------------------- */
-
-/* Not scaled copies of one another: each drops what it has no room for, in the ladder's order,
-   and which one a frame gets is `presentationFor()` reading its measured box. Almost everything
-   that differs between them is a size the component computed, so what is left here is the two
-   shapes that are genuinely different — a chip is a landscape row, and the full face is a panel
-   that grows instead of fitting. */
-
-/* Below the card floor a tile stops being a card (§3, step 5): it is a landscape chip carrying
-   the name, the stat, and the marks, with the face one gesture away. A 60px "card" has the shape
-   of information without being readable, which is worse than not drawing one. */
-.card--chip {
-  flex-direction: row;
-  align-items: center;
-  gap: 0.25rem;
-  aspect-ratio: auto;
-  block-size: 100%;
-  /* The same 2px every other frame has, and it has to be: `fit.ts` fits a chip's name against
-     `width - 2 × (padding + border)`, so a stylesheet spending four here would hand the name four
-     pixels less than the fitting was told it had — and at 96px that is a cut name. */
-  padding: 2px;
-}
-
-.card--chip .card__band {
-  flex: 1 1 auto;
-  min-inline-size: 0;
-}
-
-/* No picture to lie on, so the stat takes its place at the end of the row. `relative` rather than
-   `static`: it is back in the flow either way, and staying positioned is what lets the tapped
-   mark be drawn under it here as it is everywhere else.
-
-   It is the bare number here, without the pill it wears on a card face. `fit.ts` fits the name
-   against `width - statSize × 2.4` — about 26px of a 96px chip — and a bordered, padded pill is
-   ten pixels more than that, taken out of the one thing on a chip that identifies the card. The
-   number reads perfectly well without a ring around it at a size where nothing else is competing
-   for the corner. */
-.card--chip .card__stat {
-  position: relative;
-  inset: auto;
-  flex: none;
-  margin-inline-start: auto;
-  padding: 0;
-  border: 0;
-  background: none;
-}
-
-/* **The words come off a chip; the marks do not.** A chip is 96px of name and P/T, and pills
-   reading `1× +1/+1`, `2 damage`, `Token` took 60 of them — leaving four pixels for the one thing
-   that identifies the card. §2 asks a permanent to say *that* it carries counters, damage, or
-   attachments — "the mark, not necessarily the detail" — so the detail becomes a dot on the
-   frame's own corner, costing no width at all, and every word stays in the document where a
-   screen reader still reads it and the preview still shows it whole. */
-.card--chip .card__badges {
-  position: absolute;
-  inline-size: 1px;
-  block-size: 1px;
-  padding: 0;
+  font-size: 10px;
+  white-space: nowrap;
   overflow: hidden;
-  clip-path: inset(50%);
+  color: #0d0b09;
+  -webkit-text-stroke: 0.25px #0d0b09;
 }
-
-/* The dot. Drawn in the band's own empty half — a chip's name is one line in a 30px row — and
-   only where the server said there is something to mark. */
-.card--chip:has(.badge--counter, .badge--damage, .badge--marker, .badge--state)::before {
-  content: '';
-  position: absolute;
-  z-index: 3;
-  inset-block-end: 3px;
-  inset-inline-start: 3px;
-  inline-size: 5px;
-  block-size: 5px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--tint) 70%, CanvasText);
-}
-
-/* The preview and the inspector: the place everything the table clamps is redeemed, so nothing
-   here is fitted against a height. The panel grows to the card instead. */
-.card--full {
-  aspect-ratio: auto;
-  padding: 0.5rem;
-  gap: 0.3rem;
-  border-radius: 0.55rem;
-}
-
-/* Nothing to shrink for, because the card has no height to divide up: the panel grows instead. */
-.card--full .card__window {
-  flex: none;
-}
-
-/* And when the whole card image *is* the face (ADR 0012): then the window holds a card and
-   not an illustration, so it takes a card's proportion. Cropping 63:88 into 63:47 cuts a printed
-   face through its own text box — which is the compaction these two panels exist to undo. And
-   the picture is the whole frame, so the frame keeps none of its own padding around it: the card
-   in the picture has a printed border already. */
-.card--full.card--image {
-  padding: 0;
-}
-
-.card--full.card--image .card__window {
-  aspect-ratio: 63 / 88;
-}
-
-.card--full .card__name,
-.card--full .card__type,
-.card--full .card__keywords {
-  white-space: normal;
-  max-block-size: none;
-}
-
-.card--full .card__badges,
-.card--full .card__stat {
-  inset-inline-end: 0.35rem;
-  inset-block-end: 0.35rem;
-}
-
-.card--full .card__badges {
-  inset-inline-start: 0.35rem;
-  padding-inline-end: 3rem;
-}
-
-/* An object with no printed face — an emblem (CR 114), a bare ability on the stack — has no art
-   window to hang the badges on, so they return to the flow under whatever text there is rather
-   than being pinned over its last line. The *stat* needs no such case: it is in the card's own
-   corner on every frame now, picture or no picture. */
-.card:not(.card--chip):not(:has(.card__window)) .card__badges {
-  position: relative;
-  inset: auto;
-  margin-block-start: auto;
-}
-
-/* ---------------------------------------------------------------------------
-   The boxes the surfaces state
-   --------------------------------------------------------------------------- */
-
-/* Each surface says how wide its frames are and nothing else; the printed proportion gives the
-   height, and `fit.ts` reads the result. This is the seam the scene model replaces — it will set
-   the same boxes from computed geometry rather than from a token — and nothing above this line
-   changes when it does. */
-
-.cards--hand > li > .card {
-  inline-size: var(--card-hand-w);
-}
-
-/* The battlefield is the one surface that states no width here at all: `pack.ts` gives every tile
-   a box from the room the field has and the number of permanents in it, and the frame fills it.
-   Both dimensions are definite, which is what turns the printed proportion off — the *tile* is
-   63:88 and the card is the tile, so a chip's landscape box is a chip without a second rule
-   saying so. */
-.cards--battlefield > li > .card {
-  inline-size: 100%;
-  block-size: 100%;
-}
-
-/* The stack and the emblems beside it are a narrow column where height, not width, is what runs
-   out: six objects on the stack at a full card's proportions is a rail no screen has. They are
-   given a landscape box instead — wide enough that the fitting still reaches a type line and,
-   for a spell, its rules text. */
-.cards--stack > li > .card,
-.cards--emblems > li > .card {
-  aspect-ratio: auto;
-  block-size: 6.5rem;
-  max-inline-size: 14rem;
-}
-
-/* The inspector is opened to read a card, so it is given a card's worth of width and lets the
-   panel grow to whatever the face needs. */
-.inspector > .card {
-  inline-size: 21rem;
-  max-inline-size: 100%;
-}
-
-/* A whole card image has a definite height the moment it has a width, so the panel can be told
-   the one thing it could not work out for itself: whichever runs out first, a card's worth of
-   width or the height this window has for a 63:88 face and the panel's own chrome. Scale, never
-   crop — a short viewport gets a smaller whole card, not a bigger cut one, and the panel's
-   `overflow-y` stops being the thing that hides the bottom of the art. */
-.inspector > .card--image {
-  inline-size: min(21rem, 100%, (100dvh - 8rem) * 63 / 88);
-}
-
-/* ---------------------------------------------------------------------------
-   Tapping
-   --------------------------------------------------------------------------- */
-
-/* **Tapped is a quarter turn** (`docs/client-design.md` §6).
-
-   It is the most universal convention the game has — every player and every client already shares
-   it — and a pattern laid over an upright card is a private language nobody has learnt. The cost
-   is real: a turned card takes its text sideways, and SAGE ships no art, so the name a player
-   identifies a permanent by goes with it. It is outweighed. **A tapped permanent is one you are
-   not currently reading**: you know what it is, and the one bit you want from it at a glance is
-   exactly what the turn says better than anything else can.
-
-   The turn is a `transform`, so it changes nothing about the layout — the tile keeps the box
-   `pack.ts` gave it, `Card.tsx` keeps measuring the same box, and the presentation a permanent
-   gets is the same tapped or untapped. What reserves the room it turns into is the *row*, which
-   charges every tile its turned footprint whether or not anything is tapped (`pack.ts`); a
-   reservation that appeared when a creature attacked would slide the whole board, which §5
-   forbids.
-
-   Motion here is not decoration: it says a permanent *tapped*, rather than having been drawn
-   already tapped. A device that has asked for less of it reaches the same face at once, through
-   `--tap-duration` (`index.css`). `transform` and not `translate`/`scale`, which is what
-   `Motion.tsx` animates an arrival with — the two compose instead of replacing each other.
-
-   Scoped by the *field's* tier and not only by the frame's own class, because the frame's is
-   measured: a card renders once against §5's designed tile before its `ResizeObserver` has
-   answered, so a chip row would draw one frame of rotated cards and then animate them back
-   upright. The field states its tier from the packing, synchronously, in the first render there
-   is. */
-.field:not(.field--tier-chip) .cards--battlefield > li > .card {
-  transform-origin: center;
-  transition: transform var(--tap-duration) var(--tap-easing);
-}
-
-.field:not(.field--tier-chip) .cards--battlefield > li > .card--tapped:not(.card--chip) {
-  transform: rotate(90deg);
-}
-
-/* **At the chip tier there is no turn**, and there only, tapped is a mark: a 96×30 chip is
-   already lying down, so rotating it says nothing. The same mark answers for every surface that
-   is not the board — the inspector and the pointer's preview, which are panels opened to *read* a
-   card and would be turned on their side by a rotation.
-
-   A hatch rather than a wash, because every fact here has to survive greyscale and every
-   colour-vision deficiency: a marked face is textured where an unmarked one is smooth, which is a
-   difference of kind and not of hue. Its pitch is absolute rather than a share of the box, because
-   the size it has to survive is the smallest one — four pixels of stripe read on a 96px chip,
-   which is where a mark that scaled with the tile would have nothing left to say.
-
-   Drawn as the frame's own pseudo-element, so a marked tile occupies exactly the box an unmarked
-   one does and the fade runs on a class change with no element arriving to run it. */
-.card::after {
-  content: '';
-  position: absolute;
-  z-index: 2;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  opacity: 0;
-  background:
-    repeating-linear-gradient(
-      135deg,
-      color-mix(in srgb, Canvas 78%, transparent) 0 3px,
-      color-mix(in srgb, CanvasText 7%, transparent) 3px 4px,
-      transparent 4px 8px
-    ),
-    color-mix(in srgb, Canvas 30%, transparent);
-  transition: opacity var(--tap-duration) var(--tap-easing);
-}
-
-.card--tapped::after {
-  opacity: 1;
-}
-
-/* And the two are never both: a permanent that turned has said it, and a hatch over the turned
-   card would be the same fact twice (§2.1) laid over the face it just made harder to read. */
-.field:not(.field--tier-chip) .cards--battlefield > li > .card--tapped:not(.card--chip)::after {
-  opacity: 0;
-}
-
-/* The one place the pitch is not the small tile's: a full face is three times the width the
-   texture was drawn for, and a stripe every four pixels across a card opened to be *read* is
-   noise rather than a mark. It is coarsened instead of dropped — the preview and the inspector
-   are where a player checks a fact, and tapped is one. */
-.card--full::after {
-  background:
-    repeating-linear-gradient(
-      135deg,
-      color-mix(in srgb, Canvas 72%, transparent) 0 7px,
-      color-mix(in srgb, CanvasText 7%, transparent) 7px 9px,
-      transparent 9px 18px
-    ),
-    color-mix(in srgb, Canvas 26%, transparent);
-}
-
-/* **The mark covers the art, never a fact.** Every element that states something — the name, the
-   type line, the rules text, the counters and the marked damage, the P/T, the cost — is lifted
-   above the hatch, so a marked tile is read on exactly the terms an unmarked one is. What is left
-   under it is the frame's own wash and the art window, which is the one element §6 lets degrade
-   to nothing because it costs no fact to lose. */
-.card--tapped .card__band,
-.card--tapped .card__type,
-.card--tapped .card__text,
-.card--tapped .card__cost,
-.card--tapped .card__badges,
-.card--tapped .card__stat {
-  z-index: 3;
-}
-
-/* ---------------------------------------------------------------------------
-   Interaction states
-   --------------------------------------------------------------------------- */
-
-/* Presentation only — the caller assigns these from what the server advertised, and each is
-   distinguishable without relying on colour alone. */
-.card--selected {
-  outline: 3px solid currentColor;
-  outline-offset: 1px;
-}
-
-.card--candidate {
-  outline: 2px dashed currentColor;
-  outline-offset: 1px;
-}
-
-.card--pending {
-  outline: 2px dotted currentColor;
-  outline-offset: 1px;
-  opacity: 0.8;
-}
-
-.card--disabled {
-  opacity: 0.5;
-  filter: grayscale(1);
-}
-
-/* Relationship focus. A separate channel from the interaction states above, because the two
-   answer different questions and a dense board has both at once: an outline says the server
-   offered something for this object, a shadow says this object is on the other end of a
-   relationship it stated about the one being traced. Never colour alone, and never the only
-   copy — the trail under the card names the same objects in words. */
-.card--focus {
-  box-shadow: 0 0 0 3px currentColor;
-}
-
-.card--linked {
-  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 55%, transparent);
-}
-
-/* ---------------------------------------------------------------------------
-   Mana
-   --------------------------------------------------------------------------- */
-
-/* The project's own shapes: a flat disc with a letter in it, drawn in CSS from the page's own
-   font. Nothing here reproduces an official symbol and nothing is downloaded. */
-/* Sized from its own font rather than from whatever text it sits beside, because a cost that
-   shrinks with the band it is in stops being readable exactly where the band is tightest — and
-   the cost is the second thing a player reads on a card, after the name. */
-.mana {
-  display: inline-flex;
+.c-cost {
+  margin-left: auto;
+  display: flex;
+  gap: 1.2px;
   align-items: center;
-  gap: 0.12em;
+  flex-shrink: 0;
+  /* the pips' drop shadow reads as extra height below; lift to match */
+  transform: translateY(-0.5px);
+}
+
+/* Mana pips: an SVG coin drawn in Pips.tsx. The box is all this sets —
+   the coin, its glyph and its glass are all inside the viewBox, so a pip
+   is the same mark at 9px in a cost line and at 40px in the lab. */
+.c-pip {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  display: inline-block;
   vertical-align: middle;
-  font-size: 0.85rem;
+  filter: drop-shadow(-0.7px 1px 0 rgba(0, 0, 0, 0.5));
 }
 
-.mana__pip {
-  --pip-from: var(--mana-c);
-  --pip-to: var(--pip-from);
-  --pip-ink: var(--mana-c-ink);
-
-  display: inline-grid;
-  place-items: center;
-  inline-size: 1.15em;
-  block-size: 1.15em;
-  /* The disc is a share of its own type, and the type has a floor, so below a certain cost size
-     the two stop agreeing: a 9px glyph needs more than a 10px circle. The floor is stated on the
-     shape as well, in the same units the glyph's is, and above it nothing changes. */
-  min-inline-size: 12px;
-  min-block-size: 12px;
-  border-radius: 50%;
-  background: var(--pip-from);
-  color: var(--pip-ink);
-  /* A share of the cost's own type, floored at §7's 9px. A pip is graphic and reads at sizes
-     text does not, but the digit inside one is still a digit: at a 72px tile the cost was
-     planned at 9px and the pip drew its glyph at 7, which is under the floor for the same
-     reason everything else on the card is held to it. The disc grows with the glyph, so the
-     shape a player scans for stays the shape and only stops shrinking. */
-  font-size: max(9px, 0.78em);
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.02em;
-  box-shadow: inset 0 -0.1em 0.14em color-mix(in srgb, CanvasText 32%, transparent);
+/* the two shared gradients live in the document, not in the layout */
+.pip-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
 }
 
-/* Two colours, drawn as the two halves the pip actually has. */
-.mana__pip--split {
-  background: linear-gradient(135deg, var(--pip-from) 50%, var(--pip-to) 50%);
-  font-size: 0.62em;
-}
-
-/* A Phyrexian pip is paid with life, not with the colour it names, so it is marked as its own
-   thing rather than reading as an ordinary coloured pip. */
-.mana__pip--phyrexian {
-  border-radius: 40% 40% 50% 50%;
-  font-size: 0.62em;
-}
-
-.mana__pip--variable,
-.mana__pip--tap,
-.mana__pip--untap,
-.mana__pip--snow {
-  background: color-mix(in srgb, CanvasText 22%, Canvas);
-  color: CanvasText;
-}
-
-/* ---------------------------------------------------------------------------
-   Relationship trails
-   --------------------------------------------------------------------------- */
-
-/* One object's relationships, as the controls that reach them. Reads as a sentence rather than
-   a row of buttons, so a trail under every permanent does not turn the board into a toolbar. */
-.trail {
-  margin: 0;
-  font-size: 0.7rem;
-  max-width: 14rem;
+/* type line content */
+.c-type-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0 0.3rem;
+  align-items: center;
+  gap: 3px;
+  height: 100%;
 }
-
-.trail__line {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 0 0.25rem;
-}
-
-.trail__label {
-  opacity: 0.65;
-}
-
-.trail__end {
-  background: none;
-  border: 0;
-  padding: 0;
-  color: inherit;
-  font: inherit;
-  text-align: start;
-  text-decoration: underline dotted;
-  text-underline-offset: 0.15em;
-  cursor: pointer;
-  /* A stack object's label is its whole description, which can be a sentence. It is clamped
-     here and never anywhere else: the object itself is one click away and shows all of it. */
-  max-width: 12rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.c-typeline {
+  font-weight: 700;
+  font-size: 8.5px;
   white-space: nowrap;
+  overflow: hidden;
+  -webkit-text-stroke: 0.2px #131110;
+}
+.c-set {
+  margin-left: auto;
+  font-size: 11.5px;
+  flex-shrink: 0;
+  color: #a97f36;
 }
 
-/* ---------------------------------------------------------------------------
-   The inspector
-   --------------------------------------------------------------------------- */
+/* rules text — reads from the top; Card.tsx sets the font size to the
+   largest that fits, so everything inside is in em and rides along */
+.c-text {
+  height: 100%;
+  padding: 0.3em 0.45em 0.25em 0.4em;
+  font-size: 9px;
+  line-height: 1.18;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+.c-text p {
+  margin: 0 0 0.06em;
+}
+.c-text .c-kw {
+  font-weight: bold;
+}
+.c-pip-inline {
+  /* sized off its own font-size, so 1.55em is 0.85em of the text around it */
+  font-size: 0.55em;
+  width: 1.55em;
+  height: 1.55em;
+  vertical-align: middle;
+  margin: 0 0.06em;
+  filter: none;
+}
 
-/* Above every layer the board itself stacks — the dock, the header, the drawer, a picker's popup.
-   A panel opened over the table is the topmost thing on the screen by definition, and saying so
-   here is cheaper than every one of those layers having to stay under a number nobody stated. */
-.inspector-backdrop {
-  position: fixed;
-  z-index: 30;
-  inset: 0;
+/* P/T numerals — set as large as the plaque will take, then shrunk by
+   Card.tsx once a creature has grown enough digits to need it */
+.c-pt-num {
+  height: 100%;
   display: grid;
   place-items: center;
-  padding: 1.5rem;
-  background: color-mix(in srgb, CanvasText 45%, transparent);
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  color: #0d0b09;
 }
 
-.inspector {
+/* a P/T that isn't the printed one says so in the numeral: dark enough to
+   read off ivory, far enough from black to be seen at board size */
+.c-pt-up {
+  color: #1d6b31;
+}
+
+.c-pt-down {
+  color: #9c2c1e;
+}
+
+/* Counters: one pill shape for every kind, because there are far more
+   kinds than there are marks worth drawing. It sits on the art, so it is
+   translucent — the picture reads through it and the pill still holds its
+   own text against whatever is behind. */
+.c-counters {
+  height: 100%;
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  max-height: 100%;
-  overflow-y: auto;
-  padding: 0.75rem;
-  border: 1px solid currentColor;
-  border-radius: 0.5rem;
-  background: Canvas;
+  align-items: flex-end;
+  gap: 3px;
+  overflow: hidden;
 }
 
-/* A symbol standing in a sentence (`RulesText`). Sized from the page rather than from the line
-   it is in, so a rules box at 0.68rem does not shrink its pips below reading size, and nudged
-   onto the text baseline so a line of prose does not visibly step around it. */
-.card__rules .mana__pip,
-.cards__aside .mana__pip {
-  font-size: 0.58rem;
-  inline-size: 1.25em;
-  block-size: 1.25em;
-  vertical-align: -0.15em;
+.c-ct {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5px;
+  padding: 1.5px 5px;
+  background: rgba(12, 14, 18, 0.6);
+  border: 1px solid rgba(232, 228, 218, 0.3);
+  border-radius: 999px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  color: #f2efe6;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+}
+
+.c-ct b {
+  color: #bcc1cb;
+  font-weight: 700;
+}
+
+/* How a card is taking part in the interaction the server advertised (§5.5: one lit blue pane
+   means "this is the current one", everywhere). None of these is a rules judgment — `candidate`
+   means the server *named* this object, and `disabled` means this surface is not offering it. */
+.card-live {
+  cursor: pointer;
+}
+
+.card-live:focus-visible {
+  outline: 2px solid #6d9ad4;
+  outline-offset: 2px;
+}
+
+.card-candidate {
+  box-shadow:
+    0 0 0 2px #3a6ca8,
+    0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+.card-selected {
+  box-shadow:
+    0 0 0 2px #6d9ad4,
+    0 0 14px -2px rgba(109, 154, 212, 0.7),
+    0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+.card-pending {
+  opacity: 0.72;
+}
+
+.card-disabled {
+  opacity: 0.5;
+}
+
+/* A relationship the server projected, emphasised while it is being traced. Never the only copy
+   of the fact: the same edge is a phrase beside the object and an arrow over the board. */
+.card-focus {
+  box-shadow:
+    0 0 0 2px #b3a06a,
+    0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+.card-linked {
+  box-shadow:
+    0 0 0 2px rgba(179, 160, 106, 0.55),
+    0 2px 10px rgba(0, 0, 0, 0.45);
 }
