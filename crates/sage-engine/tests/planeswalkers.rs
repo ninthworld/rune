@@ -145,6 +145,7 @@ fn cast(
         valid_actions(&state, db).contains(&Action::CastSpell {
             card: instance,
             targets: Vec::new(),
+            payment: Vec::new(),
         }),
         "{slug} was not offered as a castable spell"
     );
@@ -153,6 +154,7 @@ fn cast(
         &Action::CastSpell {
             card: instance,
             targets,
+            payment: Vec::new(),
         },
         db,
     );
@@ -320,6 +322,7 @@ fn issue_608_any_target_offers_planeswalkers_alongside_creatures_and_players() {
         &Action::CastSpell {
             card: bolt,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
     );
     let [slot] = requirements.as_slice() else {
@@ -342,6 +345,7 @@ fn issue_608_any_target_offers_planeswalkers_alongside_creatures_and_players() {
         &Action::CastSpell {
             card: smite,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
     );
     let [slot] = requirements.as_slice() else {
@@ -473,6 +477,7 @@ fn issue_608_apply_rejects_a_forged_loyalty_activation() {
         &Action::CastSpell {
             card: sentinel,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );

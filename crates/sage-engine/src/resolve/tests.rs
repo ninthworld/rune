@@ -50,6 +50,7 @@ fn resolving_a_creature_spell_puts_it_on_the_battlefield() {
         &Action::CastSpell {
             card: scout,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );
@@ -623,6 +624,7 @@ fn issue_152_aura_resolves_attached_to_its_target_and_boosts_it_cr_303_4d() {
         &Action::CastSpell {
             card: aura,
             targets: vec![Target::Permanent(host)],
+            payment: Vec::new(),
         },
         &db,
     );
@@ -664,6 +666,7 @@ fn issue_152_aura_fizzles_when_its_target_left_before_resolution_cr_608_2b() {
         &Action::CastSpell {
             card: aura,
             targets: vec![Target::Permanent(host)],
+            payment: Vec::new(),
         },
         &db,
     );
@@ -716,6 +719,7 @@ fn issue_155_zero_zero_entering_with_two_counters_lives_cr_614_12() {
         &Action::CastSpell {
             card: hatchling,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );

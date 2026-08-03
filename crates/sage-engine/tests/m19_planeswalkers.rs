@@ -217,6 +217,7 @@ fn issue_620_every_planeswalker_enters_with_its_printed_loyalty() {
             &Action::CastSpell {
                 card: instance,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -680,6 +681,7 @@ fn issue_620_liliana_minus_three_lets_zombie_creature_spells_be_cast_from_the_gr
     let cast = |card: CardInstance| Action::CastSpell {
         card,
         targets: Vec::new(),
+        payment: Vec::new(),
     };
     assert!(
         !valid_actions(&state, &db).contains(&cast(zombie)),
@@ -848,14 +850,16 @@ fn issue_620_sarkhan_plus_one_asks_for_each_colour_and_restricts_the_mana_to_dra
     assert!(
         offered.contains(&Action::CastSpell {
             card: dragon,
-            targets: Vec::new()
+            targets: Vec::new(),
+            payment: Vec::new(),
         }),
         "the restricted red pays for a Dragon spell"
     );
     assert!(
         !offered.contains(&Action::CastSpell {
             card: ogre,
-            targets: Vec::new()
+            targets: Vec::new(),
+            payment: Vec::new(),
         }),
         "and pays for nothing else — the Ogre's red pip has no unrestricted red"
     );
@@ -865,6 +869,7 @@ fn issue_620_sarkhan_plus_one_asks_for_each_colour_and_restricts_the_mana_to_dra
         &Action::CastSpell {
             card: dragon,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );
@@ -1083,6 +1088,7 @@ fn issue_620_indestructible_survives_a_destroy_effect() {
         &Action::CastSpell {
             card: murder,
             targets: vec![Target::Permanent(mine)],
+            payment: Vec::new(),
         },
         &db,
     );
@@ -1124,6 +1130,7 @@ fn lava_axe_may_be_aimed_at_a_planeswalker_and_never_at_a_creature() {
     let cast = Action::CastSpell {
         card: axe,
         targets: Vec::new(),
+        payment: Vec::new(),
     };
     let requirements = target_requirements(&state, &db, &cast);
     assert_eq!(requirements.len(), 1, "one damage effect, one slot");
@@ -1148,6 +1155,7 @@ fn lava_axe_may_be_aimed_at_a_planeswalker_and_never_at_a_creature() {
         &Action::CastSpell {
             card: axe,
             targets: vec![Target::Permanent(walker)],
+            payment: Vec::new(),
         },
         &db,
     );

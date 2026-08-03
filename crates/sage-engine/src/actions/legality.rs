@@ -105,6 +105,25 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         }
     }
 
+    // 1f. A cast that names its own payment (CR 601.2): the sources it names must each
+    //     be a legal mana-ability activation, in sequence, and the pool they produce must
+    //     cover the cost. Simulated on a scratch copy and applied for real only once the
+    //     whole action is found legal, which is what makes the casting process atomic —
+    //     an insufficient payment leaves no tapped land behind, because `apply_action`
+    //     returns the state it was handed.
+    //
+    //     Check 1 above has already found the cast on offer, and the generator offers it
+    //     against what the seat *could* make ([`potential_mana_pool`]) rather than what is
+    //     already floating — an over-estimate on purpose, so that starting to pay is never
+    //     withheld from a player who had the mana. This is where the estimate is settled
+    //     against the payment actually assembled, so the widened offer can never widen
+    //     what is legal.
+    if let Action::CastSpell { card, payment, .. } = action {
+        if !super::payment_covers_cast(state, db, *card, payment) {
+            return false;
+        }
+    }
+
     // 2. The carried targets must fill every slot the action declares, each with
     //    a target that is legal *now*. `target_is_legal` is the same predicate the
     //    resolve path re-checks with (CR 608.2b) and the one `legal_targets_for_spec`

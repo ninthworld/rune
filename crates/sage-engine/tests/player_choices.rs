@@ -124,6 +124,7 @@ fn cast(state: &GameState, db: &CardDatabase, slug: &str, targets: Vec<Target>) 
         &Action::CastSpell {
             card: instance,
             targets,
+            payment: Vec::new(),
         },
         db,
     );

@@ -332,6 +332,7 @@ fn cast_offered(state: &GameState, db: &CardDatabase, inst: CardInstance) -> boo
     valid_actions(state, db).contains(&Action::CastSpell {
         card: inst,
         targets: Vec::new(),
+        payment: Vec::new(),
     })
 }
 
@@ -445,6 +446,7 @@ fn issue_147_artifact_and_enchantment_cast_at_sorcery_speed_and_enter_battlefiel
             &Action::CastSpell {
                 card: inst,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -482,6 +484,7 @@ fn issue_147_cast_instant_resolves_after_a_later_instant_lifo_cr_608_1() {
         &Action::CastSpell {
             card: a,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );
@@ -491,6 +494,7 @@ fn issue_147_cast_instant_resolves_after_a_later_instant_lifo_cr_608_1() {
         &Action::CastSpell {
             card: b,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );
@@ -582,6 +586,7 @@ fn issue_152_aura_castable_only_with_a_legal_enchant_target_cr_303_4c() {
         &Action::CastSpell {
             card: aura,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
     );
     assert_eq!(reqs.len(), 1, "the Aura's single enchant slot");
@@ -634,6 +639,7 @@ fn issue_148_targeted_cast_advertised_once_with_the_spell_on_stack_as_a_candidat
     let cast = Action::CastSpell {
         card: negation,
         targets: Vec::new(),
+        payment: Vec::new(),
     };
     assert!(valid_actions(&state, &db).contains(&cast));
 
@@ -708,6 +714,7 @@ fn issue_148_a_cast_with_an_illegal_spell_target_is_a_no_op() {
         &Action::CastSpell {
             card: negation,
             targets: vec![Target::Spell(StackId(99_999))],
+            payment: Vec::new(),
         },
         &db,
     );
