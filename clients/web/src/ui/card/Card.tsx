@@ -155,6 +155,7 @@ export function Card({
   onTrace,
   onActivate,
   onInspect,
+  note,
   /** Drawn over whatever face is underneath: true of the permanent, not printed on the card. */
   overlay = true,
 }: {
@@ -167,6 +168,13 @@ export function Card({
   onTrace?(id: string | undefined): void
   onActivate?(id: string): void
   onInspect?(id: string): void
+  /**
+   * What the server related this object to, in words (`relations.relationNote`).
+   *
+   * The readable copy of every line the overlay draws over this card: an arrow is hidden from
+   * assistive technology, so the fact it carries has to be reachable here as well.
+   */
+  note?: string
   overlay?: boolean
 }) {
   const uid = useId()
@@ -223,7 +231,7 @@ export function Card({
     'data-card': face.id,
     role: interactive ? 'button' : 'img',
     tabIndex: interactive ? 0 : undefined,
-    'aria-label': faceSummary(face),
+    'aria-label': note ? `${faceSummary(face)} · ${note}` : faceSummary(face),
     'aria-pressed': state === 'selected' ? true : undefined,
     onMouseEnter: onTrace && (() => onTrace(face.id)),
     onMouseLeave: onTrace && (() => onTrace(undefined)),

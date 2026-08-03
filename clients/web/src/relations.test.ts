@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { GameView, type Permanent, type StackItem } from './protocol'
-import { entityNames, relationLines, relations } from './relations'
+import { entityNames, relationLines, relationNote, relations } from './relations'
 import { list } from './normalize'
 import { seats } from './table'
 
@@ -605,5 +605,37 @@ describe('no identifier reaches a player, on any committed fixture', () => {
 
     expect(drawn(board, stripped)).toEqual(expect.arrayContaining(['Bo', 'attacking Bo']))
     expect(drawn(board, stripped).length).toBeLessThan(drawn(board, board).length)
+  })
+})
+
+describe('the readable copy of a drawn line', () => {
+  it('says every relationship the overlay would draw, in the same words', () => {
+    const board = view({
+      battlefield: [
+        permanent('perm_ogre', 'Onakke Ogre', { attacking: true, attacking_player: 'p2' }),
+        permanent('perm_bear', 'Grizzly Bears', { blocking: 'perm_ogre' }),
+      ],
+    })
+    for (const id of ['perm_ogre', 'perm_bear']) {
+      const lines = trail(board, id)
+      const note = relationNote(lines)
+      // Every phrase, and every end it could name. An arrow is `aria-hidden`; this is what a
+      // screen reader is given instead, so nothing may be missing from it.
+      for (const line of lines) {
+        expect(note).toContain(line.label)
+        for (const end of line.ends) expect(note).toContain(end.name)
+      }
+    }
+    expect(relationNote(trail(board, 'perm_bear'))).toContain('blocking Onakke Ogre')
+  })
+
+  it('is empty for an object the view relates to nothing', () => {
+    expect(relationNote([])).toBe('')
+  })
+
+  it('keeps a phrase whose other end the view never named', () => {
+    expect(
+      relationNote([{ kind: 'attacking', direction: 'from', label: 'attacking', ends: [] }]),
+    ).toBe('attacking')
   })
 })

@@ -960,3 +960,10 @@
 .log-result {
   color: #cfe0f4;
 }
+
+/* the strip is a list, so its steps are steps to a screen reader as well as pills to everyone
+   else; the item carries the pill and nothing of its own */
+.phase-pills > li {
+  display: flex;
+  min-width: 0;
+}

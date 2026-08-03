@@ -100,7 +100,12 @@ export function Room({
         <button className="settings-btn" title="Settings" onClick={onSettings}>
           ⚙
         </button>
-        <button className="menu-btn" title="Chat and spectators" onClick={() => onSide(!sideOpen)}>
+        <button
+          className="menu-btn"
+          title="Chat and spectators"
+          aria-expanded={sideOpen}
+          onClick={() => onSide(!sideOpen)}
+        >
           ☰
         </button>
       </div>

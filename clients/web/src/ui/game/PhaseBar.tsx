@@ -34,28 +34,28 @@ export function PhaseBar({
       <h2 className="turn-info">
         Turn {turn} — {active}
       </h2>
-      <span className="phase-pills" role="list" aria-label="Turn steps">
+      <ul className="phase-pills" aria-label="Turn steps">
         {steps.map((step) => (
-          <button
-            key={step.phase}
-            role="listitem"
-            className={[
-              'phase',
-              step.current ? 'phase-current' : '',
-              step.stop !== 'none' ? `phase-stop-${step.stop}` : '',
-              step.passed ? 'phase-passed' : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            title={`${step.label} — ${scopeWording(step.stop)}`}
-            aria-label={`${step.label}, ${scopeWording(step.stop)}`}
-            aria-current={step.current ? 'step' : undefined}
-            onClick={() => onStop(step.phase, nextScope(step.stop))}
-          >
-            {step.short}
-          </button>
+          <li key={step.phase}>
+            <button
+              className={[
+                'phase',
+                step.current ? 'phase-current' : '',
+                step.stop !== 'none' ? `phase-stop-${step.stop}` : '',
+                step.passed ? 'phase-passed' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              title={`${step.label} — ${scopeWording(step.stop)}`}
+              aria-label={`${step.label}, ${scopeWording(step.stop)}`}
+              aria-current={step.current ? 'step' : undefined}
+              onClick={() => onStop(step.phase, nextScope(step.stop))}
+            >
+              {step.short}
+            </button>
+          </li>
         ))}
-      </span>
+      </ul>
     </div>
   )
 }

@@ -62,9 +62,10 @@ import {
 } from './../../interaction'
 import { claims, intentFor, type KeyPress } from './../../keys'
 import { objectMenu } from './../../menu'
+import { changes, NO_CHANGES } from './../../motion'
 import { list, playerLabel } from './../../normalize'
 import type { ClientMessage, GameView, Phase, ValidAction } from './../../protocol'
-import { entityNames, relationLines, relations, UNNAMED } from './../../relations'
+import { entityNames, relationLines, relationNote, relations, UNNAMED } from './../../relations'
 import type { ConnectionStatus } from './../../socket'
 import { buildChooseAction, type Draft } from './../../submission'
 import { seats, type Seat, type SeatPile } from './../../table'
@@ -82,6 +83,7 @@ import { Arrows } from './Arrows'
 import { Field, type FieldEntry } from './Field'
 import { Hand } from './Hand'
 import { MatchResult } from './MatchResult'
+import { Motion } from './Motion'
 import { ObjectMenu } from './ObjectMenu'
 import { PhaseBar } from './PhaseBar'
 import { PlayerBar } from './PlayerBar'
@@ -126,6 +128,16 @@ export function Board({
   const [dismissed, setDismissed] = useState(false)
   const [sideOpen, setSideOpen] = useState(() => window.innerWidth > 900)
 
+  // What the last message changed, held for exactly as long as this view is the current one. A
+  // transition between two reconstructable states and never a third: a refresh loses it and
+  // shows the same board, and nothing anywhere reads it to decide anything (`motion.ts`).
+  const [moved, setMoved] = useState(NO_CHANGES)
+  // Whether the next view is one this player is *arriving at* rather than one they watched
+  // arrive. Set by a reconnect and spent by the first view after it, because the two are
+  // separate messages and usually separate renders.
+  const [resuming, setResuming] = useState(false)
+  let arriving = resuming
+
   // A new socket is the end of every correlation this client was holding: the server drops a
   // seat's `action_ack` when it reconnects (`docs/protocol.md`), so an ack that would have
   // answered the click in flight is never coming.
@@ -133,12 +145,20 @@ export function Board({
   if (seenEpoch !== epoch) {
     setSeenEpoch(epoch)
     setInteraction(release)
+    // A reconnect is a state a player is arriving at, not a change they watched: the board may
+    // have moved a whole turn while the socket was down, and a delta across that gap is real
+    // arithmetic and a lie about what the player saw.
+    setMoved(NO_CHANGES)
+    arriving = true
+    setResuming(true)
   }
 
   // Settled during render rather than in an effect, so the frame that carries a new view is
   // never painted with the previous view's draft still in the bar.
   const [seen, setSeen] = useState(view)
   if (seen !== view) {
+    setMoved(changes(arriving ? undefined : seen, view))
+    if (resuming) setResuming(false)
     setSeen(view)
     setInteraction((current) => settle(current, view.action_ack))
   }
@@ -184,6 +204,9 @@ export function Board({
       permanent,
       face: permanentFace(permanent),
       attached: attachedTo.get(permanent.id) ?? [],
+      // The words for every line the overlay draws over this permanent. The arrow is the fast
+      // copy; this is the one a screen reader reaches.
+      note: relationNote(relationLines(related, permanent.id, names)),
     }))
 
   // One face per card-shaped object on screen, so the hand, the board, the piles, and the
@@ -411,6 +434,7 @@ export function Board({
         <button
           className="menu-btn"
           title="Stack, log and chat"
+          aria-expanded={sideOpen}
           onClick={() => setSideOpen((on) => !on)}
         >
           ☰
@@ -452,6 +476,7 @@ export function Board({
               >
                 <PlayerBar
                   seat={seat}
+                  note={relationNote(relationLines(related, seat.id, names))}
                   focused={focusedSeat === seat.id}
                   onFocus={() => setFocused((at) => (at === seat.id ? undefined : seat.id))}
                   onOpen={(pile) => browse(seat.id, pile.zone)}
@@ -459,7 +484,14 @@ export function Board({
                   state={surface.stateOf(seat.id)}
                   {...(surface.linkOf(seat.id) ? { link: surface.linkOf(seat.id) } : {})}
                 />
-                {!collapsed && <Field entries={fieldFor(seat.id)} mirrored surface={surface} />}
+                {!collapsed && (
+                  <Field
+                    entries={fieldFor(seat.id)}
+                    label={`${seat.name}: battlefield`}
+                    mirrored
+                    surface={surface}
+                  />
+                )}
               </div>
             )
           })}
@@ -480,13 +512,14 @@ export function Board({
             <>
               <PlayerBar
                 seat={local}
+                note={relationNote(relationLines(related, local.id, names))}
                 handCount={handFaces.length}
                 onOpen={(pile) => browse(local.id, pile.zone)}
                 onActivate={surface.activate}
                 state={surface.stateOf(local.id)}
                 {...(surface.linkOf(local.id) ? { link: surface.linkOf(local.id) } : {})}
               />
-              <Field entries={fieldFor(local.id)} surface={surface} />
+              <Field entries={fieldFor(local.id)} label="Your battlefield" surface={surface} />
             </>
           ) : (
             <div className="panel-empty">You are watching this table.</div>
@@ -512,7 +545,13 @@ export function Board({
 
       <ActionBar
         tone={barTone(view.phase)}
-        prompt={interaction.pending?.label ?? dockWording(tone)}
+        // What the game is waiting on, in the words `dock.ts` chose — including "your click is
+        // out there", which is the one state a player cannot work out from the board.
+        prompt={
+          interaction.pending
+            ? `${dockWording(tone)} — ${interaction.pending.label}`
+            : dockWording(tone)
+        }
         where={`Turn ${view.turn ?? 0} · ${phaseLabel(view.phase ?? '')}`}
         {...(current.action ? { action: current.action } : {})}
         slots={current.slots}
@@ -529,6 +568,12 @@ export function Board({
       />
 
       <Hand faces={handFaces} surface={surface} />
+
+      {/* Nothing this draws; it moves what is already drawn — an object appearing, and a card
+          travelling between the two zones the server said it was drawn in. Anything it touches is
+          already in its final place, so an interrupted animation, a refresh, or a device that
+          asked for no motion at all lands on exactly the board this view describes. */}
+      <Motion changes={moved} />
 
       {/* Over the whole table and under nothing: the relationships the server stated, drawn
           between the objects that carry them. It takes no clicks, and every line it draws is

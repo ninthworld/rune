@@ -30,6 +30,8 @@ export interface FieldEntry {
   permanent: Permanent
   face: CardFace
   attached: readonly CardFace[]
+  /** What the server related it to, in words — the readable copy of the arrows over it. */
+  note: string
 }
 
 /** How far each attached card steps, as a fraction of a card. */
@@ -59,6 +61,7 @@ function Slot({ entry, surface }: { entry: FieldEntry; surface: Surface }) {
             onTrace={surface.trace}
             onActivate={surface.activate}
             onInspect={surface.inspect}
+            {...(index === cards.length - 1 && entry.note !== '' ? { note: entry.note } : {})}
             // Only the permanent itself wears what is true of the permanent: an Equipment behind
             // it is showing its title bar and nothing else.
             overlay={index === cards.length - 1}
@@ -85,10 +88,13 @@ function Row({ entries, surface }: { entries: readonly FieldEntry[]; surface: Su
 /** One seat's half of the table. */
 export function Field({
   entries,
+  label,
   mirrored,
   surface,
 }: {
   entries: readonly FieldEntry[]
+  /** Whose half this is, said rather than only drawn — the board's one spatial fact. */
+  label: string
   mirrored?: boolean
   surface: Surface
 }) {
@@ -100,6 +106,8 @@ export function Field({
     <div
       className={`field-area${mirrored ? ' field-area-mirror' : ''}`}
       style={{ gridTemplateRows: rows.map((row) => `minmax(0, ${row.share}fr)`).join(' ') }}
+      role="region"
+      aria-label={label}
     >
       {rows.map((row) => (
         <Row key={row.row} entries={row.entries} surface={surface} />

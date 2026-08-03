@@ -81,6 +81,7 @@ interface Zone {
 
 export function PlayerBar({
   seat,
+  note,
   /** Your own hand is drawn along the bottom edge; the bar still carries the zone. */
   handCount,
   focused,
@@ -91,6 +92,8 @@ export function PlayerBar({
   link,
 }: {
   seat: Seat
+  /** What the server related this seat to, in words — the readable copy of the arrows at it. */
+  note?: string
   handCount?: number
   focused?: boolean
   onFocus?(): void
@@ -147,7 +150,9 @@ export function PlayerBar({
           className="player-target"
           title={`${seat.name}${seat.life === undefined ? '' : ` — ${seat.life} life`}`}
           data-anchor={`player:${seat.id}`}
-          aria-label={`${seat.name}${seat.life === undefined ? '' : `, ${seat.life} life`}`}
+          aria-label={`${seat.name}${seat.life === undefined ? '' : `, ${seat.life} life`}${
+            note ? ` · ${note}` : ''
+          }`}
           onClick={onActivate && (() => onActivate(seat.id))}
         >
           <span className="player-name">{seat.name}</span>

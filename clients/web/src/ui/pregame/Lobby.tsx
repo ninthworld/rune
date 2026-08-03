@@ -103,7 +103,12 @@ export function Lobby({
         <button className="settings-btn" title="Settings" onClick={onSettings}>
           ⚙
         </button>
-        <button className="menu-btn" title="Chat and players" onClick={() => onSide(!sideOpen)}>
+        <button
+          className="menu-btn"
+          title="Chat and players"
+          aria-expanded={sideOpen}
+          onClick={() => onSide(!sideOpen)}
+        >
           ☰
         </button>
       </div>

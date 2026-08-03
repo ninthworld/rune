@@ -368,3 +368,26 @@ export function relationLines(
     return [{ kind, direction, label: WORDING[kind][direction], ends }]
   })
 }
+
+/**
+ * An object's relationships as one sentence.
+ *
+ * **The drawn line is never the only copy** (`clients/web/AGENTS.md`, §6.6): an arrow is
+ * `aria-hidden` and a colour says nothing to a screen reader, so everything the overlay draws is
+ * also said here, on the object it belongs to, in the words `relationLines` already chose. It
+ * goes into the accessible name of the card or the seat, which is where a reader asking "what is
+ * this" gets it and where it costs the board no space.
+ *
+ * An end this view names nowhere is dropped and the phrase stays, exactly as the trail does:
+ * `attacking` on its own is what the server said, and filling in the other end would be this
+ * client concluding a fact about an object from an edge pointing at it.
+ */
+export function relationNote(lines: readonly RelationLine[]): string {
+  return lines
+    .map((line) =>
+      line.ends.length === 0
+        ? line.label
+        : `${line.label} ${line.ends.map((end) => end.name).join(', ')}`,
+    )
+    .join(' · ')
+}

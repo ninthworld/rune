@@ -137,7 +137,7 @@ export function SidePanel({
           ))}
         </div>
 
-        <div className="panel-body">
+        <div className="panel-body" role="region" aria-label={tab}>
           {tab === 'Stack' && (
             <>
               {revealed.length > 0 && (

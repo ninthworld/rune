@@ -72,7 +72,9 @@ export function DeckEditor({
   )
   const size = deckSize(draft)
   const advice = sizeAdvice(draft, format)
-  const looking = shown === undefined ? undefined : catalog.byId.get(shown)
+  // The pointer decides what is drawn beside the lists; before it has moved, the first card in
+  // front of the player is a better answer than an empty pane.
+  const looking = catalog.byId.get(shown ?? pool[0]?.functional_id ?? '')
 
   return (
     <div className="zone-view" onClick={onClose}>

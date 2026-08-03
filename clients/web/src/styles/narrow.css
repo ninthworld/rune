@@ -176,3 +176,41 @@
     flex-basis: 100%;
   }
 }
+
+/* ---- short windows ---- */
+/* A 200% zoom on a laptop is a 720-wide, 450-tall viewport, so height is its own axis of the
+   same problem (§1). Scale first, remove last: the seat bar tightens around its glyphs and the
+   preview gives up the height it was holding by proportion, and nothing on the board is dropped
+   or allowed to grow a scrollbar. */
+@media (max-height: 620px) {
+  .player-bar {
+    padding: 4px;
+    gap: 3px;
+  }
+
+  .zone-btn {
+    padding: 2px 0;
+    gap: 0;
+  }
+
+  .glyph {
+    width: 12px;
+    height: 12px;
+  }
+
+  .zone-count {
+    font-size: 9px;
+  }
+
+  .mana-pool {
+    padding: 2px 3px;
+  }
+
+  /* the card the pointer is on keeps its proportions; what it gives up is how much of the
+     column it is entitled to */
+  .preview-section {
+    flex: 0 1 auto;
+    min-height: 0;
+    max-height: 44%;
+  }
+}
