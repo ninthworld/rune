@@ -445,6 +445,18 @@ the space the turn rail used to hold. It carries, top to bottom:
    *recess* rather than a raised pane: mana sits **in** a pool, and lighting it from above would
    make it a button.
 
+**The name is fitted to the bar, not to its own line.** It is the one run of text on the board whose
+length a *player* chose, and the bar's height belongs to the seat, so a name is set at the size the
+stylesheet gives it while that fits and smaller when it does not — wrapping, never an ellipsis (§3),
+and never leaving a region a player would have to scroll. It has a floor, below which it is a mark
+rather than a name; a bar that would need to go under it is a seat with no room for a player in it,
+which is a defect in the region allocation above it (§2) and not something the name can answer.
+
+A short window is also where the bar itself is set smaller — the head, the zone buttons and the pool
+tighten together, by the same "scale first, remove last" that governs everything else (§3). What does
+*not* happen there is a re-stacking: a seat that only got shorter must not be handed a different
+arrangement than the seat beside it.
+
 An earlier draft called this a **column** and had it become a **bar above and below its own half**
 below 640px of width or 480px of height, because a column carrying five labelled counts needs both.
 Glyphs removed the constraint (§2), so there is one bar, in one place, at every size — which is what

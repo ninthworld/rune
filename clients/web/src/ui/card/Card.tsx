@@ -31,13 +31,13 @@ import {
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
-  type RefObject,
 } from 'react'
 
 import type { CardFace, CardFaceLink, CardFaceState } from './../../card-face'
 import { faceSummary } from './../../card-face'
 import { frameTint, inlineSymbols, manaSymbols, spokenSymbol } from './../../mana'
 import { useCardArt } from './../art'
+import { fit, tooBig, tooWide } from './../fit'
 import { Pip } from './Pips'
 import { PEEK_MS, PEEK_SLOP, usePeek } from './peek'
 
@@ -80,32 +80,6 @@ function RulesText({ text }: { text: string }) {
 const RULES_MAX = 22
 /** The stat is the number the game is played on, so it takes the whole plaque until it cannot. */
 const PT_SIZE = 20
-const STEPS = 7
-
-const tooWide = (el: HTMLElement) => el.scrollWidth > el.clientWidth
-const tooBig = (el: HTMLElement) =>
-  el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth
-
-function fit(
-  ref: RefObject<HTMLElement | null>,
-  hi: number,
-  lo: number,
-  overflows: (el: HTMLElement) => boolean,
-): void {
-  const el = ref.current
-  if (!el) return
-  el.style.fontSize = `${hi}px`
-  if (!overflows(el)) return
-  let fits = lo
-  let over = hi
-  for (let i = 0; i < STEPS; i += 1) {
-    const mid = (fits + over) / 2
-    el.style.fontSize = `${mid}px`
-    if (overflows(el)) over = mid
-    else fits = mid
-  }
-  el.style.fontSize = `${fits}px`
-}
 
 /**
  * A bar is a sharp-edged rectangle whose short ends are circular arcs bulging outward by `b`;

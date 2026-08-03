@@ -14,8 +14,11 @@
  * Every number here was stated by the server, and an absence stays absent — a seat the view
  * projected no totals for draws no count rather than a zero that would read as a real one.
  */
+import { useRef } from 'react'
+
 import type { Seat, SeatPile } from './../../table'
 import { Pip } from './../card/Pips'
+import { useFitted } from './../fit'
 import { manaSymbols, spokenSymbol } from './../../mana'
 
 /**
@@ -103,6 +106,14 @@ export function PlayerBar({
   state?: string
   link?: string
 }) {
+  // The name is the one run of text in the bar whose length is a player's own choice, and the
+  // bar's height is the seat's rather than the name's. So the name is fitted *to the bar*: at
+  // the stylesheet's size while it fits, and smaller — never clipped, and never a scrollable
+  // region — for the player who typed something long onto a half-height window.
+  const barRef = useRef<HTMLDivElement>(null)
+  const nameRef = useRef<HTMLSpanElement>(null)
+  useFitted(nameRef, barRef, NAME_FLOOR)
+
   const pile = (zone: SeatPile['zone']) => seat.piles.find((entry) => entry.zone === zone)
   const graveyard = pile('graveyard')
   const exile = pile('exile')
@@ -140,6 +151,7 @@ export function PlayerBar({
 
   return (
     <div
+      ref={barRef}
       className={`player-bar${seat.eliminated ? ' player-out' : ''}`}
       data-seat={seat.id}
       data-state={state}
@@ -158,7 +170,9 @@ export function PlayerBar({
           }`}
           onClick={onActivate && (() => onActivate(seat.id))}
         >
-          <span className="player-name">{seat.name}</span>
+          <span ref={nameRef} className="player-name">
+            {seat.name}
+          </span>
           {seat.life !== undefined && <span className="player-life">{seat.life}</span>}
         </button>
         {onFocus && (
@@ -218,6 +232,14 @@ export function PlayerBar({
     </div>
   )
 }
+
+/**
+ * How small a seat's name may get before it stops being one. Below this it is a mark rather
+ * than a name, and a bar that has to go under it is a seat with no room for a player in it —
+ * which is a defect in the region allocation above it (`docs/client-design.md` §2), not
+ * something the name can answer.
+ */
+const NAME_FLOOR = 8
 
 /** A count the server stated, or nothing at all — never a zero standing in for an absence. */
 const countOf = (count: number | undefined): { count?: number } =>

@@ -67,3 +67,46 @@ for (const size of SIZES) {
     })
   })
 }
+
+/**
+ * The one run of text on the board whose length is a *player's* choice.
+ *
+ * Every other fitting question is about a card, and a card is drawn in its own grid at a size
+ * the region hands it. A seat's name is typed at the front door, into a bar whose height is the
+ * seat's, so the shortest window is where "fitted, never truncated" (§3) has to hold against
+ * something the client did not choose. The fixture's own seats are called `Ada` and `Bo`, which
+ * is exactly the length at which nothing is being tested.
+ */
+test.describe('a seat called what a player typed', () => {
+  test.use({ viewport: { width: 1280, height: 480 } })
+
+  test('sets a long name smaller rather than clipping it or scrolling the bar', async ({
+    page,
+  }) => {
+    const view = fixture('gameview-board.json')
+    await serveFrames(page, [
+      { ...view, player_names: { p1: 'Katherine Johnson', p2: 'Bartholomew' } },
+    ])
+    await page.goto('/')
+    await expect(page.getByRole('region', { name: 'Actions' })).toBeVisible()
+
+    const seatName = page.locator('.player-bar[data-seat="p1"] .player-name')
+    // Whole, and drawn inside its own box — the two halves of "not truncated".
+    await expect(seatName).toHaveText('Katherine Johnson')
+    expect(await seatName.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
+    // Fitted between the stylesheet's size and the floor a name stops being one at.
+    const size = await seatName.evaluate((el) => Number.parseFloat(getComputedStyle(el).fontSize))
+    expect(size).toBeGreaterThanOrEqual(8)
+    expect(size).toBeLessThanOrEqual(11)
+
+    // And the bar it was fitted to is still a bar nobody has to scroll.
+    const overflow = await page.evaluate(() => {
+      const board = document.querySelector('.layout')
+      if (!board) return []
+      return [...board.querySelectorAll<HTMLElement>('*')]
+        .filter((el) => el.scrollHeight > el.clientHeight + 1)
+        .map((el) => el.className)
+    })
+    expect(overflow.filter((name) => !/panel-body|log|zone-body/.test(name))).toEqual([])
+  })
+})
