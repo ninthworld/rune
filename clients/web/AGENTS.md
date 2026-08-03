@@ -28,9 +28,15 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   drive different binaries, which is the failure ADR 0011 is about.
 - **[`docs/client-design.md`](../../docs/client-design.md) is the layout authority.** Read it
   before changing anything that occupies space. Its one-line summary: *zoom, resolution, and
-  aspect are the same problem; the board never scrolls; text is fitted, never truncated.* A
-  region's geometry is computed from the **viewport alone**, never inherited from whatever content
-  happens to be in a box; a count is absorbed by the things inside the region.
+  aspect are the same problem; the board never scrolls vertically and never grows a scrollbar;
+  text is fitted, never truncated.* A region's geometry is computed from the **viewport alone**,
+  never inherited from whatever content happens to be in a box; a count is absorbed by the row.
+- **That document now describes `clients/prototype`, and this client is being rebuilt to it.**
+  Until that lands, the module notes below describe *the code as it stands*, and several of them
+  state design rules the prototype reversed — the four presentations, the 9px floor and the chip,
+  the fan, `clamp(FLOOR, fitted, ideal)`, the shell's rail. Where a note and the design document
+  disagree, the document is the target and the note is the present tense. §8's table lists every
+  such reversal in one place.
 - **Dark, declared rather than followed.** A card is an object lying on a surface, it needs a
   ground darker than itself, and maintaining a light table as well is how neither gets good.
 - **An overlay renders the join and nothing else.** It is `aria-hidden`, because a drawn line is

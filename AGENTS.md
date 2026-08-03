@@ -11,9 +11,10 @@ decide, and one gear for everything about the device rather than the game. The d
 with it: one click takes an action the server offered exactly one of, the pointer previews a card,
 and the keyboard carries priority. **How it occupies space is
 [`docs/client-design.md`](docs/client-design.md)**, which is binding: zoom, resolution, and aspect
-are the same problem; the board never scrolls; text is fitted, never truncated. Playing is still
-the merge criterion: make it good before making it pretty, and nothing visual is worth a rule in
-`interaction.ts` bending for it.
+are the same problem; no region of the board scrolls vertically or ever grows a scrollbar, and a
+full row pans sideways instead; text is fitted, never truncated. That document now describes
+`clients/prototype`, which is the authority above it. Playing is still the merge criterion: make it
+good before making it pretty, and nothing visual is worth a rule in `interaction.ts` bending for it.
 
 ## Hard rules
 
