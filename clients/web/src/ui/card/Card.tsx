@@ -36,7 +36,7 @@ import {
 
 import type { CardFace, CardFaceLink, CardFaceState } from './../../card-face'
 import { faceSummary } from './../../card-face'
-import { costTint, inlineSymbols, manaSymbols, spokenSymbol } from './../../mana'
+import { frameTint, inlineSymbols, manaSymbols, spokenSymbol } from './../../mana'
 import { useCardArt } from './../art'
 import { Pip } from './Pips'
 import { PEEK_MS, PEEK_SLOP, usePeek } from './peek'
@@ -218,10 +218,14 @@ export function Card({
   const shell = {
     className: [
       'card',
-      TINT[costTint(face.manaCost)] ?? 'card-c',
+      TINT[frameTint(face.manaCost, face.colorIdentity)] ?? 'card-c',
       state && state !== 'idle' ? `card-${state}` : '',
       link ? `card-${link}` : '',
       interactive ? 'card-live' : '',
+      // CR 302.6, drawn: the one board fact a player checks on every creature every turn and
+      // which nothing else on the card shows. It is a wash rather than a badge because it is
+      // true of the whole permanent, and the same fact is in the accessible name.
+      overlay && face.summoningSick ? 'card-sick' : '',
     ]
       .filter(Boolean)
       .join(' '),
@@ -287,8 +291,35 @@ export function Card({
     </foreignObject>
   )
 
-  /* The printed card, whole: none of the frame below is drawn, because none of it is ours in
-     this view (§6, and ADR 0012's opt-in pipeline). */
+  /* The **stat**, as an overlay rather than as part of the frame.
+     A `full` face is the printed card, and the printed card says 2/2 about a creature the
+     server just told us is a 4/4. Everything the server computed therefore rides over the
+     image — the plaque as well as the pills — because a printed number standing in for a
+     current one is a *wrong* board, not a plainer one (`art/settings.ts`). It is drawn where
+     the printed plaque is, so it covers the number it is correcting instead of sitting beside
+     it and offering a player two answers. */
+  const statPlaque = face.stat && (
+    <g transform="translate(140 250)">
+      <path d={PT_OUTER} style={{ fill: 'var(--accent)' }} filter={`url(#${uid}-sh)`} />
+      <g transform="translate(2.5 2.5)">
+        <path
+          d={PT_INNER}
+          strokeWidth="1.2"
+          style={{ fill: `url(#${uid}-chip)`, stroke: 'var(--key)' }}
+        />
+        <foreignObject x="3" y="0" width="52" height="25">
+          <div ref={ptRef} className="c-pt-num">
+            {face.stat.value}
+          </div>
+        </foreignObject>
+      </g>
+    </g>
+  )
+
+  /* The printed card, whole: none of SAGE's frame is drawn, because none of it is ours in this
+     view (§6, and ADR 0012's opt-in pipeline). What still rides over it is everything the
+     *server computed* — the stat, counters, damage, markers — plus the name band, which is the
+     one piece of SAGE's own frame a player may ask for back (§9.6). */
   if (art?.style === 'full') {
     return (
       <svg {...shell}>
@@ -296,6 +327,33 @@ export function Card({
           <clipPath id={`${uid}-round`}>
             <rect x="0" y="0" width="207" height="291" rx="7" />
           </clipPath>
+          <clipPath id={`${uid}-tb`}>
+            <path d={TITLE} />
+          </clipPath>
+          <filter id={`${uid}-sh`} x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" floodOpacity="0.55" />
+          </filter>
+          <linearGradient id={`${uid}-bar`} x1="0" y1="0" x2="0" y2="1">
+            <stop
+              offset="0%"
+              style={{ stopColor: 'color-mix(in srgb, var(--title-b) 84%, #ffffff)' }}
+            />
+            <stop offset="55%" style={{ stopColor: 'var(--title-b)' }} />
+            <stop
+              offset="100%"
+              style={{ stopColor: 'color-mix(in srgb, var(--title-b) 91%, #000000)' }}
+            />
+          </linearGradient>
+          <linearGradient id={`${uid}-chip`} x1="0" y1="0" x2="0" y2="1">
+            <stop
+              offset="0%"
+              style={{ stopColor: 'color-mix(in srgb, var(--field) 86%, #ffffff)' }}
+            />
+            <stop
+              offset="100%"
+              style={{ stopColor: 'color-mix(in srgb, var(--field) 93%, #000000)' }}
+            />
+          </linearGradient>
         </defs>
         <image
           href={art.url}
@@ -306,6 +364,28 @@ export function Card({
           preserveAspectRatio="xMidYMid slice"
           clipPath={`url(#${uid}-round)`}
         />
+        {art.band && (
+          <g transform="translate(12 9.5)" filter={`url(#${uid}-sh)`}>
+            <path d={TITLE} fill={`url(#${uid}-bar)`} />
+            <g clipPath={`url(#${uid}-tb)`}>
+              <rect x="0" y="15.5" width="183" height="1" style={{ fill: 'var(--key-soft)' }} />
+            </g>
+            <path d={TITLE} fill="none" strokeWidth="1" style={{ stroke: 'var(--key)' }} />
+            <foreignObject x="5" y="1.5" width="173" height="13.5">
+              <div className="c-title-row">
+                <span className="c-name" ref={nameRef}>
+                  {face.name}
+                </span>
+                <span className="c-cost">
+                  {cost.map((symbol, i) => (
+                    <Pip key={i} symbol={symbol.glyph} label={spokenSymbol(symbol)} />
+                  ))}
+                </span>
+              </div>
+            </foreignObject>
+          </g>
+        )}
+        {overlay && statPlaque}
         {overlays}
       </svg>
     )
@@ -474,26 +554,9 @@ export function Card({
       </g>
 
       {/* the stat plaque: same bulged-end construction — white outer bar, dark keyline, ivory
-          fill. Power and toughness, or a planeswalker's loyalty; both are the server's number. */}
-      {face.stat && (
-        <g transform="translate(142 255)" filter={`url(#${uid}-sh)`}>
-          <path d={PT_OUTER} style={{ fill: 'var(--accent)' }} />
-          <g transform="translate(2.5 2.5)">
-            <path
-              d={PT_INNER}
-              strokeWidth="1.2"
-              style={{ fill: `url(#${uid}-chip)`, stroke: 'var(--key)' }}
-            />
-            {/* inset from the plaque, so a long stat shrinks to a margin rather than to the
-                keyline */}
-            <foreignObject x="3" y="0" width="52" height="25">
-              <div ref={ptRef} className="c-pt-num">
-                {face.stat.value}
-              </div>
-            </foreignObject>
-          </g>
-        </g>
-      )}
+          fill. Power and toughness, or a planeswalker's loyalty; both are the server's number,
+          which is why the same plaque is what a full-art face wears over its printed one. */}
+      {face.stat && <g transform="translate(2 5)">{statPlaque}</g>}
 
       {/* last, so they lie over every part: one sheet of glass across the face, and the lit edge
           the chrome's panes all carry */}

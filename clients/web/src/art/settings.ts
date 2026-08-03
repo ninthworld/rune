@@ -41,10 +41,30 @@ export type ArtStyle = 'frame' | 'window' | 'full'
 export interface ArtPreference {
   source: ArtSourceId
   style: ArtStyle
+  /**
+   * Whether a `full` card face also wears SAGE's **name band** — the card's name and its mana
+   * cost as pips — over the printed one.
+   *
+   * Off by default, because the whole point of `full` is that the printed card is the face and a
+   * second name over the first is a duplicate. It is offered because the printed band is the
+   * part of a fetched image that suffers most: at a board card's size an official title bar is
+   * unreadable, and the cost is a row of symbols this client draws far larger than the print. A
+   * player who wants their board scannable turns it on and gets the one band that is worth
+   * repeating.
+   *
+   * It governs only the band. Everything the *server computed* — a buffed 4/4, counters, damage,
+   * markers — is drawn over a full face unconditionally and is not a preference, because a
+   * printed 2/2 standing in for a 4/4 is a wrong board rather than a plainer one.
+   */
+  fullArtBand: boolean
 }
 
 /** What a device with no stored preference has: nothing downloads, and offline play is normal. */
-export const DEFAULT_ART: ArtPreference = { source: 'procedural', style: 'frame' }
+export const DEFAULT_ART: ArtPreference = {
+  source: 'procedural',
+  style: 'frame',
+  fullArtBand: false,
+}
 
 const KEY = 'sage.art.preference.v1'
 
@@ -64,6 +84,8 @@ export function readArtPreference(storage: Storage | undefined): ArtPreference {
     return {
       source: stored.source === 'scryfall' ? 'scryfall' : 'procedural',
       style: stored.style === 'full' ? 'full' : stored.style === 'window' ? 'window' : 'frame',
+      // A device stored before this option existed simply has the default, which is off.
+      fullArtBand: stored.fullArtBand === true,
     }
   } catch {
     return DEFAULT_ART

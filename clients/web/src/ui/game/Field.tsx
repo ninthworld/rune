@@ -1,12 +1,17 @@
 /**
  * A battlefield: the rows a seat's permanents divide into, and one permanent's footprint.
  *
- * **The row count is the board's, never the card's** (§5): one row per group `board.ts` made
- * from the server's own `card_types`, and the rows mirror across the table so both sets of
- * creatures meet at the dividing line. **A card's size is the height of the row it is in**, so a
- * seat that is short and narrow runs out of width long before it runs out of permanents — and
- * the row then pans sideways at full card size (`scrollStrip.ts`) rather than fanning cards into
- * each other.
+ * **The row count is the board's, never the card's** (§5): two rows, split by the server's own
+ * `card_types` (`board.ts`), mirrored across the table so both sets of creatures meet at the
+ * dividing line. **A card's size is the height of the row it is in**, so a seat that is short and
+ * narrow runs out of width long before it runs out of permanents — and the row then pans sideways
+ * at full card size (`scrollStrip.ts`) rather than fanning cards into each other.
+ *
+ * **What a row does fan is a pile**: a run of permanents a player has no reason to tell apart is
+ * drawn overlapping, with a count on it, so eight Forests cost the width of about three. Which
+ * permanents those are is `board.piles`'s answer over the key `stackKey` states below, and the
+ * key is deliberately strict — anything the board would have drawn differently on one of them
+ * breaks the pile, so no fact ends up behind a card.
  *
  * A permanent may carry things attached to it. Those step down *and to the right* and are laid
  * down first, so the creature — the permanent that attacks, blocks and dies — is the whole card
@@ -18,7 +23,7 @@
  */
 import type { CSSProperties } from 'react'
 
-import { fieldRows } from './../../board'
+import { fieldRows, piles } from './../../board'
 import type { CardFace } from './../../card-face'
 import type { Permanent } from './../../protocol'
 import { Card } from './../card/Card'
@@ -72,14 +77,76 @@ function Slot({ entry, surface }: { entry: FieldEntry; surface: Surface }) {
   )
 }
 
+/**
+ * What two permanents must agree on before they are drawn as one pile (`board.piles`).
+ *
+ * Deliberately over-strict, and the reason is in `board.ts`: anything the board would have
+ * drawn differently on one of them has to break the pile, or a player loses a fact behind a
+ * card. So the key is the card's own identity plus every mark the board puts on it — tap state,
+ * counters, damage, markers, what is attached, and the relationships the server stated, which
+ * is what keeps an attacker from hiding behind a creature that is not attacking.
+ *
+ * `undefined` means "never stack this one": a permanent with no card identity (a token, CR 111)
+ * has nothing two of them could be the same *card* of, and a permanent this interaction has
+ * singled out is one the player is being asked about by itself.
+ */
+function stackKey(entry: FieldEntry, surface: Surface): string | undefined {
+  const { permanent, face } = entry
+  if (face.artKey === undefined) return undefined
+  const state = surface.stateOf(permanent.id)
+  // Singled out by the interaction: the player is being asked about *this* one, or waiting on
+  // an answer about it, so it is not one of a set. A `candidate` is not singled out — every
+  // untapped Forest is one at once — and hiding those would mean a mana base that stops
+  // stacking for the whole of a main phase, which is most of the game.
+  if (state === 'selected' || state === 'pending') return undefined
+  return [
+    state,
+    surface.linkOf(permanent.id) ?? '',
+    face.artKey,
+    face.tapped ? 't' : '',
+    face.summoningSick ? 's' : '',
+    face.stat?.value ?? '',
+    face.counters.map((counter) => `${counter.kind}:${counter.count}`).join('+'),
+    face.damage ?? '',
+    face.markers.join('+'),
+    entry.attached.map((card) => card.id).join('+'),
+    entry.note,
+  ].join('|')
+}
+
+/** One pile of identical permanents, or one permanent that is nothing else's twin. */
+function Pile({ entries, surface }: { entries: readonly FieldEntry[]; surface: Surface }) {
+  if (entries.length === 1) {
+    const only = entries[0]
+    return only ? <Slot entry={only} surface={surface} /> : null
+  }
+  return (
+    <div className="perm-fan">
+      {entries.map((entry) => (
+        <Slot key={entry.permanent.id} entry={entry} surface={surface} />
+      ))}
+      <span className="perm-fan-count" aria-hidden="true">
+        {entries.length}
+      </span>
+    </div>
+  )
+}
+
 function Row({ entries, surface }: { entries: readonly FieldEntry[]; surface: Surface }) {
   const { ref, edges } = useScrollStrip<HTMLDivElement>()
+  // Which permanents are drawn as one pile is `board.piles`'s answer, over a key this file
+  // states — the same split as the rows: what may be grouped is decided once, away from a
+  // component, and the component only draws the grouping it was handed.
+  const grouped = piles(entries, (entry) => stackKey(entry, surface))
   return (
     <div className="field-row">
       <div className={`strip field-scroll${edges}`} ref={ref}>
-        {entries.map((entry) => (
-          <Slot key={entry.permanent.id} entry={entry} surface={surface} />
-        ))}
+        {grouped.map((pile) => {
+          const first = pile.entries[0]
+          return first === undefined ? null : (
+            <Pile key={first.permanent.id} entries={pile.entries} surface={surface} />
+          )
+        })}
       </div>
     </div>
   )

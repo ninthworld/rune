@@ -139,6 +139,11 @@ export function useArtCache(): {
 export interface CardArtTexture {
   url: string
   style: ArtStyle
+  /**
+   * Whether a `full` face wears SAGE's name band over the printed one — the device preference,
+   * resolved here so a card component reads one value and never the settings store.
+   */
+  band: boolean
 }
 
 export function useCardArt(face: CardFace): CardArtTexture | undefined {
@@ -169,8 +174,8 @@ export function useCardArt(face: CardFace): CardArtTexture | undefined {
   // illustration resolved there is no such image, so it is drawn in the frame instead — a
   // fallback per card, never a mode the player is silently moved into.
   if (preference.style === 'full' && entry.images.full) {
-    return { url: entry.images.full, style: 'full' }
+    return { url: entry.images.full, style: 'full', band: preference.fullArtBand }
   }
   const window = entry.images.window ?? entry.images.full
-  return window ? { url: window, style: 'window' } : undefined
+  return window ? { url: window, style: 'window', band: false } : undefined
 }

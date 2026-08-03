@@ -27,6 +27,7 @@ import type {
   CardType,
   CardView,
   CatalogCard,
+  Color,
   Counter,
   Emblem,
   Permanent,
@@ -89,6 +90,21 @@ export interface CardFace {
    * claim that the object has no types, and every surface treats it that way.
    */
   cardTypes: readonly CardType[]
+  /**
+   * The card's colour identity, as the server stated it (CR 903.4).
+   *
+   * Carried so a frame can be tinted by what a card *belongs to* rather than only by the pips
+   * that happen to be printed on it — the difference between a green Forest and a grey one
+   * (`mana.frameTint`). Empty means the server stated none, which is a colourless card and a
+   * card the server could not resolve alike; both draw neutral, which is the honest answer.
+   */
+  colorIdentity: readonly Color[]
+  /**
+   * Whether the summoning-sickness restriction currently applies (CR 302.6), as the server
+   * stated it. Never a conclusion: the client cannot see continuous control or a granted haste,
+   * and `false` on a face the server said nothing about is "not stated", not "may attack".
+   */
+  summoningSick: boolean
 }
 
 /** Display wording for the stack kinds the server states (`docs/protocol.md`). */
@@ -116,6 +132,7 @@ interface Printed {
   toughness?: string
   loyalty?: string
   keywords?: readonly string[]
+  color_identity?: readonly Color[]
 }
 
 function printedFace(id: string, card: Printed): CardFace {
@@ -139,6 +156,8 @@ function printedFace(id: string, card: Printed): CardFace {
     markers: [],
     tapped: false,
     cardTypes: [],
+    colorIdentity: list(card.color_identity),
+    summoningSick: false,
   }
 }
 
@@ -199,6 +218,9 @@ export function permanentFace(permanent: Permanent): CardFace {
     damage: permanent.damage !== undefined && permanent.damage > 0 ? permanent.damage : undefined,
     markers: [...base.markers, ...(permanent.is_commander ? ['Commander'] : [])],
     tapped: permanent.tapped === true,
+    // CR 302.6, stated. Nothing here concludes it from `entered_turn` (which is not on the
+    // wire) or from the absence of an attack action (which means nothing outside one step).
+    summoningSick: permanent.summoning_sick === true,
   }
 }
 
@@ -220,6 +242,8 @@ export function stackFace(item: StackItem): CardFace {
       markers: kind,
       tapped: false,
       cardTypes: [],
+      colorIdentity: [],
+      summoningSick: false,
     }
   }
   const base = cardFace(item.card)
@@ -244,6 +268,8 @@ export function emblemFace(emblem: Emblem): CardFace {
     markers: ['Emblem'],
     tapped: false,
     cardTypes: [],
+    colorIdentity: [],
+    summoningSick: false,
   }
 }
 
@@ -259,6 +285,9 @@ export function faceSummary(face: CardFace): string {
   if (face.typeLine) parts.push(face.typeLine)
   if (face.stat) parts.push(`${face.stat.label} ${face.stat.value}`)
   if (face.tapped) parts.push('tapped')
+  // The one board fact with no mark of its own that a player acts on every turn, so it is said
+  // as well as drawn — a dimmed card says nothing when read aloud.
+  if (face.summoningSick) parts.push('summoning sick')
   if (face.damage !== undefined) parts.push(`${face.damage} damage`)
   for (const counter of face.counters) parts.push(`${counter.count}× ${counter.kind}`)
   parts.push(...face.markers)

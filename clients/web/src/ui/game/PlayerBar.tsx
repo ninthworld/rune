@@ -149,7 +149,10 @@ export function PlayerBar({
         <button
           className="player-target"
           title={`${seat.name}${seat.life === undefined ? '' : ` — ${seat.life} life`}`}
-          data-anchor={`player:${seat.id}`}
+          // The seat's own id, because that is what the server addresses it by: a
+          // spell aimed at a player and an attacker aimed at a defender both name
+          // this id, and an anchor under any other name is an arrow that never draws.
+          data-anchor={seat.id}
           aria-label={`${seat.name}${seat.life === undefined ? '' : `, ${seat.life} life`}${
             note ? ` · ${note}` : ''
           }`}

@@ -273,3 +273,39 @@ describe('the one-line summary', () => {
     )
   })
 })
+
+describe('what the board adds to a card', () => {
+  it('carries the colour identity the server stated, wherever the card is', () => {
+    // The same fact on a card in hand, a permanent, and a catalog entry, so a deck builder and
+    // a battlefield never draw one card two colours.
+    const forest = cardFace({
+      id: 'c1',
+      name: 'Forest',
+      type_line: 'Basic Land — Forest',
+      color_identity: ['G'],
+    })
+    expect(forest.colorIdentity).toEqual(['G'])
+    expect(forest.manaCost).toBeUndefined()
+    // An absence stays an absence rather than becoming a claim about a colourless card.
+    expect(cardFace({ id: 'c2', name: 'x', type_line: 'x' }).colorIdentity).toEqual([])
+  })
+
+  it('reports summoning sickness only where the server said so', () => {
+    const bear = { id: 'c3', name: 'Bear', type_line: 'Creature — Bear' }
+    const sick = permanentFace({
+      id: 'perm_1',
+      controller: 'p1',
+      owner: 'p1',
+      card: bear,
+      summoning_sick: true,
+    })
+    expect(sick.summoningSick).toBe(true)
+    expect(faceSummary(sick)).toContain('summoning sick')
+
+    // Absent is "not stated", and a client that read it as "may attack" would be inventing a
+    // rule it cannot see: haste may be granted, and control is stored engine state.
+    const settled = permanentFace({ id: 'perm_2', controller: 'p1', owner: 'p1', card: bear })
+    expect(settled.summoningSick).toBe(false)
+    expect(faceSummary(settled)).not.toContain('summoning sick')
+  })
+})

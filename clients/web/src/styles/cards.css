@@ -236,6 +236,15 @@
   opacity: 0.72;
 }
 
+/* Summoning sickness (CR 302.6), as the server stated it. Not a badge: the
+   restriction is true of the whole permanent, so the whole card gives way —
+   desaturated and set back, the way an unavailable control is. It is never
+   the only copy of the fact; `faceSummary` says it in words. */
+.card-sick {
+  opacity: 0.62;
+  filter: saturate(0.55);
+}
+
 .card-disabled {
   opacity: 0.5;
 }

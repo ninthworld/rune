@@ -123,13 +123,60 @@ function classify(inner: string): Omit<ManaSymbol, 'printed'> {
 export type FrameTint = ManaColor | 'multicolor' | 'colorless'
 
 export function costTint(cost: string | undefined): FrameTint {
+  return tintOf(costColors(cost))
+}
+
+/** The colours the printed pips of `cost` are drawn in, deduplicated. */
+function costColors(cost: string | undefined): ReadonlySet<ManaColor> {
   const colors = new Set<ManaColor>()
   for (const symbol of manaSymbols(cost)) {
     for (const color of symbol.colors) colors.add(color)
   }
+  return colors
+}
+
+const tintOf = (colors: ReadonlySet<ManaColor>): FrameTint => {
   if (colors.size > 1) return 'multicolor'
   for (const color of colors) return color
   return 'colorless'
+}
+
+/** The wire's colour letters, lowercased into the keys the palette is written in. */
+const WIRE_COLORS: Record<string, ManaColor | undefined> = {
+  W: 'w',
+  U: 'u',
+  B: 'b',
+  R: 'r',
+  G: 'g',
+}
+
+/**
+ * The wash a frame is drawn in, given everything the server said about the card.
+ *
+ * The printed pips come first, because that is what a player sees on the card itself and it is
+ * the answer for almost every card that has a cost. **Colour identity is the fallback**, and it
+ * exists for the cards the cost cannot answer for: a Forest costs nothing, prints no coloured
+ * pip, and used to draw in the same grey as a Wastes and an artifact — which made a mana base,
+ * the thing a player counts most often, the least scannable part of the board.
+ *
+ * The order matters and is not arbitrary. A card whose cost prints colours is *tinted by its
+ * cost*, so a card with an off-colour activated ability does not change colour in a hand; only
+ * a card the cost says nothing about falls through to what the server says it belongs to. Both
+ * halves are server-stated (`docs/protocol.md`); neither is a rules judgment made here, and
+ * neither is the card's colour (CR 105), which this still deliberately does not claim to be.
+ */
+export function frameTint(
+  cost: string | undefined,
+  colorIdentity: readonly string[] = [],
+): FrameTint {
+  const printed = costColors(cost)
+  if (printed.size > 0) return tintOf(printed)
+  const identity = new Set<ManaColor>()
+  for (const letter of colorIdentity) {
+    const color = WIRE_COLORS[letter]
+    if (color) identity.add(color)
+  }
+  return tintOf(identity)
 }
 
 /**

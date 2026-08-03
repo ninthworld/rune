@@ -15,13 +15,17 @@ import {
   gestureFor,
   globalActions,
   highlightFor,
+  finishesPayment,
   needsChoices,
   needsConfirmation,
   owedActions,
+  payFor,
   release,
+  reset,
   select,
   settle,
   slotsOf,
+  stopPaying,
   submitted,
   subjects,
   unask,
@@ -368,5 +372,208 @@ describe('asking twice', () => {
   it('keeps the selection, so backing out lands where the player was', () => {
     const asked = ask(select(IDLE, 'perm_17'), concede)
     expect(unask(asked).selected).toBe('perm_17')
+  })
+})
+
+describe('declaring attackers one at a time', () => {
+  // The server states which attacker each defender slot belongs to, so the client can ask the
+  // question the way a player thinks about it — this creature, at that seat — instead of
+  // showing every candidate's slot at once and letting one click mean any of them.
+  const DECLARE: ValidAction = {
+    id: 'a_attack',
+    type: 'declare_attackers',
+    label: 'Declare attackers',
+    requirements: [
+      {
+        slot: 'attackers',
+        prompt: 'Choose which creatures attack',
+        candidates: ['perm_bear', 'perm_ogre'],
+      },
+      {
+        slot: 'defend_bear',
+        prompt: 'Choose what Bear attacks',
+        subject: 'perm_bear',
+        candidates: ['p2', 'perm_walker'],
+      },
+      {
+        slot: 'defend_ogre',
+        prompt: 'Choose what Ogre attacks',
+        subject: 'perm_ogre',
+        candidates: ['p2', 'perm_walker'],
+      },
+    ],
+  }
+  const OFFERED = [DECLARE]
+
+  it('asks nothing about an attacker that has not been declared', () => {
+    expect(slotsOf(DECLARE, {}).map((slot) => slot.slot)).toEqual(['attackers'])
+  })
+
+  it('asks what an attacker attacks as soon as it is declared, and only for that one', () => {
+    const slots = slotsOf(DECLARE, { attackers: ['perm_bear'] })
+    expect(slots.map((slot) => slot.slot)).toEqual(['attackers', 'defend_bear'])
+    expect(slots[1]?.subject).toBe('perm_bear')
+    expect(slots[1]?.conditional).toBe(true)
+  })
+
+  it('aims the attacker it was just given, so the next click is that attacker’s answer', () => {
+    const armedDeclare = arm(IDLE, DECLARE)
+    const slots = slotsOf(DECLARE, {})
+    const picked = fill(
+      armedDeclare,
+      slots[0] as never,
+      'perm_bear',
+      slotsOf(DECLARE, {
+        attackers: ['perm_bear'],
+      }),
+    )
+    expect(picked.aiming).toBe('perm_bear')
+    // And a click on a defender answers *that* attacker's slot rather than the first one that
+    // happens to list the same id.
+    expect(gestureFor(OFFERED, picked, 'p2')).toEqual({ kind: 'fill', slot: 'defend_bear' })
+  })
+
+  it('stops aiming once the attacker has been given something to attack', () => {
+    const withAim: Interaction = {
+      armed: 'a_attack',
+      draft: { attackers: ['perm_bear'] },
+      aiming: 'perm_bear',
+    }
+    const slots = focus(OFFERED, withAim).slots
+    const aimed = slots.find((slot) => slot.slot === 'defend_bear')
+    const answered = fill(withAim, aimed as never, 'p2', slots)
+    expect(answered.aiming).toBeUndefined()
+    expect(answered.draft.defend_bear).toEqual(['p2'])
+  })
+
+  it('stops aiming when the attacker is taken back out of the declaration', () => {
+    const withAim: Interaction = {
+      armed: 'a_attack',
+      draft: { attackers: ['perm_bear'] },
+      aiming: 'perm_bear',
+    }
+    const slots = focus(OFFERED, withAim).slots
+    const undone = fill(withAim, slots[0] as never, 'perm_bear', slots)
+    expect(undone.draft.attackers).toEqual([])
+    expect(undone.aiming).toBeUndefined()
+  })
+
+  it('lights only what the aimed attacker may attack', () => {
+    const withAim: Interaction = {
+      armed: 'a_attack',
+      draft: { attackers: ['perm_bear'] },
+      aiming: 'perm_bear',
+    }
+    expect(highlightFor(OFFERED, withAim, 'p2')).toBe('candidate')
+    // The other creature is still a legal attacker, but this is not the question being asked.
+    expect(highlightFor(OFFERED, withAim, 'perm_ogre')).toBe('idle')
+  })
+
+  it('will not send a declaration with an attacker that has nothing to attack', () => {
+    const half: Interaction = { armed: 'a_attack', draft: { attackers: ['perm_bear'] } }
+    expect(focus(OFFERED, half).ready).toBe(false)
+    const whole: Interaction = {
+      armed: 'a_attack',
+      draft: { attackers: ['perm_bear'], defend_bear: ['p2'] },
+    }
+    expect(focus(OFFERED, whole).ready).toBe(true)
+    // Declaring nothing at all is a legal declaration and stays one.
+    expect(focus(OFFERED, { armed: 'a_attack', draft: {} }).ready).toBe(true)
+  })
+
+  it('takes back every answer without leaving the question', () => {
+    const drafted: Interaction = {
+      armed: 'a_attack',
+      draft: { attackers: ['perm_bear'], defend_bear: ['p2'] },
+      aiming: 'perm_bear',
+    }
+    const again = reset(drafted)
+    expect(again.armed).toBe('a_attack')
+    expect(again.draft).toEqual({})
+    expect(again.aiming).toBeUndefined()
+  })
+})
+
+describe('a slot about a subject the action does not ask you to choose', () => {
+  // Blocker slots name their attacker too, and the shape is identical — but the attacker is a
+  // board fact rather than something this action asks the player to pick, so the slot is asked
+  // outright and answering it with nothing is a legal declaration.
+  const BLOCK: ValidAction = {
+    id: 'a_block',
+    type: 'declare_blockers',
+    label: 'Declare blockers',
+    requirements: [
+      {
+        slot: 'block_bear',
+        prompt: 'Choose blockers for Bear',
+        subject: 'perm_bear',
+        candidates: ['perm_wall'],
+      },
+    ],
+  }
+
+  it('is asked immediately, and is not owed an answer', () => {
+    const slots = slotsOf(BLOCK, {})
+    expect(slots.map((slot) => slot.slot)).toEqual(['block_bear'])
+    expect(slots[0]?.conditional).toBe(false)
+    expect(focus([BLOCK], { armed: 'a_block', draft: {} }).ready).toBe(true)
+  })
+})
+
+describe('saying what you are playing before you can pay for it', () => {
+  const MANA: ValidAction = {
+    id: 'a_tap',
+    type: 'activate_ability',
+    label: '{T}: Add {G}.',
+    subject: ['perm_forest'],
+    mana_ability: true,
+  }
+  const PASS: ValidAction = { id: 'a_pass', type: 'pass_priority', label: 'Pass' }
+  const OFFERED = [MANA, PASS]
+
+  it('lets a card the server offered nothing for say “this is what I am playing”', () => {
+    expect(gestureFor(OFFERED, IDLE, 'c_bear', new Set(['c_bear']))).toEqual({ kind: 'pay' })
+  })
+
+  it('never overrides an action the server did offer', () => {
+    // Rule 3 still comes first: a card that can be cast is cast, not queued behind an intent.
+    expect(gestureFor(OFFERED, IDLE, 'perm_forest', new Set(['perm_forest']))).toEqual({
+      kind: 'take',
+      action: 'a_tap',
+    })
+  })
+
+  it('lights every source the server offered, and the card being paid for', () => {
+    const paying = payFor(IDLE, 'c_bear')
+    expect(paying.paying).toBe('c_bear')
+    expect(highlightFor(OFFERED, paying, 'c_bear')).toBe('selected')
+    expect(highlightFor(OFFERED, paying, 'perm_forest')).toBe('candidate')
+    // Nothing else is lit: the client is not saying which sources would finish the cost.
+    expect(highlightFor(OFFERED, paying, 'perm_other')).toBe('idle')
+  })
+
+  it('carries the intent across the views the payment itself produces', () => {
+    // Making mana is one message per source, so an intent that did not survive a view would be
+    // gone before the second land was tapped.
+    const paying = payFor(IDLE, 'c_bear')
+    expect(settle(paying, undefined).paying).toBe('c_bear')
+    const sent = submitted(paying, { submission: 's:1', actionId: 'a_tap', label: 'tap' })
+    expect(settle(sent, { submission: 's:1', accepted: true }).paying).toBe('c_bear')
+  })
+
+  it('knows which submission is the cast the intent was for', () => {
+    const paying = payFor(IDLE, 'c_bear')
+    const cast: ValidAction = {
+      id: 'a_cast',
+      type: 'cast_spell',
+      label: 'Cast Grizzly Bears',
+      subject: ['c_bear'],
+    }
+    expect(finishesPayment(paying, cast)).toBe(true)
+    expect(finishesPayment(paying, MANA)).toBe(false)
+  })
+
+  it('gives up the intent without undoing anything, because nothing was sent for it', () => {
+    expect(stopPaying(payFor(IDLE, 'c_bear')).paying).toBeUndefined()
   })
 })
