@@ -113,6 +113,7 @@ fn cast(state: &GameState, db: &CardDatabase, slug: &str, targets: Vec<Target>) 
         valid_actions(&state, db).contains(&Action::CastSpell {
             card: instance,
             targets: Vec::new(),
+            payment: Vec::new(),
         }),
         "{slug} was not offered as a castable spell"
     );
@@ -121,6 +122,7 @@ fn cast(state: &GameState, db: &CardDatabase, slug: &str, targets: Vec<Target>) 
         &Action::CastSpell {
             card: instance,
             targets,
+            payment: Vec::new(),
         },
         db,
     );

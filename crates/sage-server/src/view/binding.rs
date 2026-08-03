@@ -205,9 +205,25 @@ pub(crate) fn bind_ability_targets(
             index: *index,
             targets: chosen,
         }),
+        // **Auto-pay** (ADR 0010: the policy is the server's, the rules are the
+        // engine's). The engine now announces a cast against what the seat *could* make
+        // rather than only what is floating, so a cast can arrive that the pool alone
+        // does not cover. Rather than reject it, the server asks the engine for a
+        // payment that would cover it and sends one atomic action.
+        //
+        // The judgment here — *tap for the player instead of asking* — is the server's
+        // and is exactly the kind of thing ADR 0010 keeps out of the engine. The engine
+        // only answers what a legal payment is; it has no opinion about whether a person
+        // wanted to be asked. A client that wants to choose its own sources will carry
+        // its own payment and this fills in nothing.
+        //
+        // `None` means no payment exists, and the empty one is sent: the engine refuses
+        // it as a clean no-op and the client is told, which is the same answer it would
+        // have got before this existed.
         Action::CastSpell { card, .. } => Some(Action::CastSpell {
             card: *card,
             targets: chosen,
+            payment: sage_engine::auto_payment(state, db, *card).unwrap_or_default(),
         }),
         // Aiming a trigger (CR 603.3d) binds through the same per-slot candidate
         // path as a cast or an activation — the engine offers one target slot per

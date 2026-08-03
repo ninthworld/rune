@@ -3,6 +3,21 @@
 use crate::ability::Target;
 use crate::id::{CardInstance, CardInstanceId, PermanentId};
 
+/// One mana ability a payment activates: a permanent under the payer's control and an
+/// index into [`crate::abilities_of_permanent`], addressed exactly as
+/// [`Action::ActivateAbility`] addresses the same thing.
+///
+/// It names an *activation*, not an amount. What that ability produces is the card's,
+/// and the engine reads it when the payment is applied — a payment that named a
+/// quantity would be a second opinion about a card's text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ManaSource {
+    /// The permanent whose ability is activated.
+    pub permanent: PermanentId,
+    /// Index into the permanent's abilities (see [`crate::abilities_of_permanent`]).
+    pub index: usize,
+}
+
 /// An action a player may take. The engine generates the legal set with
 /// [`crate::valid_actions`] and validates a chosen action against it in
 /// [`crate::apply_action`].
@@ -130,6 +145,27 @@ pub enum Action {
         /// field empty); per-slot candidates come from [`crate::target_requirements`], and
         /// a filled selection is validated slot-by-slot in [`crate::apply_action`].
         targets: Vec<Target>,
+        /// The mana abilities activated to pay for this cast (CR 601.2), in the order
+        /// they are activated. Empty for a cast paid out of mana already floating,
+        /// which is what every cast was before this field existed.
+        ///
+        /// **This is what makes the casting process one action.** CR 601.2 walks it in
+        /// order — announce, choose modes and targets, determine the total cost,
+        /// *activate mana abilities*, pay — and rewinds the whole thing if it cannot be
+        /// completed. Carrying the payment here is what lets the engine do that: the
+        /// sources are tapped, the cost is paid, and the spell goes on the stack in one
+        /// indivisible step, or none of it happens and the state is returned unchanged.
+        ///
+        /// The consequence upstream is the point of it. A player assembling a payment
+        /// has sent *nothing*, so taking a source back out is free and instant, and no
+        /// client and no server has to hold a half-made payment that some other event
+        /// could invalidate. Floating mana first stays exactly as legal as it was
+        /// (CR 605.3), and is still the only way to hold mana across a cast.
+        ///
+        /// Each entry is validated as an activation in its own right, in sequence and
+        /// against the state the ones before it produced — so a source named twice is
+        /// tapped once and then illegal, exactly as clicking it twice would be.
+        payment: Vec<ManaSource>,
     },
     /// Discard one card from hand to satisfy the cleanup step's maximum-hand-size
     /// turn-based action (CR 514.1). Offered — one per card in the active
@@ -314,11 +350,14 @@ impl Action {
                 index: *index,
                 targets: Vec::new(),
             },
-            // A cast drops its target selection to its requirement form, the shape
-            // `valid_actions` advertises (CR 601.2c targets are filled in later).
+            // A cast drops its target selection *and its payment* to its requirement
+            // form, the shape `valid_actions` advertises. Both are filled in later and
+            // by the same rule (CR 601.2): the process announces the spell first, and
+            // chooses targets and activates mana abilities as steps within it.
             Action::CastSpell { card, .. } => Action::CastSpell {
                 card: *card,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             Action::ChooseTriggerTargets { ability, .. } => Action::ChooseTriggerTargets {
                 ability: *ability,

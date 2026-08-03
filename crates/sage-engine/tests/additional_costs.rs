@@ -67,6 +67,7 @@ fn offers_cast(state: &GameState, db: &CardDatabase, card: CardInstance) -> bool
     valid_actions(state, db).contains(&Action::CastSpell {
         card,
         targets: Vec::new(),
+        payment: Vec::new(),
     })
 }
 
@@ -91,6 +92,7 @@ fn tormenting_voice_is_uncastable_with_no_other_card_to_discard() {
         &Action::CastSpell {
             card: voice,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );
@@ -121,6 +123,7 @@ fn the_discard_is_paid_at_cast_time_before_anyone_can_respond() {
         &Action::CastSpell {
             card: voice,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );

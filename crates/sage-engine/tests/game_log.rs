@@ -104,6 +104,7 @@ fn a_creature_cast_logs_spell_cast_then_spell_resolved_in_order() {
         &Action::CastSpell {
             card: scout,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );

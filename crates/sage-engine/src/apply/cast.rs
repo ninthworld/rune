@@ -1096,6 +1096,7 @@ mod tests {
             &Action::CastSpell {
                 card: scout,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -1141,6 +1142,7 @@ mod tests {
             &Action::CastSpell {
                 card: scanner,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -1256,6 +1258,7 @@ mod tests {
             &Action::CastSpell {
                 card: surge,
                 targets: vec![Target::Permanent(creature)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -1342,6 +1345,7 @@ mod tests {
             &Action::CastSpell {
                 card: jump,
                 targets: vec![Target::Permanent(creature)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -1514,6 +1518,7 @@ mod tests {
             &Action::CastSpell {
                 card: curse,
                 targets: vec![Target::Permanent(host)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -1587,6 +1592,7 @@ mod tests {
             &Action::CastSpell {
                 card: negation,
                 targets: vec![Target::Spell(boar_sid)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -1707,6 +1713,7 @@ mod tests {
             &Action::CastSpell {
                 card: shock,
                 targets: vec![Target::Permanent(boar)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -1740,6 +1747,7 @@ mod tests {
             &Action::CastSpell {
                 card: shock,
                 targets: vec![Target::Player(PlayerId(1))],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -1767,6 +1775,7 @@ mod tests {
             &Action::CastSpell {
                 card: bolt,
                 targets: vec![Target::Player(PlayerId(1))],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -1989,6 +1998,7 @@ mod tests {
             &Action::CastSpell {
                 card: study,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2022,6 +2032,7 @@ mod tests {
             &Action::CastSpell {
                 card: blessing,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2087,6 +2098,7 @@ mod tests {
             &Action::CastSpell {
                 card: ray,
                 targets: vec![Target::Permanent(boar)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2117,6 +2129,7 @@ mod tests {
             &Action::CastSpell {
                 card: ray,
                 targets: vec![Target::Permanent(boar)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2157,6 +2170,7 @@ mod tests {
             &Action::CastSpell {
                 card: touch,
                 targets: vec![Target::Permanent(boar)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2186,6 +2200,7 @@ mod tests {
             &Action::CastSpell {
                 card: balm,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2213,6 +2228,7 @@ mod tests {
             &Action::CastSpell {
                 card: ordeal,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2250,6 +2266,7 @@ mod tests {
             &Action::CastSpell {
                 card: aegis,
                 targets: vec![Target::Permanent(creature)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2280,6 +2297,7 @@ mod tests {
             &Action::CastSpell {
                 card: leap,
                 targets: vec![Target::Permanent(creature)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2322,6 +2340,7 @@ mod tests {
             &Action::CastSpell {
                 card: leap,
                 targets: vec![Target::Permanent(mine), Target::Permanent(theirs)],
+                payment: Vec::new(),
             },
             &db
         ));
@@ -2331,6 +2350,7 @@ mod tests {
             &Action::CastSpell {
                 card: leap,
                 targets: vec![Target::Permanent(mine)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2363,6 +2383,7 @@ mod tests {
             &Action::CastSpell {
                 card: strike,
                 targets: vec![Target::Permanent(creature)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2392,6 +2413,7 @@ mod tests {
             &Action::CastSpell {
                 card: spores,
                 targets: vec![Target::Permanent(ogre)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2421,6 +2443,7 @@ mod tests {
             &Action::CastSpell {
                 card: pledge,
                 targets: vec![Target::Permanent(host)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2456,6 +2479,7 @@ mod tests {
             &Action::CastSpell {
                 card: oak,
                 targets: vec![Target::Permanent(host)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2483,6 +2507,7 @@ mod tests {
             &Action::CastSpell {
                 card: growth,
                 targets: vec![Target::Permanent(host)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2514,6 +2539,7 @@ mod tests {
             &Action::CastSpell {
                 card: caress,
                 targets: vec![Target::Permanent(victim)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2547,6 +2573,7 @@ mod tests {
             &Action::CastSpell {
                 card: axe,
                 targets: vec![Target::Player(PlayerId(1))],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2603,6 +2630,7 @@ mod tests {
             &Action::CastSpell {
                 card: oracle,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2637,6 +2665,7 @@ mod tests {
             &Action::CastSpell {
                 card: wurm,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );

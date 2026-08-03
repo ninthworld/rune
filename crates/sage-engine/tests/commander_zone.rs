@@ -52,6 +52,7 @@ fn cast_offered(state: &GameState, db: &CardDatabase, card: CardInstance) -> boo
     valid_actions(state, db).contains(&Action::CastSpell {
         card,
         targets: Vec::new(),
+        payment: Vec::new(),
     })
 }
 
@@ -90,6 +91,7 @@ fn cr_903_8_command_zone_cast_goes_on_the_stack_and_resolves_to_the_battlefield(
         &Action::CastSpell {
             card: commander,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );
