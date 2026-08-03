@@ -112,6 +112,8 @@ pub(crate) fn attacker_requirements(
             .copied()
             .map(permanent_entity_id)
             .collect(),
+        // The declaration as a whole, not any one attacker's choice.
+        subject: None,
     }];
     // Each attacker chooses what it attacks. With a single candidate there is nothing
     // to choose, so no defender slots are offered.
@@ -131,6 +133,9 @@ pub(crate) fn attacker_requirements(
                     permanent_card_name(state, attacker, db)
                 ),
                 candidates: defender_ids.clone(),
+                // Whose choice this is, stated rather than encoded in the slot id: a
+                // client asks one attacker at a time and draws the arrow from it.
+                subject: Some(permanent_entity_id(attacker)),
             });
         }
     }
@@ -184,6 +189,9 @@ pub(crate) fn blocker_requirements(state: &GameState, db: &CardDatabase) -> Vec<
                 optional: false,
                 prompt: blocker_prompt(state, attacker, db),
                 candidates,
+                // Which attacker this slot assigns blockers to — the same statement
+                // the defender slots carry, from the other side of the combat.
+                subject: Some(permanent_entity_id(attacker)),
             })
         })
         .collect()
@@ -244,6 +252,9 @@ pub(crate) fn ability_requirements(
             // creatures"). The engine decides which; the projection only carries it.
             optional: req.optional,
             candidates: req.candidates.into_iter().map(target_entity_id).collect(),
+            // A spell or ability's own target slot is about the action, not about one
+            // of the objects the action names.
+            subject: None,
         })
         .collect()
 }
@@ -1051,6 +1062,17 @@ mod planeswalker_attack_tests {
             "the opponent and their planeswalker, in that order"
         );
         assert!(slot.prompt.contains("Test Ogre"));
+        // Issue #700: whose choice this is, stated rather than encoded in the slot id
+        // — so a client asks one attacker at a time without ever parsing `defend_…`.
+        assert_eq!(slot.subject, Some(permanent_entity_id(ogre)));
+        let whole = reqs
+            .iter()
+            .find(|r| r.slot == "attackers")
+            .expect("the declaration itself is always a slot");
+        assert_eq!(
+            whole.subject, None,
+            "the multi-select is about the declaration, not about one attacker"
+        );
 
         // Remove the planeswalker: one thing to attack, so no slot and no extra step.
         let mut plain = state.clone();

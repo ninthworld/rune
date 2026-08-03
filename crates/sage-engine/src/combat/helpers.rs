@@ -67,7 +67,7 @@ pub(super) fn is_creature(perm: &Permanent, db: &CardDatabase) -> bool {
 /// Only creatures are ever summoning sick: a land or mana rock that entered this
 /// turn taps freely, so this is `false` for every non-creature permanent.
 #[must_use]
-pub(crate) fn summoning_sickness_restricts(
+pub fn summoning_sickness_restricts(
     state: &GameState,
     perm: &Permanent,
     db: &CardDatabase,

@@ -336,6 +336,7 @@ ephemeral presentation only (an auto-dismissing toast) — never load-bearing st
 | `loyalty` | `string?` | Printed **starting** loyalty (planeswalkers only, CR 306.5b) |
 | `keywords` | `string[]?` | Lowercase keyword names |
 | `card_types` | `CardType[]?` | The card's types (CR 300), as the structured set `type_line` is rendered from; omitted when the server states none |
+| `color_identity` | `Color[]?` | The card's **colour identity** (CR 903.4), in WUBRG order; omitted when empty |
 | `token` | `boolean?` | The object is a **token** (CR 111) rather than a card; omitted (and `false`) for every card |
 
 `id` identifies one physical game object and is used by actions. `functional_id` identifies
@@ -343,6 +344,16 @@ the underlying card definition and is not a legal-action handle. Clients treat b
 opaque strings. The web client uses `functional_id` as the key of its client-local card-art
 cache (ADR 0012) — a pure presentation enrichment; the wire contract is unchanged and a
 client that ignores the field renders completely without it.
+
+`color_identity` (issue #700) is what a card *belongs to*: its colours, the colours of the
+mana symbols in its cost, and the colours of the mana symbols in its rules text. It is stated
+for the same reason `card_types` is — the alternative is a client deriving it — and it is
+stated on the card rather than only on a commander because it is the answer to the question a
+board is scanned with. A Forest has no cost and prints no coloured pip, so a client reading
+the cost alone can only call it colourless, and a mana base drawn in five shades of grey is
+unreadable. It is the **same computation** the deck-legality gate and a seat's commander gems
+use, so what a card is drawn as and what it is legal under can never disagree. It is **not**
+the card's colour (CR 105) and must not be rendered as one.
 
 `card_types` is the **set** behind `type_line`'s sentence, and both are projected from one
 source so they can never disagree about the same card. It exists because the questions a
@@ -418,7 +429,15 @@ A `Permanent` contains:
 - optional `counters`, each `{ "kind": string, "count": number }` — the kinds today are
   `"+1/+1"`, `"-1/-1"`, and `"loyalty"`. A planeswalker's `loyalty` counter is its
   **current** loyalty, the number every rule reads: its abilities spend it, damage removes
-  it (CR 120.3c), and it is put into its owner's graveyard at zero (CR 704.5i).
+  it (CR 120.3c), and it is put into its owner's graveyard at zero (CR 704.5i); and
+- optional `summoning_sick` (default `false`, issue #700), whether the summoning-sickness
+  restriction of CR 302.6 **currently applies**: the permanent is a creature, its controller
+  has not controlled it continuously since their most recent turn began, and it does not have
+  haste (CR 702.10b). It is a *restriction*, not a property — a sick creature with haste
+  reports `false` — and it is stated because no client can derive it: continuous control is
+  stored engine state, haste may be granted by an Aura or a pump, and the absence of an attack
+  action means nothing outside the declare-attackers step. It comes from the same engine
+  predicate that gates attacking and `{T}` costs, so the board and the action list agree.
 
 These fields describe server-computed state. They do not authorize interaction.
 
@@ -631,9 +650,18 @@ Target choices use `requirements`:
 }
 ```
 
-Each requirement contains an opaque `slot`, display `prompt`, an optional `optional` flag, and
-the complete set of legal candidate entity ids. The server enumerates candidates per slot
-rather than enumerating the cartesian product of possible answers.
+Each requirement contains an opaque `slot`, display `prompt`, an optional `optional` flag, an
+optional `subject`, and the complete set of legal candidate entity ids. The server enumerates
+candidates per slot rather than enumerating the cartesian product of possible answers.
+
+`subject` (issue #700) names the entity a slot is **about**, when it is about one. A combat
+declaration is several slots that all list the same candidates and differ only in whose choice
+they are — one per attacker for what that attacker attacks, one per attacker for what blocks
+it — and the correlation was previously readable only by parsing the slot id, which the slot
+id's own contract forbids. With it stated, a client can ask the choices one subject at a time,
+draw the arrow from the card the choice belongs to, and show a per-attacker slot only once
+that attacker is in the declaration. It is absent for every slot that is about the action as a
+whole: an ordinary spell's target slot, the `attackers` multi-select.
 
 `optional` (issue #620) says the slot **may be left unanswered** — the "up to" of *put a +1/+1
 counter on each of up to two target creatures*. It is absent (read as `false`) for every slot
@@ -751,7 +779,8 @@ attack; blocker slots list eligible blockers for each attacker. When there is mo
 thing to attack (issue #345, widened by #608), `declare_attackers` additionally offers one
 **defender slot per attacker candidate** — a slot whose candidates are everything that
 attacker may be declared to attack (CR 508.1a); the client answers one for each attacker it
-declares, and the slot is correlated to its attacker the same way blocker slots are.
+declares, and the slot names its attacker in `subject`, exactly as a blocker slot names the
+attacker it assigns blockers to.
 
 Those candidates are **player ids and permanent ids in one list**: an attack may name an
 opponent or a **planeswalker** they control. The two are told apart by which collection the

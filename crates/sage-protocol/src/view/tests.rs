@@ -187,6 +187,7 @@ fn issue_345_multiplayer_combat_and_elimination_fields_round_trip_and_elide() {
         attached_to: None,
         is_commander: false,
         counters: vec![],
+        summoning_sick: false,
     };
     let json = serde_json::to_value(&attacker).unwrap();
     assert_eq!(json["attacking_player"], serde_json::json!("p2"));
@@ -267,6 +268,7 @@ fn game_view_round_trips_through_json() {
             loyalty: None,
             keywords: vec![],
             card_types: Vec::new(),
+            color_identity: Vec::new(),
         }],
         me: SelfView {
             life: 18,
@@ -304,6 +306,7 @@ fn game_view_round_trips_through_json() {
                 loyalty: None,
                 keywords: vec!["flying".into()],
                 card_types: Vec::new(),
+                color_identity: Vec::new(),
             },
             tapped: true,
             attacking: false,
@@ -317,6 +320,7 @@ fn game_view_round_trips_through_json() {
                 kind: "+1/+1".into(),
                 count: 2,
             }],
+            summoning_sick: false,
         }],
         stack: vec![StackItem {
             id: "s1".into(),
@@ -457,6 +461,7 @@ fn issue_372_command_zone_pile_round_trips_with_its_commander() {
             loyalty: None,
             keywords: vec![],
             card_types: Vec::new(),
+            color_identity: Vec::new(),
         }],
     }];
     let json = serde_json::to_value(&view).unwrap();
@@ -712,6 +717,7 @@ fn issue_620_emblem_fixture_round_trips_with_its_emblem_and_optional_target_slot
         prompt: "Choose target creature".to_string(),
         optional: false,
         candidates: vec!["perm_ogre".to_string()],
+        subject: None,
     })
     .unwrap();
     assert!(mandatory.get("optional").is_none());
@@ -1271,6 +1277,7 @@ fn issue_604_revealed_cards_ride_the_view_only_while_something_is_showing_them()
         loyalty: None,
         keywords: Vec::new(),
         card_types: Vec::new(),
+        color_identity: Vec::new(),
     }];
     let json = serde_json::to_value(&view).unwrap();
     assert_eq!(json["revealed"][0]["id"], serde_json::json!("card_9"));

@@ -1,6 +1,7 @@
 //! Card, permanent, and zone projection into wire views.
 
 use super::*;
+use crate::format::color_identity_of;
 
 /// Whether this battlefield object **is** somebody's commander (CR 903.3, issue
 /// #553) — the marker `Permanent::is_commander` carries.
@@ -84,7 +85,7 @@ pub(crate) fn permanent_name(perm: &sage_engine::Permanent, db: &CardDatabase) -
 /// Build the full [`CardView`] for a card the viewer is entitled to see.
 pub(crate) fn card_view(entity_id: String, card: CardId, db: &CardDatabase) -> CardView {
     match db.card(card) {
-        Some(data) => full_card_view(entity_id, data),
+        Some(data) => full_card_view(entity_id, data, db),
         None => unknown_card_view(entity_id, Some(card)),
     }
 }
@@ -112,6 +113,7 @@ fn unknown_card_view(entity_id: String, card: Option<CardId>) -> CardView {
         // Nothing is known about this object, so nothing is claimed about its types.
         // Empty is "not stated", which is the honest answer for a defensive placeholder.
         card_types: Vec::new(),
+        color_identity: Vec::new(),
     }
 }
 
@@ -133,6 +135,28 @@ fn card_type(card_type: sage_engine::CardType) -> CardType {
         sage_engine::CardType::Planeswalker => CardType::Planeswalker,
         sage_engine::CardType::Battle => CardType::Battle,
     }
+}
+
+/// A set of engine [`Color`](sage_engine::Color)s as the wire's colour letters, in
+/// canonical WUBRG order (CR 105.1).
+///
+/// Written once and shared by everything that publishes colours — a card's colour
+/// identity and a commander's — so two projections of the same identity are
+/// byte-identical and no client ever has to sort.
+pub(crate) fn colors_in_wubrg(
+    colors: &std::collections::HashSet<sage_engine::Color>,
+) -> Vec<sage_protocol::Color> {
+    [
+        (sage_engine::Color::White, sage_protocol::Color::White),
+        (sage_engine::Color::Blue, sage_protocol::Color::Blue),
+        (sage_engine::Color::Black, sage_protocol::Color::Black),
+        (sage_engine::Color::Red, sage_protocol::Color::Red),
+        (sage_engine::Color::Green, sage_protocol::Color::Green),
+    ]
+    .into_iter()
+    .filter(|(engine, _)| colors.contains(engine))
+    .map(|(_, wire)| wire)
+    .collect()
 }
 
 /// The wire name for an engine [`Keyword`], as the client expects it in
@@ -169,7 +193,7 @@ fn keyword_str(keyword: Keyword) -> &'static str {
 /// the engine's escape hatch — keyed, like the catalog itself, on the card's authored
 /// `functional_id` rather than its build-interned handle (ADR 0008 §3), and guaranteed
 /// by the loader to exist whenever the definition declares `scripted: true`.
-pub(crate) fn full_card_view(entity_id: String, data: &CardData) -> CardView {
+pub(crate) fn full_card_view(entity_id: String, data: &CardData, db: &CardDatabase) -> CardView {
     CardView {
         id: entity_id,
         name: data.name.clone(),
@@ -192,6 +216,10 @@ pub(crate) fn full_card_view(entity_id: String, data: &CardData) -> CardView {
         // The same `types` `type_line()` above is rendered from, so the sentence and
         // the set are one projection and cannot drift apart.
         card_types: data.types.iter().map(|&t| card_type(t)).collect(),
+        // CR 903.4, through the *same* computation deck legality and a seat's
+        // identity gems use (`format::color_identity_of`), so the colour a card is
+        // drawn in cannot disagree with the colours it is legal under.
+        color_identity: colors_in_wubrg(&color_identity_of(db, data)),
     }
 }
 
@@ -205,9 +233,9 @@ pub(crate) fn full_card_view(entity_id: String, data: &CardData) -> CardView {
 /// rather than leaving the client to infer it from an absence — and its rules text is
 /// generated from the abilities the creating effect gave it, through the same
 /// formatter a card's text comes from.
-fn face_card_view(entity_id: String, face: PrintedFace<'_>) -> CardView {
+fn face_card_view(entity_id: String, face: PrintedFace<'_>, db: &CardDatabase) -> CardView {
     match face {
-        PrintedFace::Card(data) => full_card_view(entity_id, data),
+        PrintedFace::Card(data) => full_card_view(entity_id, data, db),
         PrintedFace::Token(token) => CardView {
             id: entity_id,
             name: token.name.clone(),
@@ -230,6 +258,9 @@ fn face_card_view(entity_id: String, face: PrintedFace<'_>) -> CardView {
             // A token has types like anything else; having no card behind it (CR 111)
             // says nothing about what it is on the battlefield.
             card_types: token.types.iter().map(|&t| card_type(t)).collect(),
+            // CR 111.3: a token's colours are whatever the creating effect gave it,
+            // and it has no cost and no card behind it to read anything else from.
+            color_identity: colors_in_wubrg(&token.colors.iter().copied().collect()),
         },
     }
 }
@@ -249,7 +280,7 @@ pub(crate) fn permanent_card_view(
     db: &CardDatabase,
 ) -> CardView {
     let mut view = match perm.printed.face(db) {
-        Some(face) => face_card_view(permanent_entity_id(perm.id), face),
+        Some(face) => face_card_view(permanent_entity_id(perm.id), face, db),
         None => unknown_card_view(permanent_entity_id(perm.id), perm.printed.card()),
     };
     let current = characteristics(state, perm.id, db);
@@ -908,11 +939,100 @@ mod tests {
 
         // A vanilla card claims no rules — and the field is omitted from the wire
         // rather than sent as an empty string.
-        let boar = full_card_view("c9".to_string(), db.card(fixture("onakke_ogre")).unwrap());
+        let boar = full_card_view(
+            "c9".to_string(),
+            db.card(fixture("onakke_ogre")).unwrap(),
+            &db,
+        );
         assert_eq!(boar.rules_text, "");
         let json = serde_json::to_string(&boar).expect("a card view serializes");
         assert!(!json.contains("rules_text"), "{json}");
         assert!(json.contains(r#""functional_id":"onakke_ogre""#), "{json}");
+    }
+
+    /// A basic Forest carries a **green** colour identity (CR 903.4) even though it
+    /// costs nothing and prints no coloured pip — the case that made a client reading
+    /// the cost alone draw every land the same shade of grey.
+    #[test]
+    fn issue_700_a_basic_land_projects_the_colour_identity_of_the_mana_it_makes() {
+        let db = CardDatabase::bundled().unwrap();
+        let forest = full_card_view("c1".to_string(), db.card(fixture("forest")).unwrap(), &db);
+        assert!(forest.mana_cost.is_none(), "a basic land has no mana cost");
+        assert_eq!(forest.color_identity, vec![sage_protocol::Color::Green]);
+
+        // And a colourless card states nothing rather than guessing, so the field
+        // elides from the wire exactly as every other additive one does.
+        let ogre = full_card_view(
+            "c2".to_string(),
+            db.card(fixture("onakke_ogre")).unwrap(),
+            &db,
+        );
+        assert_eq!(ogre.color_identity, vec![sage_protocol::Color::Red]);
+        let unknown = card_view("c3".to_string(), CardId(9999), &db);
+        assert!(unknown.color_identity.is_empty());
+        let json = serde_json::to_string(&unknown).expect("a card view serializes");
+        assert!(!json.contains("color_identity"), "{json}");
+    }
+
+    /// CR 302.6, on the wire: a creature that entered this turn is restricted, one
+    /// that entered earlier is not, and haste (CR 702.10b) lifts the restriction — so
+    /// the flag reports the *restriction* rather than the age of the permanent.
+    #[test]
+    fn issue_700_summoning_sickness_rides_the_wire_as_the_restriction_it_is() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        state.turn = 3;
+        state.step = Step::PrecombatMain;
+
+        let settled = put_permanent(
+            &mut state,
+            fixture("onakke_ogre"),
+            PlayerId(0),
+            false,
+            false,
+        );
+        let fresh = put_permanent(
+            &mut state,
+            fixture("onakke_ogre"),
+            PlayerId(0),
+            false,
+            false,
+        );
+        let hasty = put_permanent(
+            &mut state,
+            fixture("hostile_minotaur"),
+            PlayerId(0),
+            false,
+            false,
+        );
+        for perm in &mut state.battlefield {
+            if perm.id == fresh || perm.id == hasty {
+                perm.entered_turn = state.turn;
+            }
+        }
+        // A land that entered this turn still taps: only creatures are ever sick.
+        let land = put_permanent(&mut state, fixture("forest"), PlayerId(0), false, false);
+        for perm in &mut state.battlefield {
+            if perm.id == land {
+                perm.entered_turn = state.turn;
+            }
+        }
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let sick = |id: PermanentId| {
+            view.battlefield
+                .iter()
+                .find(|p| p.id == permanent_entity_id(id))
+                .expect("the permanent is on the battlefield")
+                .summoning_sick
+        };
+        assert!(
+            sick(fresh),
+            "a creature that entered this turn is restricted"
+        );
+        assert!(!sick(settled), "one that entered earlier is not");
+        assert!(!sick(hasty), "haste lifts the restriction (CR 702.10b)");
+        assert!(!sick(land), "only creatures are ever summoning sick");
     }
 
     #[test]

@@ -57,6 +57,10 @@ pub struct CatalogCard {
     /// about a card neither is allowed to have an opinion on.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub card_types: Vec<crate::CardType>,
+    /// The card's colour identity (CR 903.4), the same projection
+    /// [`CardView::color_identity`] carries, in WUBRG order. Omitted when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub color_identity: Vec<crate::Color>,
 }
 
 /// One advertised format's public deck rules and seat range, as listed in a
@@ -185,6 +189,7 @@ mod tests {
                     loyalty: None,
                     keywords: vec!["flying".into(), "vigilance".into()],
                     card_types: Vec::new(),
+                    color_identity: Vec::new(),
                 },
                 CatalogCard {
                     functional_id: "forest".into(),
@@ -197,6 +202,7 @@ mod tests {
                     loyalty: None,
                     keywords: vec![],
                     card_types: Vec::new(),
+                    color_identity: Vec::new(),
                 },
             ],
             formats: vec![CatalogFormat {

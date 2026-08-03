@@ -329,6 +329,7 @@ mod tests {
                 loyalty: None,
                 keywords: vec![],
                 card_types: Vec::new(),
+                color_identity: Vec::new(),
             },
             tapped: false,
             attacking: false,
@@ -339,6 +340,7 @@ mod tests {
             attached_to: None,
             is_commander: false,
             counters: vec![],
+            summoning_sick: false,
         }
     }
 
@@ -357,6 +359,7 @@ mod tests {
                 slot: "attackers".into(),
                 prompt: "Choose which creatures attack".into(),
                 candidates: vec!["perm_a".into(), "perm_b".into(), "perm_wall".into()],
+                subject: None,
             }],
             ..action("a0", "declare_attackers", vec![])
         }]);
@@ -386,12 +389,14 @@ mod tests {
                     slot: format!("block_{}", "atk_big"),
                     prompt: "Choose blockers for Big".into(),
                     candidates: vec!["perm_blk_good".into(), "perm_blk_weak".into()],
+                    subject: None,
                 },
                 TargetRequirement {
                     optional: false,
                     slot: format!("block_{}", "atk_small"),
                     prompt: "Choose blockers for Small".into(),
                     candidates: vec!["perm_blk_good".into(), "perm_blk_weak".into()],
+                    subject: None,
                 },
             ],
             ..action("a0", "declare_blockers", vec![])
@@ -450,6 +455,7 @@ mod tests {
                 slot: "block_atk".into(),
                 prompt: "Choose blockers".into(),
                 candidates: candidates.into_iter().map(str::to_string).collect(),
+                subject: None,
             }],
             ..action("a0", "declare_blockers", vec![])
         };
@@ -564,6 +570,7 @@ mod tests {
                 slot: "t0".into(),
                 prompt: "Choose target player".into(),
                 candidates: vec!["p0".into(), "p1".into()],
+                subject: None,
             }],
             ..action("a0", "activate_ability", vec!["perm_x"])
         };
@@ -580,6 +587,7 @@ mod tests {
                 slot: "t0".into(),
                 prompt: "Choose target creature".into(),
                 candidates: vec![],
+                subject: None,
             }],
             ..action("a0", "activate_ability", vec!["perm_x"])
         };

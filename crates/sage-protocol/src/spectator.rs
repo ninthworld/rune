@@ -191,6 +191,7 @@ mod tests {
                     loyalty: None,
                     keywords: vec![],
                     card_types: Vec::new(),
+                    color_identity: Vec::new(),
                 }),
             }],
             graveyards: vec![],

@@ -15,24 +15,24 @@ use sage_engine::{
     attacking_defender_of, blocker_can_block_attacker, blocker_candidates_for, bottom_requirement,
     characteristics, choice_bounds, choice_candidates, confirm_is_payable, declared_attackers,
     defender_candidates, is_mana_ability, pending_blocker_declarer, pending_player_choice,
-    scripted_rules_text, target_requirements, valid_actions, AbilityOrigin, Action, Attack,
-    AttackTarget, Block, CardData, CardDatabase, CardId, CardInstance, CardInstanceId,
-    ChoiceOutcome, ChoiceQuestion, ChoiceRequest, ChoiceZone, Color, ColorRequest, ConfirmRequest,
-    CounterKind, DamageOrder, DamageTarget, GameEvent, GameResult, GameState, Keyword,
-    LoggedIdentity, LoggedPermanent, LossReason, PermanentId, Player, PlayerId, PrintedFace,
-    StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
+    scripted_rules_text, summoning_sickness_restricts, target_requirements, valid_actions,
+    AbilityOrigin, Action, Attack, AttackTarget, Block, CardData, CardDatabase, CardId,
+    CardInstance, CardInstanceId, ChoiceOutcome, ChoiceQuestion, ChoiceRequest, ChoiceZone, Color,
+    ColorRequest, ConfirmRequest, CounterKind, DamageOrder, DamageTarget, GameEvent, GameResult,
+    GameState, Keyword, LoggedIdentity, LoggedPermanent, LossReason, PermanentId, Player, PlayerId,
+    PrintedFace, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
 };
 
 use crate::rules_text::{
     ability_text, effects_description, optional_effect_question, rules_text, token_rules_text,
 };
 use sage_protocol::{
-    ActionDestination, CardType, CardView, ChooseAction, Color as ColorView,
-    CommanderDamage as CommanderDamageView, CommanderIdentity as CommanderIdentityView,
-    CommanderTax as CommanderTaxView, Counter, Emblem as EmblemView, GameLogEntry, GameLogEvent,
-    GameOverReason, GameResult as GameResultView, GameView, LogBlock, LogDamageTarget, LogEntity,
-    OpponentView, Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, SpectatorView,
-    StackItem, StackItemKind, StackTarget, TargetChoice, TargetRequirement, ValidAction, ZonePile,
+    ActionDestination, CardType, CardView, ChooseAction, CommanderDamage as CommanderDamageView,
+    CommanderIdentity as CommanderIdentityView, CommanderTax as CommanderTaxView, Counter,
+    Emblem as EmblemView, GameLogEntry, GameLogEvent, GameOverReason, GameResult as GameResultView,
+    GameView, LogBlock, LogDamageTarget, LogEntity, OpponentView, Permanent as PermanentView,
+    Phase, Prompt, PromptOption, SelfView, SpectatorView, StackItem, StackItemKind, StackTarget,
+    TargetChoice, TargetRequirement, ValidAction, ZonePile,
 };
 
 mod actions;
@@ -170,6 +170,10 @@ pub(crate) fn personalized_view(
             // or a type line, none of which distinguish a commander.
             is_commander: is_commander_permanent(state, perm),
             counters: permanent_counters(perm),
+            // CR 302.6, through the engine's own predicate — the same one that gates
+            // attacking and every `{T}` cost — so what the board shows and what the
+            // action list offers are one answer rather than two.
+            summoning_sick: summoning_sickness_restricts(state, perm, db),
         })
         .collect();
 
@@ -367,6 +371,9 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
             // or a type line, none of which distinguish a commander.
             is_commander: is_commander_permanent(state, perm),
             counters: permanent_counters(perm),
+            // Public exactly as it is in a seated view: summoning sickness is read off
+            // the board, and a spectator reads the same board (CR 302.6).
+            summoning_sick: summoning_sickness_restricts(state, perm, db),
         })
         .collect();
 

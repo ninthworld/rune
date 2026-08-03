@@ -70,7 +70,8 @@ pub use combat::{
     attacking_defender_of, blocked_by_at_most_one, blocker_can_block_attacker, blocker_candidates,
     blocker_candidates_for, declared_attackers, defender_candidates, defending_player,
     defending_player_candidates, pending_blocker_declarer, pending_damage_order,
-    permanent_has_menace, permanent_has_restriction, permanent_restrictions, AttackTarget,
+    permanent_has_menace, permanent_has_restriction, permanent_restrictions,
+    summoning_sickness_restricts, AttackTarget,
 };
 pub use commander::{
     commander_tax_cost, CommanderState, COMMANDER_DAMAGE_LOSS_THRESHOLD, COMMANDER_TAX_PER_CAST,
