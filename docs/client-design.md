@@ -1125,8 +1125,9 @@ One panel, centred on the dark ground, carrying four things:
 Neither field is a wire change: `hello` carries a token and nothing else, and the name is set by
 the command the client already sends.
 
-**Not yet drawn:** the gear, so that card art can be set up before ever joining a table. The rule
-stands and the prototype simply has not put the button there.
+**The gear is on it**, so card art can be set up before ever joining a table. The prototype had not
+put the button there; the client does, at the trailing edge of the topbar where every other screen
+carries it.
 
 ### 9.4 The lobby
 
@@ -1228,6 +1229,11 @@ earlier draft made **Decks a destination in the shell, reachable without being a
 questions arise at the table, and answering them there is one screen fewer to leave and come back
 from.
 
+**The editor's second list is the catalog, not a sideboard.** The prototype drew main deck and
+sideboard; `submit_deck` carries one flat list of identities and the wire has no sideboard at all,
+so the client's two lists are what is in the deck and what it can be built from — the same gesture
+over the pair of lists that really exist.
+
 **The builder itself still awaits its own design pass** — it is the densest surface in the product,
 a list of hundreds of cards with filters over it, and the prototype has not tried it. Nothing here
 is evidence about that surface; what is settled is only where the *ordinary* deck adjustment lives.
@@ -1254,7 +1260,10 @@ because they are undecided in principle — and each names what would settle it.
 4. **The settle, made legible.** The brief names this as the actual product hypothesis, and neither
    this document nor the prototype has designed it. What a settle did is currently a run of log
    lines; what it should be is unanswered.
-5. **The gear on connect** (§9.3), and **spectating** — drawn as a count in the room and nowhere
-   else.
+5. **Spectating** — a count in the room and nowhere else. A connection the server puts on the
+   spectator contract still lands on a screen that says only that it is not built.
+6. **Chat, and who is in the lobby.** The client draws both panels and says they carry nothing,
+   which is a placement decision rather than a design for either. What a table's chat should be —
+   and whether the lobby's is the same surface — is unanswered.
 
 Questions raised after this document became binding go here.
