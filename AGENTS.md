@@ -66,6 +66,8 @@ the merge criterion: make it good before making it pretty, and nothing visual is
 - `crates/sage-cli/` — terminal and deterministic-agent client; the playtest surface until the
   web client is playable.
 - `clients/web/` — the browser client; has its own `AGENTS.md`.
+- `clients/prototype/` — a throwaway sandbox for trying screens before building them for real.
+  Nothing ships from it and `docs/client-design.md` does not govern it.
 - `docs/` — brief, protocol, card schema, coding standards, and ADRs. Everything in `docs/` is
   current and binding; there is no superseded material to sift.
 
