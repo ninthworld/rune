@@ -132,9 +132,13 @@ export function fieldRows<T>(
  * including another token. That is the safe direction: failing to stack costs width, stacking
  * two things that are not the same costs a player the board.
  *
- * **Consecutive only.** The server's enumeration order is the only order this client is entitled
- * to (`boardRows`), so a pile is a run in that order and never a re-sort that would move a
- * permanent away from where its owner last saw it.
+ * **Wherever they sit in the row.** Lands are played one a turn, so a mana base arrives
+ * interleaved — Mountain, Forest, Mountain — and a pile that only gathered *runs* left two
+ * Mountains sitting apart with a Forest between them, which is the case a player most wants
+ * gathered. So a permanent joins the pile of the first permanent it matches, and each pile keeps
+ * the position of that first member. The server's enumeration order still decides where every
+ * pile sits and nothing is re-sorted: the only thing that moves is a permanent that is
+ * indistinguishable, in every way this board draws, from the one it moves next to.
  */
 export interface Pile<T> {
   /** What the entries have in common, or `undefined` where nothing may be stacked. */
@@ -147,12 +151,18 @@ export function piles<T>(
   keyOf: (entry: T) => string | undefined,
 ): readonly Pile<T>[] {
   const out: Pile<T>[] = []
+  // Where each key's pile already is, so a later match joins it instead of starting a second
+  // one. A key of `undefined` is "never stack this": it goes in a pile of its own and is not
+  // remembered, so two of them never find each other.
+  const at = new Map<string, number>()
   for (const entry of entries) {
     const key = keyOf(entry)
-    const last = out[out.length - 1]
-    if (key !== undefined && last && last.key === key) {
-      out[out.length - 1] = { key, entries: [...last.entries, entry] }
+    const found = key === undefined ? undefined : at.get(key)
+    const pile = found === undefined ? undefined : out[found]
+    if (found !== undefined && pile) {
+      out[found] = { key, entries: [...pile.entries, entry] }
     } else {
+      if (key !== undefined) at.set(key, out.length)
       out.push({ key, entries: [entry] })
     }
   }

@@ -1044,6 +1044,18 @@ fn conjugate(player_ref: PlayerRef, verb: &str) -> String {
     }
 }
 
+/// One keyword ability as a card prints it on its own line — the same word the keyword
+/// clause is built from, capitalized as the start of a sentence.
+///
+/// Exposed so a *granted* keyword (CR 613.1f) can be shown in the same words as a printed
+/// one: the card the anthem is pumping should say "Trample" exactly as a card that came
+/// with it does, and having two spellings of one keyword is how a board starts looking
+/// like two games.
+#[must_use]
+pub(crate) fn keyword_phrase(keyword: Keyword) -> String {
+    sentence_case(keyword_word(keyword))
+}
+
 /// A keyword ability as the word a player reads (CR 702).
 fn keyword_word(keyword: Keyword) -> &'static str {
     match keyword {

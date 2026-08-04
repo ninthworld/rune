@@ -51,6 +51,13 @@ describe('an object’s actions, at the object', () => {
     expect(objectMenu(ACTIONS, selected('bear', { armed: 'pump' }))).toBeUndefined()
   })
 
+  it('stays closed while a card is being paid for', () => {
+    // Clicking a card in hand the server offered nothing for says "I am playing this", which
+    // selects it — and that selection used to open an empty panel over the hand, in the one
+    // moment the player is being asked to click a land on the board instead.
+    expect(objectMenu(ACTIONS, selected('bolt', { paying: 'bolt' }))).toBeUndefined()
+  })
+
   it('stays closed while a match-ending action is being confirmed', () => {
     // Conceding is one button asked twice, and every other click is a "no".
     expect(objectMenu(ACTIONS, selected('bear', { confirming: 'concede' }))).toBeUndefined()

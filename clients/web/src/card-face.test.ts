@@ -290,6 +290,31 @@ describe('what the board adds to a card', () => {
     expect(cardFace({ id: 'c2', name: 'x', type_line: 'x' }).colorIdentity).toEqual([])
   })
 
+  it('carries a granted keyword apart from the card’s printed text', () => {
+    // A creature given trample for the turn has trample, and its card says nothing about
+    // trample — so the words arrive separately and both are drawn. The client never works out
+    // which is which; the server stated it (CR 613.1f).
+    const pumped = permanentFace({
+      id: 'perm_5',
+      controller: 'p1',
+      owner: 'p1',
+      card: { id: 'c5', name: 'Bear', type_line: 'Creature — Bear', rules_text: '' },
+      granted_keywords: ['Trample'],
+    })
+    expect(pumped.grantedKeywords).toEqual(['Trample'])
+    // Said aloud as well as drawn: a reader that skipped it would describe a creature without
+    // the ability it currently has.
+    expect(faceSummary(pumped)).toContain('Trample')
+
+    const plain = permanentFace({
+      id: 'perm_6',
+      controller: 'p1',
+      owner: 'p1',
+      card: { id: 'c6', name: 'Bear', type_line: 'Creature — Bear' },
+    })
+    expect(plain.grantedKeywords).toEqual([])
+  })
+
   it('reports summoning sickness only where the server said so', () => {
     const bear = { id: 'c3', name: 'Bear', type_line: 'Creature — Bear' }
     const sick = permanentFace({

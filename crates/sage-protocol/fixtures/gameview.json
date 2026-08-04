@@ -5,7 +5,9 @@
       "id": "c1",
       "name": "Llanowar Elves",
       "type_line": "Creature — Elf Druid",
-      "card_types": ["creature"],
+      "card_types": [
+        "creature"
+      ],
       "mana_cost": "{G}",
       "power": "1",
       "toughness": "1",
@@ -16,14 +18,18 @@
       "id": "c2",
       "name": "Forest",
       "type_line": "Basic Land — Forest",
-      "card_types": ["land"],
+      "card_types": [
+        "land"
+      ],
       "functional_id": "forest"
     },
     {
       "id": "c3",
       "name": "Lightning Bolt",
       "type_line": "Instant",
-      "card_types": ["instant"],
+      "card_types": [
+        "instant"
+      ],
       "mana_cost": "{R}",
       "rules_text": "Lightning Bolt deals 3 damage to any target.",
       "functional_id": "lightning_bolt"
@@ -51,7 +57,9 @@
         "id": "perm_bear",
         "name": "Grizzly Bears",
         "type_line": "Creature — Bear",
-        "card_types": ["creature"],
+        "card_types": [
+          "creature"
+        ],
         "mana_cost": "{1}{G}",
         "power": "2",
         "toughness": "2",
@@ -64,6 +72,9 @@
           "kind": "+1/+1",
           "count": 2
         }
+      ],
+      "granted_keywords": [
+        "Trample"
       ]
     },
     {
@@ -75,7 +86,9 @@
         "id": "perm_nissa",
         "name": "Nissa, Who Shakes the World",
         "type_line": "Legendary Planeswalker — Nissa",
-        "card_types": ["planeswalker"],
+        "card_types": [
+          "planeswalker"
+        ],
         "mana_cost": "{3}{G}{G}",
         "rules_text": "Whenever you tap a Forest for mana, add an additional {G}.",
         "functional_id": "nissa_who_shakes_the_world",
@@ -96,7 +109,10 @@
         "id": "perm_thopter",
         "name": "Thopter",
         "type_line": "Artifact Creature — Thopter",
-        "card_types": ["artifact", "creature"],
+        "card_types": [
+          "artifact",
+          "creature"
+        ],
         "power": "1",
         "toughness": "1",
         "keywords": [
@@ -123,7 +139,9 @@
         "id": "card_31",
         "name": "Lightning Bolt",
         "type_line": "Instant",
-        "card_types": ["instant"],
+        "card_types": [
+          "instant"
+        ],
         "mana_cost": "{R}",
         "rules_text": "Lightning Bolt deals 3 damage to any target.",
         "functional_id": "lightning_bolt"
@@ -156,7 +174,9 @@
         "id": "card_32",
         "name": "Twin Bolt",
         "type_line": "Instant",
-        "card_types": ["instant"],
+        "card_types": [
+          "instant"
+        ],
         "mana_cost": "{1}{R}",
         "rules_text": "Twin Bolt deals 1 damage to each of two targets.",
         "functional_id": "twin_bolt"
@@ -178,7 +198,9 @@
         "id": "card_33",
         "name": "Counterspell",
         "type_line": "Instant",
-        "card_types": ["instant"],
+        "card_types": [
+          "instant"
+        ],
         "mana_cost": "{U}{U}",
         "rules_text": "Counter target spell.",
         "functional_id": "counterspell"
@@ -207,7 +229,9 @@
           "id": "g1",
           "name": "Opt",
           "type_line": "Instant",
-          "card_types": ["instant"],
+          "card_types": [
+            "instant"
+          ],
           "mana_cost": "{U}",
           "rules_text": "Scry 1. Draw a card.",
           "functional_id": "opt"
@@ -223,7 +247,9 @@
           "id": "x1",
           "name": "Path to Exile",
           "type_line": "Instant",
-          "card_types": ["instant"],
+          "card_types": [
+            "instant"
+          ],
           "mana_cost": "{W}",
           "functional_id": "path_to_exile"
         }
@@ -258,7 +284,34 @@
       "label": "Cast Lightning Bolt",
       "subject": [
         "c3"
-      ]
+      ],
+      "prompts": [
+        {
+          "kind": "pay_mana",
+          "slot": "pay_0",
+          "prompt": "Pay {R}",
+          "pip": "{R}",
+          "candidates": [
+            {
+              "id": "perm_mountain#0",
+              "source": "perm_mountain",
+              "label": "{R}",
+              "taps": true
+            }
+          ]
+        }
+      ],
+      "requirements": [
+        {
+          "slot": "t0",
+          "prompt": "any target",
+          "candidates": [
+            "perm_bear",
+            "p2"
+          ]
+        }
+      ],
+      "token": "h:bolt"
     },
     {
       "id": "a4",
@@ -267,6 +320,26 @@
       "subject": [
         "perm_bear"
       ]
+    },
+    {
+      "id": "a5",
+      "type": "declare_attackers",
+      "label": "Declare attackers",
+      "requirements": [
+        {
+          "slot": "attackers",
+          "prompt": "Choose which creatures attack",
+          "optional": true,
+          "candidates": [
+            "perm_bear",
+            "perm_thopter"
+          ],
+          "taps": [
+            "perm_bear"
+          ]
+        }
+      ],
+      "token": "h:atk"
     }
   ],
   "action_deadline": 12.5

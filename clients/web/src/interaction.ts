@@ -10,20 +10,27 @@
  * One gesture reaches every object, and what it does is decided in a fixed order:
  *
  *   1. **Fill** the slot being drafted, if the server listed this id among its candidates.
- *   2. **Inspect**, if this object is already selected — clicking again looks closer.
- *   3. **Take**, if the server offered exactly one action for this object. One click casts the
+ *   2. **Inspect**, if an action is being drafted at all — see below.
+ *   3. **Inspect**, if this object is already selected — clicking again looks closer.
+ *   4. **Take**, if the server offered exactly one action for this object. One click casts the
  *      spell, plays the land, taps for the mana.
- *   4. **Select**, if it offered more than one — the dock asks which.
- *   5. **Inspect**, because there is nothing else the client can offer for it.
+ *   5. **Select**, if it offered more than one — the dock asks which.
+ *   6. **Inspect**, because there is nothing else the client can offer for it.
  *
- * Rule 3 is the one worth defending. A card the server offered a single action for has an
+ * Rule 2 is what keeps a draft a question rather than a mode with a leak in it. An armed action
+ * turns the board into its answer sheet, and an object that answers none of its slots is there to
+ * be read: taking its action would send a message, a message brings a view, and a view throws the
+ * half-built draft away — so one stray click on a land would cost a player the spell they were
+ * still aiming. Cancel is how you leave.
+ *
+ * Rule 4 is the one worth defending. A card the server offered a single action for has an
  * unambiguous meaning for a click, and routing it through a selection and then a button in the
  * dock is two clicks and a change of focus to say something the view already said. Where the
  * server offered a *choice* — a creature that can attack and also activate — the click cannot
  * mean one thing, so it opens the list and the player picks. The client is still not deciding
  * anything: the count of actions the server attached to an object is the whole of the rule.
  *
- * Reading is not a click at all, which is what makes rule 3 safe. Looking at an object previews
+ * Reading is not a click at all, which is what makes rule 4 safe. Looking at an object previews
  * its full face, and a right-click opens the inspector over any object at any time — so an
  * object whose single action now fires on one click did not become harder to read, it became
  * readable without spending a click on it.
@@ -39,7 +46,7 @@
  *   attacker therefore *aims* it: the next click on a defender answers that attacker's slot and
  *   nothing else, and the board draws the arrow while it is being drafted. Without that, every
  *   defender slot lists the same candidates and one click could mean any of them.
- * - **Paying.** A card whose cost is not yet floating owns no action, so under rule 5 it was
+ * - **Paying.** A card whose cost is not yet floating owns no action, so under rule 6 it was
  *   unclickable in the one moment a player most wants to click it. Clicking it now says *this is
  *   what I am doing*: the bar names the cost, the mana sources stay live, and the card is cast
  *   the moment the **server** offers a cast for it. Nothing here decides that moment — a client
@@ -198,8 +205,18 @@ export interface Slot {
    * pip one way and a `{U}` pip another, so the server lists it once per way and this client
    * asks rather than guessing. Nothing here is worked out from the game.
    */
-  options: readonly { id: string; label: string; source?: string }[]
+  options: readonly { id: string; label: string; source?: string; taps?: boolean }[]
   chosen: readonly string[]
+  /**
+   * The candidates that answering this slot with them **taps**, exactly as the server listed
+   * them — the attackers in a declaration that are not vigilant.
+   *
+   * Nothing has been sent while a draft is being built, so the board still shows every one of
+   * these standing up; drawing them turned is how a player sees what they are choosing. It is
+   * the server's statement and never a reading of a keyword: a client that decided which
+   * creatures tap to attack would be deciding a rule (`docs/protocol.md`).
+   */
+  taps: readonly string[]
   /** How many ids the slot takes, or `null` where the server published no count. */
   min: number | null
   max: number | null
@@ -271,6 +288,14 @@ export function slotsOf(action: ValidAction, draft: Draft): readonly Slot[] {
   const choosable = choosableSubjects(action)
   const chosen = drafted(draft)
   const slots: Slot[] = []
+  // A cost is paid *as part of* casting, after the spell's targets are chosen (CR 601.2c,
+  // then 601.2f–h), and the client asks in that order for the same reason the rules do it in
+  // that order: a player deciding what to pay has already decided what they are aiming at.
+  // Until then the pips are held back — so a spell that asks for a target says so, alone,
+  // instead of putting a payment line above a question nobody has answered yet.
+  const aimed = (action.requirements ?? []).every(
+    (requirement) => (requirement.optional ?? false) || (draft[requirement.slot] ?? []).length > 0,
+  )
 
   for (const requirement of action.requirements ?? []) {
     const subject = requirement.subject
@@ -284,6 +309,9 @@ export function slotsOf(action: ValidAction, draft: Draft): readonly Slot[] {
       prompt: requirement.prompt,
       candidates: requirement.candidates ?? [],
       options: [],
+      // Which of them turn when they are chosen. The server's list, and a subset of the
+      // candidates above; empty for every slot whose answer taps nothing.
+      taps: requirement.taps ?? [],
       chosen: draft[requirement.slot] ?? [],
       // A requirement publishes no count, and the legal size genuinely varies: one for a burn
       // spell, any number — including none — for a combat declaration. The server knows which;
@@ -314,6 +342,7 @@ export function slotsOf(action: ValidAction, draft: Draft): readonly Slot[] {
             id: option.id,
             label: option.label,
           })),
+          taps: [],
           optional: false,
           byEntity: false,
           conditional: false,
@@ -325,6 +354,7 @@ export function slotsOf(action: ValidAction, draft: Draft): readonly Slot[] {
           kind: 'zone',
           candidates: prompt.candidates ?? [],
           options: [],
+          taps: [],
           // The server said fewer than the maximum is an answer: scrying any number of the
           // cards looked at, or failing to find.
           optional: (min ?? 0) === 0,
@@ -338,6 +368,7 @@ export function slotsOf(action: ValidAction, draft: Draft): readonly Slot[] {
           kind: 'order',
           candidates: prompt.items ?? [],
           options: [],
+          taps: [],
           optional: false,
           byEntity: true,
           conditional: false,
@@ -349,6 +380,7 @@ export function slotsOf(action: ValidAction, draft: Draft): readonly Slot[] {
           kind: 'number',
           candidates: [],
           options: [],
+          taps: [],
           // The bounds are the server's, computed from mana, the source's text, and the state.
           range: { min: prompt.min, max: prompt.max },
           optional: false,
@@ -357,6 +389,8 @@ export function slotsOf(action: ValidAction, draft: Draft): readonly Slot[] {
         })
         break
       case 'pay_mana':
+        // Held back until the action's own questions are answered: see `aimed`.
+        if (!aimed) break
         slots.push({
           ...shared,
           kind: 'mana',
@@ -367,7 +401,12 @@ export function slotsOf(action: ValidAction, draft: Draft): readonly Slot[] {
             id: option.id,
             label: option.label ?? '',
             source: option.source,
+            taps: option.taps ?? false,
           })),
+          // A mana slot's tapping is per *way to pay*, not per permanent — one source may
+          // pay two ways and only one of them turn it — so it rides on the options and this
+          // stays empty. `tappedByDraft` reads whichever of the two applies.
+          taps: [],
           pip: prompt.pip,
           optional: false,
           byEntity: true,
@@ -405,7 +444,25 @@ export function focus(actions: readonly ValidAction[], interaction: Interaction)
   }
 }
 
-const answered = (slot: Slot): boolean => !slot.conditional || slot.chosen.length > 0
+/**
+ * Whether a slot holds what it is owed.
+ *
+ * A requirement that is **not** `optional` must hold at least one id: "it is absent (read as
+ * `false`) for every slot of an ordinary targeted spell or ability, which must be filled or the
+ * submission is rejected" (`docs/protocol.md`). That is bookkeeping over a server-stated flag,
+ * and it is the difference between a Plummet that is cast and one whose confirm went live with
+ * no creature named and came back rejected. The flag is what carries the combat declarations,
+ * which say outright that they may be left unanswered — declaring no attackers is a
+ * declaration — so an empty one stays submittable.
+ *
+ * A conditional slot is owed from the moment its subject was chosen, whatever it says: an
+ * attacker in the declaration with nothing named to attack is an answer the server must reject.
+ */
+const answered = (slot: Slot): boolean => {
+  if (slot.chosen.length > 0) return true
+  if (slot.conditional) return false
+  return slot.kind !== 'target' || slot.optional
+}
 
 /**
  * The ways this slot could be paid by tapping `id` — one entry, or two where a permanent can
@@ -439,6 +496,36 @@ export function spentSources(slots: readonly Slot[]): ReadonlySet<string> {
     }
   }
   return spent
+}
+
+/**
+ * The permanents this draft would **turn sideways** if it were sent.
+ *
+ * Two shapes, one question. A mana slot is answered with an activation, so the tapping rides
+ * on the way to pay that was chosen; a target slot is answered with the object itself, so it
+ * rides on the slot's own list of which candidates turn. Both are the server's statement
+ * (`docs/protocol.md`), and neither is a rule this client applied — it does not know what
+ * vigilance is, or what `{T}` costs.
+ *
+ * Drawn as tapped because that is what the board will look like: an attacker being declared is
+ * about to turn, a land being spent is about to turn, and a player assembling either wants to
+ * see what they have committed. Taking the choice back out takes the turn back with it, since
+ * nothing has been sent — which is the whole reason the client draws this itself instead of
+ * waiting for the server to say so.
+ */
+export function tappedByDraft(slots: readonly Slot[]): ReadonlySet<string> {
+  const turning = new Set<string>()
+  for (const slot of slots) {
+    for (const option of slot.options) {
+      if (option.taps === true && option.source !== undefined && slot.chosen.includes(option.id)) {
+        turning.add(option.source)
+      }
+    }
+    for (const id of slot.taps) {
+      if (slot.chosen.includes(id)) turning.add(id)
+    }
+  }
+  return turning
 }
 
 /**
@@ -506,7 +593,7 @@ export type Gesture =
  * `payable` is the set of ids the caller is willing to let a player *declare an intent to play*
  * — a card in their own hand, while the server is offering at least one mana source. It is a
  * fact about what this client drew and what the server listed, and never a judgment that the
- * card could be cast: rule 3 still comes first, so a card the server *did* offer an action for
+ * card could be cast: rule 4 still comes first, so a card the server *did* offer an action for
  * is simply taken.
  */
 export function gestureFor(
@@ -517,6 +604,15 @@ export function gestureFor(
 ): Gesture {
   const open = slotFor(focus(actions, interaction).slots, id, interaction.aiming)
   if (open) return { kind: 'fill', slot: open.slot }
+
+  // While an action is being drafted, the board is that action's answer sheet and nothing else
+  // (`menu.ts` says the same thing about the object menu). An object that answers no open slot
+  // is therefore read, not acted on: taking its action would send a message, and a message
+  // brings a view, and a view throws the half-built draft away — so a stray click on a land
+  // while a spell is waiting for its target would quietly cost the player the cast they were
+  // assembling. Cancel is how you leave; a click elsewhere is not.
+  if (interaction.armed !== undefined) return { kind: 'inspect' }
+
   if (interaction.selected === id) return { kind: 'inspect' }
 
   // One action means the click has one meaning, so it is that meaning. More than one means the

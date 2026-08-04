@@ -96,11 +96,33 @@ fn mana_prompts(
                     // this dual land* has something to put on the two answers. The
                     // engine already listed a source once per way it could pay this pip.
                     label: ability_pip_label(state, db, source),
+                    // Whether spending it turns the card sideways (CR 602.2a) — the
+                    // engine's read of the activation cost, so a client can draw a
+                    // payment it has not sent yet without knowing what `{T}` means.
+                    taps: ability_taps(state, db, source),
                 })
                 .collect(),
             pip: pip.pip,
         })
         .collect()
+}
+
+/// Whether activating `source` taps the permanent it names ([`activation_taps`]).
+///
+/// The other half of what a client needs to draw a payment being assembled: the pips it
+/// still owes, and what tapping each source it picks would do to the board. `false` for an
+/// activation that cannot be resolved, which is the direction that draws nothing.
+fn ability_taps(state: &GameState, db: &CardDatabase, source: sage_engine::ManaSource) -> bool {
+    state
+        .battlefield
+        .iter()
+        .find(|perm| perm.id == source.permanent)
+        .and_then(|perm| {
+            abilities_of_permanent(db, perm)
+                .get(source.index)
+                .map(activation_taps)
+        })
+        .unwrap_or(false)
 }
 
 /// What activating `source` adds, as a mana symbol — the label on a disambiguating
@@ -251,6 +273,27 @@ mod tests {
                 view.kind == "cast_spell" && view.subject.contains(&card_entity_id(card.id))
             })
             .expect("the cast is on offer")
+    }
+
+    /// Each way to pay a pip says whether spending it turns the card, so a client can
+    /// draw a payment it is still assembling — the board the player is looking at while
+    /// they pick sources is one the server has not been told about yet.
+    #[test]
+    fn every_way_to_pay_states_whether_it_taps_its_source() {
+        let (state, db, _lands, spell) = table(&["plains", "plains"], "ajani_s_pridemate");
+        let action = cast_action(&state, &db, spell);
+        let Some(Prompt::PayMana { candidates, .. }) = action
+            .prompts
+            .iter()
+            .find(|p| matches!(p, Prompt::PayMana { .. }))
+        else {
+            panic!("a pay_mana slot")
+        };
+        assert!(!candidates.is_empty(), "the Plains can pay it");
+        assert!(
+            candidates.iter().all(|option| option.taps),
+            "a land's `{{T}}: Add {{W}}` taps it (CR 602.2a): {candidates:?}"
+        );
     }
 
     /// The scenario, on the wire: four Plains, a {1}{W} creature in hand, nothing

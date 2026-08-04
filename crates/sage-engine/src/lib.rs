@@ -42,11 +42,11 @@ mod triggers;
 mod zone;
 
 pub use ability::{
-    group_target_counts, is_emblem_ability, is_loyalty_ability, is_mana_ability, maximum_targets,
-    minimum_targets, target_counts, Ability, CardFilter, Chooser, Condition, Cost, CountScope,
-    DamageSubject, Effect, FoundDestination, ManaRestriction, MassAffects, ObservedPermanent,
-    ObservedSpell, PermanentCount, PlayerRef, StaticAffects, StaticModification, Target,
-    TargetCount, TargetGroup, TargetSpec, TriggerCondition, TriggerStep, TurnScope,
+    activation_taps, group_target_counts, is_emblem_ability, is_loyalty_ability, is_mana_ability,
+    maximum_targets, minimum_targets, target_counts, Ability, CardFilter, Chooser, Condition, Cost,
+    CountScope, DamageSubject, Effect, FoundDestination, ManaRestriction, MassAffects,
+    ObservedPermanent, ObservedSpell, PermanentCount, PlayerRef, StaticAffects, StaticModification,
+    Target, TargetCount, TargetGroup, TargetSpec, TriggerCondition, TriggerStep, TurnScope,
 };
 pub use actions::{
     auto_payment, discard_cost, is_plain_mana_source, mana_ability_pips, payment_pips,
@@ -69,9 +69,9 @@ pub use choice::{
 };
 pub use combat::{
     attack_target_of, attacked_players, attacker_candidates, attackers_needing_damage_order,
-    attacking_defender_of, blocked_by_at_most_one, blocker_can_block_attacker, blocker_candidates,
-    blocker_candidates_for, declared_attackers, defender_candidates, defending_player,
-    defending_player_candidates, pending_blocker_declarer, pending_damage_order,
+    attacking_defender_of, attacking_taps, blocked_by_at_most_one, blocker_can_block_attacker,
+    blocker_candidates, blocker_candidates_for, declared_attackers, defender_candidates,
+    defending_player, defending_player_candidates, pending_blocker_declarer, pending_damage_order,
     permanent_has_menace, permanent_has_restriction, permanent_restrictions,
     summoning_sickness_restricts, AttackTarget,
 };

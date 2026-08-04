@@ -965,9 +965,12 @@ Two consequences follow, and both are the point:
 
 - **An arrow is drawn per choice, as it is made** (§6.6), so the declaration is read as a picture
   rather than as a tally.
-- **Cancel has two depths.** The first press takes back every answer and leaves the question — a
-  declaration aimed at the wrong things is undone in one click without also undoing *declaring* —
-  and the second lets go of the question. Escape is the second one directly.
+- **Two ways out, and they are different questions.** *Start again* takes back every answer and
+  leaves the question standing — a declaration aimed at the wrong things is undone in one click
+  without also undoing *declaring* — and it is offered only while there is something to take back.
+  *Cancel* leaves the question, every time: a player who has decided not to cast this spell should
+  not press one button twice to stop being asked about it. Escape is Cancel. Nothing was sent for
+  either, so neither undoes anything.
 
 ### You say what you are playing, then pay for it
 
@@ -990,6 +993,25 @@ cast, or it leaves the hand, or the player presses Cancel.
 limitation rather than a missing feature: mana that has been made has been made, at a table as much
 as here, and the alternative — holding the taps back and releasing them on Confirm — would mean this
 client deciding when a cost was covered, which is the one thing it must never do.
+
+### A spell asks what it is aimed at, then what it costs
+
+A cast is one action with two kinds of question — its targets and its pips — and they are asked in
+the order the rules pay them: targets are chosen as the spell is put on the stack (CR 601.2c), the
+cost is paid after (CR 601.2f–h). So the bar asks the targets first and the pips appear once they
+are answered. Leading with the payment put a cost line above a question nobody had answered yet, and
+a player who paid it in full still could not cast: a target slot the server did not mark *optional*
+must be filled or the submission is rejected, so **Confirm stays dark until it is** — the same
+slot-counting the pips already get, over the same server-stated flag.
+
+**A choice you have made is drawn on the board, before it is sent.** A land picked for a pip and a
+creature put into a declaration both turn sideways where they stand, because that is what they are
+about to be; clicking either again stands it back up, and Cancel stands all of them up at once.
+Which ones turn is the server's word, per candidate (`docs/protocol.md`) — a creature with vigilance
+attacks without tapping and a mana ability that pays some other way taps nothing, and both are
+keyword and cost judgments this client does not make. Nothing has been sent while any of this is on
+screen, which is exactly why the client has to draw it: the server's board still has every one of
+them standing up.
 
 ## 6.6 Reading, pointing, and looking inside
 

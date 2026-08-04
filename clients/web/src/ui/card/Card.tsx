@@ -239,8 +239,20 @@ export function Card({
   /* What is on the permanent rather than printed on the card. There are a great many kinds of
      counter and no chance of drawing a mark for each, so a counter is a label and a count in a
      plain dark pill — one shape any kind fits, named the way the server names it. Damage and the
-     server's markers wear the same pill, because they are the same kind of fact. */
+     server's markers wear the same pill, because they are the same kind of fact.
+
+     A **granted** keyword joins them only on a printed face (below), where SAGE draws no rules
+     box of its own and there is nowhere else for the word to go. On our own frame it is set in
+     the text field with the rest of the card's abilities, which is where a player reads what a
+     creature can do. */
   const pills = [
+    ...(art?.style === 'full'
+      ? face.grantedKeywords.map((keyword) => ({
+          key: `granted:${keyword}`,
+          text: keyword,
+          count: null,
+        }))
+      : []),
     ...face.counters.map((counter) => ({
       key: `counter:${counter.kind}`,
       text: counter.kind,
@@ -475,6 +487,15 @@ export function Card({
       <foreignObject x="15" y="182" width="177" height={face.stat ? 72 : 86}>
         <div className="c-text" ref={textRef}>
           {face.rulesText !== undefined && <RulesText text={face.rulesText} />}
+          {/* What this object has that its card never printed — the trample a pump gave it for
+              the turn, an Aura's flying (`docs/protocol.md`). It goes in the text field because
+              that is where a player reads what a creature can do, and it is marked as added
+              rather than dressed up as printed: the card did not say this, the board does. It is
+              fitted with the rest of the text, so a card that gains one shrinks its box to hold
+              it instead of hiding it. */}
+          {face.grantedKeywords.length > 0 && (
+            <p className="c-kw c-granted">{face.grantedKeywords.join(', ')}</p>
+          )}
         </div>
       </foreignObject>
 

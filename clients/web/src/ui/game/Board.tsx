@@ -63,6 +63,7 @@ import {
   settle,
   stopPaying,
   submitted,
+  tappedByDraft,
   unask,
   type Interaction,
 } from './../../interaction'
@@ -177,22 +178,34 @@ export function Board({
   const related = relations(view)
   const names = entityNames(view)
 
+  // What the bar is asking, derived fresh from this view and the draft — and, from it, the
+  // permanents the player's own half-built answer would turn. Both are needed before the
+  // board's own entries are built, since a permanent draws itself turned while it is spent.
+  const current = focus(actions, interaction)
+  const turning = tappedByDraft(current.slots)
+
   const handFaces = list(view.my_hand).map(cardFace)
   const revealedFaces = list(view.revealed).map(cardFace)
   const emblemFaces = list(view.emblems).map(emblemFace)
-  const stackEntries: readonly StackEntry[] = list(view.stack).map((item) => {
-    const lines = relationLines(related, item.id, names)
-    const targets = lines
-      .filter((line) => line.kind === 'targeting' && line.direction === 'from')
-      .flatMap((line) => line.ends.map((end) => end.name))
-    return {
-      item,
-      face: stackFace(item),
-      who: item.controller === undefined ? '' : label(item.controller),
-      kind: stackFace(item).markers[0] ?? 'On the stack',
-      targets,
-    }
-  })
+  // The wire lists the stack **bottom first** (`docs/protocol.md`); the column reads it top
+  // first, because the object that resolves next is the one a player is deciding about and the
+  // list is headed "resolves next". Reversed here rather than in the panel so every surface
+  // that walks these entries walks them in the order they resolve.
+  const stackEntries: readonly StackEntry[] = list(view.stack)
+    .map((item) => {
+      const lines = relationLines(related, item.id, names)
+      const targets = lines
+        .filter((line) => line.kind === 'targeting' && line.direction === 'from')
+        .flatMap((line) => line.ends.map((end) => end.name))
+      return {
+        item,
+        face: stackFace(item),
+        who: item.controller === undefined ? '' : label(item.controller),
+        kind: stackFace(item).markers[0] ?? 'On the stack',
+        targets,
+      }
+    })
+    .reverse()
 
   // A permanent attached to another is drawn behind it rather than as a slot of its own, so the
   // board carries one box per thing that acts. Which is attached to which is the server's.
@@ -213,6 +226,9 @@ export function Board({
       // The words for every line the overlay draws over this permanent. The arrow is the fast
       // copy; this is the one a screen reader reaches.
       note: relationNote(relationLines(related, permanent.id, names)),
+      // Turned by the answer being built rather than by the game: the draft has spent this
+      // land or declared this creature, and nothing has been sent (`interaction.ts`).
+      turning: turning.has(permanent.id),
     }))
 
   // One face per card-shaped object on screen, so the hand, the board, the piles, and the
@@ -293,7 +309,6 @@ export function Board({
     dispatch(action, {})
   }
 
-  const current = focus(actions, interaction)
   // Whether the bar's Confirm has anything behind it: the drafted answer when one is being
   // drafted, and otherwise whether the server has started offering the card being paid for.
   const payReady =
@@ -626,17 +641,16 @@ export function Board({
         labelFor={surface.labelFor}
         update={setInteraction}
         confirm={confirm}
-        // Two depths in one control: take back the answers, then let go of the question. A
-        // payment has no answers to take back, so its first press ends the intent.
+        // One press out of the whole thing, whichever thing it is: a drafted action is
+        // disarmed and a payment intent is dropped. Nothing was sent for either, so nothing is
+        // undone — the mana already made stays made, as it would at a table.
         cancel={() =>
-          setInteraction(
-            !current.action
-              ? stopPaying(interaction)
-              : Object.values(interaction.draft).some((ids) => ids.length > 0)
-                ? reset(interaction)
-                : disarm(interaction),
-          )
+          setInteraction(current.action ? disarm(interaction) : stopPaying(interaction))
         }
+        // Offered only while the draft is holding something, and it empties exactly that.
+        {...(current.action && Object.values(interaction.draft).some((ids) => ids.length > 0)
+          ? { restart: () => setInteraction(reset(interaction)) }
+          : {})}
         take={take}
       />
 

@@ -1813,6 +1813,23 @@ pub fn is_mana_ability(ability: &Ability) -> bool {
     )
 }
 
+/// Whether paying `ability`'s activation cost **taps its source** — the `{T}` in
+/// `{T}: Add {G}` (CR 602.2a).
+///
+/// Exposed for the same reason [`is_mana_ability`] is: a client offers a gesture over an
+/// activation it is told about, and *what that gesture does to the card* is a rules
+/// question. A land tapped for mana turns sideways and a mana rock that sacrifices itself
+/// does not, and no presentation can tell those apart without reading the cost — so the
+/// server states it per candidate (`docs/protocol.md`) and the client draws what it is
+/// told. Derived from the cost alone; nothing is applied.
+#[must_use]
+pub fn activation_taps(ability: &Ability) -> bool {
+    matches!(
+        ability,
+        Ability::Activated { cost, .. } if cost.iter().any(|c| matches!(c, Cost::Tap))
+    )
+}
+
 /// Whether `ability` is one an [`Emblem`](crate::Emblem) may carry (CR 114.1–114.4).
 ///
 /// An emblem has no characteristics but its abilities, is in no zone, and is never an
