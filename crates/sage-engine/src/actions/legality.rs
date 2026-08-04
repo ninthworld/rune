@@ -113,10 +113,11 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
     //     returns the state it was handed.
     //
     //     Check 1 above has already found the cast on offer, and the generator offers it
-    //     against what the seat *could* make ([`potential_mana_pool`]) rather than what is
-    //     already floating — an over-estimate on purpose, so that starting to pay is never
-    //     withheld from a player who had the mana. This is where the estimate is settled
-    //     against the payment actually assembled, so the widened offer can never widen
+    //     against what the seat could *tap for* rather than what is already floating — so
+    //     the offer says a payment exists, and this says whether the one the player
+    //     assembled is it. Those are different questions and both are needed: the first is
+    //     asked before the player has chosen anything, and a player is free to assemble a
+    //     payment that does not cover the cost. The widened offer therefore never widens
     //     what is legal.
     if let Action::CastSpell { card, payment, .. } = action {
         if !super::payment_covers_cast(state, db, *card, payment) {

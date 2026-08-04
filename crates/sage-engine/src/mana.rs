@@ -68,7 +68,7 @@ impl Color {
 /// red and three ordinary red at once, and only one of those five piles can pay for a
 /// Bear. It is still mana in every other respect, and empties with the rest of the pool
 /// at the end of the step (CR 500.4).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct RestrictedMana {
     /// The color of this mana.
     pub color: Color,
@@ -118,7 +118,7 @@ impl crate::ability::ManaRestriction {
 ///
 /// This is a player's mana pool. It stores raw counts only; nothing is derived
 /// or cached here.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct ManaPool {
     /// White mana available.
     pub white: u8,

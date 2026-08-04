@@ -220,22 +220,21 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             }
         }
 
-        // What this seat could pay with **if it tapped everything available** — the
-        // floating pool plus every mana ability on offer ([`potential_mana_pool`]).
+        // What this seat could tap for, enumerated once and asked once per card below.
         //
-        // This is the gate every cast below is offered against, and the widening is the
-        // point: a cast is now announceable *before* its mana exists, because CR 601.2
-        // activates mana abilities as a step **inside** the casting process rather than
-        // before it. Offering only what is already floating is what forced a player to
-        // tap first and find the card second.
+        // This is the gate every cast is offered against, and the widening is the point:
+        // a cast is now announceable *before* its mana exists, because CR 601.2 activates
+        // mana abilities as a step **inside** the casting process rather than before it.
+        // Offering only what is already floating is what forced a player to tap first and
+        // find the card second.
         //
-        // It is an over-estimate — it credits mana from sources whose colours are not
-        // decided, and it does not ask whether some subset actually composes — and it errs
-        // in the one safe direction: it can offer a cast whose payment then turns out not
-        // to cover the cost, and that submission is rejected as a clean no-op
-        // (`payment_covers_cast`). The opposite error would withhold a cast a player could
-        // have made, which is the one a player would experience as the game being wrong.
-        let payable = super::payment::realisable_mana_pool(state, priority, db);
+        // It is **not an estimate**. `covers` asks whether a payment exists by looking for
+        // one, and it is the same search `auto_payment` returns to a caller — so a cast is
+        // announced exactly when a payment for it can be assembled. That equality is
+        // load-bearing rather than tidy: an offer gated on an over-estimate announces a
+        // cast that is then refused as a no-op, and an automated player takes it, is
+        // refused, and takes it again for ever.
+        let payable = super::payment::ManaOptions::of(state, db, priority);
 
         // Cast a spell from hand, at the correct timing. A land is played, not cast
         // (CR 116.2a); every other card type is cast as a spell. An instant may be cast
@@ -253,7 +252,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             // spell is bound by it.
             let timing_ok = data.has_type(CardType::Instant) || sorcery_speed;
             if timing_ok
-                && payable.can_pay_for(&parse_mana_cost(&data.mana_cost), spend_purpose(data))
+                && payable.covers(&parse_mana_cost(&data.mana_cost), spend_purpose(data))
                 && additional_cost_is_payable(state, priority, data, card.id)
             {
                 // A targeted spell is offered only when *every* target slot has at
@@ -289,7 +288,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             }
             let timing_ok = data.has_type(CardType::Instant) || sorcery_speed;
             if timing_ok
-                && payable.can_pay_for(&parse_mana_cost(&data.mana_cost), spend_purpose(data))
+                && payable.covers(&parse_mana_cost(&data.mana_cost), spend_purpose(data))
                 && additional_cost_is_payable(state, priority, data, card.id)
                 && groups_are_fillable(&data.cast_target_groups(), state, priority, db)
             {
@@ -319,7 +318,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 let timing_ok = data.has_type(CardType::Instant) || sorcery_speed;
                 let cost = commander_tax_cost(&parse_mana_cost(&data.mana_cost), commander.casts);
                 if timing_ok
-                    && payable.can_pay_for(&cost, spend_purpose(data))
+                    && payable.covers(&cost, spend_purpose(data))
                     && additional_cost_is_payable(state, priority, data, card.id)
                     && groups_are_fillable(&data.cast_target_groups(), state, priority, db)
                 {
