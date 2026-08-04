@@ -87,6 +87,14 @@ export interface Interaction {
   /** An action asked for a second, explicit click before it is sent. */
   readonly confirming?: string
   /**
+   * A permanent that can pay the pip being filled more than one way, waiting to be told which.
+   *
+   * The dual-land question, and the only transient question this client poses itself. It is not
+   * a rule: the server listed the same permanent twice for one slot, and two listings is the
+   * whole of "there is something to ask". Cleared by answering it or by anything else.
+   */
+  readonly asking?: { slot: string; source: string }
+  /**
    * The subject whose own slot the next click answers — an attacker that has been declared and
    * has not yet been given something to attack. Presentation only: the server stated the
    * pairing (`TargetRequirement.subject`), and this is which half of it the player is on.
@@ -173,7 +181,7 @@ export function needsConfirmation(action: ValidAction): boolean {
   return action.type === 'concede'
 }
 
-export type SlotKind = 'target' | 'zone' | 'order' | 'option' | 'number'
+export type SlotKind = 'target' | 'zone' | 'order' | 'option' | 'number' | 'mana'
 
 /** One question an armed action is asking, with everything needed to draw and answer it. */
 export interface Slot {
@@ -182,8 +190,15 @@ export interface Slot {
   prompt: string
   /** Entity ids the server listed, in its order. Empty for a `number`. */
   candidates: readonly string[]
-  /** The server's own option ids and labels, for an `option`. */
-  options: readonly { id: string; label: string }[]
+  /**
+   * The server's own option ids and labels, for an `option` — and, for a `mana` slot, one entry
+   * per way to pay this pip, each naming the permanent it taps.
+   *
+   * Two entries with the same `source` is the whole of "ask which": a dual land can pay a `{W}`
+   * pip one way and a `{U}` pip another, so the server lists it once per way and this client
+   * asks rather than guessing. Nothing here is worked out from the game.
+   */
+  options: readonly { id: string; label: string; source?: string }[]
   chosen: readonly string[]
   /** How many ids the slot takes, or `null` where the server published no count. */
   min: number | null
@@ -194,6 +209,11 @@ export interface Slot {
    * Absent for every other kind.
    */
   range?: { min: number; max: number }
+  /**
+   * The mana symbol this slot pays, for a `mana` slot. The still-to-pay line is the pips of the
+   * slots not yet answered — which is why nothing anywhere subtracts a cost from anything.
+   */
+  pip?: string
   /** The slot may be left unanswered — the "up to" of an "up to two target creatures". */
   optional: boolean
   /** Whether clicking an object on the table answers this slot. */
@@ -336,6 +356,24 @@ export function slotsOf(action: ValidAction, draft: Draft): readonly Slot[] {
           conditional: false,
         })
         break
+      case 'pay_mana':
+        slots.push({
+          ...shared,
+          kind: 'mana',
+          // The permanents that can pay this pip, deduplicated: a dual land is one thing to
+          // click and to highlight even where it is two ways to pay.
+          candidates: [...new Set((prompt.candidates ?? []).map((option) => option.source))],
+          options: (prompt.candidates ?? []).map((option) => ({
+            id: option.id,
+            label: option.label ?? '',
+            source: option.source,
+          })),
+          pip: prompt.pip,
+          optional: false,
+          byEntity: true,
+          conditional: false,
+        })
+        break
     }
   }
 
@@ -370,6 +408,56 @@ export function focus(actions: readonly ValidAction[], interaction: Interaction)
 const answered = (slot: Slot): boolean => !slot.conditional || slot.chosen.length > 0
 
 /**
+ * The ways this slot could be paid by tapping `id` — one entry, or two where a permanent can
+ * pay this pip more than one way and the player has to say which.
+ *
+ * The server listed them; this counts them. That count is the entire rule for when to ask, and
+ * it is why the client can ask "{W} or {U}?" without knowing what a colour is.
+ */
+export function waysToPay(slot: Slot, id: string): readonly { id: string; label: string }[] {
+  return slot.options.filter((option) => option.source === id)
+}
+
+/**
+ * Whether this slot is currently paid by tapping `id`.
+ *
+ * A mana slot holds the *activation* it chose, not the permanent it clicked, so "is this land
+ * already spent here" is a question about the option list rather than about the draft directly.
+ */
+export function holdsSource(slot: Slot, id: string): boolean {
+  if (slot.kind !== 'mana') return slot.chosen.includes(id)
+  return waysToPay(slot, id).some((option) => slot.chosen.includes(option.id))
+}
+
+/** Every permanent this draft has already spent, across all of an action's mana slots. */
+export function spentSources(slots: readonly Slot[]): ReadonlySet<string> {
+  const spent = new Set<string>()
+  for (const slot of slots) {
+    if (slot.kind !== 'mana') continue
+    for (const option of slot.options) {
+      if (slot.chosen.includes(option.id) && option.source !== undefined) spent.add(option.source)
+    }
+  }
+  return spent
+}
+
+/**
+ * The cost still to pay, as pips, in printed order.
+ *
+ * Every unanswered mana slot contributes its symbol and nothing else happens: no cost is
+ * subtracted from another, no total is computed, and a slot that gets answered simply stops
+ * contributing. Generic reads first, as on a real card — a display order, and not the order the
+ * slots are filled in (the server puts the colored pips first so that clicking a Plains against
+ * `{1}{W}` pays the `{W}`, which is what clicking it means).
+ */
+export function remainingCost(slots: readonly Slot[]): readonly string[] {
+  const unpaid = slots.filter((slot) => slot.kind === 'mana' && slot.chosen.length === 0)
+  const generic = unpaid.filter((slot) => slot.pip === '{1}').length
+  const colored = unpaid.filter((slot) => slot.pip !== '{1}').map((slot) => slot.pip ?? '')
+  return generic > 0 ? [`{${generic}}`, ...colored] : colored
+}
+
+/**
  * Which question a click on `id` answers.
  *
  * Not "the slot the player is currently on" — that reading cannot declare an attack, because
@@ -385,13 +473,17 @@ const answered = (slot: Slot): boolean => !slot.conditional || slot.chosen.lengt
  */
 function slotFor(slots: readonly Slot[], id: string, aiming?: string): Slot | undefined {
   const takes = slots.filter((slot) => slot.byEntity && slot.candidates.includes(id))
+  // A permanent taps once, so a source already spent on one pip is not on offer for another —
+  // only for the pip that is holding it, where clicking it again takes it back out.
+  const spent = spentSources(slots)
+  const free = takes.filter((slot) => !spent.has(id) || holdsSource(slot, id))
   return (
     // What is being aimed wins over everything: while an attacker is waiting to be told what it
     // attacks, a click on a defender is that attacker's answer and cannot be another's.
     (aiming === undefined ? undefined : takes.find((slot) => slot.subject === aiming)) ??
-    takes.find((slot) => slot.chosen.includes(id)) ??
-    takes.find((slot) => slot.max === null || slot.chosen.length < slot.max) ??
-    takes[0]
+    free.find((slot) => holdsSource(slot, id)) ??
+    free.find((slot) => slot.max === null || slot.chosen.length < slot.max) ??
+    free[0]
   )
 }
 
@@ -459,6 +551,10 @@ export function highlightFor(
   const current = focus(actions, interaction)
   if (current.action) {
     if (Object.values(interaction.draft).some((ids) => ids.includes(id))) return 'selected'
+    // A source paying a pip is spent, and has to *look* spent — the draft holds the activation
+    // it chose rather than the permanent that was clicked, so asking the draft directly would
+    // leave a land the player has committed drawn as though it were still free.
+    if (spentSources(current.slots).has(id)) return 'selected'
     if ((current.action.subject ?? []).includes(id)) return 'selected'
     // While one subject is being aimed, only its own slot's candidates are choosable — the
     // board says "this attacker, now pick what it attacks" rather than lighting up every
@@ -530,6 +626,23 @@ export function fill(
   id: string,
   slots: readonly Slot[] = [],
 ): Interaction {
+  // A mana slot is answered with an *activation*, and the click named a permanent. One way to
+  // pay is no question and fills straight through; two is the dual land, and the player is asked
+  // which rather than having one picked for them.
+  if (slot.kind === 'mana') {
+    if (holdsSource(slot, id)) {
+      return { ...interaction, draft: { ...interaction.draft, [slot.slot]: [] }, asking: undefined }
+    }
+    const ways = waysToPay(slot, id)
+    if (ways.length > 1) return { ...interaction, asking: { slot: slot.slot, source: id } }
+    const only = ways[0]
+    if (!only) return interaction
+    return {
+      ...interaction,
+      draft: { ...interaction.draft, [slot.slot]: [only.id] },
+      asking: undefined,
+    }
+  }
   const draft = toggleSelection(interaction.draft, slot.slot, id, slot.max)
   const next = { ...interaction, draft }
   if (slot.subject !== undefined) return { ...next, aiming: undefined }
@@ -564,7 +677,11 @@ export function answer(
   slot: string,
   ids: readonly string[],
 ): Interaction {
-  return { ...interaction, draft: { ...interaction.draft, [slot]: [...ids] } }
+  return {
+    ...interaction,
+    draft: { ...interaction.draft, [slot]: [...ids] },
+    asking: undefined,
+  }
 }
 
 /**
@@ -576,7 +693,7 @@ export function answer(
  * press of the same control and the Escape key.
  */
 export function reset(interaction: Interaction): Interaction {
-  return { ...interaction, draft: {}, aiming: undefined }
+  return { ...interaction, draft: {}, aiming: undefined, asking: undefined }
 }
 
 /**
