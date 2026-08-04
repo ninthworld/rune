@@ -35,18 +35,27 @@ export interface ObjectMenu {
 /**
  * Whether an object's actions are currently being asked about, and which.
  *
- * Four states outrank it, and each for the same reason — something else already owns the
+ * Five states outrank it, and each for the same reason — something else already owns the
  * player's next click, and a menu floating over the board during any of them is a second thing
  * claiming to be the question:
  *
  * - **A draft is armed.** The action is now asking *which objects*, and the board is the answer
  *   sheet. A menu over a candidate would sit between the question and the card that answers it.
+ * - **A card is being paid for.** Saying "I am playing this" selects that card, and the answer
+ *   to it is out on the board: the mana sources are lit, the bar carries the cost, and the next
+ *   click is meant for a land. The card itself owns nothing to take — that is *why* it went down
+ *   this path (`interaction.gestureFor`) — so the menu that used to open over the hand was an
+ *   empty panel between the player and the sources they were being asked to tap.
  * - **A confirmation is open.** Conceding is one button asked twice, and every other click is a
  *   "no" — including, deliberately, one that went to a menu instead.
  * - **A submission is in flight.** Nothing can be taken until the server answers, so a list of
  *   things to take is a list of disabled buttons.
  * - **Nothing is selected.** There is no object, and the dock is where actions with no object
  *   live.
+ *
+ * The payment case ends by itself: the moment the server offers a cast for that card, confirming
+ * takes it — and where it offers more than one, `Board` drops the intent and selects the card
+ * outright, which is a selection with a real list behind it and opens here as any other does.
  */
 export function objectMenu(
   actions: readonly ValidAction[],
@@ -54,6 +63,7 @@ export function objectMenu(
 ): ObjectMenu | undefined {
   if (interaction.selected === undefined) return undefined
   if (interaction.armed !== undefined) return undefined
+  if (interaction.paying !== undefined) return undefined
   if (interaction.confirming !== undefined) return undefined
   if (interaction.pending !== undefined) return undefined
 

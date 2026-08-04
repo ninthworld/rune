@@ -14,6 +14,7 @@ import {
   disarm,
   remainingCost,
   spentSources,
+  tappedByDraft,
   waysToPay,
   clear,
   fill,
@@ -392,8 +393,15 @@ describe('declaring attackers one at a time', () => {
     requirements: [
       {
         slot: 'attackers',
+        // Declaring no attackers is a declaration, and the server says so with the same flag
+        // an "up to two targets" spell uses — which is what keeps this slot submittable empty
+        // while a spell's target slot is not.
+        optional: true,
         prompt: 'Choose which creatures attack',
         candidates: ['perm_bear', 'perm_ogre'],
+        // Choosing the Bear turns it; the Ogre has vigilance, so choosing it does not. Both
+        // are the server's word, and this client never asks why.
+        taps: ['perm_bear'],
       },
       {
         slot: 'defend_bear',
@@ -487,6 +495,22 @@ describe('declaring attackers one at a time', () => {
     expect(focus(OFFERED, { armed: 'a_attack', draft: {} }).ready).toBe(true)
   })
 
+  it('turns an attacker as it is declared, and only the ones the server said turn', () => {
+    // Attacking taps (CR 508.1f) — except where it does not, which is a keyword judgment this
+    // client does not make. The server named the Bear and not the Ogre, so the Bear turns.
+    const bear: Interaction = { armed: 'a_attack', draft: { attackers: ['perm_bear'] } }
+    expect([...tappedByDraft(focus(OFFERED, bear).slots)]).toEqual(['perm_bear'])
+
+    const both: Interaction = {
+      armed: 'a_attack',
+      draft: { attackers: ['perm_bear', 'perm_ogre'] },
+    }
+    expect([...tappedByDraft(focus(OFFERED, both).slots)]).toEqual(['perm_bear'])
+
+    // Nothing has been sent, so taking an attacker back out stands it up again.
+    expect([...tappedByDraft(focus(OFFERED, { armed: 'a_attack', draft: {} }).slots)]).toEqual([])
+  })
+
   it('takes back every answer without leaving the question', () => {
     const drafted: Interaction = {
       armed: 'a_attack',
@@ -511,6 +535,8 @@ describe('a slot about a subject the action does not ask you to choose', () => {
     requirements: [
       {
         slot: 'block_bear',
+        // Blocking with nothing is a legal declaration, stated the same way.
+        optional: true,
         prompt: 'Choose blockers for Bear',
         subject: 'perm_bear',
         candidates: ['perm_wall'],
@@ -599,8 +625,8 @@ describe('assembling a payment', () => {
         prompt: 'Pay {W}',
         pip: '{W}',
         candidates: [
-          { id: 'perm_1#0', source: 'perm_1', label: '{W}' },
-          { id: 'perm_2#0', source: 'perm_2', label: '{W}' },
+          { id: 'perm_1#0', source: 'perm_1', label: '{W}', taps: true },
+          { id: 'perm_2#0', source: 'perm_2', label: '{W}', taps: true },
         ],
       },
       {
@@ -609,8 +635,8 @@ describe('assembling a payment', () => {
         prompt: 'Pay {1}',
         pip: '{1}',
         candidates: [
-          { id: 'perm_1#0', source: 'perm_1', label: '{W}' },
-          { id: 'perm_2#0', source: 'perm_2', label: '{W}' },
+          { id: 'perm_1#0', source: 'perm_1', label: '{W}', taps: true },
+          { id: 'perm_2#0', source: 'perm_2', label: '{W}', taps: true },
         ],
       },
     ],
@@ -627,8 +653,8 @@ describe('assembling a payment', () => {
         prompt: 'Pay {W}',
         pip: '{W}',
         candidates: [
-          { id: 'perm_9#1', source: 'perm_9', label: '{W}' },
-          { id: 'perm_9#2', source: 'perm_9', label: '{U}' },
+          { id: 'perm_9#1', source: 'perm_9', label: '{W}', taps: true },
+          { id: 'perm_9#2', source: 'perm_9', label: '{U}', taps: true },
         ],
       },
     ],
@@ -687,6 +713,45 @@ describe('assembling a payment', () => {
     // back to the pip holding it rather than double-spending the land.
     expect(gestureFor([CAST], interaction, 'perm_1')).toEqual({ kind: 'fill', slot: 'pay_0' })
     expect([...spentSources(slotsOf(CAST, interaction.draft))]).toEqual(['perm_1'])
+  })
+
+  it('turns every source it has spent, and turns it back when it is taken out', () => {
+    // The payment has been sent to nobody, so the board still shows the land standing up.
+    // Drawing the turn is how a player sees what they have committed — and the server said
+    // which activations turn their source, so nothing here reads a cost.
+    let interaction = arm(IDLE, CAST)
+    expect([...tappedByDraft(slotsOf(CAST, interaction.draft))]).toEqual([])
+
+    const slots = slotsOf(CAST, interaction.draft)
+    interaction = fill(interaction, slots[0]!, 'perm_1', slots)
+    expect([...tappedByDraft(slotsOf(CAST, interaction.draft))]).toEqual(['perm_1'])
+
+    const held = slotsOf(CAST, interaction.draft)
+    interaction = fill(interaction, held[0]!, 'perm_1', held)
+    expect([...tappedByDraft(slotsOf(CAST, interaction.draft))]).toEqual([])
+  })
+
+  it('turns nothing for a way to pay the server did not say turns anything', () => {
+    // A mana ability that sacrifices its source or pays life taps nothing, and the cost is the
+    // only thing that says so — which is why the client is told rather than deciding.
+    const RITUAL: ValidAction = {
+      ...CAST,
+      id: 'ritual',
+      prompts: [
+        {
+          kind: 'pay_mana',
+          slot: 'pay_0',
+          prompt: 'Pay {W}',
+          pip: '{W}',
+          candidates: [{ id: 'perm_5#0', source: 'perm_5', label: '{W}' }],
+        },
+      ],
+    }
+    let interaction = arm(IDLE, RITUAL)
+    const slots = slotsOf(RITUAL, interaction.draft)
+    interaction = fill(interaction, slots[0]!, 'perm_5', slots)
+    expect(interaction.draft['pay_0']).toEqual(['perm_5#0'])
+    expect([...tappedByDraft(slotsOf(RITUAL, interaction.draft))]).toEqual([])
   })
 
   it('asks which way a dual land taps, and does not guess', () => {
@@ -753,8 +818,8 @@ describe('what a committed source looks like', () => {
         prompt: 'Pay {W}',
         pip: '{W}',
         candidates: [
-          { id: 'perm_1#0', source: 'perm_1', label: '{W}' },
-          { id: 'perm_2#0', source: 'perm_2', label: '{W}' },
+          { id: 'perm_1#0', source: 'perm_1', label: '{W}', taps: true },
+          { id: 'perm_2#0', source: 'perm_2', label: '{W}', taps: true },
         ],
       },
     ],
@@ -878,5 +943,81 @@ describe('a cost that is not only mana', () => {
     const cancelled = disarm(interaction)
     expect(cancelled.draft).toEqual({})
     expect(cancelled.pending).toBeUndefined()
+  })
+})
+
+describe('a spell that asks for a target and a cost', () => {
+  /** Plummet: one target slot, two pips, four Forests on the board. */
+  const PLUMMET: ValidAction = {
+    id: 'cast_plummet',
+    type: 'cast_spell',
+    label: 'Cast Plummet',
+    subject: ['card_p'],
+    token: 't',
+    requirements: [
+      {
+        slot: 't0',
+        prompt: 'Choose target creature with flying',
+        candidates: ['perm_angel'],
+      },
+    ],
+    prompts: [
+      {
+        kind: 'pay_mana',
+        slot: 'pay_0',
+        prompt: 'Pay {G}',
+        pip: '{G}',
+        candidates: [{ id: 'perm_f1#0', source: 'perm_f1', label: '{G}', taps: true }],
+      },
+      {
+        kind: 'pay_mana',
+        slot: 'pay_1',
+        prompt: 'Pay {1}',
+        pip: '{1}',
+        candidates: [{ id: 'perm_f2#0', source: 'perm_f2', label: '{G}', taps: true }],
+      },
+    ],
+  }
+
+  it('asks what it is aimed at first, and the cost only once it is aimed', () => {
+    // A cost is paid as part of casting, *after* the targets are chosen (CR 601.2c, 601.2f–h),
+    // and the bar asks in the same order — otherwise the first thing a player is shown for a
+    // targeted spell is a payment line for a question nobody has answered.
+    const armed = arm(IDLE, PLUMMET)
+    expect(slotsOf(PLUMMET, armed.draft).map((slot) => slot.slot)).toEqual(['t0'])
+
+    const aimed = { ...armed, draft: { t0: ['perm_angel'] } }
+    expect(slotsOf(PLUMMET, aimed.draft).map((slot) => slot.slot)).toEqual(['t0', 'pay_0', 'pay_1'])
+  })
+
+  it('reads an object that answers nothing rather than acting on it mid-draft', () => {
+    // A land the payment has not asked about yet still has its mana ability on offer, and
+    // taking it would send a message — which brings a view, which throws the draft away. The
+    // board is the armed action's answer sheet; everything else on it is there to be read.
+    const TAP: ValidAction = {
+      id: 'a_tap',
+      type: 'activate_ability',
+      label: '{T}: Add {G}.',
+      subject: ['perm_f3'],
+      mana_ability: true,
+    }
+    const armed = arm(IDLE, PLUMMET)
+    expect(gestureFor([PLUMMET, TAP], armed, 'perm_f3')).toEqual({ kind: 'inspect' })
+    // The slot's own candidates still answer it, which is the whole of what a draft offers.
+    expect(gestureFor([PLUMMET, TAP], armed, 'perm_angel')).toEqual({ kind: 'fill', slot: 't0' })
+  })
+
+  it('will not offer to send it with no target chosen, however much mana is spent', () => {
+    // A requirement that is not `optional` "must be filled or the submission is rejected"
+    // (`docs/protocol.md`). Offering the cast anyway is how a Plummet gets paid for, sent, and
+    // refused, with nothing on screen saying why.
+    const paid: Interaction = {
+      armed: 'cast_plummet',
+      draft: { pay_0: ['perm_f1#0'], pay_1: ['perm_f2#0'] },
+    }
+    expect(focus([PLUMMET], paid).ready).toBe(false)
+
+    const whole: Interaction = { ...paid, draft: { ...paid.draft, t0: ['perm_angel'] } }
+    expect(focus([PLUMMET], whole).ready).toBe(true)
   })
 })

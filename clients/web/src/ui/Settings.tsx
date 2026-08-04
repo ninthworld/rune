@@ -39,6 +39,7 @@ const SAMPLE: CardFace = {
   keywords: [],
   stat: { kind: 'power_toughness', value: '2/3', label: 'Power/toughness' },
   counters: [],
+  grantedKeywords: [],
   markers: [],
   tapped: false,
   cardTypes: ['creature'],

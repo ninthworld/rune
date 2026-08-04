@@ -51,6 +51,7 @@ export function ActionBar({
   update,
   confirm,
   cancel,
+  restart,
   take,
 }: {
   tone: BarTone
@@ -80,6 +81,11 @@ export function ActionBar({
   update(next: Interaction): void
   confirm(): void
   cancel(): void
+  /**
+   * Take back every answer without leaving the question. Absent when there is nothing to take
+   * back — a payment intent has no answers, and neither does an untouched draft.
+   */
+  restart?(): void
   take(action: ValidAction): void
 }) {
   // A slot whose own controls are the answers states itself; every other one has nothing on
@@ -244,14 +250,20 @@ export function ActionBar({
       <div className="action-btns">
         {asking || paying ? (
           <>
-            {/* One control, two depths: it takes back the answers first and leaves the
-                question, and only lets go of the question once there is nothing to take back.
-                A combat declaration aimed at the wrong things is undone in a click without
-                also undoing "I am declaring attackers". */}
+            {/* Two ways out, and they are different questions rather than two depths of one.
+                *Start again* empties the answers and stays in the question — a combat
+                declaration aimed at the wrong things is undone in a click without also undoing
+                "I am declaring attackers" — and it is offered only while there is something to
+                empty. *Cancel* leaves outright, every time: a player who has decided not to
+                cast this spell should not have to press one button twice to stop being asked
+                about it, and since nothing was sent, nothing is undone. */}
+            {restart && (
+              <button className="action-done action-alt" onClick={restart}>
+                Start again
+              </button>
+            )}
             <button className="action-done action-alt" onClick={cancel}>
-              {asking && Object.values(interaction.draft).some((ids) => ids.length > 0)
-                ? 'Start again'
-                : 'Cancel'}
+              Cancel
             </button>
             <button className="action-done" disabled={!ready || blocked} onClick={confirm}>
               {asking && slots.some((slot) => slot.kind === 'mana') ? 'Cast' : 'Confirm'}

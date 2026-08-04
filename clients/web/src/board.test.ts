@@ -141,12 +141,8 @@ describe('the piles a row draws', () => {
   it('breaks a pile the moment anything about a permanent differs', () => {
     // The key is the caller's, and it carries every mark the board draws — so a tapped Forest,
     // an attacking creature, or one carrying a counter never hides behind an identical card.
-    const drawn = piles([at('forest', 'a'), at('forest:tapped', 'b'), at('forest', 'c')], keyOf)
-    expect(drawn.map((pile) => pile.entries.map((entry) => entry.id))).toEqual([
-      ['a'],
-      ['b'],
-      ['c'],
-    ])
+    const drawn = piles([at('forest', 'a'), at('forest:tapped', 'b')], keyOf)
+    expect(drawn.map((pile) => pile.entries.map((entry) => entry.id))).toEqual([['a'], ['b']])
   })
 
   it('never stacks a permanent with no identity to be the same card of', () => {
@@ -155,8 +151,18 @@ describe('the piles a row draws', () => {
     expect(drawn).toHaveLength(2)
   })
 
-  it('only gathers a consecutive run, because the order is the server’s', () => {
+  it('gathers matching permanents that are not next to each other', () => {
+    // Lands are played one a turn, so a mana base arrives interleaved. Mountain, Forest,
+    // Mountain is two Mountains that belong in one pile, and the pile stays where the first
+    // one is: nothing is re-sorted but the thing that is indistinguishable from its twin.
     const drawn = piles([at('forest', 'a'), at('bear', 'b'), at('forest', 'c')], keyOf)
+    expect(drawn.map((pile) => pile.entries.map((entry) => entry.id))).toEqual([['a', 'c'], ['b']])
+  })
+
+  it('keeps a permanent with no identity out of every pile, however many there are', () => {
+    // Two tokens are not known to be one card, and neither joins the other's pile no matter
+    // how far apart they sit.
+    const drawn = piles([at(undefined, 'a'), at('forest', 'b'), at(undefined, 'c')], keyOf)
     expect(drawn.map((pile) => pile.entries.map((entry) => entry.id))).toEqual([
       ['a'],
       ['b'],

@@ -19,7 +19,10 @@
  * server's `attached_to`**; nothing here concludes it.
  *
  * Tapping turns the whole slot, attachments and all, and the arrow's anchor turns with it: a
- * tapped card takes its ring lying down.
+ * tapped card takes its ring lying down. **A permanent the player's own draft would tap turns
+ * the same way** (`FieldEntry.turning`): a land picked for a pip and a creature put into the
+ * declaration are both about to be tapped, nothing has been sent yet, and a player assembling
+ * either is owed a picture of what they have committed. Clicking it again stands it back up.
  */
 import type { CSSProperties } from 'react'
 
@@ -37,6 +40,16 @@ export interface FieldEntry {
   attached: readonly CardFace[]
   /** What the server related it to, in words — the readable copy of the arrows over it. */
   note: string
+  /**
+   * Whether the answer being drafted would tap this permanent — a land picked for a pip, a
+   * creature put into the declaration (`interaction.tappedByDraft`).
+   *
+   * It turns for the same reason a tapped one does, because it is about to be one: nothing has
+   * been sent, so the *server's* board still has it standing up, and a player assembling a
+   * declaration or a payment is owed a picture of what they have committed. Taking the choice
+   * back stands it up again, and a new view settles it either way.
+   */
+  turning: boolean
 }
 
 /** How far each attached card steps, as a fraction of a card. */
@@ -44,6 +57,10 @@ const ATTACH_STEP = 0.16
 
 function Slot({ entry, surface }: { entry: FieldEntry; surface: Surface }) {
   const { permanent, face, attached } = entry
+  // The board's tap state and the one the player is in the middle of choosing are drawn the
+  // same way, deliberately: what a permanent looks like is a fact about the board, and the
+  // board a player is answering *on* is the one their own answers are already on.
+  const tapped = permanent.tapped || entry.turning
   const cards = [...attached, face]
   const style = {
     '--n': cards.length,
@@ -52,7 +69,7 @@ function Slot({ entry, surface }: { entry: FieldEntry; surface: Surface }) {
   } as CSSProperties
 
   return (
-    <div className={`perm${permanent.tapped ? ' perm-tapped' : ''}`} style={style}>
+    <div className={`perm${tapped ? ' perm-tapped' : ''}`} style={style}>
       {/* an arrow aims at the inner box: turned by the same rotation as the permanent */}
       <div className="perm-inner" data-anchor={face.id}>
         {cards.map((card, index) => (
@@ -104,6 +121,9 @@ function stackKey(entry: FieldEntry, surface: Surface): string | undefined {
     surface.linkOf(permanent.id) ?? '',
     face.artKey,
     face.tapped ? 't' : '',
+    // A permanent the draft has turned is drawn differently from its twin that is still
+    // standing, so it is not one of a set (`FieldEntry.turning`).
+    entry.turning ? 'g' : '',
     face.summoningSick ? 's' : '',
     face.stat?.value ?? '',
     face.counters.map((counter) => `${counter.kind}:${counter.count}`).join('+'),

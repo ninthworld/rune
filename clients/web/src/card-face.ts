@@ -75,6 +75,15 @@ export interface CardFace {
   stat?: CardFaceStat
   /** Counters other than the one already shown as `stat`. */
   counters: readonly Counter[]
+  /**
+   * Keywords this object has that its printed card does not — the trample an until-end-of-turn
+   * pump gave it, the flying an Aura grants (`docs/protocol.md`, `granted_keywords`).
+   *
+   * The server's words, kept apart from `rulesText` because `rulesText` is what the *card*
+   * prints and this is what is true of the object right now. A frame draws both; nothing here
+   * works out which is which, and nothing anywhere reads a keyword back out of them.
+   */
+  grantedKeywords: readonly string[]
   /** Damage marked on a permanent this turn; absent when none is marked. */
   damage?: number
   /** Server-projected state a player must be able to see: token, commander, stack kind. */
@@ -153,6 +162,7 @@ function printedFace(id: string, card: Printed): CardFace {
         ? { kind: 'loyalty', value: card.loyalty, label: 'Starting loyalty' }
         : undefined,
     counters: [],
+    grantedKeywords: [],
     markers: [],
     tapped: false,
     cardTypes: [],
@@ -215,6 +225,9 @@ export function permanentFace(permanent: Permanent): CardFace {
       stat?.kind === 'loyalty'
         ? counters.filter((counter) => counter.kind !== 'loyalty')
         : counters,
+    // What this permanent has that its card never said. Stated by the server (CR 613.1f), so a
+    // creature given trample for the turn says trample, on the card, while it has it.
+    grantedKeywords: list(permanent.granted_keywords),
     damage: permanent.damage !== undefined && permanent.damage > 0 ? permanent.damage : undefined,
     markers: [...base.markers, ...(permanent.is_commander ? ['Commander'] : [])],
     tapped: permanent.tapped === true,
@@ -239,6 +252,7 @@ export function stackFace(item: StackItem): CardFace {
       name: item.description,
       keywords: [],
       counters: [],
+      grantedKeywords: [],
       markers: kind,
       tapped: false,
       cardTypes: [],
@@ -265,6 +279,7 @@ export function emblemFace(emblem: Emblem): CardFace {
     rulesText: abilities.length > 0 ? abilities.join(' ') : undefined,
     keywords: [],
     counters: [],
+    grantedKeywords: [],
     markers: ['Emblem'],
     tapped: false,
     cardTypes: [],
@@ -288,6 +303,9 @@ export function faceSummary(face: CardFace): string {
   // The one board fact with no mark of its own that a player acts on every turn, so it is said
   // as well as drawn — a dimmed card says nothing when read aloud.
   if (face.summoningSick) parts.push('summoning sick')
+  // Read aloud with the rest of what is true of the object, because it is not in the card's
+  // printed text and a reader that skipped it would describe a creature without its trample.
+  parts.push(...face.grantedKeywords)
   if (face.damage !== undefined) parts.push(`${face.damage} damage`)
   for (const counter of face.counters) parts.push(`${counter.count}× ${counter.kind}`)
   parts.push(...face.markers)

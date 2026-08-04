@@ -138,6 +138,17 @@
 .c-text .c-kw {
   font-weight: bold;
 }
+
+/* A keyword this object has and its card never printed (`granted_keywords`).
+   Set with the abilities, because that is where a player reads what a creature
+   can do — and marked as added rather than passed off as printed: the rule above
+   it is the edge of what the card itself says. */
+.c-text .c-granted {
+  margin-top: 0.22em;
+  padding-top: 0.22em;
+  border-top: 1px solid rgba(0, 0, 0, 0.28);
+  color: #1d4b2a;
+}
 .c-pip-inline {
   /* sized off its own font-size, so 1.55em is 0.85em of the text around it */
   font-size: 0.55em;
