@@ -33,7 +33,14 @@
  * - `dockDensity` is "scale first, remove last" (§3): the dock's band is `scene()`'s and can be
  *   as little as 44px, so the contents scale into it rather than anything being dropped from it.
  */
-import { focus, owedActions, type Interaction, type Slot } from './interaction'
+import {
+  focus,
+  globalActions,
+  needsConfirmation,
+  owedActions,
+  type Interaction,
+  type Slot,
+} from './interaction'
 import type { GameResult, ValidAction } from './protocol'
 
 /**
@@ -133,6 +140,34 @@ export function dockNarrates(
   if (result) return true
   if (interaction.confirming !== undefined) return false
   return focus(actions, interaction).action === undefined
+}
+
+/**
+ * The buttons the bar carries, in the order it draws them.
+ *
+ * Two kinds, and the second is the one that was missing. **Global actions** own no object and
+ * have nowhere on the table to be clicked — passing, a mulligan decision — so the bar is where
+ * they live. **Owed actions** do own an object and still belong here: `owedActions` is the
+ * server declining to offer this seat a `pass_priority`, which is its way of saying play does
+ * not continue until this seat answers. A triggered ability waiting to be aimed is exactly that
+ * shape — it is bound to its own stack entry and to the permanent whose ability it is — so it
+ * drew no button, and the band said *the game is waiting on your answer* above nothing that
+ * would answer it. The only way in was to guess which card to click.
+ *
+ * Owed actions come last, so the one the game is actually waiting for is the primary control at
+ * the end of the row. Anything that is both is drawn once. An action that ends the match is not
+ * here at all: it lives in the side panel, away from the button a player presses by reflex.
+ *
+ * Nothing here reads the game. Which actions are global, which are owed, and which end a match
+ * are all the server's own statements (`interaction.ts`).
+ */
+export function barActions(actions: readonly ValidAction[]): readonly ValidAction[] {
+  const ordinary = (action: ValidAction) => !needsConfirmation(action)
+  const globals = globalActions(actions).filter(ordinary)
+  const owed = owedActions(actions).filter(
+    (action) => ordinary(action) && !globals.includes(action),
+  )
+  return [...globals, ...owed]
 }
 
 /**

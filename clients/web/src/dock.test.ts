@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  barActions,
   barTone,
   dockCandidates,
   dockDensity,
@@ -94,6 +95,36 @@ describe('whether the band says what the game wants, or the controls do', () => 
 
   it('still says a finished game is finished, whatever else is open', () => {
     expect(dockNarrates([pass], ask(IDLE, concede), RESULT)).toBe(true)
+  })
+})
+
+describe('the buttons the bar carries', () => {
+  it('carries the actions no object owns', () => {
+    expect(barActions([pass, cast]).map((action) => action.id)).toEqual(['a0'])
+  })
+
+  it('carries a question the game will not proceed past, even though an object owns it', () => {
+    // A trigger waiting to be aimed is bound to its own stack entry, so it drew no button — and
+    // the band said "the game is waiting on your answer" over nothing that would answer it. The
+    // server offering no `pass_priority` is what says this seat owes an answer.
+    expect(barActions([owed, concede]).map((action) => action.id)).toEqual(['a3'])
+  })
+
+  it('puts the owed question last, so the control the game is waiting for is the primary one', () => {
+    // With a pass on offer nothing is owed, so this is the shape where both kinds coexist: a
+    // subject-less action the server offered outright beside one bound to an object.
+    const global: ValidAction = { id: 'a4', type: 'mulligan', label: 'Mulligan', subject: [] }
+    expect(barActions([owed, global]).map((action) => action.id)).toEqual(['a4', 'a3'])
+  })
+
+  it('leaves the action that ends the match out of the row', () => {
+    // Conceding lives in the side panel, away from the button a player presses by reflex.
+    expect(barActions([concede, pass]).map((action) => action.id)).toEqual(['a0'])
+  })
+
+  it('draws an action that is both global and owed exactly once', () => {
+    const both: ValidAction = { id: 'a5', type: 'player_choice', label: 'Discard a card' }
+    expect(barActions([both]).map((action) => action.id)).toEqual(['a5'])
   })
 })
 

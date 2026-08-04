@@ -39,7 +39,7 @@ import {
   type CardFaceLink,
 } from './../../card-face'
 import { arrowsFor, draftArrows } from './../../arrows'
-import { barTone, dockTone, dockWording } from './../../dock'
+import { barActions, barTone, dockTone, dockWording } from './../../dock'
 import {
   IDLE,
   actionsFor,
@@ -495,9 +495,11 @@ export function Board({
       : handFaces.find((face) => face.id === interaction.paying)
 
   const tone = dockTone(actions, interaction, view.result)
-  const globals = globalActions(actions)
-  const concede = globals.find((action) => needsConfirmation(action))
-  const barButtons = globals.filter((action) => action !== concede)
+  const concede = globalActions(actions).find((action) => needsConfirmation(action))
+  // What the bar has to offer: the actions no object owns, and the ones the game will not
+  // proceed past — a trigger waiting to be aimed is bound to an object and still belongs in the
+  // bar, or it is reachable only by guessing which card to click (`dock.barActions`).
+  const barButtons = barActions(actions)
 
   return (
     <div className={`layout${sideOpen ? '' : ' log-hidden'}`}>
