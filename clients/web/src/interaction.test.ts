@@ -4,11 +4,17 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { GameView, type ValidAction } from './protocol'
+import { buildChooseAction } from './submission'
 import {
   IDLE,
   actionsFor,
+  answer,
   arm,
   ask,
+  disarm,
+  remainingCost,
+  spentSources,
+  waysToPay,
   clear,
   fill,
   focus,
@@ -575,5 +581,302 @@ describe('saying what you are playing before you can pay for it', () => {
 
   it('gives up the intent without undoing anything, because nothing was sent for it', () => {
     expect(stopPaying(payFor(IDLE, 'c_bear')).paying).toBeUndefined()
+  })
+})
+
+describe('assembling a payment', () => {
+  /** Four Plains, `{1}{W}` in hand: the cast the server offers before the mana exists. */
+  const CAST: ValidAction = {
+    id: 'cast',
+    type: 'cast_spell',
+    label: "Cast Ajani's Pridemate",
+    subject: ['card_1'],
+    token: 't',
+    prompts: [
+      {
+        kind: 'pay_mana',
+        slot: 'pay_0',
+        prompt: 'Pay {W}',
+        pip: '{W}',
+        candidates: [
+          { id: 'perm_1#0', source: 'perm_1', label: '{W}' },
+          { id: 'perm_2#0', source: 'perm_2', label: '{W}' },
+        ],
+      },
+      {
+        kind: 'pay_mana',
+        slot: 'pay_1',
+        prompt: 'Pay {1}',
+        pip: '{1}',
+        candidates: [
+          { id: 'perm_1#0', source: 'perm_1', label: '{W}' },
+          { id: 'perm_2#0', source: 'perm_2', label: '{W}' },
+        ],
+      },
+    ],
+  }
+
+  /** A dual land that pays the coloured pip two ways. */
+  const DUAL: ValidAction = {
+    ...CAST,
+    id: 'dual',
+    prompts: [
+      {
+        kind: 'pay_mana',
+        slot: 'pay_0',
+        prompt: 'Pay {W}',
+        pip: '{W}',
+        candidates: [
+          { id: 'perm_9#1', source: 'perm_9', label: '{W}' },
+          { id: 'perm_9#2', source: 'perm_9', label: '{U}' },
+        ],
+      },
+    ],
+  }
+
+  it('shows the whole cost before anything is chosen, and one pip less per source', () => {
+    let interaction = arm(IDLE, CAST)
+    expect(remainingCost(slotsOf(CAST, interaction.draft))).toEqual(['{1}', '{W}'])
+
+    // A click on a Plains pays the coloured pip — the server put it first for exactly this.
+    const first = slotsOf(CAST, interaction.draft)
+    interaction = fill(interaction, first[0]!, 'perm_1', first)
+    expect(remainingCost(slotsOf(CAST, interaction.draft))).toEqual(['{1}'])
+
+    const second = slotsOf(CAST, interaction.draft)
+    interaction = fill(interaction, second[1]!, 'perm_2', second)
+    expect(remainingCost(slotsOf(CAST, interaction.draft))).toEqual([])
+  })
+
+  it('will not send until every pip is paid, and will the moment they are', () => {
+    let interaction = arm(IDLE, CAST)
+    expect(focus([CAST], interaction).ready).toBe(false)
+
+    for (const id of ['perm_1', 'perm_2']) {
+      const slots = slotsOf(CAST, interaction.draft)
+      const gesture = gestureFor([CAST], interaction, id)
+      expect(gesture.kind).toBe('fill')
+      const slot = slots.find((each) => each.slot === (gesture as { slot: string }).slot)!
+      interaction = fill(interaction, slot, id, slots)
+    }
+    expect(focus([CAST], interaction).ready).toBe(true)
+  })
+
+  it('takes a source back out, and the pip comes back', () => {
+    let interaction = arm(IDLE, CAST)
+    const slots = slotsOf(CAST, interaction.draft)
+    interaction = fill(interaction, slots[0]!, 'perm_1', slots)
+    expect(remainingCost(slotsOf(CAST, interaction.draft))).toEqual(['{1}'])
+
+    // Clicking the same land again is the way back out — and the click lands on the slot that
+    // is holding it, not on the next empty one.
+    const held = slotsOf(CAST, interaction.draft)
+    const gesture = gestureFor([CAST], interaction, 'perm_1')
+    expect(gesture).toEqual({ kind: 'fill', slot: 'pay_0' })
+    interaction = fill(interaction, held[0]!, 'perm_1', held)
+    expect(remainingCost(slotsOf(CAST, interaction.draft))).toEqual(['{1}', '{W}'])
+    expect(focus([CAST], interaction).ready).toBe(false)
+  })
+
+  it('spends one permanent once — a land already paying a pip is not offered for another', () => {
+    let interaction = arm(IDLE, CAST)
+    const slots = slotsOf(CAST, interaction.draft)
+    interaction = fill(interaction, slots[0]!, 'perm_1', slots)
+
+    // `perm_1` is a listed candidate for the generic pip too, but it is spent. The click goes
+    // back to the pip holding it rather than double-spending the land.
+    expect(gestureFor([CAST], interaction, 'perm_1')).toEqual({ kind: 'fill', slot: 'pay_0' })
+    expect([...spentSources(slotsOf(CAST, interaction.draft))]).toEqual(['perm_1'])
+  })
+
+  it('asks which way a dual land taps, and does not guess', () => {
+    let interaction = arm(IDLE, DUAL)
+    const slots = slotsOf(DUAL, interaction.draft)
+    interaction = fill(interaction, slots[0]!, 'perm_9', slots)
+
+    // Nothing was chosen — the question is open, and it carries the server's own labels.
+    expect(interaction.draft['pay_0'] ?? []).toEqual([])
+    expect(interaction.asking).toEqual({ slot: 'pay_0', source: 'perm_9' })
+    expect(waysToPay(slots[0]!, 'perm_9').map((way) => way.label)).toEqual(['{W}', '{U}'])
+
+    interaction = answer(interaction, 'pay_0', ['perm_9#2'])
+    expect(interaction.draft['pay_0']).toEqual(['perm_9#2'])
+    expect(interaction.asking).toBeUndefined()
+    expect(focus([DUAL], interaction).ready).toBe(true)
+  })
+
+  it('does not ask when the permanent pays the pip only one way', () => {
+    let interaction = arm(IDLE, CAST)
+    const slots = slotsOf(CAST, interaction.draft)
+    interaction = fill(interaction, slots[0]!, 'perm_1', slots)
+    expect(interaction.asking).toBeUndefined()
+    expect(interaction.draft['pay_0']).toEqual(['perm_1#0'])
+  })
+
+  it('cancels the whole payment without having sent anything', () => {
+    let interaction = arm(IDLE, CAST)
+    const slots = slotsOf(CAST, interaction.draft)
+    interaction = fill(interaction, slots[0]!, 'perm_1', slots)
+    expect(interaction.pending).toBeUndefined()
+
+    const cancelled = disarm(interaction)
+    expect(cancelled.armed).toBeUndefined()
+    expect(cancelled.draft).toEqual({})
+    expect(cancelled.pending).toBeUndefined()
+  })
+
+  it('sends the activations it chose, keyed by slot', () => {
+    let interaction = arm(IDLE, CAST)
+    for (const [index, id] of ['perm_1', 'perm_2'].entries()) {
+      const slots = slotsOf(CAST, interaction.draft)
+      interaction = fill(interaction, slots[index]!, id, slots)
+    }
+    const message = buildChooseAction(CAST, interaction.draft)
+    expect(message.targets).toEqual([
+      { slot: 'pay_0', chosen: ['perm_1#0'] },
+      { slot: 'pay_1', chosen: ['perm_2#0'] },
+    ])
+  })
+})
+
+describe('what a committed source looks like', () => {
+  const CAST: ValidAction = {
+    id: 'cast',
+    type: 'cast_spell',
+    label: 'Cast it',
+    subject: ['card_1'],
+    token: 't',
+    prompts: [
+      {
+        kind: 'pay_mana',
+        slot: 'pay_0',
+        prompt: 'Pay {W}',
+        pip: '{W}',
+        candidates: [
+          { id: 'perm_1#0', source: 'perm_1', label: '{W}' },
+          { id: 'perm_2#0', source: 'perm_2', label: '{W}' },
+        ],
+      },
+    ],
+  }
+
+  it('draws a land paying a pip as chosen, not as still available', () => {
+    let interaction = arm(IDLE, CAST)
+    expect(highlightFor([CAST], interaction, 'perm_1')).toBe('candidate')
+
+    const slots = slotsOf(CAST, interaction.draft)
+    interaction = fill(interaction, slots[0]!, 'perm_1', slots)
+
+    // The draft holds `perm_1#0`; the board draws `perm_1`. Committed, and visibly so.
+    expect(highlightFor([CAST], interaction, 'perm_1')).toBe('selected')
+    // The other Plains stays live, because clicking it swaps which land pays the pip. A pip
+    // that could only be un-picked and re-picked would make changing your mind two clicks.
+    expect(highlightFor([CAST], interaction, 'perm_2')).toBe('candidate')
+
+    const slots2 = slotsOf(CAST, interaction.draft)
+    const swapped = fill(interaction, slots2[0]!, 'perm_2', slots2)
+    expect(swapped.draft['pay_0']).toEqual(['perm_2#0'])
+  })
+})
+
+describe('a cost that is not only mana', () => {
+  /** Tormenting Voice: {1}{R}, and discard a card as an additional cost. */
+  const VOICE: ValidAction = {
+    id: 'voice',
+    type: 'cast_spell',
+    label: 'Cast Tormenting Voice',
+    subject: ['card_1'],
+    token: 't',
+    prompts: [
+      {
+        kind: 'pay_mana',
+        slot: 'pay_0',
+        prompt: 'Pay {R}',
+        pip: '{R}',
+        candidates: [{ id: 'perm_1#0', source: 'perm_1', label: '{R}' }],
+      },
+      {
+        kind: 'pay_mana',
+        slot: 'pay_1',
+        prompt: 'Pay {1}',
+        pip: '{1}',
+        candidates: [
+          { id: 'perm_1#0', source: 'perm_1', label: '{R}' },
+          { id: 'perm_2#0', source: 'perm_2', label: '{R}' },
+        ],
+      },
+      {
+        kind: 'select_from_zone',
+        slot: 'cost_discard',
+        prompt: 'Discard a card',
+        zone: 'hand',
+        owner: 'p0',
+        count: 1,
+        candidates: ['card_2', 'card_3'],
+      },
+    ],
+  }
+
+  it('will not cast until the discard is chosen as well as the mana', () => {
+    let interaction = arm(IDLE, VOICE)
+    for (const [index, id] of ['perm_1', 'perm_2'].entries()) {
+      const slots = slotsOf(VOICE, interaction.draft)
+      interaction = fill(interaction, slots[index]!, id, slots)
+    }
+    // Every pip is paid and the cost line is empty — and it still cannot be cast, because
+    // the discard is part of the cost and has not been chosen.
+    expect(remainingCost(slotsOf(VOICE, interaction.draft))).toEqual([])
+    expect(focus([VOICE], interaction).ready).toBe(false)
+
+    const slots = slotsOf(VOICE, interaction.draft)
+    const discard = slots.find((slot) => slot.slot === 'cost_discard')!
+    expect(discard.kind).toBe('zone')
+    expect(gestureFor([VOICE], interaction, 'card_3')).toEqual({
+      kind: 'fill',
+      slot: 'cost_discard',
+    })
+    interaction = fill(interaction, discard, 'card_3', slots)
+    expect(focus([VOICE], interaction).ready).toBe(true)
+  })
+
+  it('sends the mana and the discard in one message', () => {
+    let interaction = arm(IDLE, VOICE)
+    for (const [index, id] of ['perm_1', 'perm_2'].entries()) {
+      const slots = slotsOf(VOICE, interaction.draft)
+      interaction = fill(interaction, slots[index]!, id, slots)
+    }
+    const slots = slotsOf(VOICE, interaction.draft)
+    interaction = fill(
+      interaction,
+      slots.find((s) => s.slot === 'cost_discard')!,
+      'card_3',
+      slots,
+    )
+
+    const message = buildChooseAction(VOICE, interaction.draft)
+    expect(message.targets).toEqual([
+      { slot: 'pay_0', chosen: ['perm_1#0'] },
+      { slot: 'pay_1', chosen: ['perm_2#0'] },
+      { slot: 'cost_discard', chosen: ['card_3'] },
+    ])
+  })
+
+  it('takes the whole cost back at once, discard included', () => {
+    let interaction = arm(IDLE, VOICE)
+    const slots = slotsOf(VOICE, interaction.draft)
+    interaction = fill(interaction, slots[0]!, 'perm_1', slots)
+    interaction = fill(
+      interaction,
+      slots.find((s) => s.slot === 'cost_discard')!,
+      'card_2',
+      slots,
+    )
+    expect(interaction.draft['cost_discard']).toEqual(['card_2'])
+
+    // Nothing was sent, so abandoning it costs a click and no message — and the card that
+    // was going to be discarded is still just a card in hand.
+    const cancelled = disarm(interaction)
+    expect(cancelled.draft).toEqual({})
+    expect(cancelled.pending).toBeUndefined()
   })
 })

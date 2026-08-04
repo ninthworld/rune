@@ -546,6 +546,17 @@ pub(crate) fn apply_choice_outcome(
     }
 }
 
+/// Discard cards to pay an additional cast cost (CR 601.2b).
+///
+/// The same move as any other discard, deliberately: a card discarded to a cost is
+/// discarded (CR 701.8), and routing it here rather than writing a second hand-to-
+/// graveyard move is what keeps that true as discards grow triggers and replacements.
+/// It exists only because the cost path has already *chosen* the cards — they arrive in
+/// the payment — so it needs the second half of a choice without the first.
+pub(crate) fn discard_to_cost(state: &mut GameState, subject: PlayerId, chosen: &[CardInstanceId]) {
+    discard_chosen(state, subject, chosen);
+}
+
 /// Move the chosen cards from the subject's hand to their graveyard (CR 701.8) and log
 /// how many moved — never which, since a hand is hidden and a count is all the other
 /// seats are entitled to. (The graveyard itself is public, so the cards become visible

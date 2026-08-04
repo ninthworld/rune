@@ -292,6 +292,10 @@ impl RandomPolicy {
                         chosen: vec![value.to_string()],
                     }
                 }
+                // A mana pip is left for the server to pay (ADR 0010). Picking randomly
+                // per pip would have to avoid spending one permanent twice, which is
+                // bookkeeping in service of a preference this AI does not have.
+                Prompt::PayMana { .. } => continue,
             };
             out.push(choice);
         }

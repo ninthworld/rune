@@ -20,7 +20,14 @@
  */
 import type { CardFace } from './../../card-face'
 import { dockCandidates, type BarTone } from './../../dock'
-import { answer, fill, type Interaction, type Slot } from './../../interaction'
+import {
+  answer,
+  fill,
+  remainingCost,
+  waysToPay,
+  type Interaction,
+  type Slot,
+} from './../../interaction'
 import { manaSymbols, spokenSymbol } from './../../mana'
 import type { ValidAction } from './../../protocol'
 import type { ManaPip } from './../../table'
@@ -79,6 +86,15 @@ export function ActionBar({
   // screen naming what it wants, so it says it once.
   const asking = action !== undefined
   const cost = manaSymbols(paying?.manaCost)
+  // The cost still owed, and the question this client is posing itself about a source that can
+  // pay the pip being filled more than one way.
+  const owed = remainingCost(slots)
+  const pending = interaction.asking
+  const pendingSlot = pending && slots.find((slot) => slot.slot === pending.slot)
+  const askingWhich =
+    pending && pendingSlot
+      ? { slot: pending.slot, ways: waysToPay(pendingSlot, pending.source) }
+      : undefined
 
   return (
     <div className={`action-bar action-${tone}`} role="region" aria-label="Actions">
@@ -124,6 +140,41 @@ export function ActionBar({
         </div>
       )}
 
+      {/* What is still owed, as pips — the unanswered `pay_mana` slots and nothing else. No
+          cost is subtracted from anything here: a pip is drawn while its slot is empty and
+          stops being drawn when it is filled, which is the whole of the arithmetic. */}
+      {asking && owed.length > 0 && (
+        <div className="action-pay" role="group" aria-label="Still to pay">
+          <span className="pay-part" role="status">
+            <span className="pay-label">Pay</span>
+            {owed.flatMap((pip, index) =>
+              manaSymbols(pip).map((symbol, i) => (
+                <Pip key={`${index}:${i}`} symbol={symbol.glyph} label={spokenSymbol(symbol)} />
+              )),
+            )}
+          </span>
+        </div>
+      )}
+
+      {/* The dual-land question. The server listed one permanent twice for this pip, which is
+          the entire reason there is anything to ask; the answers are its own labels. */}
+      {askingWhich && (
+        <div className="action-slots" role="group" aria-label="Which mana?">
+          <span className="slot">
+            <span className="slot-ask">Tap for</span>
+            {askingWhich.ways.map((way) => (
+              <button
+                key={way.id}
+                className="action-done action-alt"
+                onClick={() => update(answer(interaction, askingWhich.slot, [way.id]))}
+              >
+                <Symbols text={way.label} />
+              </button>
+            ))}
+          </span>
+        </div>
+      )}
+
       {asking && (
         <div className="action-slots">
           {slots.map((slot) => {
@@ -131,6 +182,10 @@ export function ActionBar({
               slot.kind === 'option'
                 ? slot.options
                 : dockCandidates(slot, drawn).map((id) => ({ id, label: labelFor(id) }))
+            // A pip is answered by clicking a source on the board, and the line above already
+            // says which pips are still owed. Its own row would be the third copy — and the one
+            // that grows with the board, since every untapped land can pay a generic pip.
+            if (slot.kind === 'mana' && candidates.length === 0) return null
             return (
               <span key={slot.slot} className="slot" role="group" aria-label={slot.prompt}>
                 {slot.kind === 'number' ? (
@@ -199,7 +254,7 @@ export function ActionBar({
                 : 'Cancel'}
             </button>
             <button className="action-done" disabled={!ready || blocked} onClick={confirm}>
-              Confirm
+              {asking && slots.some((slot) => slot.kind === 'mana') ? 'Cast' : 'Confirm'}
             </button>
           </>
         ) : (
@@ -237,5 +292,9 @@ function tally(slot: Slot): string {
       return slot.min === slot.max
         ? ` ${held} of ${slot.max}`
         : ` ${held} of ${slot.min ?? 0}–${slot.max}`
+    case 'mana':
+      // The pip line above already says what is still owed, and each pip's own controls say
+      // what can pay it. A count here would be the same fact a third time.
+      return ''
   }
 }

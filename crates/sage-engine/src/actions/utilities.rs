@@ -208,3 +208,34 @@ pub(crate) fn tap_cost_is_summoning_sick(
 pub(crate) fn all_unique<T: PartialEq>(ids: &[T]) -> bool {
     ids.iter().enumerate().all(|(i, id)| !ids[..i].contains(id))
 }
+
+/// The total mana cost of casting `card` right now, and the printed subtypes a
+/// restricted-mana check reads (CR 106.6).
+///
+/// One answer, in one place, because three call sites need it and they must not be able
+/// to disagree: the generator deciding whether to offer the cast, the legality gate
+/// deciding whether a payment covers it, and [`crate::apply_action`] charging it. The
+/// commander tax (CR 903.8) is part of the cost rather than a surcharge applied later,
+/// which is exactly why it cannot live only in the apply path.
+///
+/// `None` for a card the database does not hold — the same defensive absence every other
+/// lookup here returns rather than a zero cost that would read as free.
+pub(crate) fn cast_cost(
+    state: &GameState,
+    db: &CardDatabase,
+    card: crate::id::CardInstance,
+) -> Option<(crate::mana::ManaCost, Vec<String>)> {
+    let data = db.card(card.card)?;
+    let base = crate::mana::parse_mana_cost(&data.mana_cost);
+    let player = state.players.get(state.priority.0)?;
+    // A commander cast from the command zone carries the tax; the same card cast from
+    // hand does not, so *where it is* decides the cost (CR 903.8).
+    let from_command = player.command.iter().any(|c| c.id == card.id);
+    let cost = if from_command {
+        let casts = player.commander.as_ref().map_or(0, |c| c.casts);
+        crate::commander::commander_tax_cost(&base, casts)
+    } else {
+        base
+    };
+    Some((cost, data.subtypes.clone()))
+}

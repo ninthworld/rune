@@ -9,8 +9,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use sage_engine::{
-    apply_action, choice_candidates, pending_player_choice, valid_actions, Action, CardDatabase,
-    CardId, CardInstance, CardInstanceId, FunctionalId, GameState, PlayerId, StackObjectKind, Step,
+    apply_action, pending_player_choice, valid_actions, Action, CardDatabase, CardId, CardInstance,
+    CostPayment, FunctionalId, GameState, PlayerId, StackObjectKind, Step,
 };
 
 fn db() -> CardDatabase {
@@ -67,6 +67,7 @@ fn offers_cast(state: &GameState, db: &CardDatabase, card: CardInstance) -> bool
     valid_actions(state, db).contains(&Action::CastSpell {
         card,
         targets: Vec::new(),
+        payment: Vec::new(),
     })
 }
 
@@ -91,6 +92,7 @@ fn tormenting_voice_is_uncastable_with_no_other_card_to_discard() {
         &Action::CastSpell {
             card: voice,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );
@@ -107,10 +109,11 @@ fn tormenting_voice_is_uncastable_with_no_other_card_to_discard() {
 }
 
 #[test]
-fn the_discard_is_paid_at_cast_time_before_anyone_can_respond() {
-    // A cost is paid while the spell is cast, not when it resolves: the card is gone
-    // from hand the moment the spell hits the stack, and no seat gets priority in
-    // between — the pending choice is the only legal action anyone has.
+fn the_discard_rides_in_the_payment_and_the_whole_cast_is_one_action() {
+    // A cost is paid while the spell is cast, not when it resolves — and, since the
+    // payment carries the choice, not in a question posed afterwards either. One
+    // `apply_action`: the card is discarded, the spell is on the stack, and no seat ever
+    // held a window in between because there was never a moment between.
     let db = db();
     let mut state = main_phase(&db);
     let hand = hand_of(&mut state, &db, &["tormenting_voice", "murder"]);
@@ -121,6 +124,7 @@ fn the_discard_is_paid_at_cast_time_before_anyone_can_respond() {
         &Action::CastSpell {
             card: voice,
             targets: Vec::new(),
+            payment: vec![CostPayment::Discard(murder.id)],
         },
         &db,
     );
@@ -131,40 +135,105 @@ fn the_discard_is_paid_at_cast_time_before_anyone_can_respond() {
         )),
         "the spell is on the stack"
     );
-
-    // The cost is owed, by its caster, and it is all anyone may do.
-    let pending = pending_player_choice(&cast).expect("the discard is owed");
-    assert_eq!(pending.chooser, PlayerId(0));
-    assert_eq!(cast.priority, PlayerId(0));
-    let offered = valid_actions(&cast, &db);
+    assert!(cast.players[0].hand.is_empty(), "the Murder was discarded");
+    assert!(cast.players[0].graveyard.iter().any(|c| c.id == murder.id));
     assert!(
-        !offered.contains(&Action::PassPriority),
-        "nobody may pass, respond, or cast anything until the cost is paid"
-    );
-
-    // The spell itself is not a candidate for its own cost — it is on the stack.
-    let candidates = choice_candidates(&cast, pending.question.cards().unwrap(), &db);
-    assert_eq!(candidates.len(), 1);
-    assert_eq!(candidates[0].id, murder.id);
-
-    let chosen: Vec<CardInstanceId> = vec![murder.id];
-    let paid = apply_action(&cast, &Action::AnswerChoice { chosen }, &db);
-    assert!(paid.players[0].hand.is_empty(), "the Murder was discarded");
-    assert!(paid.players[0].graveyard.iter().any(|c| c.id == murder.id));
-    assert!(
-        paid.stack.iter().any(|o| matches!(
-            o.kind,
-            StackObjectKind::Spell { card } if card.id == voice.id
-        )),
-        "paying a cost does not resolve the spell — it is still on the stack"
+        pending_player_choice(&cast).is_none(),
+        "the cost was paid as part of casting, so nothing is owed afterwards"
     );
 
     // Only now does the spell resolve, and only then does it draw.
-    let resolved = apply_action(&paid, &Action::PassPriority, &db);
+    let resolved = apply_action(&cast, &Action::PassPriority, &db);
     let resolved = apply_action(&resolved, &Action::PassPriority, &db);
     assert_eq!(resolved.players[0].hand.len(), 2, "drew two");
     assert!(resolved.players[0]
         .graveyard
         .iter()
         .any(|c| c.id == voice.id));
+}
+
+#[test]
+fn a_cast_that_names_no_discard_is_a_no_op() {
+    // **The undo property, for a non-mana cost.** A player part-way through assembling a
+    // payment has named the spell but not yet what to pay with, and that submission does
+    // nothing at all: no card leaves hand, nothing reaches the stack. Which is what makes
+    // abandoning it free — there is nothing to take back.
+    let db = db();
+    let mut state = main_phase(&db);
+    let hand = hand_of(&mut state, &db, &["tormenting_voice", "murder"]);
+    let voice = hand[0];
+
+    let after = apply_action(
+        &state,
+        &Action::CastSpell {
+            card: voice,
+            targets: Vec::new(),
+            payment: Vec::new(),
+        },
+        &db,
+    );
+    assert_eq!(after, state, "an unpaid additional cost casts nothing");
+}
+
+#[test]
+fn the_spell_being_cast_cannot_pay_for_itself() {
+    // CR 601.2b/601.2h: the card is on its way to the stack, so it is not a card in hand
+    // to discard. Naming it is refused rather than half-applied.
+    let db = db();
+    let mut state = main_phase(&db);
+    let hand = hand_of(&mut state, &db, &["tormenting_voice", "murder"]);
+    let voice = hand[0];
+
+    let after = apply_action(
+        &state,
+        &Action::CastSpell {
+            card: voice,
+            targets: Vec::new(),
+            payment: vec![CostPayment::Discard(voice.id)],
+        },
+        &db,
+    );
+    assert_eq!(
+        after, state,
+        "a spell cannot discard itself to its own cost"
+    );
+}
+
+#[test]
+fn a_discard_is_refused_on_a_card_that_owes_no_additional_cost() {
+    // A cost is paid exactly, in both directions: a spell with no additional cost is not
+    // paid *more* than it asks for, so a payment naming a spare discard is illegal rather
+    // than generously accepted.
+    let db = db();
+    let mut state = main_phase(&db);
+    let hand = hand_of(&mut state, &db, &["murder", "tormenting_voice"]);
+    let (murder, voice) = (hand[0], hand[1]);
+    // Give Murder something to kill so its target slot is fillable.
+    let bear = state.new_instance(cid(&db, "colossal_dreadmaw"));
+    let bear_id = sage_engine::PermanentId(state.mint_id());
+    state.battlefield.push(sage_engine::Permanent {
+        id: bear_id,
+        instance: bear.id,
+        printed: bear.card.into(),
+        controller: PlayerId(1),
+        tapped: false,
+        entered_turn: 0,
+        attacking: None,
+        blocking: None,
+        damage: 0,
+        counters: Default::default(),
+        attached_to: None,
+    });
+    let victim = state.battlefield[0].id;
+
+    let after = apply_action(
+        &state,
+        &Action::CastSpell {
+            card: murder,
+            targets: vec![sage_engine::Target::Permanent(victim)],
+            payment: vec![CostPayment::Discard(voice.id)],
+        },
+        &db,
+    );
+    assert_eq!(after, state, "Murder has no additional cost to pay");
 }

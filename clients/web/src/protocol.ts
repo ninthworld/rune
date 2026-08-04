@@ -359,6 +359,22 @@ export const PromptOption = z.object({
 })
 export type PromptOption = z.infer<typeof PromptOption>
 
+/**
+ * One way to pay one pip: the permanent to click (`source`) and the activation to send
+ * back (`id`).
+ *
+ * They are separate fields on purpose. A permanent that can pay a pip more than one way —
+ * a dual land — appears once per way, same `source`, different `id` and `label`. That is
+ * how a client knows to ask "which?" without knowing what mana is: ask when the slot being
+ * filled lists this `source` more than once.
+ */
+export const ManaOption = z.object({
+  id: z.string(),
+  source: EntityId,
+  label: z.string().optional(),
+})
+export type ManaOption = z.infer<typeof ManaOption>
+
 export const Prompt = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('option'),
@@ -390,6 +406,14 @@ export const Prompt = z.discriminatedUnion('kind', [
     prompt: z.string(),
     min: z.number(),
     max: z.number(),
+  }),
+  z.object({
+    kind: z.literal('pay_mana'),
+    slot: z.string(),
+    prompt: z.string(),
+    /** The symbol this slot pays. The still-to-pay line is the unfilled slots' pips. */
+    pip: z.string(),
+    candidates: z.array(ManaOption).optional(),
   }),
 ])
 export type Prompt = z.infer<typeof Prompt>

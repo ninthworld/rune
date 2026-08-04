@@ -365,6 +365,7 @@ mod tests {
             &Action::CastSpell {
                 card: instance,
                 targets,
+                payment: Vec::new(),
             },
             db,
         );
@@ -634,6 +635,7 @@ mod tests {
             &Action::CastSpell {
                 card: spell,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );

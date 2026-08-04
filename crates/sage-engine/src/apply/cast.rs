@@ -196,6 +196,7 @@ pub(crate) fn apply_cast_spell(
     state: &mut GameState,
     card: CardInstance,
     targets: &[Target],
+    payment: &[crate::CostPayment],
     db: &CardDatabase,
 ) {
     let controller = state.priority;
@@ -273,50 +274,40 @@ pub(crate) fn apply_cast_spell(
         card,
     });
     state.consecutive_passes = 0;
-    pay_additional_cost(state, controller, data, db);
+    pay_additional_cost(state, controller, data, payment, db);
 }
 
-/// Pay `data`'s additional cast cost (CR 601.2b), if it has one.
+/// Pay `data`'s additional cast cost (CR 601.2b) from the cards the payment named.
 ///
-/// Posed **after** the card is on the stack, which is what stops a spell being
-/// discarded to pay for itself, and before any player receives priority: a pending
-/// choice is the only thing the game will accept until it is answered
-/// ([`crate::apply_action`] step 6), so nothing can be cast, activated, or responded
-/// with in between. The offer gate has already established the cost is payable
-/// ([`GameState::additional_cost_is_payable`]), so the question always has an answer.
+/// Paid **after** the card is on the stack, which is what stops a spell being discarded
+/// to pay for itself, and in the same `apply_action` as everything else about the cast.
+/// That last part is the change worth noting: this used to pose a
+/// [`PendingChoice`](crate::PendingChoice) and ask *once the spell was already on the
+/// stack*, which made the cost the one part of a cast a player could not take back —
+/// by the time they were asked, there was nothing left to abandon. Now the choice
+/// arrives with the action, so a player assembling it has sent nothing and may put any
+/// of it back.
 ///
-/// The choice carries **no [`Resume`](crate::choice::Resume)**: paying a cost is not a
-/// suspended resolution. The spell is on the stack and stays there whatever the answer
-/// names; there is nothing left of the cast to resume.
+/// [`action_is_legal`](crate::apply_action) has already established that the named cards
+/// are exactly what the cost demands and that each is in hand, so this discards rather
+/// than re-deciding.
 fn pay_additional_cost(
     state: &mut GameState,
     controller: PlayerId,
     data: &crate::CardData,
+    payment: &[crate::CostPayment],
     db: &CardDatabase,
 ) {
-    let Some(cost) = data.additional_cost else {
+    if data.additional_cost.is_none() {
         return;
-    };
-    match cost {
-        crate::AdditionalCost::Discard { count } => {
-            crate::choice::pose_choices(
-                state,
-                vec![(
-                    controller,
-                    crate::choice::ChoiceQuestion::Cards(crate::choice::ChoiceRequest {
-                        subject: controller,
-                        zone: crate::choice::ChoiceZone::Hand,
-                        filter: crate::ability::CardFilter::Any,
-                        source_card: None,
-                        min: u32::from(count),
-                        max: u32::from(count),
-                        outcome: crate::choice::ChoiceOutcome::Discard,
-                    }),
-                )],
-                db,
-            );
-        }
     }
+    // The same move a discard made any other way performs (CR 701.8), so a card
+    // discarded to a cost lands in the graveyard, logs as a count rather than a name,
+    // and fires what a discard fires — down one path, not two.
+    // Whatever a discard triggers is collected by `apply_action` diffing the whole
+    // action, so paying the cost here needs no trigger pass of its own.
+    let _ = db;
+    crate::choice::discard_to_cost(state, controller, &crate::actions::discards_of(payment));
 }
 
 /// Apply a single [`Effect`] to `state` on behalf of `controller`.
@@ -1096,6 +1087,7 @@ mod tests {
             &Action::CastSpell {
                 card: scout,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -1141,6 +1133,7 @@ mod tests {
             &Action::CastSpell {
                 card: scanner,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -1256,6 +1249,7 @@ mod tests {
             &Action::CastSpell {
                 card: surge,
                 targets: vec![Target::Permanent(creature)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -1342,6 +1336,7 @@ mod tests {
             &Action::CastSpell {
                 card: jump,
                 targets: vec![Target::Permanent(creature)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -1514,6 +1509,7 @@ mod tests {
             &Action::CastSpell {
                 card: curse,
                 targets: vec![Target::Permanent(host)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -1587,6 +1583,7 @@ mod tests {
             &Action::CastSpell {
                 card: negation,
                 targets: vec![Target::Spell(boar_sid)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -1707,6 +1704,7 @@ mod tests {
             &Action::CastSpell {
                 card: shock,
                 targets: vec![Target::Permanent(boar)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -1740,6 +1738,7 @@ mod tests {
             &Action::CastSpell {
                 card: shock,
                 targets: vec![Target::Player(PlayerId(1))],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -1767,6 +1766,7 @@ mod tests {
             &Action::CastSpell {
                 card: bolt,
                 targets: vec![Target::Player(PlayerId(1))],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -1989,6 +1989,7 @@ mod tests {
             &Action::CastSpell {
                 card: study,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2022,6 +2023,7 @@ mod tests {
             &Action::CastSpell {
                 card: blessing,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2087,6 +2089,7 @@ mod tests {
             &Action::CastSpell {
                 card: ray,
                 targets: vec![Target::Permanent(boar)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2117,6 +2120,7 @@ mod tests {
             &Action::CastSpell {
                 card: ray,
                 targets: vec![Target::Permanent(boar)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2157,6 +2161,7 @@ mod tests {
             &Action::CastSpell {
                 card: touch,
                 targets: vec![Target::Permanent(boar)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2186,6 +2191,7 @@ mod tests {
             &Action::CastSpell {
                 card: balm,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2213,6 +2219,7 @@ mod tests {
             &Action::CastSpell {
                 card: ordeal,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2250,6 +2257,7 @@ mod tests {
             &Action::CastSpell {
                 card: aegis,
                 targets: vec![Target::Permanent(creature)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2280,6 +2288,7 @@ mod tests {
             &Action::CastSpell {
                 card: leap,
                 targets: vec![Target::Permanent(creature)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2322,6 +2331,7 @@ mod tests {
             &Action::CastSpell {
                 card: leap,
                 targets: vec![Target::Permanent(mine), Target::Permanent(theirs)],
+                payment: Vec::new(),
             },
             &db
         ));
@@ -2331,6 +2341,7 @@ mod tests {
             &Action::CastSpell {
                 card: leap,
                 targets: vec![Target::Permanent(mine)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2363,6 +2374,7 @@ mod tests {
             &Action::CastSpell {
                 card: strike,
                 targets: vec![Target::Permanent(creature)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2392,6 +2404,7 @@ mod tests {
             &Action::CastSpell {
                 card: spores,
                 targets: vec![Target::Permanent(ogre)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2421,6 +2434,7 @@ mod tests {
             &Action::CastSpell {
                 card: pledge,
                 targets: vec![Target::Permanent(host)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2456,6 +2470,7 @@ mod tests {
             &Action::CastSpell {
                 card: oak,
                 targets: vec![Target::Permanent(host)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2483,6 +2498,7 @@ mod tests {
             &Action::CastSpell {
                 card: growth,
                 targets: vec![Target::Permanent(host)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2514,6 +2530,7 @@ mod tests {
             &Action::CastSpell {
                 card: caress,
                 targets: vec![Target::Permanent(victim)],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2547,6 +2564,7 @@ mod tests {
             &Action::CastSpell {
                 card: axe,
                 targets: vec![Target::Player(PlayerId(1))],
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2603,6 +2621,7 @@ mod tests {
             &Action::CastSpell {
                 card: oracle,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -2637,6 +2656,7 @@ mod tests {
             &Action::CastSpell {
                 card: wurm,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );

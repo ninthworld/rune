@@ -164,6 +164,33 @@ pub struct PromptOption {
     pub requires: Vec<String>,
 }
 
+/// One way to pay one pip of a cost: a permanent to tap and what tapping it that way
+/// produces (CR 601.2f–g).
+///
+/// The `source` is what a player clicks and the `id` is what the client sends back, and
+/// they are **deliberately not the same field**. A permanent with more than one mana
+/// ability — every dual land is `{T}: Add {W}` *and* `{T}: Add {U}` — appears in a slot's
+/// candidates once per ability it could pay that pip with, each with its own `id` and its
+/// own [`label`](Self::label). So "which color did you mean?" is a question the client can
+/// see it needs to ask, without knowing anything about mana: **ask when the same `source`
+/// appears more than once for the slot being filled, and offer the labels.**
+///
+/// Where the choice would not matter, the server does not offer it. A generic pip is paid
+/// equally well by either half of a dual land, so it lists the permanent once and the
+/// player is never asked a question with one meaningful answer.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ManaOption {
+    /// Opaque id the client echoes back as this slot's chosen value. Never parsed — it
+    /// identifies an activation, and how is the server's business.
+    pub id: String,
+    /// The permanent this taps: the entity a player clicks on the board.
+    pub source: EntityId,
+    /// What this option produces, e.g. `"{W}"` — the label for the disambiguating
+    /// question, and never anything the client computes a cost from.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub label: String,
+}
+
 /// A non-target choice slot a [`ValidAction`] may pose, a **generalization of the
 /// [`TargetRequirement`] slot pattern** (slot + prompt + candidates, bound by the
 /// action's content [`token`](ValidAction::token), ADR 0004) to three further
@@ -273,6 +300,43 @@ pub enum Prompt {
         min: u32,
         /// The largest legal value, inclusive. Always serialized.
         max: u32,
+    },
+    /// Pay **one pip** of a mana cost by tapping something (CR 601.2f–g).
+    ///
+    /// One slot per unit of the cost: `{1}{W}` is posed as two of these, and a cast that
+    /// needs no mana poses none. That is the whole design, and the reason for it is what
+    /// it lets a client do without knowing any rules — **the "still to pay" line is the
+    /// unfilled slots**, drawn from their [`pip`](Prompt::PayMana::pip) symbols. Filling
+    /// one removes a pip; taking it back out puts it back. Nothing subtracts a cost from
+    /// anything, which is exactly the arithmetic a client must never do (hybrid pips,
+    /// restricted mana and cost reduction are the server's to reason about, and a client
+    /// that got any of them right today would get the next one wrong).
+    ///
+    /// It also makes "can this be cast yet" a slot-counting question: every mandatory slot
+    /// filled means the cost is covered, which is the same test that already enables a
+    /// submit for a targeted spell.
+    ///
+    /// The slot is answered with one [`ManaOption::id`] as its single `chosen` entry.
+    /// Sources are **not** shared between slots: a permanent can be tapped once, so a
+    /// client must not offer one already spent on another slot of the same action, and a
+    /// submission that names it twice is rejected.
+    ///
+    /// A cast paid out of mana already floating (CR 605.3) poses **no** pay-mana slots at
+    /// all — the pool covers it and there is nothing to choose.
+    PayMana {
+        /// Stable slot id the client echoes back as [`TargetChoice::slot`].
+        slot: String,
+        /// Human-readable prompt for this pip, e.g. `"Pay {W}"`.
+        prompt: String,
+        /// The mana symbol this slot pays, e.g. `"{W}"` or `"{1}"` — the pip a client
+        /// draws in the running cost line, and the *only* thing it needs in order to show
+        /// what is left to pay. Display text: matched against the symbols a client can
+        /// render and never parsed for a value.
+        pip: String,
+        /// The ways this pip may be paid — the **only** answers the client may submit.
+        /// Enumerated O(sources) per slot, never the combinations across slots.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        candidates: Vec<ManaOption>,
     },
 }
 
@@ -514,6 +578,88 @@ mod tests {
         );
         let back: Prompt = serde_json::from_value(json).unwrap();
         assert_eq!(back, prompt);
+    }
+
+    #[test]
+    fn pay_mana_prompt_round_trips_and_names_one_pip() {
+        // One slot pays one pip. A dual land appears twice — once per ability it could
+        // pay *this* pip with — which is the whole signal a client needs to know it must
+        // ask which color, without knowing what a color is.
+        let prompt = Prompt::PayMana {
+            slot: "m0".into(),
+            prompt: "Pay {W}".into(),
+            pip: "{W}".into(),
+            candidates: vec![
+                ManaOption {
+                    id: "perm_7#1".into(),
+                    source: "perm_7".into(),
+                    label: "{W}".into(),
+                },
+                ManaOption {
+                    id: "perm_9#1".into(),
+                    source: "perm_9".into(),
+                    label: "{W}".into(),
+                },
+            ],
+        };
+        let json = serde_json::to_value(&prompt).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "kind": "pay_mana",
+                "slot": "m0",
+                "prompt": "Pay {W}",
+                "pip": "{W}",
+                "candidates": [
+                    { "id": "perm_7#1", "source": "perm_7", "label": "{W}" },
+                    { "id": "perm_9#1", "source": "perm_9", "label": "{W}" }
+                ]
+            })
+        );
+        assert_eq!(serde_json::from_value::<Prompt>(json).unwrap(), prompt);
+
+        // A pip nothing can pay serializes without the key at all, so a client that sees
+        // no candidates offers no way to fill it rather than guessing.
+        let empty = serde_json::to_value(Prompt::PayMana {
+            slot: "m1".into(),
+            prompt: "Pay {1}".into(),
+            pip: "{1}".into(),
+            candidates: Vec::new(),
+        })
+        .unwrap();
+        assert!(empty.get("candidates").is_none());
+    }
+
+    #[test]
+    fn a_mana_option_separates_what_is_clicked_from_what_is_sent() {
+        // The `source` is the board entity a player clicks; the `id` names the activation
+        // and is what comes back. Two options over one permanent is how "which color?"
+        // becomes visible to a client that knows no rules.
+        let white = ManaOption {
+            id: "perm_4#1".into(),
+            source: "perm_4".into(),
+            label: "{W}".into(),
+        };
+        let blue = ManaOption {
+            id: "perm_4#2".into(),
+            source: "perm_4".into(),
+            label: "{U}".into(),
+        };
+        assert_eq!(white.source, blue.source, "one permanent");
+        assert_ne!(white.id, blue.id, "two activations");
+
+        // An unlabelled option elides the key — the case where a permanent offers exactly
+        // one way to pay a pip and there is nothing to disambiguate.
+        let plain = serde_json::to_value(ManaOption {
+            id: "perm_2#0".into(),
+            source: "perm_2".into(),
+            label: String::new(),
+        })
+        .unwrap();
+        assert_eq!(
+            plain,
+            serde_json::json!({ "id": "perm_2#0", "source": "perm_2" })
+        );
     }
 
     #[test]

@@ -68,7 +68,7 @@ impl Color {
 /// red and three ordinary red at once, and only one of those five piles can pay for a
 /// Bear. It is still mana in every other respect, and empties with the rest of the pool
 /// at the end of the step (CR 500.4).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct RestrictedMana {
     /// The color of this mana.
     pub color: Color,
@@ -118,7 +118,7 @@ impl crate::ability::ManaRestriction {
 ///
 /// This is a player's mana pool. It stores raw counts only; nothing is derived
 /// or cached here.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct ManaPool {
     /// White mana available.
     pub white: u8,
@@ -232,8 +232,41 @@ impl ManaPool {
     /// mana, then colorless, then white, blue, black, red, green.
     #[must_use]
     pub fn pay_for(&self, cost: &ManaCost, purpose: SpendPurpose<'_>) -> Option<Self> {
+        let (paid, owed) = self.settle(cost, purpose);
+        (owed == ManaCost::default()).then_some(paid)
+    }
+
+    /// What this cost **still needs** after this pool has paid as much of it as it can.
+    ///
+    /// The zero cost exactly when [`Self::pay_for`] succeeds, because they are the same
+    /// computation — see [`Self::settle`]. That equality is the point of it existing: a
+    /// presentation that asked one question and a legality gate that asked the other
+    /// could otherwise disagree about what a player still owes, and the player would see
+    /// a cost that does not match what the game will accept.
+    #[must_use]
+    pub fn remaining_cost(&self, cost: &ManaCost, purpose: SpendPurpose<'_>) -> ManaCost {
+        self.settle(cost, purpose).1
+    }
+
+    /// Pay as much of `cost` as this pool can, returning what is left of the pool and
+    /// what is left of the cost.
+    ///
+    /// **One computation behind two questions.** *Can this be paid* and *what is still
+    /// owed* are the same walk over the same pool, so they are one function; asking them
+    /// separately is how a "you still need {1}" that the game then refuses gets built.
+    ///
+    /// **Restricted mana is spent first**, and that greedy choice is provably optimal
+    /// rather than merely convenient: mana that may only be spent here can pay for
+    /// nothing else, so using it can never cost the player a payment they would
+    /// otherwise have made. Colored and colorless requirements are paid from their own
+    /// colors; the generic portion is then paid deterministically from usable restricted
+    /// mana, then colorless, then white, blue, black, red, green.
+    fn settle(&self, cost: &ManaCost, purpose: SpendPurpose<'_>) -> (Self, ManaCost) {
         let mut pool = self.clone();
-        // Each colored requirement takes its own color, restricted first.
+        let mut owed = ManaCost::default();
+        // Each colored requirement takes its own color, restricted first. A requirement
+        // the pool cannot meet is recorded rather than abandoned, so the walk goes on and
+        // reports everything still owed instead of only the first thing it tripped over.
         for (needed, color) in [
             (cost.white, Color::White),
             (cost.blue, Color::Blue),
@@ -241,20 +274,18 @@ impl ManaPool {
             (cost.red, Color::Red),
             (cost.green, Color::Green),
         ] {
-            let mut owed = needed;
-            owed -= pool.spend_restricted(owed, Some(color), purpose);
+            let mut want = needed;
+            want -= pool.spend_restricted(want, Some(color), purpose);
             let slot = pool.color_slot(color);
-            if *slot < owed {
-                return None;
-            }
-            *slot -= owed;
+            let spent = want.min(*slot);
+            *slot -= spent;
+            *owed.color_slot(color) = want - spent;
         }
         // `{C}` requires colorless specifically (CR 107.4c); no colored mana, restricted
         // or otherwise, can pay it.
-        if pool.colorless < cost.colorless {
-            return None;
-        }
-        pool.colorless -= cost.colorless;
+        let colorless = cost.colorless.min(pool.colorless);
+        pool.colorless -= colorless;
+        owed.colorless = cost.colorless - colorless;
 
         let mut generic = cost.generic;
         generic -= pool.spend_restricted(generic, None, purpose);
@@ -273,11 +304,9 @@ impl ManaPool {
                 break;
             }
         }
-        if generic > 0 {
-            return None;
-        }
+        owed.generic = generic;
         pool.restricted.retain(|entry| entry.amount > 0);
-        Some(pool)
+        (pool, owed)
     }
 
     /// Spend up to `wanted` restricted mana usable for `purpose` — of `color` when one
@@ -314,6 +343,18 @@ impl ManaPool {
             Color::Black => &mut self.black,
             Color::Red => &mut self.red,
             Color::Green => &mut self.green,
+        }
+    }
+
+    /// How much unrestricted mana of `color` this pool holds.
+    #[must_use]
+    pub fn color_amount(&self, color: Color) -> u8 {
+        match color {
+            Color::White => self.white,
+            Color::Blue => self.blue,
+            Color::Black => self.black,
+            Color::Red => self.red,
+            Color::Green => self.green,
         }
     }
 
@@ -372,6 +413,17 @@ pub struct ManaCost {
 }
 
 impl ManaCost {
+    /// A mutable handle on the slot holding `color`.
+    fn color_slot(&mut self, color: Color) -> &mut u8 {
+        match color {
+            Color::White => &mut self.white,
+            Color::Blue => &mut self.blue,
+            Color::Black => &mut self.black,
+            Color::Red => &mut self.red,
+            Color::Green => &mut self.green,
+        }
+    }
+
     /// Total of all colored and colorless (non-generic) requirements.
     #[must_use]
     pub fn colored_total(&self) -> u16 {

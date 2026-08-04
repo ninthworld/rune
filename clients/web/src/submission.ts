@@ -34,6 +34,11 @@ export function advertisedCount(prompt: Prompt): number | null {
       return prompt.items?.length ?? 0
     case 'number':
       return 1
+    case 'pay_mana':
+      // One pip, one source. Every pip filled is the whole of "the cost is covered" —
+      // which is not the client working a cost out, it is the server having posed one
+      // slot per unit and this counting them.
+      return 1
   }
 }
 

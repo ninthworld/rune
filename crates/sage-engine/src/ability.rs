@@ -892,7 +892,7 @@ pub enum CountScope {
 /// A closed set with one member today, which is the one the currently authorable cards
 /// need. It grows by adding variants; a restriction nothing matches simply makes the
 /// mana unspendable, which is the safe direction.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ManaRestriction {
     /// Only to cast a spell whose card has this subtype — "spend this mana only to

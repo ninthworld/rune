@@ -65,7 +65,20 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         } => {
             apply_activate_ability(&mut next, *permanent, *index, targets, db);
         }
-        Action::CastSpell { card, targets } => apply_cast_spell(&mut next, *card, targets, db),
+        // CR 601.2, in order and in one step: the payment's mana abilities are activated
+        // first, then the cost is paid and the spell goes on the stack. Both halves have
+        // already been found legal together above, and `next` is a copy — so a cast that
+        // could not be completed never reaches here, and the state returned is the one
+        // that came in, with nothing tapped. That is the rules' own rewind, for free.
+        Action::CastSpell {
+            card,
+            targets,
+            payment,
+            ..
+        } => {
+            crate::actions::apply_payment(&mut next, db, payment);
+            apply_cast_spell(&mut next, *card, targets, payment, db);
+        }
         Action::ChooseTriggerTargets { ability, targets } => {
             apply_choose_trigger_targets(&mut next, *ability, targets);
         }

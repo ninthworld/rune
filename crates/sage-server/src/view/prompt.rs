@@ -105,6 +105,28 @@ fn hash_prompt(prompt: &Prompt, hasher: &mut impl std::hash::Hasher) {
             min.hash(hasher);
             max.hash(hasher);
         }
+        // A mana pip: its candidates are part of the action's content, so a payment
+        // bound to sources the board no longer offers — a land tapped in between, a
+        // permanent that left — is rejected like any other stale binding (ADR 0004).
+        // That matters more here than elsewhere: an assembled payment is exactly the
+        // kind of answer a player takes a while over.
+        Prompt::PayMana {
+            slot,
+            prompt,
+            pip,
+            candidates,
+        } => {
+            4u8.hash(hasher);
+            slot.hash(hasher);
+            prompt.hash(hasher);
+            pip.hash(hasher);
+            candidates.len().hash(hasher);
+            for candidate in candidates {
+                candidate.id.hash(hasher);
+                candidate.source.hash(hasher);
+                candidate.label.hash(hasher);
+            }
+        }
     }
 }
 

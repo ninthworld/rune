@@ -10,16 +10,24 @@ use super::*;
 /// slot, each choice non-empty and drawn entirely from that slot's current legal
 /// candidates. A redirected id therefore cannot smuggle in a target that is no
 /// longer legal. Requirement-less actions accept exactly an empty selection.
+///
+/// `prompts` is passed so an answer to one of the action's *prompt* slots is not
+/// mistaken for an answer to a slot that does not exist. A targeted spell now carries
+/// both kinds at once — its targets as requirements, its unpaid cost as `pay_mana`
+/// prompts — and each is validated by whatever owns it.
 pub(crate) fn targets_fill_requirements(
     targets: &[TargetChoice],
     requirements: &[TargetRequirement],
+    prompts: &[Prompt],
 ) -> bool {
     // Every returned choice must name a slot the action actually advertises — an answer
     // to a slot that is not on offer is not a partial answer, it is a wrong one.
-    if targets
-        .iter()
-        .any(|choice| !requirements.iter().any(|req| req.slot == choice.slot))
-    {
+    if targets.iter().any(|choice| {
+        !requirements.iter().any(|req| req.slot == choice.slot)
+            && !prompts
+                .iter()
+                .any(|prompt| prompt_slot(prompt) == choice.slot)
+    }) {
         return false;
     }
     requirements.iter().all(|req| {
@@ -30,6 +38,17 @@ pub(crate) fn targets_fill_requirements(
         // redirected id can never smuggle in an illegal target.
         (req.optional || !chosen.is_empty()) && chosen.iter().all(|id| req.candidates.contains(id))
     })
+}
+
+/// The slot id one [`Prompt`] is answered on, whatever its shape.
+pub(super) fn prompt_slot(prompt: &Prompt) -> &str {
+    match prompt {
+        Prompt::Option { slot, .. }
+        | Prompt::SelectFromZone { slot, .. }
+        | Prompt::Order { slot, .. }
+        | Prompt::Number { slot, .. }
+        | Prompt::PayMana { slot, .. } => slot,
+    }
 }
 
 /// The entity ids chosen for `slot` in a returned selection, or an empty slice if
@@ -205,9 +224,18 @@ pub(crate) fn bind_ability_targets(
             index: *index,
             targets: chosen,
         }),
+        // The payment the player assembled, or — for the pips they left unanswered —
+        // the one the server assembles for them (ADR 0010: the rules are the engine's,
+        // the policy is the server's). A client that fills every `pay_mana` slot spends
+        // exactly the sources it picked; one that fills none, as the terminal client and
+        // both automated players do, gets tapped out on its behalf.
+        //
+        // That judgment — *tap for the player instead of asking* — is exactly what the
+        // engine has no opinion about. It only answers what a legal payment is.
         Action::CastSpell { card, .. } => Some(Action::CastSpell {
             card: *card,
             targets: chosen,
+            payment: bind_payment(state, db, *card, targets),
         }),
         // Aiming a trigger (CR 603.3d) binds through the same per-slot candidate
         // path as a cast or an activation — the engine offers one target slot per

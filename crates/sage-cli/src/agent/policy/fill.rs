@@ -90,6 +90,11 @@ pub fn fill_answers(view: &GameView, action: &ValidAction) -> Option<Vec<TargetC
                 slot: slot.clone(),
                 chosen: vec![min.to_string()],
             },
+            // A mana pip is left for the server to pay (ADR 0010). The agent has no view
+            // on *which* land pays for what, and answering slot-by-slot would need it to
+            // track which sources it had already spent — bookkeeping in service of a
+            // preference it does not have.
+            Prompt::PayMana { .. } => continue,
         };
         out.push(choice);
     }

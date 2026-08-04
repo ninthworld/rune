@@ -93,6 +93,7 @@ mod tests {
             &Action::CastSpell {
                 card,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -167,6 +168,7 @@ mod tests {
                 &Action::CastSpell {
                     card,
                     targets: Vec::new(),
+                    payment: Vec::new(),
                 },
                 &db,
             );
@@ -319,6 +321,7 @@ mod tests {
             &Action::CastSpell {
                 card,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
