@@ -154,6 +154,16 @@ export const CardView = z.object({
    * "no types", which is why a permanent without one still renders.
    */
   card_types: z.array(CardType).optional(),
+  /**
+   * The card's **colour identity** (CR 903.4): its colours, the colours of the mana
+   * symbols in its cost, and the colours of the mana symbols in its rules text.
+   *
+   * Stated because the printed cost — the one thing a client can read for itself —
+   * is silent on exactly the cards a board is scanned by colour most: a Forest
+   * prints no coloured pip and would otherwise draw as colourless. Not the card's
+   * colour (CR 105), and never rendered as one. In WUBRG order.
+   */
+  color_identity: z.array(Color).optional(),
 })
 export type CardView = z.infer<typeof CardView>
 
@@ -226,6 +236,17 @@ export const Permanent = z.object({
   attached_to: EntityId.optional(),
   is_commander: z.boolean().optional(),
   counters: z.array(Counter).optional(),
+  /**
+   * Whether **summoning sickness currently restricts this permanent** (CR 302.6):
+   * it is a creature, its controller has not controlled it continuously since the
+   * start of their most recent turn, and it does not have haste (CR 702.10b).
+   *
+   * A *restriction*, not a property: a summoning-sick creature with haste reports
+   * `false`, because the restriction is what a player is looking at. No client can
+   * work it out — continuous control is stored engine state and haste may be
+   * granted — so it is stated, from the same predicate that gates attacking.
+   */
+  summoning_sick: z.boolean().optional(),
 })
 export type Permanent = z.infer<typeof Permanent>
 
@@ -314,6 +335,20 @@ export const TargetRequirement = z.object({
    */
   optional: z.boolean().optional(),
   candidates: z.array(EntityId).optional(),
+  /**
+   * The entity this slot is **about**, when it is about one.
+   *
+   * A combat declaration is several slots that all list the same candidates and
+   * differ only in whose choice they are: one slot per attacker naming what *that*
+   * attacker attacks (CR 508.1a), one per attacker naming what blocks it
+   * (CR 509.1a). The pairing is the server's, and this publishes it — so the
+   * client asks one subject at a time and draws the arrow from the right card
+   * without ever parsing a slot id, which its own contract forbids.
+   *
+   * Absent for a slot about the action as a whole: an ordinary spell's target, the
+   * `attackers` multi-select.
+   */
+  subject: EntityId.optional(),
 })
 export type TargetRequirement = z.infer<typeof TargetRequirement>
 
@@ -571,6 +606,8 @@ export const CatalogCard = z.object({
    * one printed card, so a builder and a table cannot end up with different faces for it.
    */
   card_types: z.array(CardType).optional(),
+  /** The same colour identity an in-game `CardView` carries (CR 903.4), WUBRG order. */
+  color_identity: z.array(Color).optional(),
 })
 export type CatalogCard = z.infer<typeof CatalogCard>
 

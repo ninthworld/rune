@@ -306,6 +306,7 @@ mod tests {
             loyalty: None,
             keywords: vec![],
             card_types: Vec::new(),
+            color_identity: Vec::new(),
         }
     }
 
@@ -329,6 +330,7 @@ mod tests {
                 loyalty: None,
                 keywords: vec![],
                 card_types: Vec::new(),
+                color_identity: Vec::new(),
             },
             tapped: false,
             attacking: false,
@@ -339,6 +341,7 @@ mod tests {
             attached_to: None,
             is_commander: false,
             counters: vec![],
+            summoning_sick: false,
         }
     }
 
@@ -613,6 +616,7 @@ mod tests {
                 slot: "attackers".into(),
                 prompt: "Choose which creatures attack".into(),
                 candidates: vec!["perm_a".into(), "perm_b".into()],
+                subject: None,
             }],
             ..action("a0", "declare_attackers", vec![])
         };
@@ -622,6 +626,7 @@ mod tests {
                 slot: "block_1".into(),
                 prompt: "Choose blockers".into(),
                 candidates: vec!["perm_x".into()],
+                subject: None,
             }],
             ..action("a0", "declare_blockers", vec![])
         };

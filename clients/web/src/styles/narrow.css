@@ -188,8 +188,30 @@
     gap: 3px;
   }
 
+  /* The head is the only part of the bar set in type, and giving the name its own line above
+     the life is what it costs — a line the shortest seat does not have. So this is where the
+     height comes back from: the same two facts, in the same arrangement, smaller. Scaling
+     rather than re-stacking, because a seat that only got *shorter* must not be handed a
+     different bar than the seat beside it (§3). */
+  .player-target {
+    gap: 0;
+    padding: 1px 3px;
+  }
+
+  .player-name {
+    font-size: 11px;
+  }
+
+  /* a line box with room for the glyphs in it: set to exactly the font size, the number's own
+     ink rounds a pixel past the box it is in, which is a scrollable region by the only
+     definition this project measures one by */
+  .player-life {
+    font-size: 15px;
+    line-height: 1.15;
+  }
+
   .zone-btn {
-    padding: 2px 0;
+    padding: 1px 0;
     gap: 0;
   }
 
@@ -203,7 +225,12 @@
   }
 
   .mana-pool {
-    padding: 2px 3px;
+    padding: 1px 3px;
+  }
+
+  .mana-pool .c-pip {
+    width: 12px;
+    height: 12px;
   }
 
   /* the card the pointer is on keeps its proportions; what it gives up is how much of the

@@ -245,7 +245,20 @@
 }
 
 /* tapped turns the whole permanent, attachments and all; the slot takes
-   the turned footprint so it never lies over the permanent beside it */
+   the turned footprint so it never lies over the permanent beside it.
+   Both the turn and the footprint are transitioned, because animating one
+   without the other is a card that swings out over its neighbour and then
+   snaps back. It is a CSS transition rather than `Motion.tsx` because it
+   is a transition between two states the view already describes:
+   interrupt it, refresh, or ask for no motion at all, and the board is
+   exactly the one the current `GameView` states. */
+.perm,
+.perm-inner {
+  transition:
+    width 0.16s ease-out,
+    transform 0.16s ease-out;
+}
+
 .perm-tapped {
   width: 100cqh;
 }
@@ -259,6 +272,66 @@
 
 .perm-tapped .perm-inner {
   transform: rotate(90deg);
+}
+
+/* A device that asked for no motion gets none — the same request
+   `Motion.tsx` honours, answered in the one place the turn lives. */
+@media (prefers-reduced-motion: reduce) {
+  .perm,
+  .perm-inner {
+    transition: none;
+  }
+}
+
+/* Permanents of the same card in the same state are one pile rather than a
+   row of identical boxes (`board.stackGroups`): each steps a fraction of a
+   card to the right of the one before it, so eight Forests cost the width
+   of about three. Every card in the pile is still its own permanent — the
+   sliver is its own hit area — and the one under the pointer comes forward
+   whole, so reading one never means breaking the pile up. */
+.perm-fan {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+
+.perm-fan .perm {
+  position: relative;
+}
+
+.perm-fan .perm + .perm {
+  margin-left: calc(-0.62 * var(--cw));
+}
+
+.perm-fan .perm-tapped + .perm-tapped {
+  margin-left: -62cqh;
+}
+
+.perm-fan .perm:hover,
+.perm-fan .perm:focus-within {
+  z-index: 3;
+}
+
+/* How many are in the pile, on the pile — a count a player would otherwise
+   have to make by counting slivers. */
+.perm-fan-count {
+  position: absolute;
+  right: -3px;
+  bottom: 2px;
+  z-index: 4;
+  min-width: 15px;
+  padding: 0 3px;
+  background: rgba(12, 14, 18, 0.86);
+  border: 1px solid rgba(232, 228, 218, 0.34);
+  border-radius: 999px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  color: #f2efe6;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
 }
 
 .perm .card {
@@ -292,13 +365,17 @@
   flex: none;
 }
 
-/* the player themself is a target: one area carrying name and life */
+/* the player themself is a target: one area carrying name and life.
+   A column, because a name and a life total sharing one line means the
+   name is what gives way — and a seat is called something, so the name
+   gets its own line and wraps rather than being cut off. */
 .player-target {
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: baseline;
-  gap: 5px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
   padding: 2px 4px;
   background: none;
   border: 1px solid transparent;
@@ -314,14 +391,16 @@
 }
 
 .player-name {
-  flex: 1;
+  width: 100%;
   min-width: 0;
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.15;
   font-weight: 600;
   color: #d6d8dc;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* wrapped, never clipped: the ellipsis this replaces turned every seat
+     whose player typed a real name into the same three dots */
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .player-life {
@@ -662,6 +741,47 @@
 
 /* a tray the buttons sit in, so a grid of small panes doesn't read as
    eight loose chips on the sidebar */
+/* Paying for a card the server has not offered yet: the printed cost, and
+   what is floating. Two groups rather than one line, because they are two
+   different facts and the bar must never look like it is doing the sum —
+   the server does that, by offering the cast or not. */
+.action-pay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  min-width: 0;
+}
+
+.pay-part {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px;
+  background: var(--well);
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  box-shadow: var(--well-lit);
+}
+
+.pay-part .c-pip {
+  width: 15px;
+  height: 15px;
+  filter: none;
+}
+
+.pay-label {
+  margin-right: 3px;
+  color: #8b8f98;
+  font-size: 11px;
+  text-transform: lowercase;
+}
+
+.pay-none {
+  color: #6b6f78;
+  font-size: 11px;
+}
+
 .helper-strip {
   display: grid;
   grid-template-columns: 1fr 1fr;

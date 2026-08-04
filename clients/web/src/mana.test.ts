@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { costTint, inlineSymbols, manaSymbols, spokenCost, spokenSymbol } from './mana'
+import { costTint, frameTint, inlineSymbols, manaSymbols, spokenCost, spokenSymbol } from './mana'
 
 describe('manaSymbols', () => {
   it('splits a printed cost into one symbol per pair of braces', () => {
@@ -135,5 +135,30 @@ describe('symbols inside a sentence', () => {
   it('says a symbol the way it is read aloud', () => {
     const [tap] = inlineSymbols('{T}')
     expect(tap?.kind === 'symbol' && spokenSymbol(tap.symbol)).toBe('tap')
+  })
+})
+
+describe('the wash a frame is drawn in', () => {
+  it('is the printed pips whenever the card prints any', () => {
+    expect(frameTint('{1}{G}')).toBe('g')
+    expect(frameTint('{G}{U}')).toBe('multicolor')
+    // The cost wins over the identity, so a card with an off-colour activated ability does not
+    // change colour in a hand.
+    expect(frameTint('{1}{G}', ['G', 'U'])).toBe('g')
+  })
+
+  it('falls back to the colour identity for a card the cost says nothing about', () => {
+    // A Forest costs nothing and prints no coloured pip. Reading the cost alone made every
+    // basic land the same grey, which is the least scannable part of a board to get wrong.
+    expect(frameTint(undefined, ['G'])).toBe('g')
+    expect(frameTint('{2}', ['R'])).toBe('r')
+    expect(frameTint(undefined, ['G', 'U'])).toBe('multicolor')
+  })
+
+  it('stays neutral when the server stated neither', () => {
+    expect(frameTint(undefined, [])).toBe('colorless')
+    expect(frameTint('{2}')).toBe('colorless')
+    // A letter this build does not know is not a colour it may invent one for.
+    expect(frameTint(undefined, ['Z'])).toBe('colorless')
   })
 })

@@ -27,8 +27,8 @@ use crate::view::full_card_view;
 /// byte-for-byte what an in-game `CardView` of the same card shows. A catalog entry names
 /// a card by its stable `functional_id`, not a per-game instance, so the placeholder
 /// entity id `full_card_view` requires is discarded.
-fn catalog_card(data: &CardData) -> CatalogCard {
-    let view = full_card_view(String::new(), data);
+fn catalog_card(db: &CardDatabase, data: &CardData) -> CatalogCard {
+    let view = full_card_view(String::new(), data, db);
     CatalogCard {
         functional_id: data.functional_id.to_string(),
         name: view.name,
@@ -40,6 +40,9 @@ fn catalog_card(data: &CardData) -> CatalogCard {
         loyalty: view.loyalty,
         keywords: view.keywords,
         card_types: view.card_types,
+        // The same colour identity an in-game `CardView` carries, so a builder and a
+        // table draw one card the same colour (CR 903.4).
+        color_identity: view.color_identity,
     }
 }
 
@@ -76,7 +79,7 @@ pub(crate) fn build_catalog(db: &CardDatabase, formats: &FormatRegistry) -> Cata
     let cards = (0..db.len() as u64)
         .map(CardId)
         .filter_map(|id| db.card(id))
-        .map(catalog_card)
+        .map(|data| catalog_card(db, data))
         .collect();
     let mut formats: Vec<CatalogFormat> = formats
         .iter()

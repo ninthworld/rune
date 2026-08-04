@@ -42,6 +42,8 @@ const SAMPLE: CardFace = {
   markers: [],
   tapped: false,
   cardTypes: ['creature'],
+  colorIdentity: ['G'],
+  summoningSick: false,
 }
 
 const FACES: { style: ArtStyle; label: string; note: string }[] = [
@@ -92,6 +94,7 @@ export function Settings({
     // Turning it off returns the face to the one that needs no picture: the two that do could
     // not be drawn, and a face that cannot be drawn is not a setting.
     setPreference({
+      ...preference,
       source: on ? 'scryfall' : 'procedural',
       style: on ? preference.style : 'frame',
     })
@@ -160,6 +163,34 @@ export function Settings({
                     )
                   })}
                 </div>
+                {/* The one piece of SAGE's frame a `full` face may keep. Offered here rather
+                    than beside the art switch because it is about *how a card is drawn*, which
+                    is what this section is; it is dimmed when no face it applies to is
+                    chosen, rather than hidden, so the option is discoverable from the tile
+                    that would use it. */}
+                <div className={`set-row${preference.style === 'full' ? '' : ' set-row-off'}`}>
+                  <span className="set-row-text">
+                    <span className="set-row-label">Name and mana cost on full cards</span>
+                    <span className="set-note">
+                      Draws SAGE&apos;s name band over the printed one, where the printed cost is
+                      hardest to read at board size. Power, toughness, counters and damage are
+                      always drawn — those are the server&apos;s numbers, not the card&apos;s.
+                    </span>
+                  </span>
+                  <button
+                    role="switch"
+                    aria-checked={preference.fullArtBand}
+                    aria-label="Name and mana cost on full cards"
+                    disabled={preference.style !== 'full'}
+                    className={`switch${preference.fullArtBand ? ' switch-on' : ''}`}
+                    onClick={() =>
+                      setPreference({ ...preference, fullArtBand: !preference.fullArtBand })
+                    }
+                  >
+                    <span className="switch-knob" />
+                  </button>
+                </div>
+
                 {!fetching && (
                   <p className="set-note set-link">
                     Both of these need pictures.{' '}

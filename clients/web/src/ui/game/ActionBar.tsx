@@ -18,9 +18,13 @@
  * The tone is the turn's (`dock.barTone`), and it carries no fact alone: the prompt says what is
  * being asked and the line under it says which step you are in.
  */
+import type { CardFace } from './../../card-face'
 import { dockCandidates, type BarTone } from './../../dock'
 import { answer, fill, type Interaction, type Slot } from './../../interaction'
+import { manaSymbols, spokenSymbol } from './../../mana'
 import type { ValidAction } from './../../protocol'
+import type { ManaPip } from './../../table'
+import { Pip } from './../card/Pips'
 import { Symbols } from './../card/Symbols'
 
 export function ActionBar({
@@ -34,6 +38,8 @@ export function ActionBar({
   interaction,
   drawn,
   buttons,
+  paying,
+  pool,
   labelFor,
   update,
   confirm,
@@ -56,6 +62,13 @@ export function ActionBar({
   drawn: ReadonlySet<string>
   /** The actions no object owns: pass, and whatever else the server offered globally. */
   buttons: readonly ValidAction[]
+  /**
+   * The card the player said they are playing, while its cost is being made. Absent whenever
+   * they are not — including the moment the card leaves the hand, which is how it ends.
+   */
+  paying?: CardFace
+  /** What this seat currently has floating, as the server stated it. */
+  pool: readonly ManaPip[]
   labelFor(id: string): string
   update(next: Interaction): void
   confirm(): void
@@ -65,15 +78,51 @@ export function ActionBar({
   // A slot whose own controls are the answers states itself; every other one has nothing on
   // screen naming what it wants, so it says it once.
   const asking = action !== undefined
+  const cost = manaSymbols(paying?.manaCost)
 
   return (
     <div className={`action-bar action-${tone}`} role="region" aria-label="Actions">
       <div className="action-text">
         <span className="action-prompt">
-          <Symbols text={asking ? action.label : prompt} />
+          <Symbols text={asking ? action.label : paying ? `Pay for ${paying.name}` : prompt} />
         </span>
         <span className="action-phase">{where}</span>
       </div>
+
+      {/* Paying, said the only way a cost can be said: the cost as printed, and what is
+          floating so far. Neither is compared against the other — that is arithmetic about a
+          rule, and the server answers it by offering the cast or not offering it. Confirm goes
+          live the moment it does. */}
+      {!asking && paying && (
+        <div className="action-pay" role="group" aria-label={`Paying for ${paying.name}`}>
+          <span className="pay-part">
+            <span className="pay-label">Cost</span>
+            {cost.length === 0 ? (
+              <span className="pay-none">—</span>
+            ) : (
+              cost.map((symbol, i) => (
+                <Pip key={i} symbol={symbol.glyph} label={spokenSymbol(symbol)} />
+              ))
+            )}
+          </span>
+          <span className="pay-part" role="status">
+            <span className="pay-label">Floating</span>
+            {pool.length === 0 ? (
+              <span className="pay-none">nothing yet — tap a source</span>
+            ) : (
+              pool.flatMap((pip, index) =>
+                manaSymbols(pip.symbol).map((symbol, i) => (
+                  <Pip
+                    key={`${index}:${i}`}
+                    symbol={symbol.glyph}
+                    label={`${spokenSymbol(symbol)}${pip.restricted ? ', restricted' : ''}`}
+                  />
+                )),
+              )
+            )}
+          </span>
+        </div>
+      )}
 
       {asking && (
         <div className="action-slots">
@@ -122,7 +171,7 @@ export function ActionBar({
                           key={candidate.id}
                           className={`action-done action-alt${position >= 0 ? ' action-chosen' : ''}`}
                           aria-pressed={position >= 0}
-                          onClick={() => update(fill(interaction, slot, candidate.id))}
+                          onClick={() => update(fill(interaction, slot, candidate.id, slots))}
                         >
                           {slot.kind === 'order' && position >= 0 && `${position + 1}. `}
                           <Symbols text={candidate.label} />
@@ -138,10 +187,16 @@ export function ActionBar({
       )}
 
       <div className="action-btns">
-        {asking ? (
+        {asking || paying ? (
           <>
+            {/* One control, two depths: it takes back the answers first and leaves the
+                question, and only lets go of the question once there is nothing to take back.
+                A combat declaration aimed at the wrong things is undone in a click without
+                also undoing "I am declaring attackers". */}
             <button className="action-done action-alt" onClick={cancel}>
-              Cancel
+              {asking && Object.values(interaction.draft).some((ids) => ids.length > 0)
+                ? 'Start again'
+                : 'Cancel'}
             </button>
             <button className="action-done" disabled={!ready || blocked} onClick={confirm}>
               Confirm

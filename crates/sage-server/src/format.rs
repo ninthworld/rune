@@ -22,8 +22,8 @@
 use std::collections::{HashMap, HashSet};
 
 use sage_engine::{
-    abilities_of, parse_mana_cost, Ability, CardDatabase, CardId, CardType, Color, Effect,
-    GameSetup, PlayerSetup, Supertype,
+    abilities_of, parse_mana_cost, Ability, CardData, CardDatabase, CardId, CardType, Color,
+    Effect, GameSetup, PlayerSetup, Supertype,
 };
 use sage_protocol::GameSetupId;
 
@@ -282,13 +282,24 @@ impl Format {
 /// and is legal under any commander.
 ///
 /// Visible to the crate (issue #553) because the *same* computation now also feeds
-/// the in-match `CommanderIdentity` a client renders a seat's identity gems from —
-/// deck legality and the displayed identity must never be able to disagree.
+/// the in-match `CommanderIdentity` a client renders a seat's identity gems from,
+/// and (issue #700) the `color_identity` every `CardView` carries so a board is
+/// scannable by colour — deck legality, the displayed identity, and the colour a
+/// card is drawn in must never be able to disagree.
 pub(crate) fn color_identity(db: &CardDatabase, card: CardId) -> HashSet<Color> {
+    db.card(card)
+        .map(|data| color_identity_of(db, data))
+        .unwrap_or_default()
+}
+
+/// [`color_identity`], for a caller that already holds the [`CardData`].
+///
+/// The card projection has the data and not the handle, and the handle is only
+/// needed to reach the *code* tier of the abilities (ADR 0008 §5) — so it is looked
+/// back up from the authored identity rather than duplicating the computation. One
+/// function, three contributors, whichever end a caller comes in from.
+pub(crate) fn color_identity_of(db: &CardDatabase, data: &CardData) -> HashSet<Color> {
     let mut identity = HashSet::new();
-    let Some(data) = db.card(card) else {
-        return identity;
-    };
     // 1. Color indicator / printed colors.
     identity.extend(data.colors.iter().copied());
     // 2. Colored mana-cost pips.
@@ -307,7 +318,11 @@ pub(crate) fn color_identity(db: &CardDatabase, card: CardId) -> HashSet<Color> 
     // 3. Colored mana symbols in the card's rules (its abilities), from the IR. A
     //    *restricted* mana symbol (CR 106.6) is still a coloured mana symbol printed in
     //    the rules, so it counts exactly as an unrestricted one does.
-    for ability in abilities_of(db, card) {
+    let abilities = db
+        .card_id(&data.functional_id)
+        .map(|card| abilities_of(db, card))
+        .unwrap_or_default();
+    for ability in abilities {
         if let Ability::Activated { effects, .. } | Ability::Triggered { effects, .. } = ability {
             for effect in effects {
                 match effect {

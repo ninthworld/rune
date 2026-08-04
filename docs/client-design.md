@@ -249,15 +249,23 @@ every size, and that no threshold can make a window resize change what a permane
 
 ### The split is kept, and the cards get smaller
 
-**Creatures, other permanents, and lands stay in their own rows, and the cards shrink to make that
-possible.** The scan by category is how a player reads a board at a glance, and it is worth far more
-than any particular card size. Merging is step 5 of the ladder — a late resort, reached only when
-the cards have already been scaled as far as they go.
+**Creatures stay in their own row and everything else sits behind them, and the cards shrink to make
+that possible.** The scan by category is how a player reads a board at a glance, and it is worth far
+more than any particular card size. Merging is step 5 of the ladder — a late resort, reached only
+when the cards have already been scaled as far as they go.
 
 An earlier draft said the opposite: *"row count is chosen to maximise card size… losing the split
 costs the scan by category, losing the card's text costs the card, and the card wins."* That framing
 assumed one of them had to lose, which is the mistake this whole section now exists to name. Neither
-has to. Three rows of smaller cards is three rows.
+has to. Two rows of smaller cards is two rows.
+
+**Two rows, not three, and that is a reversal.** Artifacts, enchantments and planeswalkers had a row
+of their own, which cost the two rows a game is actually played in a fifth of the board each and, on
+the common board that has none of them, drew a dividing line across the field for nothing. They sit
+in the back row now, with the lands: it is the row of things that sit there, and a player scanning
+for a blocker is scanning the front row either way. The gain is not only the height — it is that the
+field's boxes no longer depend on *what kind of permanent is in the game*, which was the last thing
+on the board whose presence could change a region.
 
 ### More screen is never a worse board
 
@@ -437,6 +445,18 @@ the space the turn rail used to hold. It carries, top to bottom:
    *recess* rather than a raised pane: mana sits **in** a pool, and lighting it from above would
    make it a button.
 
+**The name is fitted to the bar, not to its own line.** It is the one run of text on the board whose
+length a *player* chose, and the bar's height belongs to the seat, so a name is set at the size the
+stylesheet gives it while that fits and smaller when it does not — wrapping, never an ellipsis (§3),
+and never leaving a region a player would have to scroll. It has a floor, below which it is a mark
+rather than a name; a bar that would need to go under it is a seat with no room for a player in it,
+which is a defect in the region allocation above it (§2) and not something the name can answer.
+
+A short window is also where the bar itself is set smaller — the head, the zone buttons and the pool
+tighten together, by the same "scale first, remove last" that governs everything else (§3). What does
+*not* happen there is a re-stacking: a seat that only got shorter must not be handed a different
+arrangement than the seat beside it.
+
 An earlier draft called this a **column** and had it become a **bar above and below its own half**
 below 640px of width or 480px of height, because a column carrying five labelled counts needs both.
 Glyphs removed the constraint (§2), so there is one bar, in one place, at every size — which is what
@@ -500,14 +520,26 @@ title bar, because the creature is the thing that attacks, blocks and dies.
 
 ### The row count is the board's, never the card's
 
-**A field draws one row per group the server's `card_types` produced — creatures, other permanents,
-lands — and that count does not fall to buy card size.** It falls only when the field cannot give
-each row a drawable tile at all, which is §3's step 5 and the bottom of the ladder.
+**A field draws two rows, split by the server's `card_types` — creatures nearest the middle, and
+everything else behind them — and that count does not fall to buy card size.** It falls only when
+the field cannot give each row a drawable tile at all, which is §3's step 5 and the bottom of the
+ladder. The count is now *fixed* rather than derived from what is on the board: both rows are drawn
+whether or not anything is in them, so the layout a player learns on their first turn is the one
+they have on their twentieth.
 
 This is stated here, in the geometry, because the packer is where the rule is actually spent. The
 objective is *not* "the row count whose worst row draws the biggest tile" — that objective always
-merges, since one row of `N` cards is never smaller than three rows of the same `N`. Height is what
+merges, since one row of `N` cards is never smaller than two rows of the same `N`. Height is what
 the split costs, and the split is what is kept.
+
+**Permanents a player has no reason to tell apart are one pile, not a row of boxes.** Eight Forests
+is eight identical tiles and, on a phone, the whole width of the board spent on its least
+interesting half — so a run of them overlaps into a fan with a count on it, the way a player stacks
+them on a table. The condition is strict and it is a presentation rule with no rules content: same
+card identity, same tap state, same counters, damage, markers, attachments and stated
+relationships, and not the object the current question is about. Anything the board would have drawn
+differently on one of them breaks the pile, so no fact is ever behind a card and every arrow still
+has a whole card to reach.
 
 **The battlefield is as wide as the room.** There is no cap on it. An earlier draft held the board's
 content to a maximum width so that a glance would not have to cross a very wide screen; that bought a
@@ -787,8 +819,17 @@ rather than a size (§9):
 | **Frame and art** | The same drawing, with a fetched illustration filling the art window. |
 | **Full card** | The fetched card face, whole, in place of the drawing — none of the frame, because none of it is ours in this view. |
 
-The permanent's own marks — counters and summoning sickness — are drawn **over** whichever face is
-underneath, because they are true of the permanent and not of the card.
+The permanent's own marks — counters, damage, markers, summoning sickness — are drawn **over**
+whichever face is underneath, because they are true of the permanent and not of the card. **So is
+the stat**, and that is the correction this line needed: a full card face is a *printed* card, and
+a printed 2/2 standing in for a creature the server just called a 4/4 is a wrong board rather than
+a plainer one. Everything the server computed rides over the picture, and none of it is a setting.
+
+**The name band is the one part of the frame a full card may keep**, and it is a setting because it
+is the only one that is genuinely a duplicate: the printed band is already there. It is offered
+because it is also the part of a fetched image that suffers most — an official title bar is
+unreadable at board size and the printed cost is a row of symbols this client draws several times
+larger. A player who wants their board scannable turns it on; nobody is moved into it.
 
 The observation the old `compact` tier was making survives and is worth keeping: run §5's numbers
 against a real screen and a 1920×1080 desktop draws permanents at roughly 155px, not at the 182px
@@ -908,6 +949,48 @@ hole, not a pane (§5.5).
 5. The dock's own band is computed like every other region's (§5), and it is **fixed**: it responds
    neither to how much there is to ask about nor to whether anything is being asked at all.
 
+### A question about several objects is asked one object at a time
+
+A combat declaration is one message with several choices in it, and asking for all of them at once
+is what made attacking with two creatures at two defenders unanswerable: every defender slot lists
+the same candidates, so a click on a seat could mean any of them and meant whichever came first.
+
+**So a subject the declaration names is *aimed*.** Choosing an attacker asks what that attacker
+attacks, and until it is answered the board lights only what that attacker may attack and the click
+means only that. Then the next attacker. The pairing is not the client's to work out — the server
+states which attacker each slot belongs to — and neither is the sequence: a slot about a choice the
+same action asks you to make simply is not a question until that choice is made.
+
+Two consequences follow, and both are the point:
+
+- **An arrow is drawn per choice, as it is made** (§6.6), so the declaration is read as a picture
+  rather than as a tally.
+- **Cancel has two depths.** The first press takes back every answer and leaves the question — a
+  declaration aimed at the wrong things is undone in one click without also undoing *declaring* —
+  and the second lets go of the question. Escape is the second one directly.
+
+### You say what you are playing, then pay for it
+
+Making mana and then finding the card is the wrong way round: a player decides to cast the Bear and
+*then* works out which lands to turn. The client used to require the opposite, because a card the
+server has not offered an action for owns no click, so the one moment a player most wants to click a
+card was the moment it was inert.
+
+**Clicking it now states an intent.** The bar names the card and shows two things beside each other
+— what it costs as printed, and what is floating — the mana sources stay live on the board, and
+**Confirm goes live the moment the server offers the cast**. Nothing about this is the client
+deciding: it never adds the pips up, never compares the two rows, and never concludes that a cost is
+paid. It holds a card's id and waits to be told.
+
+The intent is the only thing besides an unanswered submission that survives a message, and it has to
+be: making mana is one message per source. It claims nothing, and it ends by itself — the card is
+cast, or it leaves the hand, or the player presses Cancel.
+
+**What this does not offer is untapping a source to pay differently**, and that is a rules
+limitation rather than a missing feature: mana that has been made has been made, at a table as much
+as here, and the alternative — holding the taps back and releasing them on Confirm — would mean this
+client deciding when a cost was covered, which is the one thing it must never do.
+
 ## 6.6 Reading, pointing, and looking inside
 
 Three surfaces the earlier drafts named in passing and never specified. All three exist for the same
@@ -948,6 +1031,12 @@ and pans and an arrow leaves its row immediately. It takes no pointer events at 
   keyline, so it holds an edge over an ivory card as well as over the black table.
 - **Two tones**: targeting and combat. They are read together often enough — a spell aimed at an
   attacker — that telling them apart matters more than either being pretty.
+- **A declaration draws its arrows while it is still being made.** A combat declaration is several
+  choices in one message, and three attackers pointed at two defenders is a fact about the player's
+  own intent that no wording in the bar can hold. So an answer being assembled draws the same two
+  tones from the same stated ids, and they disappear with the draft. It is still not the client
+  stating anything about the game: every end is a `subject` the server named and a `candidate` it
+  enumerated, and the picture is of the message about to be sent.
 
 ---
 
@@ -1201,7 +1290,10 @@ earns its keep.
 
 **Cards** — how much of a card's face is ours: `Frame`, `Frame and art`, `Full card` (§6). Each
 option is a **tile rendering the same sample card in that view**, because the choice is the thing
-itself and three words could not say it.
+itself and three words could not say it. Under them, the one option that belongs to a face rather
+than to the pipeline: whether a `Full card` also wears SAGE's name band (§6). It is dimmed rather
+than hidden while another face is chosen, so it is discoverable from the tile that would use it and
+nothing appears out of nowhere when that tile is picked.
 
 **Card art** — the ADR 0012 pipeline, made visible to the player it belongs to:
 

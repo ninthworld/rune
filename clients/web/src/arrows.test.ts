@@ -8,7 +8,8 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { arrowsFor } from './arrows'
+import { arrowsFor, draftArrows } from './arrows'
+import { slotsOf } from './interaction'
 import type { Relation } from './relations'
 
 describe('arrowsFor', () => {
@@ -44,5 +45,60 @@ describe('arrowsFor', () => {
       { kind: 'attacking', from: 'p1', to: 'y' },
     ]
     expect(arrowsFor(relations).map((arrow) => arrow.from)).toEqual(['s2', 'p1'])
+  })
+})
+
+describe('draftArrows', () => {
+  const attackers = {
+    id: 'a_attack',
+    type: 'declare_attackers',
+    label: 'Declare attackers',
+    requirements: [
+      { slot: 'attackers', prompt: 'Choose which creatures attack', candidates: ['perm_a'] },
+      {
+        slot: 'defend_a',
+        prompt: 'Choose what Bear attacks',
+        subject: 'perm_a',
+        candidates: ['p2', 'perm_walker'],
+      },
+    ],
+  }
+
+  it('draws each attacker at what it was aimed at, while it is still a draft', () => {
+    // The picture is the whole point of declaring one attacker at a time: three attackers
+    // pointed at two defenders is a fact the words in the bar cannot hold.
+    const slots = slotsOf(attackers, { attackers: ['perm_a'], defend_a: ['perm_walker'] })
+    expect(draftArrows(attackers, slots)).toEqual([
+      { from: 'perm_a', to: 'perm_walker', tone: 'combat' },
+    ])
+  })
+
+  it('draws a spell’s targets from the spell, in the targeting tone', () => {
+    const shock = {
+      id: 'a_shock',
+      type: 'cast_spell',
+      label: 'Cast Shock',
+      subject: ['c_shock'],
+      requirements: [{ slot: 't0', prompt: 'any target', candidates: ['p1', 'perm_a'] }],
+    }
+    expect(draftArrows(shock, slotsOf(shock, { t0: ['p1'] }))).toEqual([
+      { from: 'c_shock', to: 'p1', tone: 'target' },
+    ])
+  })
+
+  it('draws nothing for a slot with no object to leave from', () => {
+    // A global action with a target slot has no card to start the line at, and picking one
+    // would be the client inventing where the arrow comes from.
+    const global = {
+      id: 'a_g',
+      type: 'x',
+      label: 'x',
+      requirements: [{ slot: 't0', prompt: 'p', candidates: ['p1'] }],
+    }
+    expect(draftArrows(global, slotsOf(global, { t0: ['p1'] }))).toEqual([])
+  })
+
+  it('draws nothing at all when nothing is armed', () => {
+    expect(draftArrows(undefined, [])).toEqual([])
   })
 })

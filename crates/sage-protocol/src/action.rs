@@ -118,6 +118,28 @@ pub struct TargetRequirement {
     /// §Enumeration).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub candidates: Vec<EntityId>,
+    /// The entity this slot is **about**, when it is about one (issue #700).
+    ///
+    /// A combat declaration is several slots that all list the same candidates and
+    /// differ only in whose choice they are: one `defend_*` slot per attacker naming
+    /// what *that* attacker attacks (CR 508.1a), one `block_*` slot per attacker
+    /// naming what blocks *it* (CR 509.1a). The slot ids already encode it, and every
+    /// client that wanted to say "this attacker is attacking that seat" had to parse
+    /// them to find out — which the slot id's own contract forbids ("Opaque; the
+    /// client never parses it").
+    ///
+    /// So it is stated. With it a client can ask the choices one subject at a time,
+    /// draw the arrow from the attacker it belongs to, and show a per-attacker slot
+    /// only once that attacker is in the declaration — none of which is a rules
+    /// judgment, because the pairing is the server's and this only publishes it.
+    ///
+    /// `None`/omitted for a slot that is about the action as a whole — an ordinary
+    /// spell's target slot, the `attackers` multi-select — which is every slot that
+    /// existed before this field. Additive in both directions: a server that never
+    /// sets it is indistinguishable from the one before it, and a client that ignores
+    /// it sees exactly the contract it always saw.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<EntityId>,
 }
 
 /// One named choice of a [`Prompt::Option`] slot: an opaque `id` the client echoes
@@ -324,6 +346,7 @@ mod tests {
                 // the assertion below is the proof that an older client sees no change.
                 optional: false,
                 candidates: vec!["perm_bear".into(), "p1".into(), "p2".into()],
+                subject: None,
             }],
             prompts: vec![],
             destinations: vec![],

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { boardRows, fieldRows, rowOf } from './board'
+import { boardRows, fieldRows, piles, rowOf } from './board'
 import type { CardType } from './protocol'
 
 const perm = (name: string, ...types: CardType[]) => ({ name, types })
@@ -19,16 +19,18 @@ describe('which row a permanent is drawn in', () => {
     expect(rowOf(['land', 'creature'])).toBe('creatures')
   })
 
-  it('draws everything else together', () => {
-    expect(rowOf(['artifact'])).toBe('other')
-    expect(rowOf(['enchantment'])).toBe('other')
-    expect(rowOf(['planeswalker'])).toBe('other')
+  it('draws everything that is not a creature in the back row', () => {
+    // A row of its own cost the two rows a game is played in a fifth of the board each, and
+    // drew a dividing line for nothing on the common board that has none of these.
+    expect(rowOf(['artifact'])).toBe('lands')
+    expect(rowOf(['enchantment'])).toBe('lands')
+    expect(rowOf(['planeswalker'])).toBe('lands')
   })
 
   it('draws a permanent the server stated no types for rather than hiding it', () => {
     // An absent list is "not stated", never "no types". A board that dropped it would be
     // hiding an object the game contains.
-    expect(rowOf([])).toBe('other')
+    expect(rowOf([])).toBe('lands')
   })
 })
 
@@ -43,14 +45,14 @@ describe('arranging a battlefield', () => {
 
   it('draws creatures nearest the middle of the table', () => {
     const rows = boardRows(board, typesOf)
-    expect(rows.map((group) => group.row)).toEqual(['creatures', 'other', 'lands'])
+    expect(rows.map((group) => group.row)).toEqual(['creatures', 'lands'])
   })
 
   it('mirrors the order for the seat across the table', () => {
     // So the two sets of creatures face each other across the dividing line and combat reads
     // as one band rather than two lists that happen to be stacked.
     const rows = boardRows(board, typesOf, { mirrored: true })
-    expect(rows.map((group) => group.row)).toEqual(['lands', 'other', 'creatures'])
+    expect(rows.map((group) => group.row)).toEqual(['lands', 'creatures'])
   })
 
   it('keeps the order the server listed, inside a row', () => {
@@ -91,10 +93,11 @@ describe('the rows a field draws', () => {
     expect(rows[0]?.entries).toEqual([])
   })
 
-  it('adds the third row only when the server states that kind of permanent', () => {
+  it('never grows a third row: the same two boxes whatever is in the game', () => {
+    // The one thing on the board whose *presence* could change a box no longer can, so the
+    // layout a player learns on their first turn is the one they have on their twentieth.
     expect(fieldRows([typed(['artifact'])], typesOf).map((row) => row.row)).toEqual([
       'creatures',
-      'other',
       'lands',
     ])
   })
@@ -122,5 +125,47 @@ describe('the rows a field draws', () => {
       typesOf,
     )
     expect(rows[0]?.entries.map((entry) => entry.name)).toEqual(['second', 'first'])
+  })
+})
+
+describe('the piles a row draws', () => {
+  const at = (key: string | undefined, id: string) => ({ key, id })
+  const keyOf = (entry: { key: string | undefined }) => entry.key
+
+  it('gathers a run of the same thing into one pile', () => {
+    const drawn = piles([at('forest', 'a'), at('forest', 'b'), at('forest', 'c')], keyOf)
+    expect(drawn).toHaveLength(1)
+    expect(drawn[0]?.entries.map((entry) => entry.id)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('breaks a pile the moment anything about a permanent differs', () => {
+    // The key is the caller's, and it carries every mark the board draws — so a tapped Forest,
+    // an attacking creature, or one carrying a counter never hides behind an identical card.
+    const drawn = piles([at('forest', 'a'), at('forest:tapped', 'b'), at('forest', 'c')], keyOf)
+    expect(drawn.map((pile) => pile.entries.map((entry) => entry.id))).toEqual([
+      ['a'],
+      ['b'],
+      ['c'],
+    ])
+  })
+
+  it('never stacks a permanent with no identity to be the same card of', () => {
+    // A token (CR 111) has no `functional_id`, so two of them are not known to be one card.
+    const drawn = piles([at(undefined, 'a'), at(undefined, 'b')], keyOf)
+    expect(drawn).toHaveLength(2)
+  })
+
+  it('only gathers a consecutive run, because the order is the server’s', () => {
+    const drawn = piles([at('forest', 'a'), at('bear', 'b'), at('forest', 'c')], keyOf)
+    expect(drawn.map((pile) => pile.entries.map((entry) => entry.id))).toEqual([
+      ['a'],
+      ['b'],
+      ['c'],
+    ])
+  })
+
+  it('places every permanent exactly once', () => {
+    const entries = [at('forest', 'a'), at('forest', 'b'), at('bear', 'c')]
+    expect(piles(entries, keyOf).flatMap((pile) => pile.entries)).toEqual(entries)
   })
 })

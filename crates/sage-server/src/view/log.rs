@@ -246,17 +246,7 @@ pub(crate) fn commander_identity_view(
                     name: card_name(commander.card, db),
                     // Canonical WUBRG order, so two projections of the same identity
                     // are byte-identical and a client never has to sort.
-                    color_identity: [
-                        (Color::White, ColorView::White),
-                        (Color::Blue, ColorView::Blue),
-                        (Color::Black, ColorView::Black),
-                        (Color::Red, ColorView::Red),
-                        (Color::Green, ColorView::Green),
-                    ]
-                    .into_iter()
-                    .filter(|(engine, _)| identity.contains(engine))
-                    .map(|(_, wire)| wire)
-                    .collect(),
+                    color_identity: super::cards::colors_in_wubrg(&identity),
                 }
             })
         })

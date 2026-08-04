@@ -182,11 +182,18 @@ function read(symbol: string): Spec {
   return textPip('n', s)
 }
 
-/** Numerals shrink to fit rather than overflowing the coin. */
+/**
+ * Numerals shrink to fit rather than overflowing the coin.
+ *
+ * Set as large as the coin will take, which is larger than it looks: the glyphs a pip draws are
+ * pictures and read at any size, but a generic cost is a *number a player adds up*, and at a
+ * board card's 12px coin the old sizing left it barely legible. The floor is the width of the
+ * coin's flat middle band, not the circle — three digits are set to clear the rim.
+ */
 function textSize(text: string): number {
-  if (text.length >= 3) return 38
-  if (text.length === 2) return 50
-  return 62
+  if (text.length >= 3) return 46
+  if (text.length === 2) return 60
+  return 74
 }
 
 const coinOf = (spec: Spec): string => (spec.kind === 'split' ? coinOf(spec.b) : spec.coin)

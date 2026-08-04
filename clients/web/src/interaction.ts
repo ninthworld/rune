@@ -31,10 +31,30 @@
  * That order is also why a card the server did not name still opens the inspector on one click:
  * an object gives its first click to an action only where the server offered one.
  *
- * Nothing here survives a message. A new view rebuilds every derivation from that view, and the
- * only thing carried across the boundary is the submission the client is still waiting on —
- * which is not game state but a fact about a message this client sent, and which the server
- * itself settles by echoing it back in `action_ack`.
+ * Two of those steps are *directed* rather than free, and both are the same idea: the game is
+ * asking about one object at a time, so the click means what that object is being asked.
+ *
+ * - **Aiming.** A combat declaration is one action with several slots, and the server states
+ *   which attacker each defender slot belongs to (`TargetRequirement.subject`). Choosing an
+ *   attacker therefore *aims* it: the next click on a defender answers that attacker's slot and
+ *   nothing else, and the board draws the arrow while it is being drafted. Without that, every
+ *   defender slot lists the same candidates and one click could mean any of them.
+ * - **Paying.** A card whose cost is not yet floating owns no action, so under rule 5 it was
+ *   unclickable in the one moment a player most wants to click it. Clicking it now says *this is
+ *   what I am doing*: the bar names the cost, the mana sources stay live, and the card is cast
+ *   the moment the **server** offers a cast for it. Nothing here decides that moment — a client
+ *   that added up pips would be computing cost, which is the whole of what this module is not.
+ *
+ * Almost nothing here survives a message. A new view rebuilds every derivation from that view,
+ * and exactly two things cross the boundary — neither of them game state, and both of them facts
+ * about what *this client's player* is in the middle of:
+ *
+ * - the submission the client is still waiting on, which is a fact about a message it sent, and
+ *   which the server itself settles by echoing it back in `action_ack`;
+ * - the card being paid for, which is a fact about what the player said they are doing. It has
+ *   to survive, because making the mana for a spell is one message per source and an intent that
+ *   died on the first view would be gone before the second land was tapped. It names a card and
+ *   claims nothing, and a view that no longer draws that card simply stops showing it.
  */
 import type { CardFaceState } from './card-face'
 import type { ActionAck, ValidAction } from './protocol'
@@ -66,6 +86,21 @@ export interface Interaction {
   readonly rejected?: string
   /** An action asked for a second, explicit click before it is sent. */
   readonly confirming?: string
+  /**
+   * The subject whose own slot the next click answers — an attacker that has been declared and
+   * has not yet been given something to attack. Presentation only: the server stated the
+   * pairing (`TargetRequirement.subject`), and this is which half of it the player is on.
+   */
+  readonly aiming?: string
+  /**
+   * A card the player has said they are playing, before the server offers it.
+   *
+   * Held across messages, unlike everything else here, because that is the whole point: the
+   * player names the card and *then* makes the mana, which takes one message per source. It is
+   * an intent and not a claim — it asserts nothing about legality, cost, or affordability, and
+   * the action it is waiting for appears when the **server** says so.
+   */
+  readonly paying?: string
 }
 
 /** Nothing selected, nothing drafted, nothing in flight. */
@@ -163,7 +198,45 @@ export interface Slot {
   optional: boolean
   /** Whether clicking an object on the table answers this slot. */
   byEntity: boolean
+  /**
+   * The entity this slot is *about*, as the server stated it — the attacker whose defender this
+   * chooses, the attacker these blockers are assigned to. Absent for a slot about the action as
+   * a whole.
+   */
+  subject?: string
+  /**
+   * Whether this slot exists **because** its subject was chosen in another slot of the same
+   * action, rather than existing outright.
+   *
+   * The distinction is the difference between "what does this attacker attack" — which is only a
+   * question once you have declared that attacker, and must then be answered — and "what blocks
+   * this attacker", which is a question about a board fact and whose answer may legally be
+   * nothing. Both are subject slots; only one is owed.
+   */
+  conditional: boolean
 }
+
+/**
+ * The entities this action asks the player to *choose*, across its subject-less slots.
+ *
+ * A slot whose subject is one of these is a follow-up question about a choice already made, so
+ * it appears once that choice is made and is owed an answer from then on. A slot whose subject
+ * is not — an attacker on the other side of the table — is a question about the board, asked
+ * outright. Nothing here reads what the action *is*: the shape of its own slots is the whole
+ * of the rule.
+ */
+function choosableSubjects(action: ValidAction): ReadonlySet<string> {
+  const ids = new Set<string>()
+  for (const requirement of action.requirements ?? []) {
+    if (requirement.subject !== undefined) continue
+    for (const id of requirement.candidates ?? []) ids.add(id)
+  }
+  return ids
+}
+
+/** Every id this draft holds, in any slot. */
+const drafted = (draft: Draft): ReadonlySet<string> =>
+  new Set(Object.values(draft).flatMap((ids) => [...ids]))
 
 /**
  * The questions this action is currently asking, given what has been answered so far.
@@ -175,9 +248,16 @@ export interface Slot {
  */
 export function slotsOf(action: ValidAction, draft: Draft): readonly Slot[] {
   const owed = requiredSlots(action, draft)
+  const choosable = choosableSubjects(action)
+  const chosen = drafted(draft)
   const slots: Slot[] = []
 
   for (const requirement of action.requirements ?? []) {
+    const subject = requirement.subject
+    const conditional = subject !== undefined && choosable.has(subject)
+    // A question about a choice that has not been made is not a question yet. Declaring three
+    // attackers used to show a defender slot for every creature that *could* have attacked.
+    if (conditional && subject !== undefined && !chosen.has(subject)) continue
     slots.push({
       slot: requirement.slot,
       kind: 'target',
@@ -192,6 +272,8 @@ export function slotsOf(action: ValidAction, draft: Draft): readonly Slot[] {
       max: null,
       optional: requirement.optional ?? false,
       byEntity: true,
+      ...(subject === undefined ? {} : { subject }),
+      conditional,
     })
   }
 
@@ -214,6 +296,7 @@ export function slotsOf(action: ValidAction, draft: Draft): readonly Slot[] {
           })),
           optional: false,
           byEntity: false,
+          conditional: false,
         })
         break
       case 'select_from_zone':
@@ -226,6 +309,7 @@ export function slotsOf(action: ValidAction, draft: Draft): readonly Slot[] {
           // cards looked at, or failing to find.
           optional: (min ?? 0) === 0,
           byEntity: true,
+          conditional: false,
         })
         break
       case 'order':
@@ -236,6 +320,7 @@ export function slotsOf(action: ValidAction, draft: Draft): readonly Slot[] {
           options: [],
           optional: false,
           byEntity: true,
+          conditional: false,
         })
         break
       case 'number':
@@ -248,6 +333,7 @@ export function slotsOf(action: ValidAction, draft: Draft): readonly Slot[] {
           range: { min: prompt.min, max: prompt.max },
           optional: false,
           byEntity: false,
+          conditional: false,
         })
         break
     }
@@ -268,12 +354,20 @@ export interface Focus {
 export function focus(actions: readonly ValidAction[], interaction: Interaction): Focus {
   const action = actions.find((candidate) => candidate.id === interaction.armed)
   if (!action) return { slots: [], ready: false }
+  const slots = slotsOf(action, interaction.draft)
   return {
     action,
-    slots: slotsOf(action, interaction.draft),
-    ready: isSubmittable(action, interaction.draft),
+    slots,
+    // A conditional slot is only here because its subject was chosen, and it is owed from then
+    // on: an attacker in the declaration with nothing named to attack is an answer the server
+    // must reject, so the client does not offer to send it. This is the same bookkeeping
+    // `submission.isSubmittable` does — over slots the server itself published — and it is not a
+    // rule: which slots exist, and for which subjects, is entirely the server's statement.
+    ready: isSubmittable(action, interaction.draft) && slots.every(answered),
   }
 }
+
+const answered = (slot: Slot): boolean => !slot.conditional || slot.chosen.length > 0
 
 /**
  * Which question a click on `id` answers.
@@ -289,28 +383,47 @@ export function focus(actions: readonly ValidAction[], interaction: Interaction)
  * already held, else put it in the first slot with room. Either way each slot's own list in the
  * dock is the exact path, so an ambiguity is never a dead end.
  */
-function slotFor(slots: readonly Slot[], id: string): Slot | undefined {
+function slotFor(slots: readonly Slot[], id: string, aiming?: string): Slot | undefined {
   const takes = slots.filter((slot) => slot.byEntity && slot.candidates.includes(id))
   return (
+    // What is being aimed wins over everything: while an attacker is waiting to be told what it
+    // attacks, a click on a defender is that attacker's answer and cannot be another's.
+    (aiming === undefined ? undefined : takes.find((slot) => slot.subject === aiming)) ??
     takes.find((slot) => slot.chosen.includes(id)) ??
     takes.find((slot) => slot.max === null || slot.chosen.length < slot.max) ??
     takes[0]
   )
 }
 
+/** The slot currently being aimed, if the player is in the middle of aiming one. */
+export function aimedSlot(slots: readonly Slot[], interaction: Interaction): Slot | undefined {
+  if (interaction.aiming === undefined) return undefined
+  return slots.find((slot) => slot.subject === interaction.aiming)
+}
+
 export type Gesture =
   | { kind: 'fill'; slot: string }
   | { kind: 'take'; action: string }
   | { kind: 'select' }
+  | { kind: 'pay' }
   | { kind: 'inspect' }
 
-/** What one click on the object `id` means right now. The order is this module's whole rule. */
+/**
+ * What one click on the object `id` means right now. The order is this module's whole rule.
+ *
+ * `payable` is the set of ids the caller is willing to let a player *declare an intent to play*
+ * — a card in their own hand, while the server is offering at least one mana source. It is a
+ * fact about what this client drew and what the server listed, and never a judgment that the
+ * card could be cast: rule 3 still comes first, so a card the server *did* offer an action for
+ * is simply taken.
+ */
 export function gestureFor(
   actions: readonly ValidAction[],
   interaction: Interaction,
   id: string,
+  payable: ReadonlySet<string> = new Set(),
 ): Gesture {
-  const open = slotFor(focus(actions, interaction).slots, id)
+  const open = slotFor(focus(actions, interaction).slots, id, interaction.aiming)
   if (open) return { kind: 'fill', slot: open.slot }
   if (interaction.selected === id) return { kind: 'inspect' }
 
@@ -318,8 +431,12 @@ export function gestureFor(
   // click has no single meaning, and inventing one — a "primary" action ranked by a type this
   // client would have to interpret — is exactly the rules reasoning that does not live here.
   const [only, ...rest] = actionsFor(actions, id)
-  if (!only) return { kind: 'inspect' }
-  return rest.length === 0 ? { kind: 'take', action: only.id } : { kind: 'select' }
+  if (only) return rest.length === 0 ? { kind: 'take', action: only.id } : { kind: 'select' }
+
+  // Nothing offered for it, and it is a card the player holds: the click is "I am playing this",
+  // which is a statement of intent the bar then carries while the mana is made.
+  if (payable.has(id) && interaction.paying !== id) return { kind: 'pay' }
+  return { kind: 'inspect' }
 }
 
 /**
@@ -343,11 +460,40 @@ export function highlightFor(
   if (current.action) {
     if (Object.values(interaction.draft).some((ids) => ids.includes(id))) return 'selected'
     if ((current.action.subject ?? []).includes(id)) return 'selected'
-    return slotFor(current.slots, id) ? 'candidate' : 'idle'
+    // While one subject is being aimed, only its own slot's candidates are choosable — the
+    // board says "this attacker, now pick what it attacks" rather than lighting up every
+    // creature that could also have attacked.
+    const aimed = aimedSlot(current.slots, interaction)
+    if (aimed) return aimed.candidates.includes(id) ? 'candidate' : 'idle'
+    return slotFor(current.slots, id, interaction.aiming) ? 'candidate' : 'idle'
+  }
+
+  // A card the player said they are playing stays lit while its cost is made, and every source
+  // the server offered is a candidate — which is the whole of what "pay this" looks like on the
+  // board. The client is not saying which of them would finish the cost; it does not know.
+  if (interaction.paying !== undefined) {
+    if (interaction.paying === id) return 'selected'
+    return manaSubjects(actions).has(id) ? 'candidate' : 'idle'
   }
 
   if (interaction.selected === id) return 'selected'
   return subjects(actions).has(id) ? 'candidate' : 'idle'
+}
+
+/**
+ * Every object the server offered a **mana ability** on (CR 605).
+ *
+ * Read straight off `mana_ability`, "server-computed so a client may offer a lighter gesture …
+ * without ever classifying abilities itself" (`docs/protocol.md`). A build that does not see the
+ * flag simply lights nothing extra, which is the harmless direction.
+ */
+export function manaSubjects(actions: readonly ValidAction[]): ReadonlySet<string> {
+  const named = new Set<string>()
+  for (const action of actions) {
+    if (action.mana_ability !== true) continue
+    for (const id of action.subject ?? []) named.add(id)
+  }
+  return named
 }
 
 // ---------------------------------------------------------------------------
@@ -369,9 +515,47 @@ export function arm(interaction: Interaction, action: ValidAction): Interaction 
   }
 }
 
-/** Put an id into a slot, or take it back out, respecting the count the server advertised. */
-export function fill(interaction: Interaction, slot: Slot, id: string): Interaction {
-  return { ...interaction, draft: toggleSelection(interaction.draft, slot.slot, id, slot.max) }
+/**
+ * Put an id into a slot, or take it back out, respecting the count the server advertised.
+ *
+ * `slots` is the rest of the question, so that answering one part of it can *aim* the next:
+ * choosing an attacker leaves the declaration pointing at that attacker, and the click after it
+ * answers what that attacker attacks. Taking the attacker back out un-aims it, and answering the
+ * aimed slot finishes it — so the sequence is attacker, target, attacker, target, with no mode
+ * to enter and none to leave.
+ */
+export function fill(
+  interaction: Interaction,
+  slot: Slot,
+  id: string,
+  slots: readonly Slot[] = [],
+): Interaction {
+  const draft = toggleSelection(interaction.draft, slot.slot, id, slot.max)
+  const next = { ...interaction, draft }
+  if (slot.subject !== undefined) return { ...next, aiming: undefined }
+
+  const added = (draft[slot.slot] ?? []).includes(id)
+  if (!added) {
+    return interaction.aiming === id ? { ...next, aiming: undefined } : next
+  }
+  const owed = slots.some((candidate) => candidate.subject === id)
+  return owed ? { ...next, aiming: id } : next
+}
+
+/**
+ * Say that this card is the one being played, before the server has offered it.
+ *
+ * Nothing is sent and nothing is claimed. The bar names the printed cost, the mana sources stay
+ * live on the board, and the cast happens when the server lists it — so a player who taps the
+ * wrong land has made the mana the rules say they made, exactly as at a table.
+ */
+export function payFor(interaction: Interaction, id: string): Interaction {
+  return { draft: {}, selected: id, paying: id, pending: interaction.pending }
+}
+
+/** Give up on playing that card. The mana already made stays made; nothing was sent to undo. */
+export function stopPaying(interaction: Interaction): Interaction {
+  return { draft: {}, selected: interaction.selected, pending: interaction.pending }
 }
 
 /** Answer a slot outright — an option chosen, a number typed. */
@@ -381,6 +565,18 @@ export function answer(
   ids: readonly string[],
 ): Interaction {
   return { ...interaction, draft: { ...interaction.draft, [slot]: [...ids] } }
+}
+
+/**
+ * Take back every answer without leaving the question.
+ *
+ * The way out of a half-built combat declaration that is *not* the way out of declaring: three
+ * attackers aimed at the wrong things are undone in one click and the declaration is still the
+ * thing being answered. Backing out of the action entirely is `disarm`, which is the second
+ * press of the same control and the Escape key.
+ */
+export function reset(interaction: Interaction): Interaction {
+  return { ...interaction, draft: {}, aiming: undefined }
 }
 
 /**
@@ -420,6 +616,15 @@ export function submitted(interaction: Interaction, pending: Pending): Interacti
 }
 
 /**
+ * Whether this submission is the cast the player has been paying for.
+ *
+ * The intent ends when the card it named is played, and not before: every other submission a
+ * paying player makes is a mana source being tapped, which is the intent being *carried out*.
+ */
+export const finishesPayment = (interaction: Interaction, action: ValidAction): boolean =>
+  interaction.paying !== undefined && (action.subject ?? []).includes(interaction.paying)
+
+/**
  * Stop waiting on an unanswered submission.
  *
  * The ack is advisory: an older server never sends one, and a view that carries none "says
@@ -441,8 +646,14 @@ export function release(interaction: Interaction): Interaction {
  */
 export function settle(interaction: Interaction, ack: ActionAck | undefined): Interaction {
   const pending = interaction.pending
+  // The payment intent is the one other thing that crosses the boundary, and for the same
+  // reason: making the mana for a spell is one message per source, so an intent that did not
+  // survive a view would be gone before the second land was tapped. It is not game state — it
+  // names a card and asserts nothing — and a view that no longer draws that card simply stops
+  // showing it (`Board`), which is how it ends when the card is played or leaves the hand.
+  const paying = interaction.paying
   if (pending && ack && ack.submission === pending.submission) {
-    return { draft: {}, rejected: ack.accepted ? undefined : pending.label }
+    return { draft: {}, paying, rejected: ack.accepted ? undefined : pending.label }
   }
-  return { draft: {}, pending }
+  return { draft: {}, paying, pending }
 }

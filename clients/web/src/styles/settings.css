@@ -401,3 +401,10 @@
   font-size: 11px;
   color: #cfe0f4;
 }
+
+/* An option that applies only to a face this device has not chosen: dimmed
+   rather than hidden, so it is discoverable from the tile that would use
+   it and nothing appears out of nowhere when a tile is picked. */
+.set-row-off {
+  opacity: 0.5;
+}

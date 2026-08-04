@@ -92,6 +92,24 @@ pub struct CardView {
     /// "not stated" rather than "no types".
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub card_types: Vec<CardType>,
+    /// The card's **colour identity** (CR 903.4): its colours, the colours of the mana
+    /// symbols in its cost, and the colours of the mana symbols in its rules text.
+    ///
+    /// Stated because the one thing a client can read for itself — the printed cost —
+    /// is silent on exactly the cards a board is scanned by colour most: a Forest costs
+    /// nothing and prints no coloured pip, and rendering it as colourless makes a
+    /// mana base unreadable. Colour identity is the answer the server already computes
+    /// for deck legality and for a seat's commander gems, so it is the same computation
+    /// rather than a second one that could disagree with it.
+    ///
+    /// It is **not** the card's colour (CR 105) and must not be rendered as one: this
+    /// is what a card *belongs to*, which is the question a player asks when scanning a
+    /// battlefield. In WUBRG order, deduplicated.
+    ///
+    /// Additive: omitted (and defaults to empty) for a colourless card and for a card
+    /// the server could not resolve, so every existing view is unchanged on the wire.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub color_identity: Vec<crate::Color>,
 }
 
 /// What the receiving player is allowed to know about an opponent: hidden zones
@@ -311,6 +329,26 @@ pub struct Permanent {
     /// Named counters and their quantities, e.g. `{"+1/+1": 2}`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub counters: Vec<Counter>,
+    /// Whether **summoning sickness currently restricts this permanent** (CR 302.6):
+    /// it is a creature, its controller has not controlled it continuously since the
+    /// start of their most recent turn, and it does not have haste (CR 702.10b).
+    ///
+    /// A player reads this off the board constantly — it is the difference between a
+    /// creature that can attack this turn and one that cannot — and no client can
+    /// work it out: continuous control since a turn began is stored engine state, and
+    /// haste may be granted by an Aura, an anthem, or a pump that is nowhere in the
+    /// permanent's printed keywords. Absence of an attack action is not an answer
+    /// either, since a creature is offered none outside the declare-attackers step.
+    ///
+    /// It is a *restriction*, not a property: a permanent that is summoning sick and
+    /// has haste reports `false`, because the restriction is what a player is looking
+    /// at. Server-computed from the engine's own predicate — the same one that gates
+    /// attacking and `{T}` costs — so the board and the action list cannot disagree.
+    ///
+    /// Additive: omitted (and defaults to `false`), so every existing view is
+    /// unchanged on the wire and a client that ignores it renders as it did.
+    #[serde(default, skip_serializing_if = "crate::is_false")]
+    pub summoning_sick: bool,
 }
 
 /// An **emblem** in the game (CR 114, issue #620): a marker one player has, whose only
@@ -615,6 +653,7 @@ mod tests {
                 loyalty: None,
                 keywords: vec![],
                 card_types: Vec::new(),
+                color_identity: Vec::new(),
             },
             tapped: false,
             attacking: false,
@@ -625,6 +664,7 @@ mod tests {
             attached_to: None,
             is_commander: false,
             counters: vec![],
+            summoning_sick: false,
         };
 
         // Not in combat and undamaged: all three fields elide from the JSON.
@@ -700,6 +740,7 @@ mod tests {
                 loyalty: None,
                 keywords: vec![],
                 card_types: Vec::new(),
+                color_identity: Vec::new(),
             },
             tapped: false,
             attacking: false,
@@ -710,6 +751,7 @@ mod tests {
             attached_to: None,
             is_commander: false,
             counters: vec![],
+            summoning_sick: false,
         };
 
         // Unattached: the field elides from the JSON.
@@ -750,6 +792,7 @@ mod tests {
             loyalty: None,
             keywords: vec!["flying".into()],
             card_types: Vec::new(),
+            color_identity: Vec::new(),
         };
         let json = serde_json::to_value(&base).unwrap();
         assert_eq!(json.get("keywords"), Some(&serde_json::json!(["flying"])));
@@ -857,6 +900,7 @@ mod tests {
             loyalty: None,
             keywords: vec![],
             card_types: Vec::new(),
+            color_identity: Vec::new(),
         };
         let permanent = Permanent {
             id: "perm_9".into(),
@@ -873,6 +917,7 @@ mod tests {
             attached_to: None,
             is_commander: false,
             counters: vec![],
+            summoning_sick: false,
         };
         let json = serde_json::to_value(&permanent).unwrap();
         assert_eq!(
@@ -977,6 +1022,7 @@ mod tests {
                 loyalty: None,
                 keywords: vec![],
                 card_types: vec![CardType::Land],
+                color_identity: Vec::new(),
             },
             physical_card: Some(card.into()),
             tapped: false,
@@ -988,6 +1034,7 @@ mod tests {
             attached_to: None,
             is_commander: false,
             counters: vec![],
+            summoning_sick: false,
         };
         let first = forest("perm_9", "card_5");
         let second = forest("perm_10", "card_6");
@@ -1067,6 +1114,7 @@ mod tests {
                 loyalty: None,
                 keywords: vec![],
                 card_types: Vec::new(),
+                color_identity: Vec::new(),
             }),
         };
         let json = serde_json::to_string(&item).unwrap();

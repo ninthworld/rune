@@ -38,24 +38,30 @@ import {
   type CardFace,
   type CardFaceLink,
 } from './../../card-face'
-import { arrowsFor } from './../../arrows'
+import { arrowsFor, draftArrows } from './../../arrows'
 import { barTone, dockTone, dockWording } from './../../dock'
 import {
   IDLE,
+  actionsFor,
   arm,
   ask,
   clear,
   disarm,
   fill,
+  finishesPayment,
   focus,
   gestureFor,
   globalActions,
   highlightFor,
+  manaSubjects,
   needsChoices,
   needsConfirmation,
+  payFor,
   release,
+  reset,
   select,
   settle,
+  stopPaying,
   submitted,
   unask,
   type Interaction,
@@ -234,13 +240,36 @@ export function Board({
     ...(browsing ? (openPileFaces(table, browsing) ?? []) : []),
   ])
 
+  // Cards in this player's own hand the server has offered nothing for, while it *is* offering
+  // somewhere to get mana from. Clicking one says "this is what I am playing" and the bar
+  // carries the cost until the server offers the cast (`interaction.ts`). Both halves are facts
+  // about what was drawn and what was listed — no judgment about affordability is made here,
+  // and none could be.
+  const sources = manaSubjects(actions)
+  const payable =
+    sources.size === 0
+      ? new Set<string>()
+      : new Set(
+          handFaces
+            .filter((face) => actionsFor(actions, face.id).length === 0)
+            .map((face) => face.id),
+        )
+
   /** Send one action, and start waiting on the answer. */
   const dispatch = (action: ValidAction, draft: Draft) => {
     const submission = nextSubmissionId()
     send(buildChooseAction(action, draft, submission))
     setInteraction(
       submitted(
-        { draft: {}, selected: interaction.selected },
+        {
+          draft: {},
+          selected: interaction.selected,
+          // Tapping a source *is* the payment being carried out, so the intent outlives it; the
+          // cast itself is what ends it.
+          ...(interaction.paying !== undefined && !finishesPayment(interaction, action)
+            ? { paying: interaction.paying }
+            : {}),
+        },
         { submission, actionId: action.id, label: action.label },
       ),
     )
@@ -265,10 +294,28 @@ export function Board({
   }
 
   const current = focus(actions, interaction)
+  // Whether the bar's Confirm has anything behind it: the drafted answer when one is being
+  // drafted, and otherwise whether the server has started offering the card being paid for.
+  const payReady =
+    interaction.paying !== undefined && actionsFor(actions, interaction.paying).length > 0
 
   const confirm = () => {
-    if (!current.action || !current.ready || interaction.pending) return
-    dispatch(current.action, interaction.draft)
+    if (interaction.pending) return
+    if (current.action) {
+      if (!current.ready) return
+      dispatch(current.action, interaction.draft)
+      return
+    }
+    // Confirming a payment is taking the action the *server* now offers for the card being paid
+    // for. Until it offers one there is nothing to confirm and the button is dead; when it
+    // offers more than one — a second way to cast the same card — the choice is the player's,
+    // so the object's own list opens instead of one being picked here.
+    const paying = interaction.paying
+    if (paying === undefined) return
+    const [only, ...rest] = actionsFor(actions, paying)
+    if (!only) return
+    if (rest.length > 0) setInteraction(select(interaction, paying))
+    else take(only)
   }
 
   /**
@@ -309,6 +356,7 @@ export function Board({
     if (browsing) return setBrowsing(undefined)
     if (interaction.confirming) return setInteraction(unask(interaction))
     if (interaction.armed) return setInteraction(disarm(interaction))
+    if (interaction.paying !== undefined) return setInteraction(stopPaying(interaction))
     if (interaction.selected) return setInteraction(clear(interaction))
     if (focused !== undefined) return setFocused(undefined)
   }
@@ -339,7 +387,10 @@ export function Board({
           // is not. A concede waiting for its second click is deliberately not reachable from
           // here — a match-ending button asked twice must be answered by a deliberate click.
           if (interaction.pending || interaction.confirming) return
-          if (current.ready) confirm()
+          // The same question the bar's Confirm answers, including the payment it is holding —
+          // a key that passed priority while a player was making mana would hand the turn away
+          // in the middle of casting.
+          if (current.action ? current.ready : payReady) confirm()
           else passPriority()
           return
         case 'cancel':
@@ -371,13 +422,16 @@ export function Board({
     linkOf,
     trace: setHovering,
     activate: (id: string) => {
-      const gesture = gestureFor(actions, interaction, id)
+      const gesture = gestureFor(actions, interaction, id, payable)
       switch (gesture.kind) {
         case 'inspect':
           setPinned((held) => (held === id ? undefined : id))
           return
         case 'select':
           setInteraction(select(interaction, id))
+          return
+        case 'pay':
+          setInteraction(payFor(interaction, id))
           return
         case 'take': {
           const action = actions.find((candidate) => candidate.id === gesture.action)
@@ -386,7 +440,7 @@ export function Board({
         }
         case 'fill': {
           const slot = current.slots.find((each) => each.slot === gesture.slot)
-          if (slot) setInteraction(fill(interaction, slot, id))
+          if (slot) setInteraction(fill(interaction, slot, id, current.slots))
           return
         }
       }
@@ -417,6 +471,13 @@ export function Board({
 
   const looking = pinned ?? hovering
   const preview = looking === undefined ? undefined : faces.get(looking)
+
+  // The intent only shows while the card it names is still in hand: a card that has been cast,
+  // discarded, or lost to a new view stops being something to pay for, with no state to clear.
+  const payingFace =
+    interaction.paying === undefined
+      ? undefined
+      : handFaces.find((face) => face.id === interaction.paying)
 
   const tone = dockTone(actions, interaction, view.result)
   const globals = globalActions(actions)
@@ -555,15 +616,27 @@ export function Board({
         where={`Turn ${view.turn ?? 0} · ${phaseLabel(view.phase ?? '')}`}
         {...(current.action ? { action: current.action } : {})}
         slots={current.slots}
-        ready={current.ready}
+        ready={current.action ? current.ready : payReady}
         blocked={interaction.pending !== undefined}
         interaction={interaction}
         drawn={drawn}
         buttons={barButtons}
+        {...(payingFace ? { paying: payingFace } : {})}
+        pool={local?.manaPool ?? []}
         labelFor={surface.labelFor}
         update={setInteraction}
         confirm={confirm}
-        cancel={() => setInteraction(disarm(interaction))}
+        // Two depths in one control: take back the answers, then let go of the question. A
+        // payment has no answers to take back, so its first press ends the intent.
+        cancel={() =>
+          setInteraction(
+            !current.action
+              ? stopPaying(interaction)
+              : Object.values(interaction.draft).some((ids) => ids.length > 0)
+                ? reset(interaction)
+                : disarm(interaction),
+          )
+        }
         take={take}
       />
 
@@ -578,7 +651,7 @@ export function Board({
       {/* Over the whole table and under nothing: the relationships the server stated, drawn
           between the objects that carry them. It takes no clicks, and every line it draws is
           also a sentence beside the object that carries it. */}
-      <Arrows arrows={arrowsFor(related.all)} />
+      <Arrows arrows={[...arrowsFor(related.all), ...draftArrows(current.action, current.slots)]} />
 
       {zone && (
         <ZoneView
