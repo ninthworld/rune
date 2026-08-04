@@ -58,7 +58,7 @@ mod solve;
 mod sources;
 
 pub(crate) use apply::{apply_payment, payment_covers_cast};
-pub use pips::{payment_pips, remaining_cost_pips, PaymentPip};
+pub use pips::{discard_cost, payment_pips, remaining_cost_pips, DiscardCost, PaymentPip};
 pub use solve::auto_payment;
 pub(crate) use solve::ManaOptions;
 pub use sources::{is_plain_mana_source, mana_ability_pips, payment_sources};

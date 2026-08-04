@@ -20,7 +20,7 @@
 //! to sort the symbols it draws without changing which slot a click fills.)
 
 use crate::card::CardDatabase;
-use crate::id::CardInstance;
+use crate::id::{CardInstance, CardInstanceId};
 use crate::mana::{Color, SpendPurpose};
 use crate::state::GameState;
 
@@ -42,6 +42,45 @@ pub struct PaymentPip {
     /// listed twice for a generic pip would be a question with one meaningful answer, so
     /// it is listed once there and twice only where the halves differ in what they pay.
     pub candidates: Vec<ManaSource>,
+}
+
+/// The discard an additional cost demands, and the cards that could pay it (CR 601.2b).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DiscardCost {
+    /// How many cards must be discarded. Never zero — a card with no such cost has no
+    /// [`DiscardCost`] at all.
+    pub count: u8,
+    /// The cards in the caster's hand that could pay it.
+    ///
+    /// **The card being cast is not among them.** It is on its way to the stack, so a hand
+    /// of exactly this one card cannot discard to cast it — which is a rule (CR 601.2b,
+    /// 601.2h) and therefore answered here rather than by whoever draws the hand.
+    pub candidates: Vec<CardInstanceId>,
+}
+
+/// The discard `card`'s additional cost demands, or `None` when it has none — which is
+/// almost every card.
+#[must_use]
+pub fn discard_cost(
+    state: &GameState,
+    db: &CardDatabase,
+    card: CardInstance,
+) -> Option<DiscardCost> {
+    let count = db.card(card.card)?.additional_cost?.discard_count();
+    if count == 0 {
+        return None;
+    }
+    Some(DiscardCost {
+        count,
+        candidates: state
+            .players
+            .get(state.priority.0)?
+            .hand
+            .iter()
+            .filter(|held| held.id != card.id)
+            .map(|held| held.id)
+            .collect(),
+    })
 }
 
 /// What still has to be paid to cast `card`, one pip at a time.

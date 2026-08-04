@@ -5,9 +5,15 @@
 //! ids that come back into [`CostPayment`] entries. Nothing here decides what anything
 //! costs.
 //!
-//! **Any pip the client leaves unanswered, the server pays** ([`bind_payment`]). That is
+//! A cost that is not mana is posed the same way, on the slot shape that already exists for
+//! it: `As an additional cost, discard a card` is a `select_from_zone` over the hand
+//! (CR 601.2b), which is the same prompt a cleanup discard and a mulligan bottoming use.
+//! It rides in the same action and is taken back the same way, so abandoning a payment
+//! half-made abandons all of it.
+//!
+//! **Anything the client leaves unanswered, the server pays** ([`bind_payment`]). That is
 //! ADR 0010's line exactly: the engine answers *what a legal payment is* and the server
-//! decides *whether to tap for the player instead of asking*. It is also what keeps every
+//! decides *whether to pay for the player instead of asking*. It is also what keeps every
 //! existing consumer working — the terminal client, the deterministic agent, and the AI
 //! all skip these slots, and all of them assume that an action on offer is one they can
 //! take.
@@ -19,6 +25,9 @@ use super::*;
 fn pip_slot(index: usize) -> String {
     format!("pay_{index}")
 }
+
+/// The slot a cast's additional-cost discard is answered on (CR 601.2b).
+const DISCARD_SLOT: &str = "cost_discard";
 
 /// The opaque id for one way to pay a pip: which permanent, and which of its abilities.
 ///
@@ -41,6 +50,37 @@ pub(crate) fn cast_payment_prompts(
     let Some(pips) = sage_engine::payment_pips(state, db, card) else {
         return Vec::new();
     };
+    let mut prompts = mana_prompts(pips, state, db);
+    // The rest of the total cost (CR 601.2b), on the slot shape that already exists for
+    // choosing cards out of a zone. It is exact — `min` equals `count` — because a cost is
+    // paid for what it asks and not for less.
+    if let Some(discard) = sage_engine::discard_cost(state, db, card) {
+        prompts.push(Prompt::SelectFromZone {
+            slot: DISCARD_SLOT.to_string(),
+            prompt: format!(
+                "Discard {}",
+                if discard.count == 1 {
+                    "a card".to_string()
+                } else {
+                    format!("{} cards", discard.count)
+                }
+            ),
+            zone: "hand".to_string(),
+            owner: player_id(state.priority),
+            count: u32::from(discard.count),
+            min: None,
+            candidates: discard.candidates.into_iter().map(card_entity_id).collect(),
+        });
+    }
+    prompts
+}
+
+/// One `pay_mana` slot per unpaid pip.
+fn mana_prompts(
+    pips: Vec<sage_engine::PaymentPip>,
+    state: &GameState,
+    db: &CardDatabase,
+) -> Vec<Prompt> {
     pips.into_iter()
         .enumerate()
         .map(|(index, pip)| Prompt::PayMana {
@@ -130,32 +170,52 @@ pub(crate) fn bind_payment(
         // than half of it — see the note above on why this is not a top-up.
         return fallback_payment(state, db, card);
     }
-    chosen.extend(auto_non_mana_costs(state, db, card));
-    chosen
+    match bind_discards(state, db, card, targets) {
+        Some(discards) => {
+            chosen.extend(discards);
+            chosen
+        }
+        // The non-mana half was owed and not answered (or answered with a card that is no
+        // longer in hand): the server pays the whole cost rather than half of it.
+        None => fallback_payment(state, db, card),
+    }
+}
+
+/// The cards a returned selection discards to `card`'s additional cost, or `None` when the
+/// cost is owed and the answer does not pay it.
+///
+/// `Some(empty)` for the overwhelming majority of cards, which have no additional cost —
+/// and, deliberately, for those an answer naming any discard at all is refused, because a
+/// cost is paid for exactly what it asks.
+fn bind_discards(
+    state: &GameState,
+    db: &CardDatabase,
+    card: CardInstance,
+    targets: &[TargetChoice],
+) -> Option<Vec<CostPayment>> {
+    let answered = chosen_for(targets, DISCARD_SLOT);
+    let Some(cost) = sage_engine::discard_cost(state, db, card) else {
+        return answered.is_empty().then(Vec::new);
+    };
+    if answered.len() != usize::from(cost.count) {
+        return None;
+    }
+    // Resolved against the **freshly recomputed** candidates, so a card discarded, drawn
+    // into, or otherwise moved since the view went out cannot be named.
+    answered
+        .iter()
+        .map(|id| {
+            cost.candidates
+                .iter()
+                .find(|candidate| card_entity_id(**candidate) == *id)
+                .map(|candidate| CostPayment::Discard(*candidate))
+        })
+        .collect()
 }
 
 /// The payment the server assembles when the client did not (ADR 0010).
 fn fallback_payment(state: &GameState, db: &CardDatabase, card: CardInstance) -> Vec<CostPayment> {
     sage_engine::auto_payment(state, db, card).unwrap_or_default()
-}
-
-/// The non-mana half of a cost, which no slot poses yet: the discards of an additional
-/// cost (CR 601.2b). Taken from the engine's own legal payment.
-///
-/// **This is the server choosing a card out of a player's hand for them**, and it is a
-/// placeholder rather than a design: the client has no cost slot for a discard, so the
-/// alternative is refusing a cast the player was offered. It comes out the moment those
-/// slots exist.
-fn auto_non_mana_costs(
-    state: &GameState,
-    db: &CardDatabase,
-    card: CardInstance,
-) -> Vec<CostPayment> {
-    sage_engine::auto_payment(state, db, card)
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|entry| entry.discard().is_some())
-        .collect()
 }
 
 #[cfg(test)]
@@ -339,6 +399,144 @@ mod tests {
                 .count();
             assert_eq!(ways, 1, "the River is offered once for {pip}");
         }
+    }
+
+    /// **The additional cost is a slot, not something done to the player.** Tormenting
+    /// Voice discards a card as part of casting it, so the cast carries a select-from-zone
+    /// over the hand — and the spell itself is not in it, because it is on its way to the
+    /// stack.
+    #[test]
+    fn an_additional_cost_is_posed_as_a_choice_over_the_hand() {
+        let db = CardDatabase::bundled().unwrap();
+        let (mut state, hand) = state_with_hand(&[fixture("tormenting_voice"), fixture("murder")]);
+        state.turn = 3;
+        for _ in 0..2 {
+            put_permanent(&mut state, fixture("mountain"), PlayerId(0), false, false);
+        }
+        let (voice, murder) = (hand[0], hand[1]);
+
+        let action = cast_action(&state, &db, voice);
+        let discard = action
+            .prompts
+            .iter()
+            .find_map(|prompt| match prompt {
+                Prompt::SelectFromZone {
+                    slot,
+                    zone,
+                    count,
+                    candidates,
+                    ..
+                } if slot == DISCARD_SLOT => Some((zone, *count, candidates)),
+                _ => None,
+            })
+            .expect("the discard is asked for");
+        assert_eq!(discard.0, "hand");
+        assert_eq!(discard.1, 1, "one card, exactly");
+        assert_eq!(
+            discard.2,
+            &vec![card_entity_id(murder.id)],
+            "the Voice cannot pay for itself"
+        );
+    }
+
+    /// And the card the player picks is the card that goes to the graveyard.
+    #[test]
+    fn the_card_the_player_picks_is_the_one_discarded() {
+        let db = CardDatabase::bundled().unwrap();
+        let (mut state, hand) = state_with_hand(&[
+            fixture("tormenting_voice"),
+            fixture("murder"),
+            fixture("shock"),
+        ]);
+        state.turn = 3;
+        for _ in 0..2 {
+            put_permanent(&mut state, fixture("mountain"), PlayerId(0), false, false);
+        }
+        let (voice, shock) = (hand[0], hand[2]);
+
+        let action = cast_action(&state, &db, voice);
+        let mut answers = vec![TargetChoice {
+            slot: DISCARD_SLOT.to_string(),
+            chosen: vec![card_entity_id(shock.id)],
+        }];
+        // Pay the mana by hand too, so this is one whole assembled payment.
+        for prompt in &action.prompts {
+            let Prompt::PayMana {
+                slot, candidates, ..
+            } = prompt
+            else {
+                continue;
+            };
+            let taken: Vec<&String> = answers.iter().flat_map(|a| a.chosen.iter()).collect();
+            let picked = candidates
+                .iter()
+                .find(|candidate| !taken.contains(&&candidate.id))
+                .expect("a source for this pip");
+            answers.push(TargetChoice {
+                slot: slot.clone(),
+                chosen: vec![picked.id.clone()],
+            });
+        }
+
+        let bound = resolve_action(
+            &state,
+            &db,
+            PlayerId(0),
+            &ChooseAction {
+                action_id: action.id.clone(),
+                token: action.token.clone(),
+                targets: answers,
+                ..Default::default()
+            },
+        )
+        .expect("the answer binds");
+
+        let after = sage_engine::apply_action(&state, &bound, &db);
+        assert_eq!(after.stack.len(), 1, "the Voice was cast");
+        assert!(
+            after.players[0].graveyard.iter().any(|c| c.id == shock.id),
+            "the Shock the player chose is in the graveyard"
+        );
+        assert!(
+            after.players[0].hand.iter().any(|c| c.id == hand[1].id),
+            "and the Murder they kept is still in hand"
+        );
+        assert!(
+            sage_engine::pending_player_choice(&after).is_none(),
+            "nothing is owed afterwards — the cost was paid as part of casting"
+        );
+    }
+
+    /// A client that answers nothing is still paid for, discard included — which is what
+    /// keeps the terminal client and both automated players casting the same cards.
+    #[test]
+    fn an_unanswered_additional_cost_is_paid_by_the_server() {
+        let db = CardDatabase::bundled().unwrap();
+        let (mut state, hand) = state_with_hand(&[fixture("tormenting_voice"), fixture("murder")]);
+        state.turn = 3;
+        for _ in 0..2 {
+            put_permanent(&mut state, fixture("mountain"), PlayerId(0), false, false);
+        }
+        let action = cast_action(&state, &db, hand[0]);
+        let bound = resolve_action(
+            &state,
+            &db,
+            PlayerId(0),
+            &ChooseAction {
+                action_id: action.id.clone(),
+                token: action.token.clone(),
+                targets: Vec::new(),
+                ..Default::default()
+            },
+        )
+        .expect("the answer binds");
+
+        let after = sage_engine::apply_action(&state, &bound, &db);
+        assert_eq!(after.stack.len(), 1);
+        assert!(after.players[0]
+            .graveyard
+            .iter()
+            .any(|c| c.id == hand[1].id));
     }
 
     /// A payment naming one permanent for two pips is not a payment — a land taps once.

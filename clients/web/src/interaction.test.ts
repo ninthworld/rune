@@ -778,3 +778,105 @@ describe('what a committed source looks like', () => {
     expect(swapped.draft['pay_0']).toEqual(['perm_2#0'])
   })
 })
+
+describe('a cost that is not only mana', () => {
+  /** Tormenting Voice: {1}{R}, and discard a card as an additional cost. */
+  const VOICE: ValidAction = {
+    id: 'voice',
+    type: 'cast_spell',
+    label: 'Cast Tormenting Voice',
+    subject: ['card_1'],
+    token: 't',
+    prompts: [
+      {
+        kind: 'pay_mana',
+        slot: 'pay_0',
+        prompt: 'Pay {R}',
+        pip: '{R}',
+        candidates: [{ id: 'perm_1#0', source: 'perm_1', label: '{R}' }],
+      },
+      {
+        kind: 'pay_mana',
+        slot: 'pay_1',
+        prompt: 'Pay {1}',
+        pip: '{1}',
+        candidates: [
+          { id: 'perm_1#0', source: 'perm_1', label: '{R}' },
+          { id: 'perm_2#0', source: 'perm_2', label: '{R}' },
+        ],
+      },
+      {
+        kind: 'select_from_zone',
+        slot: 'cost_discard',
+        prompt: 'Discard a card',
+        zone: 'hand',
+        owner: 'p0',
+        count: 1,
+        candidates: ['card_2', 'card_3'],
+      },
+    ],
+  }
+
+  it('will not cast until the discard is chosen as well as the mana', () => {
+    let interaction = arm(IDLE, VOICE)
+    for (const [index, id] of ['perm_1', 'perm_2'].entries()) {
+      const slots = slotsOf(VOICE, interaction.draft)
+      interaction = fill(interaction, slots[index]!, id, slots)
+    }
+    // Every pip is paid and the cost line is empty — and it still cannot be cast, because
+    // the discard is part of the cost and has not been chosen.
+    expect(remainingCost(slotsOf(VOICE, interaction.draft))).toEqual([])
+    expect(focus([VOICE], interaction).ready).toBe(false)
+
+    const slots = slotsOf(VOICE, interaction.draft)
+    const discard = slots.find((slot) => slot.slot === 'cost_discard')!
+    expect(discard.kind).toBe('zone')
+    expect(gestureFor([VOICE], interaction, 'card_3')).toEqual({
+      kind: 'fill',
+      slot: 'cost_discard',
+    })
+    interaction = fill(interaction, discard, 'card_3', slots)
+    expect(focus([VOICE], interaction).ready).toBe(true)
+  })
+
+  it('sends the mana and the discard in one message', () => {
+    let interaction = arm(IDLE, VOICE)
+    for (const [index, id] of ['perm_1', 'perm_2'].entries()) {
+      const slots = slotsOf(VOICE, interaction.draft)
+      interaction = fill(interaction, slots[index]!, id, slots)
+    }
+    const slots = slotsOf(VOICE, interaction.draft)
+    interaction = fill(
+      interaction,
+      slots.find((s) => s.slot === 'cost_discard')!,
+      'card_3',
+      slots,
+    )
+
+    const message = buildChooseAction(VOICE, interaction.draft)
+    expect(message.targets).toEqual([
+      { slot: 'pay_0', chosen: ['perm_1#0'] },
+      { slot: 'pay_1', chosen: ['perm_2#0'] },
+      { slot: 'cost_discard', chosen: ['card_3'] },
+    ])
+  })
+
+  it('takes the whole cost back at once, discard included', () => {
+    let interaction = arm(IDLE, VOICE)
+    const slots = slotsOf(VOICE, interaction.draft)
+    interaction = fill(interaction, slots[0]!, 'perm_1', slots)
+    interaction = fill(
+      interaction,
+      slots.find((s) => s.slot === 'cost_discard')!,
+      'card_2',
+      slots,
+    )
+    expect(interaction.draft['cost_discard']).toEqual(['card_2'])
+
+    // Nothing was sent, so abandoning it costs a click and no message — and the card that
+    // was going to be discarded is still just a card in hand.
+    const cancelled = disarm(interaction)
+    expect(cancelled.draft).toEqual({})
+    expect(cancelled.pending).toBeUndefined()
+  })
+})

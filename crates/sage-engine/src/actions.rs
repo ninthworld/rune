@@ -24,8 +24,8 @@ pub use generation::valid_actions;
 pub(crate) use legality::action_is_legal;
 pub(crate) use payment::{apply_payment, payment_covers_cast};
 pub use payment::{
-    auto_payment, is_plain_mana_source, mana_ability_pips, payment_pips, payment_sources,
-    remaining_cost_pips, PaymentPip,
+    auto_payment, discard_cost, is_plain_mana_source, mana_ability_pips, payment_pips,
+    payment_sources, remaining_cost_pips, DiscardCost, PaymentPip,
 };
 pub(crate) use targeting::legal_targets_for_spec;
 pub use targeting::target_requirements;
