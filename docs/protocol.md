@@ -680,6 +680,7 @@ Non-target choices use tagged `prompts`:
 | `select_from_zone` | `slot`, `prompt`, `zone`, `owner`, `count`, `min?`, `candidates` | Between `min` and `count` candidate ids, in the chosen order |
 | `order` | `slot`, `prompt`, `items` | A permutation of all item ids |
 | `number` | `slot`, `prompt`, `min`, `max` | The chosen number as a decimal string |
+| `pay_mana` | `slot`, `prompt`, `pip`, `candidates[{id,source,label?}]` | One candidate `id` |
 
 `option` is used for choices such as keep or mulligan. An option's `requires` (issue #451)
 lists the action's other slots **that choice** owes an answer to, and is omitted when it owes
@@ -717,6 +718,32 @@ control over exactly that range and computes no affordability of its own. Both `
 rather than by inference. A *divided* value is posed as one `number` slot per recipient,
 each with its own bounds, and the server validates the total on resolution; the client
 never enforces a sum.
+
+`pay_mana` pays **one pip** of a cost by tapping something (CR 601.2f–g). A cast poses one
+of these slots per unit of its cost — `{1}{W}` is two of them — and a cast covered by mana
+already floating (CR 605.3) poses none at all.
+
+One slot per pip is what lets a client show a running cost without doing arithmetic: **the
+still-to-pay line is the unfilled slots**, drawn from their `pip` symbols. Filling a slot
+removes a pip; taking it back out puts it back. Nothing subtracts a cost from anything —
+which is deliberate, because cost arithmetic is exactly what a client must not do. It also
+makes "may this be cast yet" the slot-counting test every other multi-slot action already
+uses: every mandatory slot filled means the cost is covered.
+
+Each candidate names a permanent to click (`source`) and the activation to send back
+(`id`), and those are **different fields on purpose**. A permanent that could pay the pip
+more than one way — a dual land is `{T}: Add {W}` *and* `{T}: Add {U}` — appears once per
+way, with the same `source`, a different `id`, and a `label` naming what it produces. So a
+client asks "which one did you mean?" exactly when the slot it is filling lists the clicked
+`source` more than once, and offers the labels as the answers. It needs to know nothing
+about mana to get this right. Where the choice cannot matter the server does not offer it:
+a generic pip is paid equally well by either half of a dual land, so it lists that permanent
+once and the player is never asked a question with one meaningful answer.
+
+A permanent can be tapped once, so `source`s are **not** shared across the slots of one
+action: a client must not offer a source already spent on another slot, and a submission
+naming one twice is rejected. A slot with no candidates cannot be filled — a client offers
+no way to fill it rather than guessing.
 
 `choose_targets` aims a **triggered ability already on the stack** (CR 603.3d). A trigger
 is put there by the game rather than by a player, so it arrives unaimed and its controller

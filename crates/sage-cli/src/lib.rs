@@ -459,6 +459,14 @@ where
         });
     }
     for prompt in &action.prompts {
+        // A `pay_mana` slot is left unanswered on purpose: the server auto-pays any pip
+        // this client did not fill (ADR 0010 — the policy is the server's), which is
+        // exactly the behaviour the terminal client has always had. Assembling a payment
+        // by hand is the web client's job, and asking for it here would be a numbered
+        // list per pip in a client whose point is being quick to drive.
+        if matches!(prompt, Prompt::PayMana { .. }) {
+            continue;
+        }
         match prompt_choice(prompt, input, output, line).await? {
             Some(choice) => targets.push(choice),
             None => return Ok(None),
@@ -473,6 +481,8 @@ where
 /// `order` slot is submitted in the order given (the terminal client offers no
 /// reordering UI — that is the web client's job, issue #157). The client only ever
 /// offers ids the server listed and computes no legality.
+///
+/// A `pay_mana` slot never reaches here — the caller skips it and lets the server pay.
 async fn prompt_choice<R, W>(
     prompt: &Prompt,
     input: &mut R,
@@ -593,6 +603,12 @@ where
                 chosen: vec![chosen.to_string()],
             }))
         }
+        // Skipped by the caller, which is why this asks nothing rather than asking
+        // badly: an unanswered pip is one the server pays.
+        Prompt::PayMana { slot, .. } => Ok(Some(TargetChoice {
+            slot: slot.clone(),
+            chosen: Vec::new(),
+        })),
     }
 }
 
