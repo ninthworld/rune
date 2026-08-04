@@ -104,12 +104,25 @@ pub(crate) fn attacker_requirements(
     let mut reqs = vec![TargetRequirement {
         slot: "attackers".to_string(),
         prompt: "Choose which creatures attack".to_string(),
-        // A combat multi-select is answered as one slot holding any number of ids,
-        // including none, so it is never an *optional slot* in the target-arity sense.
-        optional: false,
+        // Declaring **no** attackers is a legal declaration (CR 508.1a), and this is the
+        // field that says a slot may be left unanswered — so it says so. The resolve path
+        // has always treated it that way (an empty declaration binds directly, without
+        // passing through `targets_fill_requirements`); stating it is what lets a client
+        // tell "you may choose none of these" from "this must be filled or the submission
+        // is rejected", which is otherwise the same shape on the wire.
+        optional: true,
         candidates: candidates
             .iter()
             .copied()
+            .map(permanent_entity_id)
+            .collect(),
+        // CR 508.1f / CR 702.20b: which of these creatures tapping is part of attacking
+        // with. The engine's predicate, so a client draws a declaration it is still
+        // assembling without judging a keyword ([`attacking_taps`]).
+        taps: candidates
+            .iter()
+            .copied()
+            .filter(|&attacker| attacking_taps(state, attacker, db))
             .map(permanent_entity_id)
             .collect(),
         // The declaration as a whole, not any one attacker's choice.
@@ -133,6 +146,9 @@ pub(crate) fn attacker_requirements(
                     permanent_card_name(state, attacker, db)
                 ),
                 candidates: defender_ids.clone(),
+                // Choosing what an attacker attacks taps nothing; the attacker's own tap
+                // rides on the slot that declared it.
+                taps: Vec::new(),
                 // Whose choice this is, stated rather than encoded in the slot id: a
                 // client asks one attacker at a time and draws the arrow from it.
                 subject: Some(permanent_entity_id(attacker)),
@@ -186,9 +202,16 @@ pub(crate) fn blocker_requirements(state: &GameState, db: &CardDatabase) -> Vec<
             }
             Some(TargetRequirement {
                 slot: blocker_slot(attacker),
-                optional: false,
+                // Blocking with nothing is a legal declaration (CR 509.1a), and this slot
+                // is how a declarer says so — the same statement the attackers slot makes,
+                // for the same reason: the resolve path binds an empty declaration
+                // directly, and a client can only know that if the wire says it.
+                optional: true,
                 prompt: blocker_prompt(state, attacker, db),
                 candidates,
+                // Blocking does not tap (CR 509.1): a blocker assigned here is drawn
+                // exactly as it stands.
+                taps: Vec::new(),
                 // Which attacker this slot assigns blockers to — the same statement
                 // the defender slots carry, from the other side of the combat.
                 subject: Some(permanent_entity_id(attacker)),
@@ -252,6 +275,9 @@ pub(crate) fn ability_requirements(
             // creatures"). The engine decides which; the projection only carries it.
             optional: req.optional,
             candidates: req.candidates.into_iter().map(target_entity_id).collect(),
+            // Choosing a target does nothing to the target. What a spell costs is posed
+            // on its own `pay_mana` slots, and each of those states its own tapping.
+            taps: Vec::new(),
             // A spell or ability's own target slot is about the action, not about one
             // of the objects the action names.
             subject: None,
@@ -354,6 +380,54 @@ mod menace_prompt_tests {
     use super::*;
     use crate::test_support::fixture;
     use sage_engine::{Attack, PlayerId, Step};
+
+    /// The attackers slot states which of its candidates choosing would tap, so a client
+    /// can draw a declaration it is still assembling — and says the slot may be left
+    /// unanswered, which is the difference between "choose none of these" and a
+    /// submission the server must reject.
+    #[test]
+    fn the_attackers_slot_states_what_choosing_each_candidate_taps() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        state.step = Step::DeclareAttackers;
+        state.priority = PlayerId(0);
+        // Sun Sentinel has vigilance; Onakke Ogre does not.
+        let vigilant = crate::view::test_support::put_permanent(
+            &mut state,
+            fixture("sun_sentinel"),
+            PlayerId(0),
+            false,
+            false,
+        );
+        let plain = crate::view::test_support::put_permanent(
+            &mut state,
+            fixture("onakke_ogre"),
+            PlayerId(0),
+            false,
+            false,
+        );
+
+        let reqs = attacker_requirements(&state, &db);
+        let attackers = reqs
+            .iter()
+            .find(|req| req.slot == "attackers")
+            .expect("the declaration slot");
+        assert!(
+            attackers.optional,
+            "declaring no attackers is a legal declaration (CR 508.1a)"
+        );
+        assert_eq!(
+            attackers.taps,
+            vec![permanent_entity_id(plain)],
+            "only the creature attacking would tap is named (CR 508.1f / 702.20b)"
+        );
+        assert!(
+            attackers
+                .candidates
+                .contains(&permanent_entity_id(vigilant)),
+            "the vigilant creature is still a candidate — it just does not turn"
+        );
+    }
 
     /// The blocker slot of a menacing attacker says so, so a player is told the
     /// two-or-more rule *before* submitting rather than by a declaration the engine

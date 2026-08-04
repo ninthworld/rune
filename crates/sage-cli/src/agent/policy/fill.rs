@@ -346,6 +346,7 @@ mod tests {
             is_commander: false,
             counters: vec![],
             summoning_sick: false,
+            granted_keywords: vec![],
         }
     }
 
@@ -364,6 +365,7 @@ mod tests {
                 slot: "attackers".into(),
                 prompt: "Choose which creatures attack".into(),
                 candidates: vec!["perm_a".into(), "perm_b".into(), "perm_wall".into()],
+                taps: Vec::new(),
                 subject: None,
             }],
             ..action("a0", "declare_attackers", vec![])
@@ -394,6 +396,7 @@ mod tests {
                     slot: format!("block_{}", "atk_big"),
                     prompt: "Choose blockers for Big".into(),
                     candidates: vec!["perm_blk_good".into(), "perm_blk_weak".into()],
+                    taps: Vec::new(),
                     subject: None,
                 },
                 TargetRequirement {
@@ -401,6 +404,7 @@ mod tests {
                     slot: format!("block_{}", "atk_small"),
                     prompt: "Choose blockers for Small".into(),
                     candidates: vec!["perm_blk_good".into(), "perm_blk_weak".into()],
+                    taps: Vec::new(),
                     subject: None,
                 },
             ],
@@ -460,6 +464,7 @@ mod tests {
                 slot: "block_atk".into(),
                 prompt: "Choose blockers".into(),
                 candidates: candidates.into_iter().map(str::to_string).collect(),
+                taps: Vec::new(),
                 subject: None,
             }],
             ..action("a0", "declare_blockers", vec![])
@@ -575,6 +580,7 @@ mod tests {
                 slot: "t0".into(),
                 prompt: "Choose target player".into(),
                 candidates: vec!["p0".into(), "p1".into()],
+                taps: Vec::new(),
                 subject: None,
             }],
             ..action("a0", "activate_ability", vec!["perm_x"])
@@ -592,6 +598,7 @@ mod tests {
                 slot: "t0".into(),
                 prompt: "Choose target creature".into(),
                 candidates: vec![],
+                taps: Vec::new(),
                 subject: None,
             }],
             ..action("a0", "activate_ability", vec!["perm_x"])

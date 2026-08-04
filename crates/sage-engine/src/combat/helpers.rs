@@ -77,6 +77,29 @@ pub fn summoning_sickness_restricts(
         && !has_keyword(state, perm, Keyword::Haste, db)
 }
 
+/// Whether declaring `attacker` as an attacker would **tap** it: attacking taps
+/// (CR 508.1f) unless the creature has vigilance (CR 702.20b).
+///
+/// The same question [`crate::apply_action`] answers while applying the declaration,
+/// asked *before* anything is applied — which is the whole point of exposing it. A
+/// declaration is assembled a creature at a time and a player wants to see what the
+/// choice they are making does, so the server states the answer per candidate
+/// (`docs/protocol.md`) and a client turns the card it is told to turn. The rule stays
+/// here: vigilance is a keyword judgment, and a presentation that read one would be
+/// deciding a rule (`AGENTS.md`).
+///
+/// Pure and unapplied, like every other predicate in this module. Keyword grants come
+/// through the computed characteristics, so an anthem granting vigilance counts exactly
+/// as a printed one; a permanent that is not on the battlefield taps nothing.
+#[must_use]
+pub fn attacking_taps(state: &GameState, attacker: PermanentId, db: &CardDatabase) -> bool {
+    state
+        .battlefield
+        .iter()
+        .find(|perm| perm.id == attacker)
+        .is_some_and(|perm| !has_keyword(state, perm, Keyword::Vigilance, db))
+}
+
 /// Whether `perm` currently has keyword `keyword` (CR 702): its printed keywords
 /// unioned with any granted at CR 613 layer 6 (CR 613.1f). Reads through the
 /// computed [`characteristics`], so a keyword granted by an Aura, an anthem, or an
@@ -637,6 +660,39 @@ mod tests {
             blocker_can_block_attacker(&state, boar, blocker, &db),
             "the count restriction is judged over the declaration, not the pair"
         );
+    }
+
+    #[test]
+    fn attacking_taps_every_attacker_except_a_vigilant_one_cr_508_1f() {
+        // The predicate a client is shown a declaration through: choosing this creature
+        // as an attacker would turn it, and choosing that one would not. Sun Sentinel has
+        // vigilance (CR 702.20b); Walking Corpse is a plain control.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let vigilant = super::super::damage::tests::creature_card(
+            &mut state,
+            crate::fixtures::fixture("sun_sentinel"),
+            PlayerId(0),
+            0,
+        );
+        let plain = super::super::damage::tests::creature_card(
+            &mut state,
+            crate::fixtures::fixture("walking_corpse"),
+            PlayerId(0),
+            0,
+        );
+
+        assert!(
+            attacking_taps(&state, plain, &db),
+            "attacking taps (CR 508.1f)"
+        );
+        assert!(
+            !attacking_taps(&state, vigilant, &db),
+            "vigilance attacks without tapping (CR 702.20b)"
+        );
+        // A permanent that is not on the battlefield taps nothing, rather than being
+        // reported as an attacker that would turn.
+        assert!(!attacking_taps(&state, PermanentId(9999), &db));
     }
 
     #[test]

@@ -188,6 +188,7 @@ fn issue_345_multiplayer_combat_and_elimination_fields_round_trip_and_elide() {
         is_commander: false,
         counters: vec![],
         summoning_sick: false,
+        granted_keywords: Vec::new(),
     };
     let json = serde_json::to_value(&attacker).unwrap();
     assert_eq!(json["attacking_player"], serde_json::json!("p2"));
@@ -321,6 +322,7 @@ fn game_view_round_trips_through_json() {
                 count: 2,
             }],
             summoning_sick: false,
+            granted_keywords: Vec::new(),
         }],
         stack: vec![StackItem {
             id: "s1".into(),
@@ -717,6 +719,7 @@ fn issue_620_emblem_fixture_round_trips_with_its_emblem_and_optional_target_slot
         prompt: "Choose target creature".to_string(),
         optional: false,
         candidates: vec!["perm_ogre".to_string()],
+        taps: Vec::new(),
         subject: None,
     })
     .unwrap();
@@ -862,12 +865,43 @@ fn canonical_fixture_round_trips_and_matches_typed_fields() {
             "pass_priority",
             "play_land",
             "cast_spell",
-            "activate_ability"
+            "activate_ability",
+            "declare_attackers"
         ]
     );
     // `pass_priority` is subject-less; the ability action names its permanent.
     assert!(view.valid_actions[0].subject.is_empty());
     assert_eq!(view.valid_actions[3].subject, vec!["perm_bear".to_string()]);
+
+    // A targeted cast carries both kinds of slot at once — its targets as requirements and
+    // its unpaid cost as `pay_mana` — and each way to pay says whether spending it taps its
+    // source, so a client can draw a payment it has not sent yet.
+    let cast = &view.valid_actions[2];
+    assert_eq!(cast.requirements[0].slot, "t0");
+    let Prompt::PayMana { candidates, .. } = &cast.prompts[0] else {
+        panic!("a pay_mana slot")
+    };
+    assert_eq!(candidates[0].source, "perm_mountain");
+    assert!(candidates[0].taps);
+
+    // A combat declaration says both of the things that separate it from a spell's target
+    // slot: it may be left unanswered (declaring no attackers is a declaration), and choosing
+    // a candidate taps it — except the one the server left out of `taps`.
+    let declare = &view.valid_actions[4];
+    assert!(declare.requirements[0].optional);
+    assert_eq!(declare.requirements[0].taps, vec!["perm_bear".to_string()]);
+    assert_eq!(
+        declare.requirements[0].candidates,
+        vec!["perm_bear".to_string(), "perm_thopter".to_string()]
+    );
+
+    // A granted keyword (CR 613.1f) is stated apart from the card's printed text, in the words
+    // a card prints it with — the pumped Bear has trample and its card says nothing about it.
+    assert_eq!(
+        view.battlefield[0].granted_keywords,
+        vec!["Trample".to_string()]
+    );
+    assert!(view.battlefield[1].granted_keywords.is_empty());
 }
 
 #[test]

@@ -437,7 +437,16 @@ A `Permanent` contains:
   reports `false` — and it is stated because no client can derive it: continuous control is
   stored engine state, haste may be granted by an Aura or a pump, and the absence of an attack
   action means nothing outside the declare-attackers step. It comes from the same engine
-  predicate that gates attacking and `{T}` costs, so the board and the action list agree.
+  predicate that gates attacking and `{T}` costs, so the board and the action list agree; and
+- optional `granted_keywords`, the keywords this permanent has that its **printed card does
+  not** (CR 613 layer 6, CR 613.1f) — the trample an until-end-of-turn pump gave it, the
+  flying an Aura grants, the vigilance an anthem hands a whole team. `card.keywords` already
+  carries the *current* set and `card.rules_text` is the *printed* card's text, so between
+  them a client cannot say which words are new; subtracting one from the other means matching
+  generated prose against keyword names, which is a client reading rules text to learn a rules
+  fact. Carried as the **words a card prints them with** — `"Trample"`, `"First strike"` —
+  because they are drawn as text beside text. Omitted when empty, which is every permanent
+  whose abilities are all printed.
 
 These fields describe server-computed state. They do not authorize interaction.
 
@@ -651,7 +660,8 @@ Target choices use `requirements`:
 ```
 
 Each requirement contains an opaque `slot`, display `prompt`, an optional `optional` flag, an
-optional `subject`, and the complete set of legal candidate entity ids. The server enumerates
+optional `subject`, an optional `taps` list, and the complete set of legal candidate entity
+ids. The server enumerates
 candidates per slot rather than enumerating the cartesian product of possible answers.
 
 `subject` (issue #700) names the entity a slot is **about**, when it is about one. A combat
@@ -663,6 +673,16 @@ draw the arrow from the card the choice belongs to, and show a per-attacker slot
 that attacker is in the declaration. It is absent for every slot that is about the action as a
 whole: an ordinary spell's target slot, the `attackers` multi-select.
 
+`taps` names the `candidates` that answering this slot with them would **tap**: the attackers
+in a declaration that are not vigilant (CR 508.1f, CR 702.20b). A declaration and a payment are
+both assembled a choice at a time and send nothing until they are confirmed, so the board a
+player is looking at while they choose is one the server has not been told about yet — and what
+the choice *does to the card* is a rules question. Stating it per candidate lets a client turn
+each card as it goes into the slot and turn it back as it comes out, without judging a keyword.
+It is a subset of `candidates`, in the same order, and is omitted for every slot whose answer
+taps nothing: an ordinary spell's target slot, a blocker assignment (blocking does not tap,
+CR 509.1), and the per-attacker defender slots.
+
 `optional` (issue #620) says the slot **may be left unanswered** — the "up to" of *put a +1/+1
 counter on each of up to two target creatures*. It is absent (read as `false`) for every slot
 of an ordinary targeted spell or ability, which must be filled or the submission is rejected.
@@ -672,6 +692,12 @@ answer, or sends them empty, and the server accepts either. A client MUST NOT in
 from anything else: an unflagged slot is required and a flagged one is not, and that is the
 whole rule.
 
+The **combat declaration** multi-selects carry it too: declaring no attackers and blocking with
+nothing are both legal declarations (CR 508.1a, CR 509.1a), which is exactly "this slot may be
+left unanswered", and the resolve path has always bound an empty declaration directly. Saying so
+is what lets a client tell a slot it may skip from one whose emptiness makes the submission
+rejectable, since on the wire the two are otherwise the same shape.
+
 Non-target choices use tagged `prompts`:
 
 | `kind` | Fields | Answer |
@@ -680,7 +706,7 @@ Non-target choices use tagged `prompts`:
 | `select_from_zone` | `slot`, `prompt`, `zone`, `owner`, `count`, `min?`, `candidates` | Between `min` and `count` candidate ids, in the chosen order |
 | `order` | `slot`, `prompt`, `items` | A permutation of all item ids |
 | `number` | `slot`, `prompt`, `min`, `max` | The chosen number as a decimal string |
-| `pay_mana` | `slot`, `prompt`, `pip`, `candidates[{id,source,label?}]` | One candidate `id` |
+| `pay_mana` | `slot`, `prompt`, `pip`, `candidates[{id,source,label?,taps?}]` | One candidate `id` |
 
 `option` is used for choices such as keep or mulligan. An option's `requires` (issue #451)
 lists the action's other slots **that choice** owes an answer to, and is omitted when it owes
@@ -744,6 +770,14 @@ A permanent can be tapped once, so `source`s are **not** shared across the slots
 action: a client must not offer a source already spent on another slot, and a submission
 naming one twice is rejected. A slot with no candidates cannot be filled — a client offers
 no way to fill it rather than guessing.
+
+A candidate's `taps` says whether sending it **taps its `source`** — the `{T}` in `{T}: Add
+{G}` (CR 602.2a). It is the payment's half of the same statement `taps` makes on a target
+requirement, and for the same reason: the sources a player picks are not spent until the cast
+is confirmed, so a client drawing them as tapped is drawing a board the server has not been
+told about yet. It must be told which ones turn, because a mana ability that sacrifices its
+source or pays life taps nothing and no client can tell those apart without reading the cost.
+Omitted when `false`.
 
 `choose_targets` aims a **triggered ability already on the stack** (CR 603.3d). A trigger
 is put there by the game rather than by a player, so it arrives unaimed and its controller

@@ -349,6 +349,27 @@ pub struct Permanent {
     /// unchanged on the wire and a client that ignores it renders as it did.
     #[serde(default, skip_serializing_if = "crate::is_false")]
     pub summoning_sick: bool,
+    /// The keywords this permanent has that its **printed card does not** — the trample
+    /// an *until end of turn* pump gave it, the flying an Aura grants, the vigilance an
+    /// anthem hands to a whole team (CR 613 layer 6, CR 613.1f).
+    ///
+    /// [`CardView::keywords`] already carries a permanent's *current* keywords, and
+    /// [`CardView::rules_text`] is the **printed** card's generated text. Between those
+    /// two a client cannot say which words are new: subtracting one list from the other
+    /// means matching generated prose against keyword names, which is the client reading
+    /// rules text to work out a rules fact. So the difference is stated, and the card can
+    /// show a granted ability the way it shows a granted `4/4` — as part of what this
+    /// permanent *is* right now.
+    ///
+    /// Carried as the **words a card prints them with** — `"Trample"`, `"First strike"` —
+    /// because they are drawn as text beside text, in the same box as
+    /// [`CardView::rules_text`], which is likewise server-composed prose (ADR 0008 §7). A
+    /// client renders them and nothing more; it never parses them back into keywords.
+    ///
+    /// Additive: omitted when empty, which is every permanent whose abilities are all
+    /// printed, and a client that ignores it renders exactly as it did.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub granted_keywords: Vec<String>,
 }
 
 /// An **emblem** in the game (CR 114, issue #620): a marker one player has, whose only
@@ -665,6 +686,7 @@ mod tests {
             is_commander: false,
             counters: vec![],
             summoning_sick: false,
+            granted_keywords: Vec::new(),
         };
 
         // Not in combat and undamaged: all three fields elide from the JSON.
@@ -752,6 +774,7 @@ mod tests {
             is_commander: false,
             counters: vec![],
             summoning_sick: false,
+            granted_keywords: Vec::new(),
         };
 
         // Unattached: the field elides from the JSON.
@@ -918,6 +941,7 @@ mod tests {
             is_commander: false,
             counters: vec![],
             summoning_sick: false,
+            granted_keywords: Vec::new(),
         };
         let json = serde_json::to_value(&permanent).unwrap();
         assert_eq!(
@@ -1035,6 +1059,7 @@ mod tests {
             is_commander: false,
             counters: vec![],
             summoning_sick: false,
+            granted_keywords: Vec::new(),
         };
         let first = forest("perm_9", "card_5");
         let second = forest("perm_10", "card_6");

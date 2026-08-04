@@ -247,6 +247,17 @@ export const Permanent = z.object({
    * granted — so it is stated, from the same predicate that gates attacking.
    */
   summoning_sick: z.boolean().optional(),
+  /**
+   * The keywords this permanent has that its **printed card does not** (CR 613 layer 6) —
+   * the trample an until-end-of-turn pump gave it, the flying an Aura grants.
+   *
+   * `card.keywords` is what it has now and `card.rules_text` is what its card printed, so
+   * neither says which words are *new*; working that out by matching prose against keyword
+   * names would be the client reading rules text to learn a rules fact. These arrive as the
+   * words a card prints them with — "Trample" — because they are drawn as text. Absent for
+   * a permanent whose abilities are all printed.
+   */
+  granted_keywords: z.array(z.string()).optional(),
 })
 export type Permanent = z.infer<typeof Permanent>
 
@@ -336,6 +347,17 @@ export const TargetRequirement = z.object({
   optional: z.boolean().optional(),
   candidates: z.array(EntityId).optional(),
   /**
+   * The `candidates` that answering this slot with them would **tap** — the attackers in a
+   * declaration that are not vigilant (CR 508.1f, CR 702.20b).
+   *
+   * A declaration is assembled a creature at a time and nothing is sent until it is
+   * confirmed, so the board under the player's eye is one the server has not heard about.
+   * This is what a card turning as it is chosen is drawn from: the server says which
+   * candidates turn, the client turns those and turns them back when they come out, and no
+   * keyword is judged here. Absent for every slot whose answer taps nothing.
+   */
+  taps: z.array(EntityId).optional(),
+  /**
    * The entity this slot is **about**, when it is about one.
    *
    * A combat declaration is several slots that all list the same candidates and
@@ -372,6 +394,15 @@ export const ManaOption = z.object({
   id: z.string(),
   source: EntityId,
   label: z.string().optional(),
+  /**
+   * Whether spending this option **taps** its `source` — the `{T}` in `{T}: Add {G}`.
+   *
+   * The payment's half of `TargetRequirement.taps`: a source picked for a pip is not spent
+   * until the cast is confirmed, so the client draws the turn itself, and it must be told
+   * which sources turn — a mana ability that sacrifices its source taps nothing, and the
+   * cost is the only thing that says so. Absent means it taps nothing.
+   */
+  taps: z.boolean().optional(),
 })
 export type ManaOption = z.infer<typeof ManaOption>
 

@@ -342,6 +342,7 @@ mod tests {
             is_commander: false,
             counters: vec![],
             summoning_sick: false,
+            granted_keywords: vec![],
         }
     }
 
@@ -616,6 +617,7 @@ mod tests {
                 slot: "attackers".into(),
                 prompt: "Choose which creatures attack".into(),
                 candidates: vec!["perm_a".into(), "perm_b".into()],
+                taps: Vec::new(),
                 subject: None,
             }],
             ..action("a0", "declare_attackers", vec![])
@@ -626,6 +628,7 @@ mod tests {
                 slot: "block_1".into(),
                 prompt: "Choose blockers".into(),
                 candidates: vec!["perm_x".into()],
+                taps: Vec::new(),
                 subject: None,
             }],
             ..action("a0", "declare_blockers", vec![])

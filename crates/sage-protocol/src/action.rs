@@ -118,6 +118,24 @@ pub struct TargetRequirement {
     /// §Enumeration).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub candidates: Vec<EntityId>,
+    /// The [`candidates`](Self::candidates) that answering this slot with them would
+    /// **tap** — the attackers in a declaration that are not vigilant (CR 508.1f,
+    /// CR 702.20b).
+    ///
+    /// A declaration is assembled a creature at a time and nothing is sent until it is
+    /// confirmed, so a client showing what the choice does has to know what the choice
+    /// does. Vigilance is a keyword judgment and a client must make none, so the server
+    /// states the answer per candidate and the client turns the cards it is told to turn —
+    /// and turns them back when they come out of the slot, since nothing has happened yet.
+    ///
+    /// A subset of `candidates`, in the same order, and **empty for every slot whose
+    /// answer taps nothing**: an ordinary spell's target slot, a blocker assignment
+    /// (blocking does not tap, CR 509.1), the defender slots of a declaration.
+    ///
+    /// Additive: omitted when empty, and a client that ignores it renders exactly what it
+    /// always did.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub taps: Vec<EntityId>,
     /// The entity this slot is **about**, when it is about one (issue #700).
     ///
     /// A combat declaration is several slots that all list the same candidates and
@@ -189,6 +207,22 @@ pub struct ManaOption {
     /// question, and never anything the client computes a cost from.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub label: String,
+    /// Whether taking this option **taps** its [`source`](Self::source) — the `{T}` in
+    /// `{T}: Add {G}` (CR 602.2a).
+    ///
+    /// A payment is assembled a source at a time and sends nothing until the cast is
+    /// confirmed, so the board a player is looking at while they choose is one the server
+    /// has not been told about yet. Stating this lets the client turn each source as it is
+    /// spent and turn it back when it is taken out — the same thing that will happen for
+    /// real when the cast goes in — without deciding it: a mana ability that sacrifices
+    /// its source, or costs life, taps nothing, and no client can tell which is which
+    /// without reading the cost.
+    ///
+    /// Additive: omitted when `false`. A client that ignores it draws the board it always
+    /// drew, and a server that never sets it is indistinguishable from the one before this
+    /// field existed.
+    #[serde(default, skip_serializing_if = "crate::is_false")]
+    pub taps: bool,
 }
 
 /// A non-target choice slot a [`ValidAction`] may pose, a **generalization of the
@@ -410,6 +444,8 @@ mod tests {
                 // the assertion below is the proof that an older client sees no change.
                 optional: false,
                 candidates: vec!["perm_bear".into(), "p1".into(), "p2".into()],
+                // Choosing a target for a bolt taps nothing, so the field elides too.
+                taps: vec![],
                 subject: None,
             }],
             prompts: vec![],
@@ -434,6 +470,36 @@ mod tests {
         );
         let back: ValidAction = serde_json::from_value(json).unwrap();
         assert_eq!(back, bolt);
+    }
+
+    #[test]
+    fn a_declaration_states_which_of_its_candidates_choosing_taps() {
+        // The attackers slot: choosing a creature taps it (CR 508.1f) unless it is
+        // vigilant (CR 702.20b), and which is which is a keyword judgment a client must
+        // not make. So the server names the subset, and a client turns those cards as
+        // they go into the slot and back as they come out — nothing has been sent yet.
+        let declare = TargetRequirement {
+            slot: "attackers".into(),
+            prompt: "Choose which creatures attack".into(),
+            optional: true,
+            candidates: vec!["perm_bear".into(), "perm_angel".into()],
+            taps: vec!["perm_bear".into()],
+            subject: None,
+        };
+        let json = serde_json::to_value(&declare).unwrap();
+        assert_eq!(json["taps"], serde_json::json!(["perm_bear"]));
+        assert_eq!(
+            serde_json::from_value::<TargetRequirement>(json).unwrap(),
+            declare
+        );
+
+        // A slot whose answer taps nothing says nothing: the key is absent, and a
+        // payload from a server that predates the field reads the same way.
+        let legacy: TargetRequirement = serde_json::from_str(
+            r#"{"slot":"t0","prompt":"target creature","candidates":["perm_bear"]}"#,
+        )
+        .unwrap();
+        assert!(legacy.taps.is_empty());
     }
 
     #[test]
@@ -594,11 +660,13 @@ mod tests {
                     id: "perm_7#1".into(),
                     source: "perm_7".into(),
                     label: "{W}".into(),
+                    taps: true,
                 },
                 ManaOption {
                     id: "perm_9#1".into(),
                     source: "perm_9".into(),
                     label: "{W}".into(),
+                    taps: true,
                 },
             ],
         };
@@ -611,8 +679,8 @@ mod tests {
                 "prompt": "Pay {W}",
                 "pip": "{W}",
                 "candidates": [
-                    { "id": "perm_7#1", "source": "perm_7", "label": "{W}" },
-                    { "id": "perm_9#1", "source": "perm_9", "label": "{W}" }
+                    { "id": "perm_7#1", "source": "perm_7", "label": "{W}", "taps": true },
+                    { "id": "perm_9#1", "source": "perm_9", "label": "{W}", "taps": true }
                 ]
             })
         );
@@ -639,11 +707,13 @@ mod tests {
             id: "perm_4#1".into(),
             source: "perm_4".into(),
             label: "{W}".into(),
+            taps: true,
         };
         let blue = ManaOption {
             id: "perm_4#2".into(),
             source: "perm_4".into(),
             label: "{U}".into(),
+            taps: true,
         };
         assert_eq!(white.source, blue.source, "one permanent");
         assert_ne!(white.id, blue.id, "two activations");
@@ -654,12 +724,35 @@ mod tests {
             id: "perm_2#0".into(),
             source: "perm_2".into(),
             label: String::new(),
+            taps: false,
         })
         .unwrap();
         assert_eq!(
             plain,
             serde_json::json!({ "id": "perm_2#0", "source": "perm_2" })
         );
+    }
+
+    #[test]
+    fn a_mana_option_states_whether_spending_it_taps_its_source() {
+        // What a payment *does to the board* is a rules fact, and a client draws the
+        // board: a land turns sideways as it is spent and a source that pays some other
+        // way does not. Additive in both directions — omitted when it taps nothing, and a
+        // payload from a server that predates the field reads as "taps nothing", which is
+        // the shape that existed before it.
+        let tapper = ManaOption {
+            id: "perm_2#0".into(),
+            source: "perm_2".into(),
+            label: "{G}".into(),
+            taps: true,
+        };
+        let json = serde_json::to_value(&tapper).unwrap();
+        assert_eq!(json["taps"], serde_json::json!(true));
+        assert_eq!(serde_json::from_value::<ManaOption>(json).unwrap(), tapper);
+
+        let legacy: ManaOption =
+            serde_json::from_str(r#"{"id":"perm_2#0","source":"perm_2"}"#).unwrap();
+        assert!(!legacy.taps);
     }
 
     #[test]

@@ -1,8 +1,7 @@
 use super::*;
 use crate::actions::{Attack, Block, DamageOrder};
-use crate::card::Keyword;
 use crate::combat::{
-    blocked_attackers, combat_damage, combat_has_first_strike, defending_player, has_keyword,
+    attacking_taps, blocked_attackers, combat_damage, combat_has_first_strike, defending_player,
     pending_blocker_declarer, CombatDamage, DamageStep,
 };
 use crate::id::{CardId, PermanentId};
@@ -128,15 +127,12 @@ pub(crate) fn apply_declare_attackers(
     db: &CardDatabase,
 ) {
     for attack in attackers {
-        // CR 508.1f / CR 702.20b: whether this attacker has vigilance (printed or
-        // granted at layer 6) is read through the computed characteristics, which
-        // borrows `state` immutably — so it is resolved before the mutable lookup
-        // below rather than while `state.battlefield` is borrowed mutably.
-        let has_vigilance = state
-            .battlefield
-            .iter()
-            .find(|p| p.id == attack.attacker)
-            .is_some_and(|perm| has_keyword(state, perm, Keyword::Vigilance, db));
+        // CR 508.1f / CR 702.20b: whether attacking taps this creature, through the
+        // engine's own predicate — the same one the server projects so a client can draw
+        // a declaration before it is sent ([`crate::attacking_taps`]). One answer, so a
+        // board a player was shown and the board they get cannot disagree. Resolved
+        // before the mutable lookup below, since it borrows `state` immutably.
+        let taps = attacking_taps(state, attack.attacker, db);
         if let Some(perm) = state
             .battlefield
             .iter_mut()
@@ -145,9 +141,7 @@ pub(crate) fn apply_declare_attackers(
             // CR 508.1a: record whom this attacker is attacking, so blocker
             // eligibility and combat damage follow the assignment (issue #341).
             perm.attacking = Some(attack.defender);
-            // CR 508.1f / CR 702.20b: attacking taps the creature, unless it has
-            // vigilance, in which case it attacks without tapping.
-            if !has_vigilance {
+            if taps {
                 perm.tapped = true;
             }
         }

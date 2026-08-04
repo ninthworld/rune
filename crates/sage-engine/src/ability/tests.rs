@@ -40,6 +40,31 @@ fn issue_256_activated_colorless_mana_ability_round_trips() {
 }
 
 #[test]
+fn activation_taps_reads_the_cost_not_the_effect() {
+    // What an activation *does to its source* is a cost question: a land's `{T}: Add {G}`
+    // turns the card, and a source that pays some other way does not. A client draws a
+    // payment it has not sent yet, so this is stated for it rather than assumed.
+    let land: Ability = serde_json::from_str(
+        r#"{"type":"activated","cost":[{"kind":"tap"}],"effects":[{"kind":"add_mana","color":"green","amount":1}]}"#,
+    )
+    .unwrap();
+    assert!(activation_taps(&land));
+
+    let untapped: Ability = serde_json::from_str(
+        r#"{"type":"activated","cost":[{"kind":"mana","mana":"{1}"}],"effects":[{"kind":"add_mana","color":"green","amount":1}]}"#,
+    )
+    .unwrap();
+    assert!(!activation_taps(&untapped));
+
+    // Nothing but an activation has an activation cost.
+    let triggered: Ability = serde_json::from_str(
+        r#"{"type":"triggered","event":"self_dies","effects":[{"kind":"draw_card","count":1}]}"#,
+    )
+    .unwrap();
+    assert!(!activation_taps(&triggered));
+}
+
+#[test]
 fn triggered_etb_draw_round_trips() {
     let json = r#"{"type":"triggered","event":"self_enters_battlefield","effects":[{"kind":"draw_card","count":1}]}"#;
     let ability: Ability = serde_json::from_str(json).unwrap();

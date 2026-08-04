@@ -23,6 +23,37 @@ pub(crate) fn is_commander_permanent(state: &GameState, perm: &sage_engine::Perm
     })
 }
 
+/// The keywords a permanent has now that its **printed card does not** (CR 613 layer 6,
+/// CR 613.1f), as the words a card prints them with.
+///
+/// [`permanent_card_view`] already projects the *current* keyword set, which is what
+/// combat and evasion are judged on. What that set cannot say is which of those words are
+/// new — and "new" is exactly what a player needs to see after casting a pump: the
+/// creature has trample until end of turn, and the card in front of them says nothing.
+/// The difference is computed here, where both halves are in hand, rather than left to a
+/// client to work out by matching generated prose against keyword names.
+///
+/// A token's printed face is the token itself, so an effect that granted it a keyword on
+/// top of the ones it was created with reads the same way. Order follows the engine's
+/// current keyword set, so two projections of one board agree.
+pub(crate) fn granted_keywords(
+    state: &GameState,
+    perm: &sage_engine::Permanent,
+    db: &CardDatabase,
+) -> Vec<String> {
+    let printed: Vec<Keyword> = match perm.printed.face(db) {
+        Some(PrintedFace::Card(data)) => data.keywords.clone(),
+        Some(PrintedFace::Token(token)) => token.keywords.clone(),
+        None => Vec::new(),
+    };
+    characteristics(state, perm.id, db)
+        .keywords
+        .iter()
+        .filter(|keyword| !printed.contains(keyword))
+        .map(|&keyword| crate::rules_text::keyword_phrase(keyword))
+        .collect()
+}
+
 /// Projects a permanent's stored engine counters into the wire [`Counter`] list.
 ///
 /// Ordering follows the permanent's `BTreeMap<CounterKind, _>` iteration, which
@@ -331,6 +362,61 @@ mod tests {
     use super::*;
     use crate::test_support::{fixture, id_in};
     use crate::view::test_support::put_permanent;
+
+    /// A keyword the permanent has and its printed card does not is stated separately
+    /// (CR 613.1f), because the card's own rules text is the *printed* card's: without
+    /// this, a creature an Aura or a pump gave trample to says nothing about trample
+    /// anywhere a player looks.
+    #[test]
+    fn a_granted_keyword_is_stated_apart_from_the_printed_ones() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        // Onakke Ogre is a vanilla 4/2; Prodigious Growth grants +7/+7 and trample.
+        let host = put_permanent(
+            &mut state,
+            fixture("onakke_ogre"),
+            PlayerId(0),
+            false,
+            false,
+        );
+        let aura = put_permanent(
+            &mut state,
+            fixture("prodigious_growth"),
+            PlayerId(0),
+            false,
+            false,
+        );
+        if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == aura) {
+            perm.attached_to = Some(host);
+        }
+
+        let enchanted = state
+            .battlefield
+            .iter()
+            .find(|perm| perm.id == host)
+            .expect("the host");
+        assert_eq!(
+            granted_keywords(&state, enchanted, &db),
+            vec!["Trample".to_string()],
+            "the word the card would print, so a granted keyword reads like a printed one"
+        );
+
+        // A permanent with nothing granted states nothing, so the wire is unchanged for
+        // every ordinary board.
+        let plain = put_permanent(
+            &mut state,
+            fixture("walking_corpse"),
+            PlayerId(0),
+            false,
+            false,
+        );
+        let plain = state
+            .battlefield
+            .iter()
+            .find(|perm| perm.id == plain)
+            .expect("the creature");
+        assert!(granted_keywords(&state, plain, &db).is_empty());
+    }
 
     /// A **token** projects onto the wire as a complete, playable object with no card
     /// identity behind it (issue #605): its characteristics come from the token itself,

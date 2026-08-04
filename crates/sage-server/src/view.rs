@@ -11,17 +11,17 @@
 //! already depends on, and adds nothing to the wire contract in `sage-protocol`.
 
 use sage_engine::{
-    abilities_of_permanent, attacker_candidates, attackers_needing_damage_order,
-    attacking_defender_of, blocker_can_block_attacker, blocker_candidates_for, bottom_requirement,
-    characteristics, choice_bounds, choice_candidates, confirm_is_payable, declared_attackers,
-    defender_candidates, is_mana_ability, mana_ability_pips, pending_blocker_declarer,
-    pending_player_choice, scripted_rules_text, summoning_sickness_restricts, target_requirements,
-    valid_actions, AbilityOrigin, Action, Attack, AttackTarget, Block, CardData, CardDatabase,
-    CardId, CardInstance, CardInstanceId, ChoiceOutcome, ChoiceQuestion, ChoiceRequest, ChoiceZone,
-    Color, ColorRequest, ConfirmRequest, CostPayment, CounterKind, DamageOrder, DamageTarget,
-    GameEvent, GameResult, GameState, Keyword, LoggedIdentity, LoggedPermanent, LossReason,
-    PermanentId, Player, PlayerId, PrintedFace, StackId, StackObject, StackObjectKind, Step,
-    Target, TargetSpec,
+    abilities_of_permanent, activation_taps, attacker_candidates, attackers_needing_damage_order,
+    attacking_defender_of, attacking_taps, blocker_can_block_attacker, blocker_candidates_for,
+    bottom_requirement, characteristics, choice_bounds, choice_candidates, confirm_is_payable,
+    declared_attackers, defender_candidates, is_mana_ability, mana_ability_pips,
+    pending_blocker_declarer, pending_player_choice, scripted_rules_text,
+    summoning_sickness_restricts, target_requirements, valid_actions, AbilityOrigin, Action,
+    Attack, AttackTarget, Block, CardData, CardDatabase, CardId, CardInstance, CardInstanceId,
+    ChoiceOutcome, ChoiceQuestion, ChoiceRequest, ChoiceZone, Color, ColorRequest, ConfirmRequest,
+    CostPayment, CounterKind, DamageOrder, DamageTarget, GameEvent, GameResult, GameState, Keyword,
+    LoggedIdentity, LoggedPermanent, LossReason, PermanentId, Player, PlayerId, PrintedFace,
+    StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
 };
 
 use crate::rules_text::{
@@ -177,6 +177,11 @@ pub(crate) fn personalized_view(
             // attacking and every `{T}` cost — so what the board shows and what the
             // action list offers are one answer rather than two.
             summoning_sick: summoning_sickness_restricts(state, perm, db),
+            // What this permanent has *now* that its printed card never said (CR 613.1f).
+            // The rules text on the card is the printed card's, so an until-end-of-turn
+            // trample or an Aura's flying would otherwise be true of the object and
+            // invisible on it.
+            granted_keywords: granted_keywords(state, perm, db),
         })
         .collect();
 
@@ -377,6 +382,10 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
             // Public exactly as it is in a seated view: summoning sickness is read off
             // the board, and a spectator reads the same board (CR 302.6).
             summoning_sick: summoning_sickness_restricts(state, perm, db),
+            // The keywords this permanent has and its printed card does not (CR 613.1f):
+            // the trample a pump gave it, the flying an Aura grants. Public, like the
+            // rest of the board.
+            granted_keywords: granted_keywords(state, perm, db),
         })
         .collect();
 
