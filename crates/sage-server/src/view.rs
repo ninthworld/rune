@@ -14,13 +14,14 @@ use sage_engine::{
     abilities_of_permanent, attacker_candidates, attackers_needing_damage_order,
     attacking_defender_of, blocker_can_block_attacker, blocker_candidates_for, bottom_requirement,
     characteristics, choice_bounds, choice_candidates, confirm_is_payable, declared_attackers,
-    defender_candidates, is_mana_ability, pending_blocker_declarer, pending_player_choice,
-    scripted_rules_text, summoning_sickness_restricts, target_requirements, valid_actions,
-    AbilityOrigin, Action, Attack, AttackTarget, Block, CardData, CardDatabase, CardId,
-    CardInstance, CardInstanceId, ChoiceOutcome, ChoiceQuestion, ChoiceRequest, ChoiceZone, Color,
-    ColorRequest, ConfirmRequest, CounterKind, DamageOrder, DamageTarget, GameEvent, GameResult,
-    GameState, Keyword, LoggedIdentity, LoggedPermanent, LossReason, PermanentId, Player, PlayerId,
-    PrintedFace, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
+    defender_candidates, is_mana_ability, mana_ability_pips, pending_blocker_declarer,
+    pending_player_choice, scripted_rules_text, summoning_sickness_restricts, target_requirements,
+    valid_actions, AbilityOrigin, Action, Attack, AttackTarget, Block, CardData, CardDatabase,
+    CardId, CardInstance, CardInstanceId, ChoiceOutcome, ChoiceQuestion, ChoiceRequest, ChoiceZone,
+    Color, ColorRequest, ConfirmRequest, CostPayment, CounterKind, DamageOrder, DamageTarget,
+    GameEvent, GameResult, GameState, Keyword, LoggedIdentity, LoggedPermanent, LossReason,
+    PermanentId, Player, PlayerId, PrintedFace, StackId, StackObject, StackObjectKind, Step,
+    Target, TargetSpec,
 };
 
 use crate::rules_text::{
@@ -30,9 +31,9 @@ use sage_protocol::{
     ActionDestination, CardType, CardView, ChooseAction, CommanderDamage as CommanderDamageView,
     CommanderIdentity as CommanderIdentityView, CommanderTax as CommanderTaxView, Counter,
     Emblem as EmblemView, GameLogEntry, GameLogEvent, GameOverReason, GameResult as GameResultView,
-    GameView, LogBlock, LogDamageTarget, LogEntity, OpponentView, Permanent as PermanentView,
-    Phase, Prompt, PromptOption, SelfView, SpectatorView, StackItem, StackItemKind, StackTarget,
-    TargetChoice, TargetRequirement, ValidAction, ZonePile,
+    GameView, LogBlock, LogDamageTarget, LogEntity, ManaOption, OpponentView,
+    Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, SpectatorView, StackItem,
+    StackItemKind, StackTarget, TargetChoice, TargetRequirement, ValidAction, ZonePile,
 };
 
 mod actions;
@@ -42,6 +43,7 @@ mod choice;
 mod destinations;
 mod ids;
 mod log;
+mod payment;
 mod physical;
 mod prompt;
 mod requirements;
@@ -56,6 +58,7 @@ pub(crate) use choice::*;
 pub(crate) use destinations::*;
 pub(crate) use ids::*;
 pub(crate) use log::*;
+pub(crate) use payment::*;
 pub(crate) use physical::*;
 pub(crate) use prompt::*;
 pub(crate) use requirements::*;
@@ -498,7 +501,11 @@ pub(crate) fn resolve_action(
             Action::ActivateAbility { .. }
             | Action::CastSpell { .. }
             | Action::ChooseTriggerTargets { .. } => {
-                if !targets_fill_requirements(&choice.targets, &offered.requirements) {
+                if !targets_fill_requirements(
+                    &choice.targets,
+                    &offered.requirements,
+                    &offered.prompts,
+                ) {
                     return None;
                 }
                 bind_ability_targets(state, db, &action, &choice.targets)
@@ -513,7 +520,11 @@ pub(crate) fn resolve_action(
             // (issue #620) — again, only one the offer listed.
             Action::AnswerColor { .. } => bind_player_color(state, &offered, &choice.targets),
             _ => {
-                if !targets_fill_requirements(&choice.targets, &offered.requirements) {
+                if !targets_fill_requirements(
+                    &choice.targets,
+                    &offered.requirements,
+                    &offered.prompts,
+                ) {
                     return None;
                 }
                 Some(action)

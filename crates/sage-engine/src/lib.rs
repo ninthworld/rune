@@ -49,8 +49,9 @@ pub use ability::{
     TargetCount, TargetGroup, TargetSpec, TriggerCondition, TriggerStep, TurnScope,
 };
 pub use actions::{
-    auto_payment, is_plain_mana_source, payment_sources, target_requirements, valid_actions,
-    Action, Attack, Block, CostPayment, DamageOrder, ManaSource, TargetRequirement,
+    auto_payment, is_plain_mana_source, mana_ability_pips, payment_pips, payment_sources,
+    remaining_cost_pips, target_requirements, valid_actions, Action, Attack, Block, CostPayment,
+    DamageOrder, ManaSource, PaymentPip, TargetRequirement,
 };
 pub use apply::apply_action;
 pub use automation::{forced_declaration_without_choice, priority_has_no_meaningful_action};

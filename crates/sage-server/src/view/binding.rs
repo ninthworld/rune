@@ -10,16 +10,24 @@ use super::*;
 /// slot, each choice non-empty and drawn entirely from that slot's current legal
 /// candidates. A redirected id therefore cannot smuggle in a target that is no
 /// longer legal. Requirement-less actions accept exactly an empty selection.
+///
+/// `prompts` is passed so an answer to one of the action's *prompt* slots is not
+/// mistaken for an answer to a slot that does not exist. A targeted spell now carries
+/// both kinds at once — its targets as requirements, its unpaid cost as `pay_mana`
+/// prompts — and each is validated by whatever owns it.
 pub(crate) fn targets_fill_requirements(
     targets: &[TargetChoice],
     requirements: &[TargetRequirement],
+    prompts: &[Prompt],
 ) -> bool {
     // Every returned choice must name a slot the action actually advertises — an answer
     // to a slot that is not on offer is not a partial answer, it is a wrong one.
-    if targets
-        .iter()
-        .any(|choice| !requirements.iter().any(|req| req.slot == choice.slot))
-    {
+    if targets.iter().any(|choice| {
+        !requirements.iter().any(|req| req.slot == choice.slot)
+            && !prompts
+                .iter()
+                .any(|prompt| prompt_slot(prompt) == choice.slot)
+    }) {
         return false;
     }
     requirements.iter().all(|req| {
@@ -30,6 +38,17 @@ pub(crate) fn targets_fill_requirements(
         // redirected id can never smuggle in an illegal target.
         (req.optional || !chosen.is_empty()) && chosen.iter().all(|id| req.candidates.contains(id))
     })
+}
+
+/// The slot id one [`Prompt`] is answered on, whatever its shape.
+pub(super) fn prompt_slot(prompt: &Prompt) -> &str {
+    match prompt {
+        Prompt::Option { slot, .. }
+        | Prompt::SelectFromZone { slot, .. }
+        | Prompt::Order { slot, .. }
+        | Prompt::Number { slot, .. }
+        | Prompt::PayMana { slot, .. } => slot,
+    }
 }
 
 /// The entity ids chosen for `slot` in a returned selection, or an empty slice if
@@ -205,25 +224,18 @@ pub(crate) fn bind_ability_targets(
             index: *index,
             targets: chosen,
         }),
-        // **Auto-pay** (ADR 0010: the policy is the server's, the rules are the
-        // engine's). The engine now announces a cast against what the seat *could* make
-        // rather than only what is floating, so a cast can arrive that the pool alone
-        // does not cover. Rather than reject it, the server asks the engine for a
-        // payment that would cover it and sends one atomic action.
+        // The payment the player assembled, or — for the pips they left unanswered —
+        // the one the server assembles for them (ADR 0010: the rules are the engine's,
+        // the policy is the server's). A client that fills every `pay_mana` slot spends
+        // exactly the sources it picked; one that fills none, as the terminal client and
+        // both automated players do, gets tapped out on its behalf.
         //
-        // The judgment here — *tap for the player instead of asking* — is the server's
-        // and is exactly the kind of thing ADR 0010 keeps out of the engine. The engine
-        // only answers what a legal payment is; it has no opinion about whether a person
-        // wanted to be asked. A client that wants to choose its own sources will carry
-        // its own payment and this fills in nothing.
-        //
-        // `None` means no payment exists, and the empty one is sent: the engine refuses
-        // it as a clean no-op and the client is told, which is the same answer it would
-        // have got before this existed.
+        // That judgment — *tap for the player instead of asking* — is exactly what the
+        // engine has no opinion about. It only answers what a legal payment is.
         Action::CastSpell { card, .. } => Some(Action::CastSpell {
             card: *card,
             targets: chosen,
-            payment: sage_engine::auto_payment(state, db, *card).unwrap_or_default(),
+            payment: bind_payment(state, db, *card, targets),
         }),
         // Aiming a trigger (CR 603.3d) binds through the same per-slot candidate
         // path as a cast or an activation — the engine offers one target slot per

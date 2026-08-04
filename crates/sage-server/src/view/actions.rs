@@ -364,14 +364,20 @@ fn valid_action_view(
     };
     // Most 1:1 engine-action projections carry no `prompts`; the combat-damage
     // ordering action (issue #346) carries one `order` prompt per multi-blocked
-    // attacker, each a permutation over that attacker's blockers, and a mulligan
-    // `Keep` carries its owed bottoming as a select-from-zone slot (CR 103.5).
+    // attacker, each a permutation over that attacker's blockers, a mulligan `Keep`
+    // carries its owed bottoming as a select-from-zone slot (CR 103.5), and a cast
+    // carries its unpaid cost one pip at a time.
     let prompts: Vec<Prompt> = match action {
         Action::OrderCombatDamage { .. } => damage_order_prompts(state, db),
         Action::Keep { .. } => keep_prompts(state, action),
         Action::AnswerChoice { .. } | Action::AnswerConfirm { .. } | Action::AnswerColor { .. } => {
             player_choice_prompts(state, db)
         }
+        // A cast carries one `pay_mana` slot per unit of cost it still owes (CR 601.2f–g)
+        // — none at all when the pool already covers it. This is what lets a client offer
+        // the card first and the payment second, and take the payment back apart without
+        // having sent anything.
+        Action::CastSpell { card, .. } => cast_payment_prompts(state, db, *card),
         _ => Vec::new(),
     };
     // One-gesture mana: mark the activation of a mana ability

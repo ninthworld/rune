@@ -78,6 +78,19 @@ pub fn is_plain_mana_source(state: &GameState, db: &CardDatabase, source: ManaSo
     plain_mana_yield(&ability).is_some()
 }
 
+/// The mana symbols one activation of `ability` adds — `["{W}"]`, or two entries for an
+/// ability that makes two mana.
+///
+/// The label on "which half of this dual land did you mean?", answered here because what
+/// a card produces is the card's business and a presentation that worked it out would be
+/// reading rules. Empty for an ability a payment cannot carry.
+#[must_use]
+pub fn mana_ability_pips(ability: &Ability) -> Vec<String> {
+    plain_mana_yield(ability)
+        .map(|adds| adds.pips())
+        .unwrap_or_default()
+}
+
 /// What one activation of `ability` adds to a pool, or `None` if it is not an ability a
 /// payment may carry.
 ///
