@@ -16,7 +16,10 @@ mod utilities;
 #[cfg(test)]
 mod tests;
 
-pub use definition::{Action, Attack, Block, DamageOrder, ManaSource, TargetRequirement};
+pub(crate) use definition::discards_of;
+pub use definition::{
+    Action, Attack, Block, CostPayment, DamageOrder, ManaSource, TargetRequirement,
+};
 pub use generation::valid_actions;
 pub(crate) use legality::action_is_legal;
 pub(crate) use payment::{apply_payment, payment_covers_cast};

@@ -77,7 +77,7 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
             ..
         } => {
             crate::actions::apply_payment(&mut next, db, payment);
-            apply_cast_spell(&mut next, *card, targets, db);
+            apply_cast_spell(&mut next, *card, targets, payment, db);
         }
         Action::ChooseTriggerTargets { ability, targets } => {
             apply_choose_trigger_targets(&mut next, *ability, targets);

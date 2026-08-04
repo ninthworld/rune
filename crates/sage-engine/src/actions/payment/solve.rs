@@ -35,7 +35,7 @@ use crate::id::{CardInstance, PlayerId};
 use crate::mana::{ManaCost, ManaPool, SpendPurpose};
 use crate::state::GameState;
 
-use super::super::definition::ManaSource;
+use super::super::definition::{CostPayment, ManaSource};
 use super::super::utilities::cast_cost;
 use super::sources::{mana_options, SourceOptions};
 
@@ -223,27 +223,62 @@ fn total_cost(cost: &ManaCost) -> u16 {
     cost.colored_total() + u16::from(cost.generic)
 }
 
-/// A payment that covers casting `card` right now, or `None` if the board cannot pay for
-/// it.
+/// A payment that pays the whole cost of casting `card` right now, or `None` if the
+/// board cannot pay for it.
 ///
 /// A **rules** question, not a policy one, and the distinction is the seam: this answers
 /// *what would be a legal payment*, exactly as [`crate::legal_targets_for_spec`] answers
-/// what would be a legal target. Whether to use the answer — auto-tap for the player, or
-/// ask them to pick — is a judgment about a person, and it belongs to the caller
-/// (ADR 0010).
+/// what would be a legal target. Whether to use the answer — tap and discard for the
+/// player, or ask them to pick — is a judgment about a person, and it belongs to the
+/// caller (ADR 0010).
+///
+/// It is emphatically **a** legal payment and not a good one. The discards in particular
+/// are taken in hand order, which is a rule about a list rather than a decision about a
+/// game; a caller that hands them to a person without asking has made a choice on their
+/// behalf, and should know that it did.
 #[must_use]
 pub fn auto_payment(
     state: &GameState,
     db: &CardDatabase,
     card: CardInstance,
-) -> Option<Vec<ManaSource>> {
+) -> Option<Vec<CostPayment>> {
     let (cost, subtypes) = cast_cost(state, db, card)?;
-    ManaOptions::of(state, db, state.priority).solve(
+    let mana = ManaOptions::of(state, db, state.priority).solve(
         &cost,
         SpendPurpose::CastingSpell {
             subtypes: &subtypes,
         },
-    )
+    )?;
+    let mut payment: Vec<CostPayment> = mana.into_iter().map(CostPayment::Mana).collect();
+    payment.extend(auto_discards(state, db, card)?);
+    Some(payment)
+}
+
+/// Cards to discard to `card`'s additional cost (CR 601.2b), or `None` if the hand
+/// cannot pay it. Empty for the overwhelming majority of cards, which have no such cost.
+fn auto_discards(
+    state: &GameState,
+    db: &CardDatabase,
+    card: CardInstance,
+) -> Option<Vec<CostPayment>> {
+    let owed = db
+        .card(card.card)
+        .and_then(|data| data.additional_cost)
+        .map_or(0, crate::AdditionalCost::discard_count);
+    if owed == 0 {
+        return Some(Vec::new());
+    }
+    // The card being cast is on its way to the stack and cannot pay for itself.
+    let chosen: Vec<CostPayment> = state
+        .players
+        .get(state.priority.0)?
+        .hand
+        .iter()
+        .filter(|held| held.id != card.id)
+        .take(usize::from(owed))
+        .map(|held| CostPayment::Discard(held.id))
+        .collect();
+    (chosen.len() == usize::from(owed)).then_some(chosen)
 }
 
 #[cfg(test)]
@@ -398,7 +433,10 @@ pub(crate) mod tests {
         let payment = auto_payment(&state, &database, spell).expect("a Forest and any other pays");
         assert_eq!(payment.len(), 2, "{{1}}{{G}} is two mana");
         assert!(
-            payment.iter().any(|source| source.permanent == lands[2]),
+            payment
+                .iter()
+                .filter_map(|entry| entry.mana())
+                .any(|source| source.permanent == lands[2]),
             "the Forest is the only thing on the board that can pay the {{G}}"
         );
     }

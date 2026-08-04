@@ -50,7 +50,7 @@ pub use ability::{
 };
 pub use actions::{
     auto_payment, is_plain_mana_source, payment_sources, target_requirements, valid_actions,
-    Action, Attack, Block, DamageOrder, ManaSource, TargetRequirement,
+    Action, Attack, Block, CostPayment, DamageOrder, ManaSource, TargetRequirement,
 };
 pub use apply::apply_action;
 pub use automation::{forced_declaration_without_choice, priority_has_no_meaningful_action};

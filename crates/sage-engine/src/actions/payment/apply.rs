@@ -9,19 +9,26 @@ use crate::card::CardDatabase;
 use crate::id::CardInstance;
 use crate::state::GameState;
 
-use super::super::definition::{Action, ManaSource};
+use super::super::definition::{discards_of, mana_of, Action, CostPayment};
 use super::super::generation::valid_actions;
 use super::super::utilities::cast_cost;
 use super::sources::is_plain_mana_source;
 
-/// Apply a payment to `state`, returning whether every source in it was legal.
+/// Apply a payment's **mana half** to `state`, returning whether every source in it was
+/// legal.
+///
+/// Only the mana. The rest of a total cost (CR 601.2b) is paid once the card is on the
+/// stack, in [`crate::apply::apply_cast_spell`], because CR 601.2 puts the spell there
+/// before costs are paid — which is exactly what stops a spell being discarded to pay for
+/// itself. Splitting it here rather than checking for that case is the difference between
+/// a rule and a guard.
 ///
 /// **Sequential, and re-validated at each step against the state the previous ones
 /// produced.** That is not belt-and-braces: a source named twice is a real submission a
 /// client can send, and the second naming has to be illegal for the same reason the
 /// second click on a tapped land does nothing. It is also what enforces *one option per
-/// permanent* at apply time — naming both halves of a dual land is exactly naming it
-/// twice, and the second activation finds it tapped.
+/// permanent* — naming both halves of a dual land is exactly naming it twice, and the
+/// second activation finds it tapped.
 ///
 /// Asking [`valid_actions`] each time is the same authority that gates a standalone
 /// activation, so a payment can never do anything a sequence of ordinary taps could not.
@@ -32,9 +39,9 @@ use super::sources::is_plain_mana_source;
 pub(crate) fn apply_payment(
     state: &mut GameState,
     db: &CardDatabase,
-    payment: &[ManaSource],
+    payment: &[CostPayment],
 ) -> bool {
-    for &source in payment {
+    for source in mana_of(payment) {
         if !is_plain_mana_source(state, db, source) {
             return false;
         }
@@ -51,26 +58,30 @@ pub(crate) fn apply_payment(
     true
 }
 
-/// Whether this payment, applied in order, leaves a pool that covers the cast's cost.
+/// Whether this payment pays **the whole cost** of casting `card` — the mana it produces
+/// covers the mana cost, and the cards it names satisfy any additional cost exactly.
 ///
 /// The one question the two halves of a cast have to agree on, asked in the one place
 /// both of them read. Legality asks it before anything is applied;
-/// [`crate::apply_action`] re-applies the payment for real and lets
-/// [`crate::ManaPool::pay_for`] charge it, so the offer and the charge cannot disagree
-/// about what a payment was worth.
+/// [`crate::apply_action`] re-applies the payment for real, so the offer and the charge
+/// cannot disagree about what a payment was worth.
 ///
-/// An empty payment reduces to exactly the old question — does the pool as it stands
-/// cover the cost — which is why a cast paid out of floating mana is unchanged.
+/// A payment with no mana entries reduces the mana half to exactly the old question —
+/// does the pool as it stands cover the cost — which is why a cast paid out of floating
+/// mana is unchanged.
 #[must_use]
 pub(crate) fn payment_covers_cast(
     state: &GameState,
     db: &CardDatabase,
     card: CardInstance,
-    payment: &[ManaSource],
+    payment: &[CostPayment],
 ) -> bool {
     let Some((cost, purpose_subtypes)) = cast_cost(state, db, card) else {
         return false;
     };
+    if !discards_pay_the_additional_cost(state, db, card, &discards_of(payment)) {
+        return false;
+    }
     let mut scratch = state.clone();
     if !apply_payment(&mut scratch, db, payment) {
         return false;
@@ -88,6 +99,36 @@ pub(crate) fn payment_covers_cast(
         })
 }
 
+/// Whether `discards` is exactly what `card`'s additional cost demands (CR 601.2b).
+///
+/// **Exactly**, in both directions: a card with no additional cost accepts no discards at
+/// all, and a card with one is not paid by fewer — or by more, since over-paying a cost
+/// is not a thing a player may choose to do. Each named card must be a distinct card in
+/// the caster's hand, and none of them may be the card being cast: it is on its way to
+/// the stack, so a hand of exactly this one card cannot discard to cast it.
+fn discards_pay_the_additional_cost(
+    state: &GameState,
+    db: &CardDatabase,
+    card: CardInstance,
+    discards: &[crate::id::CardInstanceId],
+) -> bool {
+    let owed = db
+        .card(card.card)
+        .and_then(|data| data.additional_cost)
+        .map_or(0, crate::AdditionalCost::discard_count);
+    if discards.len() != usize::from(owed) {
+        return false;
+    }
+    let Some(player) = state.players.get(state.priority.0) else {
+        return false;
+    };
+    discards.iter().enumerate().all(|(i, &named)| {
+        named != card.id
+            && !discards[..i].contains(&named)
+            && player.hand.iter().any(|held| held.id == named)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
@@ -96,7 +137,7 @@ mod tests {
     use crate::id::{CardInstance, PermanentId, PlayerId};
     use crate::phase::Step;
     use crate::state::{GameState, Permanent};
-    use crate::{apply_action, valid_actions, Action, CardId, ManaSource};
+    use crate::{apply_action, valid_actions, Action, CardId, CostPayment, ManaSource};
 
     fn db() -> CardDatabase {
         CardDatabase::bundled().unwrap()
@@ -145,12 +186,14 @@ mod tests {
         (state, database, lands, spell)
     }
 
-    fn tap_all(lands: &[PermanentId]) -> Vec<ManaSource> {
+    fn tap_all(lands: &[PermanentId]) -> Vec<CostPayment> {
         lands
             .iter()
-            .map(|&permanent| ManaSource {
-                permanent,
-                index: 0,
+            .map(|&permanent| {
+                CostPayment::Mana(ManaSource {
+                    permanent,
+                    index: 0,
+                })
             })
             .collect()
     }
@@ -188,10 +231,10 @@ mod tests {
         let short = Action::CastSpell {
             card: spell,
             targets: Vec::new(),
-            payment: vec![ManaSource {
+            payment: vec![CostPayment::Mana(ManaSource {
                 permanent: lands[0],
                 index: 0,
-            }],
+            })],
         };
 
         let after = apply_action(&state, &short, &database);
@@ -218,14 +261,14 @@ mod tests {
             card: spell,
             targets: Vec::new(),
             payment: vec![
-                ManaSource {
+                CostPayment::Mana(ManaSource {
                     permanent: lands[0],
                     index: 0,
-                },
-                ManaSource {
+                }),
+                CostPayment::Mana(ManaSource {
                     permanent: lands[0],
                     index: 0,
-                },
+                }),
             ],
         };
 
@@ -265,9 +308,11 @@ mod tests {
                 targets: Vec::new(),
                 payment: indices
                     .into_iter()
-                    .map(|index| ManaSource {
-                        permanent: river,
-                        index,
+                    .map(|index| {
+                        CostPayment::Mana(ManaSource {
+                            permanent: river,
+                            index,
+                        })
                     })
                     .collect(),
             },
