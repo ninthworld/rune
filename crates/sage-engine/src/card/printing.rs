@@ -184,7 +184,7 @@ mod tests {
     use super::*;
 
     /// The number of printing records across `data/sets/`.
-    const PRINTING_COUNT: usize = 206;
+    const PRINTING_COUNT: usize = 208;
 
     #[test]
     fn bundled_printings_load_from_the_set_manifest() {

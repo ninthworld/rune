@@ -290,42 +290,85 @@ fn issue_606_printed_restrictions_on_a_non_creature_are_rejected() {
 }
 
 #[test]
-fn issue_610_a_may_wrapping_a_targeting_effect_is_rejected() {
-    // A wrapper cannot declare the target slot of what it wraps, so the target
-    // would never be chosen and the effect would silently do nothing. Both authored
-    // spellings of "target" are caught, in an ability and in a spell effect alike,
-    // and nesting does not hide either.
+fn issue_725_a_may_wrapping_one_targeting_effect_is_accepted() {
+    // The wrapper forwards that effect's group, so the slot is declared at
+    // announcement and filled there. Both authored spellings of "target" go through,
+    // in an ability and in a spell effect alike, and a `may` inside a `may` forwards
+    // the same single group the whole way up.
     let spec = r#", "abilities": [{"type": "activated", "cost": [],
         "effects": [{"kind": "may", "effects": [{"kind": "tap", "target": "any_creature"}]}]}]"#;
-    assert_eq!(
-        validate_definition(None, &definition(spec)),
-        Err(Violation::TargetInsideOptional {
-            functional_id: "test_card".to_string(),
-        }),
-    );
+    assert!(validate_definition(None, &definition(spec)).is_ok());
 
     let player_ref = r#", "abilities": [{"type": "activated", "cost": [],
         "effects": [{"kind": "may", "cost": "{1}",
                      "effects": [{"kind": "may",
                                   "effects": [{"kind": "mill", "player_ref": "target_player",
                                                "count": 2}]}]}]}]"#;
-    assert!(validate_definition(None, &definition(player_ref)).is_err());
+    assert!(validate_definition(None, &definition(player_ref)).is_ok());
 
-    let nested_in_a_spell = r#", "spell_effects": [{"kind": "may",
+    let in_a_spell = r#", "spell_effects": [{"kind": "may",
         "effects": [{"kind": "deal_damage", "target": "any_target", "amount": 2}]}]"#;
-    assert!(validate_definition(None, &definition(nested_in_a_spell)).is_err());
+    assert!(validate_definition(None, &definition(in_a_spell)).is_ok());
+
+    // A targeting effect *beside* a non-targeting one inside the same `may` is still
+    // one group, and still fine.
+    let mixed = r#", "spell_effects": [{"kind": "may",
+        "effects": [{"kind": "draw_card", "count": 1},
+                    {"kind": "destroy", "target": "any_artifact"}]}]"#;
+    assert!(validate_definition(None, &definition(mixed)).is_ok());
+}
+
+#[test]
+fn issue_725_a_may_wrapping_two_targeting_effects_is_rejected() {
+    // One forwarding cannot advertise two slots: the flat stored target list would
+    // have no way to say which target belongs to which wrapped effect.
+    let two = r#", "spell_effects": [{"kind": "may",
+        "effects": [{"kind": "destroy", "target": "any_artifact"},
+                    {"kind": "tap", "target": "any_creature"}]}]"#;
+    assert_eq!(
+        validate_definition(None, &definition(two)),
+        Err(Violation::TwoTargetsInsideOptional {
+            functional_id: "test_card".to_string(),
+        }),
+    );
+
+    // Nesting does not hide the second one either.
+    let nested = r#", "spell_effects": [{"kind": "may",
+        "effects": [{"kind": "destroy", "target": "any_artifact"},
+                    {"kind": "may",
+                     "effects": [{"kind": "mill", "player_ref": "target_player",
+                                  "count": 2}]}]}]"#;
+    assert!(validate_definition(None, &definition(nested)).is_err());
 }
 
 #[test]
 fn issue_610_targets_outside_an_optional_effect_are_untouched() {
-    // The rule is about what a `may` *wraps*, not about the card: a targeting
-    // effect beside an optional one is ordinary and stays authorable, and so does a
-    // non-targeting effect inside the optional one.
+    // A targeting effect beside an optional one is two ordinary fixed groups, and a
+    // non-targeting effect inside the optional one declares none at all.
     let json = r#", "spell_effects": [{"kind": "deal_damage", "target": "any_target",
                                         "amount": 2},
                                       {"kind": "may", "cost": "{1}",
                                        "effects": [{"kind": "draw_card", "count": 1}]}]"#;
     assert!(validate_definition(None, &definition(json)).is_ok());
+}
+
+#[test]
+fn issue_725_an_optional_variable_arity_group_is_still_counted() {
+    // The "at most one up-to-N group" invariant looks through the wrapper too: an
+    // optional "return up to two" is as variable-arity as a bare one, and pairing two
+    // of them back onto effects would be a guess.
+    let json = r#", "spell_effects": [
+        {"kind": "may", "effects": [{"kind": "return_card_to_hand",
+                                     "target": {"card_in_graveyard": {"class": "creature"}},
+                                     "targets": {"up_to": 2}}]},
+        {"kind": "put_counters", "target": "any_creature", "targets": {"up_to": 2},
+         "counter": "plus_one_plus_one", "count": 1}]"#;
+    assert_eq!(
+        validate_definition(None, &definition(json)),
+        Err(Violation::TwoVariableTargetGroups {
+            functional_id: "test_card".to_string(),
+        }),
+    );
 }
 
 #[test]

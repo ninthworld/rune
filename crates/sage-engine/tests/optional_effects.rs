@@ -3,9 +3,9 @@
 //! not paying.
 //!
 //! Every test drives the **real** [`apply_action`] pipeline. The cards are written
-//! here rather than taken from the catalog because no bundled card uses this effect
-//! yet — the mechanism is the prerequisite, and the cards that need it each need one
-//! more thing besides. What is under test is therefore the mechanism's promises: that
+//! here rather than taken from the catalog because what is under test is the
+//! mechanism rather than any one printing — the bundled cards that use it live in
+//! `m19_optional_targets.rs`. The promises, then: that
 //! the question suspends the game, that it reaches the ability's *controller*, that
 //! declining costs the rest of the ability nothing, that a cost is really charged, that
 //! a cost nobody could pay never stalls anything, and that the log tells a decline apart
@@ -14,7 +14,7 @@
 
 use sage_engine::{
     apply_action, valid_actions, Action, CardDatabase, CardId, CardInstance, FunctionalId,
-    GameEvent, GameState, Permanent, PermanentId, PlayerId, Step,
+    GameEvent, GameState, Permanent, PermanentId, PlayerId, Step, Target,
 };
 
 // ----- fixtures -------------------------------------------------------------
@@ -47,6 +47,10 @@ const DEFINITIONS: &str = r#"[
      "abilities":[{"type":"triggered",
                    "event":{"permanent_enters":{"scope":"any_creature","except_this":true}},
                    "effects":[{"kind":"may","effects":[{"kind":"draw_card","count":1}]}]}]},
+    {"schema_version":1,"functional_id":"test_may_tap","name":"Test May Tap",
+     "types":["sorcery"],"mana_cost":"",
+     "spell_effects":[{"kind":"may","effects":[{"kind":"tap","target":"any_creature"}]},
+                      {"kind":"destroy","target":"any_creature"}]},
     {"schema_version":1,"functional_id":"test_bear","name":"Test Bear",
      "types":["creature"],"mana_cost":"","power":2,"toughness":2},
     {"schema_version":1,"functional_id":"test_forest","name":"Test Forest",
@@ -391,6 +395,60 @@ fn issue_610_a_payer_may_float_mana_while_the_question_is_owed() {
     assert_eq!(paid.players[0].hand.len(), 1);
     assert_eq!(paid.players[0].mana_pool.green, 0);
     assert!(paid.battlefield.iter().all(|perm| perm.tapped));
+}
+
+// ----- an optional effect that targets --------------------------------------
+
+/// Cast `slug` aimed at `targets` and let it resolve.
+fn cast_at(state: &GameState, db: &CardDatabase, slug: &str, targets: Vec<Target>) -> GameState {
+    let mut state = state.clone();
+    let instance = state.new_instance(cid(db, slug));
+    state.players[0].hand.push(instance);
+    let state = apply_action(
+        &state,
+        &Action::CastSpell {
+            card: instance,
+            targets,
+            payment: Vec::new(),
+        },
+        db,
+    );
+    let state = apply_action(&state, &Action::PassPriority, db);
+    apply_action(&state, &Action::PassPriority, db)
+}
+
+#[test]
+fn issue_725_a_declined_offers_target_is_not_inherited_by_the_next_effect() {
+    // Two slots in printed order: the optional tap's, then the mandatory destroy's.
+    // The offer's target rides the offer, so declining drops it — and the destroy still
+    // takes the creature *it* was aimed at rather than sliding onto the one the player
+    // passed on. Accepting takes both, in order.
+    let db = db();
+    let mut state = main_phase();
+    let tapped = place(&mut state, &db, "test_bear", PlayerId(0));
+    let doomed = place(&mut state, &db, "test_bear", PlayerId(1));
+    let aim = vec![Target::Permanent(tapped), Target::Permanent(doomed)];
+
+    let refused = answer(
+        &cast_at(&state, &db, "test_may_tap", aim.clone()),
+        &db,
+        false,
+    );
+    assert!(
+        refused
+            .battlefield
+            .iter()
+            .any(|p| p.id == tapped && !p.tapped),
+        "the declined effect did not happen",
+    );
+    assert!(
+        !refused.battlefield.iter().any(|p| p.id == doomed),
+        "and the effect that followed it hit its own target",
+    );
+
+    let taken = answer(&cast_at(&state, &db, "test_may_tap", aim), &db, true);
+    assert!(taken.battlefield.iter().any(|p| p.id == tapped && p.tapped));
+    assert!(!taken.battlefield.iter().any(|p| p.id == doomed));
 }
 
 // ----- the log --------------------------------------------------------------

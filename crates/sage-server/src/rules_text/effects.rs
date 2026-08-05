@@ -517,8 +517,9 @@ pub(crate) fn optional_effect_question(cost: Option<&str>, effects: &[Effect]) -
 
 /// A clause with a leading "you " stripped, for a position whose subject is already
 /// stated — "you may **draw a card**", "Pay {1} to **gain 3 life**". A clause with a
-/// third-person subject ("target player discards a card") is returned unchanged, and
-/// never reaches these positions anyway: an optional effect's contents may not target.
+/// third-person subject ("target player discards a card") is returned unchanged, which
+/// is what an optional effect that targets wants: "you may destroy target artifact"
+/// keeps its object and loses nothing.
 fn without_you(clause: &str) -> &str {
     clause.strip_prefix("you ").unwrap_or(clause)
 }

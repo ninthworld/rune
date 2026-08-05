@@ -87,6 +87,13 @@ pub(crate) fn apply_answer_color(
 ///   decline leaves the game as if the effect were absent" true by construction rather
 ///   than by matching two branches carefully.
 ///
+/// The offer's **targets** are spliced with its effects, for the third reason: a `may`
+/// declares the group of the effect it wraps, so the target was chosen at announcement
+/// and must be handed back to that effect on acceptance — and must go nowhere at all on
+/// a decline, or the next effect in the remainder would inherit a target that was never
+/// aimed at it. The wrapped effect re-checks it on the way through (CR 608.2c), so a
+/// target that has become illegal is skipped rather than applied.
+///
 /// Paying happens in [`take_confirmed_effects`], atomically with the acceptance.
 /// Legality — including whether the cost is payable at all — has already been
 /// established by [`crate::apply_action`]'s gate. An answer with no yes-or-no pending is
@@ -106,6 +113,9 @@ pub(crate) fn apply_answer_confirm(state: &mut GameState, accept: bool, db: &Car
         if let Some(mut effects) = taken {
             effects.append(&mut resume.effects);
             resume.effects = effects;
+            let mut targets = request.targets.clone();
+            targets.append(&mut resume.targets);
+            resume.targets = targets;
         }
         resume_after_choice(state, resume, db);
     }

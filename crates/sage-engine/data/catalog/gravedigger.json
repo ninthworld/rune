@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "functional_id": "gravedigger",
+  "name": "Gravedigger",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Zombie"
+  ],
+  "mana_cost": "{3}{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 2,
+  "toughness": 2,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "may",
+          "effects": [
+            {
+              "kind": "return_card_to_hand",
+              "target": {
+                "card_in_graveyard": {
+                  "class": "creature"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

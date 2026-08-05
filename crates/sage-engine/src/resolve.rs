@@ -508,13 +508,9 @@ pub(crate) fn apply_effects_with_targets(
         // A choice-posing effect (CR 701.8 discard, 701.17 scry, 701.19 search) stops
         // here. Choices whose clamped maximum is zero are applied outright inside
         // `pose_choices`, so an empty hand or an empty library never suspends anything.
-        if let Some(choices) = crate::choice::choices_for_effect(
-            state,
-            &effect,
-            controller,
-            source_card,
-            taken.first().copied(),
-        ) {
+        if let Some(choices) =
+            crate::choice::choices_for_effect(state, &effect, controller, source_card, &taken)
+        {
             if crate::choice::pose_choices(state, choices, db) {
                 crate::choice::attach_resume(
                     state,

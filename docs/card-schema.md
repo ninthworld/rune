@@ -501,9 +501,10 @@ computation of a permanent's characteristics, and asking there would ask again, 
 Only a lower bound exists, because only a lower bound is printed on a card the catalog
 defines.
 
-A branch **may not choose a target**, for the reason an optional effect's contents may not:
-one effect declares at most one target group, and a wrapper cannot honestly declare the groups
-of what it wraps (`Violation::TargetInsideConditional`).
+A branch **may not choose a target** (`Violation::TargetInsideConditional`), and this is where
+a conditional differs from a `may`: an optional effect forwards the group of the one effect it
+wraps, but a conditional has two branches sharing one flat target list, so a group named in
+either could not be paired back onto the branch that was actually taken.
 
 ### Amounts derived from a count
 
@@ -855,10 +856,25 @@ permanent, are out of scope and listed in the exclusions.
 - **Declining is not a fizzle.** The wrapped effects are skipped; every other effect of
   the same ability, and the spell's own trip to its final zone (CR 608.3), happen exactly
   as if the `may` were not there.
-- **The wrapped effects may not target.** One effect declares at most one target slot, so
-  a wrapper cannot speak for what it wraps; the catalog validator rejects it at build
-  time rather than letting the card silently do nothing. Choosing an optional cost at
-  *announcement* (kicker) is a different mechanism and is still excluded.
+- **The target is chosen up front.** A `may` over a single targeting effect declares that
+  effect's target group as its own, so the slot is filled at announcement (CR 601.2c) and
+  only the yes-or-no waits for resolution:
+
+  ```json
+  { "kind": "may", "effects": [{ "kind": "destroy", "target": "any_artifact_or_enchantment" }] }
+  ```
+
+  Accepting hands the chosen target back to the wrapped effect, which re-checks it
+  (CR 608.2c); declining drops the target with the rest of the offer, so the effect after
+  it still takes the target *it* was aimed at. An object whose every target has become
+  illegal never resolves (CR 608.2b), and the question is not asked at all.
+- **One group, still.** A `may` over **two** targeting effects is rejected
+  (`Violation::TwoTargetsInsideOptional`): one forwarding cannot advertise two slots, and
+  the flat stored target list would have no way to pair them back. The "at most one
+  variable-arity group" rule looks through the wrapper too.
+- Choosing an optional cost at *announcement* (kicker) is a different mechanism and is
+  still excluded, and so is a **reflexive** trigger (CR 603.11) — a `when you do` aimed
+  *after* a cost is paid chooses its target at a moment no announcement has reached.
 
 ### Trigger conditions
 
