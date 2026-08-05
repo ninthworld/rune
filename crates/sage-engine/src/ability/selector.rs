@@ -65,6 +65,26 @@ pub struct PermanentCount {
     /// colourless.
     #[serde(default)]
     pub color: Option<Color>,
+    /// Restrict to permanents whose power is at least this — the "a creature with
+    /// **power 4 or greater**" of an intervening if. Absent counts every power,
+    /// including a permanent that has none.
+    ///
+    /// The one field here read through the **computed** characteristics rather than the
+    /// printed face, because that is the only reading a printed card means: a creature
+    /// pumped to 4 satisfies "power 4 or greater" and stops satisfying it when the pump
+    /// ends (CR 613.1f). The others stay printed because the layers that would change a
+    /// type or a colour are not implemented.
+    ///
+    /// That reading is also why this field is **rejected inside a static ability's
+    /// condition** by the catalog validator
+    /// ([`Violation::PowerInStaticCondition`](crate::Violation::PowerInStaticCondition)):
+    /// asking for a computed power from inside the computation of a permanent's
+    /// characteristics would not terminate.
+    ///
+    /// Only a lower bound exists, because only a lower bound is printed on a card the
+    /// catalog defines; an upper one arrives with the card that needs it.
+    #[serde(default)]
+    pub min_power: Option<i32>,
 }
 
 /// Whose permanents a [`PermanentCount`] counts, relative to the effect's controller.

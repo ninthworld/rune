@@ -250,6 +250,9 @@ pub(super) fn restriction_predicate(restriction: CombatRestriction) -> String {
         CombatRestriction::CantBeBlockedByMoreThanOne => {
             "can't be blocked by more than one creature".to_string()
         }
+        CombatRestriction::CantBeBlockedByPowerOrLess(power) => {
+            format!("can't be blocked by creatures with power {power} or less")
+        }
     }
 }
 

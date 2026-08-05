@@ -177,6 +177,31 @@ pub(super) fn conditional_wraps_a_target(effect: &serde_json::Value) -> bool {
     })
 }
 
+/// Whether any **static** ability of `object` gates itself on a power bound.
+///
+/// A power bound is read through the computed characteristics, which is correct in a
+/// resolution and non-terminating inside the layer system — see
+/// [`Violation::PowerInStaticCondition`](super::Violation::PowerInStaticCondition).
+/// Only `type: "static"` is checked: the same condition shape appears on an
+/// `Effect::Conditional`, where it is evaluated during a resolution and is fine.
+pub(super) fn static_condition_counts_by_power(
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> bool {
+    object
+        .get("abilities")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|ability| ability.get("type").and_then(serde_json::Value::as_str) == Some("static"))
+        .any(|ability| {
+            ability
+                .get("condition")
+                .and_then(|condition| condition.get("permanents"))
+                .and_then(|permanents| permanents.get("min_power"))
+                .is_some()
+        })
+}
+
 /// Whether `effect` is a `create_emblem` handing out an ability an emblem cannot carry
 /// (CR 114.1) — anything but `static` or `triggered`.
 pub(super) fn emblem_ability_is_bad(effect: &serde_json::Value) -> bool {

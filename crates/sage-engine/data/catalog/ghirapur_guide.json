@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "functional_id": "ghirapur_guide",
+  "name": "Ghirapur Guide",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elf",
+    "Scout"
+  ],
+  "mana_cost": "{2}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 3,
+  "toughness": 2,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{2}{G}"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "restrict",
+          "target": "any_creature_you_control",
+          "restriction": {
+            "cant_be_blocked_by_power_or_less": 2
+          }
+        }
+      ]
+    }
+  ]
+}

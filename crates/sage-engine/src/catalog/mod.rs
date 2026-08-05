@@ -212,6 +212,12 @@ pub(crate) fn validate_definition(
         return Err(Violation::TargetInsideConditional { functional_id });
     }
 
+    // A power bound is the one selector field read from computed characteristics, which
+    // the layer system cannot ask for from inside itself without recursing.
+    if static_condition_counts_by_power(object) {
+        return Err(Violation::PowerInStaticCondition { functional_id });
+    }
+
     // CR 114.1: an emblem has no characteristics but its abilities, and only the two
     // kinds that need neither an activation nor an entry event can function on one.
     if every_effect(object).into_iter().any(emblem_ability_is_bad) {
