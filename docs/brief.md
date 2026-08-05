@@ -34,8 +34,14 @@ Corollary: no roadmap document. Milestone prose is how "complete" drifts loose f
 
 `crates/sage-engine` is a pure, single-game state machine, and the project's most valuable
 asset. It owns zones, turns, priority, the stack, combat, legal-action generation, card
-effects, triggers, replacement effects, computed characteristics, state-based actions,
-deterministic randomness, and the embedded card catalog.
+effects, triggers, computed characteristics, state-based actions, deterministic randomness,
+and the embedded card catalog.
+
+**There is no replacement-effect layer.** The one replacement the engine applies is a card's
+own enters-the-battlefield self-replacement (CR 614.1c/614.12 — "enters tapped", "enters with
+counters"), applied at the battlefield-entry seam rather than as a general shield anything can
+register against. Damage prevention, regeneration, cost modification, and every other
+replacement remain out of scope, and the compatibility report says so as an exclusion.
 
 It performs **no runtime I/O** — no sockets, rooms, clocks, threads, or ambient randomness.
 Runtime dependencies are `serde`/`serde_json`, for parsing compile-time-embedded card data
@@ -72,12 +78,28 @@ change together.
 ### Clients
 
 The web client is the current milestone: DOM and CSS, with inline SVG and canvas allowed for
-presentational overlays anchored to ids the server stated. What it must look like and how it must
-hold at any zoom, resolution, and aspect ratio is [`client-design.md`](client-design.md), which is
-binding. Its two jobs are to make a legal game playable and to
-**make a settle legible**: when the server auto-passes you through several steps, you must be
-able to tell what happened. That second job is the actual product hypothesis and the thing
-XMage does badly.
+presentational overlays anchored to ids the server stated. Its two jobs are to make a legal game
+playable and to **make a settle legible**: when the server auto-passes you through several
+steps, you must be able to tell what happened. That second job is the actual product hypothesis
+and the thing XMage does badly, and it is not yet designed — today a settle reaches the player
+as a run of log lines.
+
+#### Which document wins
+
+Everything in `docs/` is current — there is no superseded material to sift — but "current" is not
+the same as "the last word", and for the client's *appearance* the order is stated once, here:
+
+1. **`clients/prototype`** is the highest authority on how a screen should look and behave. It is
+   a throwaway sandbox: nothing ships from it, and `client-design.md` does not govern it.
+2. **[`client-design.md`](client-design.md)** records what the prototype settled, and is binding
+   on `clients/web`. Where the two disagree the prototype wins, and §8 lists every rule the
+   prototype retired. Its §10 holds the open questions the prototype did not answer.
+3. **`clients/web`** is built to that document. It is the thing that ships.
+
+This ordering governs appearance and layout only. It never overrides a **hard rule** — zero game
+logic in the client, view reconstructability, the protocol contract — and it never overrides an
+accepted **ADR**, which records a decision that already survived contact with working code.
+Nothing visual is worth bending one of those.
 
 `crates/sage-cli` is the terminal client. It proves the protocol is independent of the web UI,
 and it is the playtest surface whenever the web client is unavailable.
@@ -95,10 +117,20 @@ declared `scripted` code escape hatch for the exceptional
 the server from that same data, so display cannot diverge from behavior.
 
 **The IR's expressive vocabulary is the binding constraint on coverage, not authoring
-throughput.** It currently cannot express static abilities, non-self triggers, activation costs
-beyond `{T}`, or target restrictions — so a lord, an anthem, or a cost reducer is not writable
-at all. Growing that vocabulary is the primary engine workstream, and progress on it is
-measured, not asserted (see [`compatibility-report.md`](compatibility-report.md)).
+throughput.** It has grown past the vocabulary the first cards needed: static abilities, triggers
+that observe another permanent, activation costs of mana and loyalty as well as `{T}`, targets
+restricted by type and by what a permanent currently is, tokens, planeswalkers, emblems, and
+effect amounts that scale with a count of permanents are all writable now. What remains
+unwritable is narrower and more specific — a cost reducer, a cost paid by sacrificing, a modal
+spell, an X cost, an anthem pointed at anything but creatures its controller controls.
+
+Growing that vocabulary is the primary engine workstream, and progress on it is measured, not
+asserted. **This document names no exclusion list of its own**: the authoritative one is
+generated from the catalog and
+[`data/exclusions.json`](../crates/sage-engine/data/exclusions.json), and every exclusion carries
+the single blocker that keeps it out. See
+[`generated/compatibility.md`](generated/compatibility.md) for the report and
+[`compatibility-report.md`](compatibility-report.md) for how it is produced and kept honest.
 
 ## Legal constraints
 
