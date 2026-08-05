@@ -5,7 +5,7 @@ engine executes. The model is defined by [ADR 0008](decisions/0008-functional-ca
 including the split between a functional definition and the printings that reference it.
 
 The Rust authorities are `CardData` and `Printing` in
-`crates/sage-engine/src/card.rs`; validators live in `src/catalog.rs`.
+`crates/sage-engine/src/card.rs`; validators live in `src/catalog/`.
 
 ## File layout
 
