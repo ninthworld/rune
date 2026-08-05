@@ -155,13 +155,26 @@ pub(super) fn effect_lists(
 pub(super) fn variable_target_groups(effects: &[&serde_json::Value]) -> usize {
     effects
         .iter()
-        .filter(|effect| {
-            effect
-                .get("targets")
-                .and_then(serde_json::Value::as_object)
-                .is_some_and(|count| count.contains_key("up_to"))
-        })
+        .filter(|effect| declares_variable_group(effect))
         .count()
+}
+
+/// Whether `effect` declares an `"up_to"` target count, looking **through** a `may` —
+/// which forwards the group of the effect it wraps, so an optional "return up to two
+/// target cards" is as variable-arity as a bare one.
+fn declares_variable_group(effect: &serde_json::Value) -> bool {
+    if effect
+        .get("targets")
+        .and_then(serde_json::Value::as_object)
+        .is_some_and(|count| count.contains_key("up_to"))
+    {
+        return true;
+    }
+    is_optional(effect)
+        && effect
+            .get("effects")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|nested| nested.iter().any(declares_variable_group))
 }
 
 /// Whether `effect` is a `conditional` whose branches would choose a target.
@@ -226,7 +239,7 @@ pub(super) fn emblem_ability_is_bad(effect: &serde_json::Value) -> bool {
 /// effects, in file order.
 ///
 /// Shallow on purpose: the nested contents of an effect are the business of whatever
-/// walks *that* effect ([`optional_wraps_a_target`] recurses into its own).
+/// walks *that* effect ([`declared_target_groups`] recurses into its own).
 pub(super) fn authored_effects(
     object: &serde_json::Map<String, serde_json::Value>,
 ) -> impl Iterator<Item = &serde_json::Value> {
@@ -248,21 +261,53 @@ pub(super) fn authored_effects(
     abilities.chain(spell)
 }
 
-/// Whether `effect` is a `may` (or contains one) whose optional contents would choose a
-/// target.
+/// Whether `effect` is a `may` wrapping **more than one** targeting effect.
 ///
-/// Recursive because a `may` may wrap a `may`, and the rule is about the whole subtree
-/// under the outermost one: anything targeting *anywhere* inside an optional effect is
-/// a slot no announcement ever fills.
-pub(super) fn optional_wraps_a_target(effect: &serde_json::Value) -> bool {
-    let Some(kind) = effect.get("kind").and_then(serde_json::Value::as_str) else {
-        return false;
-    };
-    let nested = nested_effects(effect);
-    if kind == "may" {
-        return nested.iter().any(|e| effect_chooses_a_target(e));
+/// A `may` forwards the target group of the one effect it wraps, so the slot is
+/// declared at announcement and filled there; two of them would need two slots off one
+/// wrapper, and the flat stored target list has no way to say which is which.
+pub(super) fn optional_declares_two_targets(effect: &serde_json::Value) -> bool {
+    is_optional(effect) && declared_target_groups(effect) > 1
+}
+
+/// Whether `effect` is an optional wrapper (`{"kind":"may"}`).
+fn is_optional(effect: &serde_json::Value) -> bool {
+    effect.get("kind").and_then(serde_json::Value::as_str) == Some("may")
+}
+
+/// How many target groups `effect` declares — the JSON mirror of
+/// [`Effect::target_group`](crate::Effect::target_group), which every announcement path
+/// reads.
+///
+/// One for an effect that names a target of its own; for a `may`, the sum over what it
+/// wraps, because that is precisely what the wrapper forwards. A `conditional` declares
+/// none, however its branches are written — [`conditional_wraps_a_target`] is what
+/// rejects a branch that tries.
+fn declared_target_groups(effect: &serde_json::Value) -> usize {
+    if is_optional(effect) {
+        return effect
+            .get("effects")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+            .iter()
+            .map(declared_target_groups)
+            .sum();
     }
-    nested.iter().any(|e| optional_wraps_a_target(e))
+    if effect.get("kind").and_then(serde_json::Value::as_str) == Some("conditional") {
+        return 0;
+    }
+    usize::from(names_a_target(effect))
+}
+
+/// Whether `effect` itself names a target, in either of the two authored spellings: a
+/// `target` spec, or a `player_ref` naming a targeted seat.
+fn names_a_target(effect: &serde_json::Value) -> bool {
+    effect.get("target").is_some()
+        || matches!(
+            effect.get("player_ref").and_then(serde_json::Value::as_str),
+            Some("target_player" | "target_opponent")
+        )
 }
 
 /// Whether `effect`, or anything nested inside it, chooses a target (CR 115.1).

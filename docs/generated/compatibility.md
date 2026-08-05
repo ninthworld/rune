@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (191)
+## Supported cards (193)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -83,6 +83,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `goblin_instigator` | Goblin Instigator | functional definition |
 | `goblin_motivator` | Goblin Motivator | functional definition |
 | `grasping_scoundrel` | Grasping Scoundrel | functional definition |
+| `gravedigger` | Gravedigger | functional definition |
 | `gravewaker` | Gravewaker | functional definition |
 | `greenwood_sentinel` | Greenwood Sentinel | functional definition |
 | `guttersnipe` | Guttersnipe | functional definition |
@@ -139,6 +140,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `poison_tip_archer` | Poison-Tip Archer | functional definition |
 | `prodigious_growth` | Prodigious Growth | functional definition |
 | `psychic_symbiont` | Psychic Symbiont | functional definition |
+| `reclamation_sage` | Reclamation Sage | functional definition |
 | `recollect` | Recollect | functional definition |
 | `regal_bloodlord` | Regal Bloodlord | functional definition |
 | `reliquary_tower` | Reliquary Tower | functional definition |
@@ -236,9 +238,9 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Mana filtering | mana is produced and spent, never converted; nothing changes the colour of mana already in a pool |
 | Modal spells that choose one | no mode choice on announcement |
 | Multi-face cards (transform, modal double-faced) | the card model has a single face |
-| Optional and conditional effects that choose a target | an optional effect's contents may not target, and neither may a conditional's branches; a wrapper cannot declare the slots of what it wraps |
 | Optional costs paid with anything but mana | an optional effect's cost is a mana payment; sacrificing, discarding, or exiling to pay is unwritable |
 | Protection, and evasion that names a subtype or a land type | a blocking restriction names a colour, a count, or a power; there is no protection layer |
+| Reflexive triggers, and conditional branches that choose a target | an optional effect declares the target group of the one effect it wraps, but a conditional's branches, a wrapper over two targeting effects, and a "when you do" aimed after a cost is paid have no group one announcement could fill |
 | Replacement effects | no replacement-effect layer in the rules engine |
 | Selectors that filter by toughness, or by a power relative to another permanent's | a permanent count, an enters-or-dies trigger selector, a blocking restriction, and a card choice each name a fixed power threshold; a target spec, a mass-effect class, and a static ability's condition name none, no threshold reads toughness, and no threshold is another permanent's power |
 | Spells with X in their cost | mana costs are fixed strings with no X announcement |

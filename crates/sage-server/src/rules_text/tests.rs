@@ -875,6 +875,36 @@ fn issue_610_the_optional_question_is_composed_from_the_effects_it_offers() {
 }
 
 #[test]
+fn issue_725_an_optional_effect_that_targets_reads_as_the_card_prints_it() {
+    // The target is named in the printed sentence exactly as a mandatory effect names
+    // it, because it is chosen the same way — at announcement — and only the yes-or-no
+    // waits for resolution.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "gravedigger"),
+        "When Gravedigger enters the battlefield, you may return target creature card \
+         in your graveyard to its owner's hand."
+    );
+    assert_eq!(
+        text_of(&db, "reclamation_sage"),
+        "When Reclamation Sage enters the battlefield, you may destroy target artifact \
+         or enchantment."
+    );
+
+    // And the question the player answers uses the same words, so the offer and the
+    // card cannot describe the same thing two ways.
+    assert_eq!(
+        optional_effect_question(
+            None,
+            &[Effect::Destroy {
+                target: TargetSpec::AnyArtifactOrEnchantment,
+            }]
+        ),
+        "Destroy target artifact or enchantment?"
+    );
+}
+
+#[test]
 fn issue_605_a_token_creation_reads_as_the_card_prints_it() {
     let db = bundled();
 

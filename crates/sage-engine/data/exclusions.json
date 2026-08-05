@@ -100,8 +100,8 @@
     "blocker": "the card model has a single face"
   },
   {
-    "name": "Optional and conditional effects that choose a target",
-    "blocker": "an optional effect's contents may not target, and neither may a conditional's branches; a wrapper cannot declare the slots of what it wraps"
+    "name": "Reflexive triggers, and conditional branches that choose a target",
+    "blocker": "an optional effect declares the target group of the one effect it wraps, but a conditional's branches, a wrapper over two targeting effects, and a \"when you do\" aimed after a cost is paid have no group one announcement could fill"
   },
   {
     "name": "Optional costs paid with anything but mana",

@@ -108,23 +108,28 @@ pub enum Violation {
         /// Whether the token is a creature — which is to say, which way it is wrong.
         creature: bool,
     },
-    /// An optional effect (`{"kind":"may"}`) wraps an effect that chooses a target.
+    /// An optional effect (`{"kind":"may"}`) wraps **two** effects that choose a
+    /// target.
     ///
-    /// One effect declares at most one target slot, so a wrapper cannot declare the
-    /// slots of what it wraps: the target would never be chosen at announcement
-    /// (CR 601.2c) and the nested effect would silently do nothing on acceptance. That
-    /// is a card that looks authored and is not, which is worth failing the build over.
-    TargetInsideOptional {
+    /// A `may` declares the target group of the one effect it wraps, so the slot is
+    /// named at announcement (CR 601.2c) and the yes-or-no comes on resolution. One
+    /// effect still declares at most one group, so a wrapper over two of them would
+    /// have to advertise two slots from one forwarding and could never pair the flat
+    /// stored target list back onto them. That is a card that looks authored and is
+    /// not, which is worth failing the build over.
+    TwoTargetsInsideOptional {
         /// The definition at fault.
         functional_id: String,
     },
     /// A conditional effect (`{"kind":"conditional"}`) has a branch that chooses a
     /// target.
     ///
-    /// The same rule — and the same reason — as [`Self::TargetInsideOptional`]: one
-    /// effect declares at most one target group, so a wrapper cannot declare the groups
-    /// of what it wraps. A branch that targeted would have its slot filled by nobody at
-    /// announcement (CR 601.2c) and silently do nothing.
+    /// The neighbouring rule to [`Self::TwoTargetsInsideOptional`], and the reason a
+    /// conditional forwards nothing where an optional effect forwards one group: its
+    /// two branches share one flat target list, so a group named in either could not be
+    /// paired back onto the branch that was actually taken. A branch that targeted
+    /// would have its slot filled by nobody at announcement (CR 601.2c) and silently do
+    /// nothing.
     TargetInsideConditional {
         /// The definition at fault.
         functional_id: String,
@@ -268,10 +273,10 @@ impl fmt::Display for Violation {
                 "{functional_id} creates a token that is not a Creature \
                  but carries power/toughness"
             ),
-            Self::TargetInsideOptional { functional_id } => write!(
+            Self::TwoTargetsInsideOptional { functional_id } => write!(
                 f,
-                "{functional_id} has a `may` effect wrapping an effect that targets; \
-                 an optional effect's contents may not choose a target"
+                "{functional_id} has a `may` effect wrapping two effects that target; \
+                 an optional effect declares the target group of one wrapped effect"
             ),
             Self::TargetInsideConditional { functional_id } => write!(
                 f,

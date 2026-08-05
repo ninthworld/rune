@@ -82,11 +82,45 @@ so a wrapper cannot honestly speak for what it wraps. Rather than let such a car
 into nothing, the catalog validator rejects it — in `build.rs` and in the loader, from the
 one shared file — and "optional effects that choose a target" is an exclusion entry.
 
+**9a. Revised (issue #725): a `may` *forwards* the target group of the one effect it
+wraps.** The reasoning above had the right premise and drew the wrong line. "One effect
+declares at most one group" does not forbid a wrapper from declaring a group — it forbids
+it from declaring *two*, and a `may` over a single targeting effect has exactly one to
+pass along. So `Effect::target_group` answers for a `may` by asking what it wraps, the
+slot is filled at announcement (CR 601.2c) like any other, and the yes-or-no still waits
+for resolution. Three consequences, and the third is the reason the target rides the
+`ConfirmRequest` rather than the `Resume`:
+
+- **Accepting splices the target with the effects.** Decision 3 already put the accepted
+  effects on the front of the remainder; their targets go on the front of the remaining
+  targets in the same move, so the wrapped effect consumes exactly what the announcement
+  chose for it.
+- **Declining drops both together.** A target left sitting in the remainder would be
+  inherited by whatever effect came next — a decline that silently re-aimed the rest of
+  the card. Carrying it on the offer makes "a decline leaves the game as if the effect
+  were absent" stay true of targets as well as of effects.
+- **A target that has gone still fizzles.** CR 608.2b is unchanged and applies before the
+  question is asked at all: an object whose every target is illegal does not resolve, so
+  there is nothing to accept. A target that goes illegal with the offer already posed is
+  skipped by the resumed walk (CR 608.2c), which is the wrapped effect's own re-check
+  rather than a second rule.
+
+A **conditional** keeps the original rejection, and the difference is precisely why the
+rule needed drawing again: its two branches share one flat target list, so a group named
+in either could not be paired back onto the branch that was actually taken. A `may` over
+two targeting effects is rejected for the same reason
+(`Violation::TwoTargetsInsideOptional`). The exclusion narrows to those, plus the
+reflexive trigger (CR 603.11), which is a *third* moment — after a cost is paid,
+mid-resolution — that no announcement has reached and that deserves its own mechanism.
+
 ## Consequences
 
 The three cards issue #610 was written for (Windreader Sphinx, Mentor of the Meek, Runic
 Armasaur) are each one primitive away rather than two, and the primitives they still want
 are selector work, not control-flow work.
+
+Gravedigger and Reclamation Sage — the two cards decision 9a was drawn for — are authored
+against the vocabulary as it stands, with no new effect variant between them.
 
 The cost is that `GameState` now has a state in which a player may act *and* an object is
 part-way through resolving *and* what they may do is neither answering nor passing but

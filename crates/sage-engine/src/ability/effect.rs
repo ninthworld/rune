@@ -494,11 +494,20 @@ pub enum Effect {
     /// asked and answered, so a declined effect never reads as one that was silently
     /// dropped.
     ///
-    /// **The nested effects may not target.** One [`Effect`] declares at most one
-    /// target slot ([`Effect::target_spec`]), and a wrapper cannot honestly declare the
-    /// slots of everything inside it; the catalog validator rejects a `may` whose
-    /// effects would choose a target ([`Violation::TargetInsideOptional`](crate::Violation)),
-    /// so this is an authoring error rather than a card that silently does nothing.
+    /// **The target is chosen up front, and the yes-or-no comes on resolution.** A
+    /// `may` over a single targeting effect *propagates* that effect's group
+    /// ([`Effect::target_group`]), so "you may destroy target artifact" declares its
+    /// slot at announcement (CR 601.2c) like any other targeting ability and the
+    /// chosen target rides the [`ConfirmRequest`](crate::ConfirmRequest) across the
+    /// suspension. Accepting hands it back to the wrapped effect; declining drops it
+    /// with the rest of the offer. One [`Effect`] still declares at most **one** group,
+    /// so the catalog validator rejects a `may` over two targeting effects
+    /// ([`Violation::TwoTargetsInsideOptional`](crate::Violation)) rather than letting
+    /// a card silently do half of what it says.
+    ///
+    /// A target that has become illegal by the time the object resolves takes the
+    /// ordinary CR 608.2b path: an object whose every target is illegal never resolves
+    /// and the question is never asked at all.
     May {
         /// The mana cost the controller pays to apply the effects, in the same
         /// `{...}` notation an activation cost is written in. Absent for a plain
@@ -754,6 +763,14 @@ impl Effect {
             | Effect::ReturnCardToHand { target, targets } => {
                 Some(TargetGroup::counted(*target, *targets))
             }
+            // An optional effect declares the group of the **one** effect it wraps, so
+            // "you may destroy target artifact" names its target once, at announcement
+            // (CR 601.2c), and the yes-or-no comes later. The wrapper is a forwarder
+            // rather than a second slot: the same group is answered for here and by the
+            // wrapped effect once it is spliced in, which is what keeps the flat stored
+            // target list pairing back exactly. The catalog validator holds a `may` to
+            // one such effect, so this is a lookup and never a choice between two.
+            Effect::May { effects, .. } => effects.iter().find_map(Effect::target_group),
             Effect::Tap { target }
             | Effect::CounterSpell { target }
             | Effect::Destroy { target }
@@ -808,12 +825,10 @@ impl Effect {
             | Effect::Scry { .. }
             | Effect::LookAtTop { .. }
             | Effect::SearchLibrary { .. }
-            // An optional effect declares no slot of its own, and its nested effects
-            // may not declare one either: one effect fills at most one slot, so a
-            // wrapper could not honestly speak for what it wraps. The catalog
-            // validator enforces it at authoring time. A conditional's branches are
-            // wrapped effects for exactly the same reason and follow the same rule.
-            | Effect::May { .. }
+            // A conditional declares no slot: it has two branches and one flat target
+            // list, so a group named in either one could not be paired back onto the
+            // branch that was actually taken. The catalog validator rejects a branch
+            // that tries.
             | Effect::Conditional { .. }
             // A class of permanents is not a target (CR 115.1), and neither is the
             // ability's own source.

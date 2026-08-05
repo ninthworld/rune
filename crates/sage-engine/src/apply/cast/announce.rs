@@ -157,7 +157,7 @@ pub(crate) fn apply_activate_ability(
         // verb, and mana verbs commute — the pool ends up the same whether the fixed
         // points land before or after the chosen ones.
         for effect in effects {
-            match crate::choice::choices_for_effect(state, effect, controller, None, None) {
+            match crate::choice::choices_for_effect(state, effect, controller, None, &[]) {
                 Some(choices) => {
                     crate::choice::pose_choices(state, choices, db);
                 }

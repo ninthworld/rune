@@ -157,6 +157,17 @@ pub struct ConfirmRequest {
     /// exactly one code path and an accepted effect that poses a *further* choice
     /// suspends again without any special case.
     pub effects: Vec<Effect>,
+    /// The targets the announcement chose for those effects (CR 601.2c), in slot
+    /// order — a `may` declares the group of the one effect it wraps
+    /// ([`Effect::target_group`]), so "you may destroy target artifact" arrives here
+    /// already aimed.
+    ///
+    /// They ride the request rather than the [`Resume`] because they belong to the
+    /// offer: accepting splices them onto the front of the remaining targets exactly
+    /// as it splices the effects, and declining drops both together. Leaving them in
+    /// the remainder would hand a declined offer's target to whatever effect came
+    /// next.
+    pub targets: Vec<Target>,
 }
 
 /// A card-selection question ([`ChoiceQuestion::Cards`]): which cards, from where, how
@@ -733,15 +744,18 @@ fn place_card(
 /// The choices `effect` poses, if it poses any: `(chooser, request)` pairs in the order
 /// they must be answered. `None` for every effect that resolves without asking.
 ///
-/// `target` is the effect's chosen target when it has one, so a "target player
-/// discards" reaches the seat the caster aimed at rather than a seat derived here.
+/// `targets` are the targets the announcement chose for this effect's group, in slot
+/// order, so a "target player discards" reaches the seat the caster aimed at rather
+/// than a seat derived here — and an optional effect's chosen target is carried into
+/// the question it poses.
 pub(crate) fn choices_for_effect(
     state: &GameState,
     effect: &Effect,
     controller: PlayerId,
     source_card: Option<CardId>,
-    target: Option<Target>,
+    targets: &[Target],
 ) -> Option<Vec<(PlayerId, ChoiceQuestion)>> {
+    let target = targets.first().copied();
     match effect {
         Effect::Discard {
             player_ref,
@@ -853,6 +867,7 @@ pub(crate) fn choices_for_effect(
             ChoiceQuestion::Confirm(ConfirmRequest {
                 cost: cost.clone(),
                 effects: effects.clone(),
+                targets: targets.to_vec(),
             }),
         )]),
         _ => None,

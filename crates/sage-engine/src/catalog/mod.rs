@@ -195,16 +195,19 @@ pub(crate) fn validate_definition(
         return Err(Violation::RestrictionsOnNonCreature { functional_id });
     }
 
-    // An optional effect may not wrap a targeting one (see
-    // [`Violation::TargetInsideOptional`]). Checked over every effect list a definition
-    // carries, at any nesting depth, so a `may` inside a `may` is covered too.
-    if authored_effects(object).any(optional_wraps_a_target) {
-        return Err(Violation::TargetInsideOptional { functional_id });
+    // An optional effect forwards the target group of the one effect it wraps, so it may
+    // wrap one targeting effect and no more (see [`Violation::TwoTargetsInsideOptional`]).
+    // Walked to any depth, so a `may` inside a `may` is counted too.
+    if every_effect(object)
+        .into_iter()
+        .any(optional_declares_two_targets)
+    {
+        return Err(Violation::TwoTargetsInsideOptional { functional_id });
     }
 
-    // A conditional's branches are wrapped effects and follow the optional effect's rule
-    // for the same reason: a wrapper cannot honestly declare the target groups of what it
-    // wraps.
+    // A conditional's branches get no such forwarding: two branches share one flat
+    // target list, so a group named in either could not be paired back onto the branch
+    // that was taken.
     if every_effect(object)
         .into_iter()
         .any(conditional_wraps_a_target)

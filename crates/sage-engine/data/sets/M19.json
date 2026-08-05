@@ -325,6 +325,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "gravedigger",
+    "collector_number": "98",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "infectious_horror",
     "collector_number": "101",
     "rarity": "common"
@@ -638,6 +643,11 @@
     "functional_id": "prodigious_growth",
     "collector_number": "194",
     "rarity": "rare"
+  },
+  {
+    "functional_id": "reclamation_sage",
+    "collector_number": "196",
+    "rarity": "uncommon"
   },
   {
     "functional_id": "recollect",

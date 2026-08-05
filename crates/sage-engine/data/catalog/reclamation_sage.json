@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "functional_id": "reclamation_sage",
+  "name": "Reclamation Sage",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elf",
+    "Shaman"
+  ],
+  "mana_cost": "{2}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 2,
+  "toughness": 1,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "may",
+          "effects": [
+            {
+              "kind": "destroy",
+              "target": "any_artifact_or_enchantment"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
