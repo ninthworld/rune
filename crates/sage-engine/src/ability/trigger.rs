@@ -1,0 +1,245 @@
+//! Trigger conditions (CR 603): what a triggered ability watches for, matched by a pure
+//! predicate against a before/after diff rather than by any listener.
+
+use super::*;
+
+/// The condition under which a [`Ability::Triggered`] triggers.
+///
+/// Each variant is evaluated by [`fire_count`](crate::triggers) as a pure function of
+/// the states before and after an action — never via an event listener.
+///
+/// Authored in serde's **externally tagged** form rather than the internal `kind` tag
+/// the effect vocabulary uses, because the three original conditions are authored as
+/// bare strings (`"event": "self_dies"`) and changing that would be a breaking schema
+/// migration for every existing card to buy nothing. A condition that carries a
+/// selector wraps it instead:
+/// `"event": {"permanent_dies": {"scope": "any_creature", "except_this": true}}`.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TriggerCondition {
+    /// The source permanent entered the battlefield this transition (its
+    /// [`crate::PermanentId`] is present after but not before).
+    SelfEntersBattlefield,
+    /// The source permanent **died** this transition: it left the battlefield for
+    /// a graveyard (CR 700.4, the "dies" event of CR 603.6c). Observed by diff —
+    /// its [`crate::PermanentId`] is present before but not after, and its physical
+    /// instance is now in a graveyard it was not in before. A leave to any
+    /// non-graveyard zone does not satisfy this, so a future bounce or exile never
+    /// fires it. Fires from any cause (lethal damage, `Destroy`, or combat), all
+    /// through the one leaves-battlefield seam
+    /// ([`crate::GameState::move_permanent_to_graveyard`]).
+    SelfDies,
+    /// A permanent matching `observes` **entered the battlefield** this transition
+    /// (CR 603.6b) — the first condition here that watches something other than its
+    /// own source, e.g. `Whenever a creature you control enters, …`.
+    ///
+    /// Observed by the same before/after diff the self conditions use: the permanents
+    /// present after and absent before. It fires **once per matching permanent**, so
+    /// two creatures entering at once trigger it twice.
+    ///
+    /// The source must still be on the battlefield after the transition — an ability
+    /// that left cannot watch the board it is no longer on.
+    PermanentEnters(
+        /// Which permanents entering satisfy this condition.
+        ObservedPermanent,
+    ),
+    /// A permanent matching `observes` **died** this transition (CR 700.4), e.g.
+    /// `Whenever another creature dies, …`. The counterpart of [`Self::SelfDies`] for
+    /// an ability watching the rest of the board, and observed the same way: it left
+    /// the battlefield for a graveyard.
+    ///
+    /// Fires **once per matching death**, so a board wipe triggers it many times.
+    /// Unlike [`Self::PermanentEnters`], the source need *not* have survived: two
+    /// creatures dying simultaneously is one death this ability observes and one it
+    /// is, and `except_this` is what keeps the two apart.
+    PermanentDies(
+        /// Which permanents dying satisfy this condition.
+        ObservedPermanent,
+    ),
+    /// The source's controller **gained life** this transition (CR 118.3), e.g.
+    /// `Whenever you gain life, …`.
+    ///
+    /// Read from the events this transition recorded rather than by comparing life
+    /// totals, because the trigger is about the *event*, not the net: gaining three
+    /// and losing three is a life gain that triggers, and a comparison of totals
+    /// would see nothing happen. Life lost is not a gain, and damage is never one
+    /// (damage to a player is recorded as damage, not as a life change), so neither
+    /// fires this. Fires once per life-gain event.
+    YouGainLife,
+    /// The source's controller **cast a spell** matching `spell` this transition
+    /// (CR 601), e.g. `Whenever you cast an enchantment spell, …`.
+    ///
+    /// Read from the recorded cast events, so it fires as the spell goes on the
+    /// stack — before it resolves, and whether or not it ever does. Fires once per
+    /// matching cast.
+    YouCastSpell(
+        /// Which spells satisfy this condition.
+        ObservedSpell,
+    ),
+    /// The source permanent was **declared as an attacker** this transition (CR
+    /// 508.1, the "attacks" event of CR 603.6d). Observed by diff like every other
+    /// condition here — its [`crate::state::Permanent::attacking`] is set after and
+    /// was not before — so it fires once per declaration, from the one place
+    /// attackers are declared, and never from a creature that merely became tapped.
+    SelfAttacks,
+    /// The turn structure **began a step** this transition (CR 603.6a) — the
+    /// "at the beginning of your upkeep" / "at the beginning of each end step" shape.
+    /// The first condition here that is about the turn rather than about an object.
+    ///
+    /// Read from the [`crate::GameEvent::StepChanged`] entries the transition
+    /// recorded, not by comparing `before.step` to `after.step`, and the distinction
+    /// is load-bearing twice over. A snapshot comparison would **miss** steps: one
+    /// pass of priority can walk through several steps at once (end → cleanup → untap
+    /// → upkeep), and only the last of them would be visible in `after`. It would also
+    /// **misfire**: a step recurs every turn, so `after.step == Upkeep` is true of a
+    /// great many transitions that crossed no boundary at all. Each crossing records
+    /// exactly one event, so counting events is exactly once per crossing — the turn
+    /// number never has to enter the comparison because the event *is* the crossing.
+    ///
+    /// The source must still be on the battlefield after the transition; a permanent
+    /// that is gone is not there to trigger.
+    BeginningOfStep {
+        /// Which step's beginning this watches.
+        step: TriggerStep,
+        /// Whose turn that step has to belong to.
+        whose_turn: TurnScope,
+    },
+}
+
+/// Which step a [`TriggerCondition::BeginningOfStep`] watches the beginning of.
+///
+/// Deliberately **not** every [`crate::phase::Step`]: this names the four steps printed
+/// cards actually trigger at, all four of which grant priority (CR 117.1). That matters
+/// — a trigger owed at a step the turn-structure walk passes straight through
+/// (untap, CR 502.5; cleanup, CR 514.3) would reach the stack only after the walk had
+/// already left the step behind. Keeping those out of the vocabulary means the
+/// condition cannot express a trigger the pipeline would answer in the wrong step.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TriggerStep {
+    /// The upkeep step (CR 503) — "at the beginning of your upkeep".
+    Upkeep,
+    /// The draw step (CR 504) — "at the beginning of your draw step".
+    Draw,
+    /// The beginning of combat step (CR 507) — "at the beginning of combat on your turn".
+    BeginCombat,
+    /// The end step (CR 513) — "at the beginning of each end step".
+    EndStep,
+}
+
+impl TriggerStep {
+    /// The turn-structure [`Step`](crate::phase::Step) this names.
+    #[must_use]
+    pub fn step(self) -> crate::phase::Step {
+        match self {
+            Self::Upkeep => crate::phase::Step::Upkeep,
+            Self::Draw => crate::phase::Step::Draw,
+            Self::BeginCombat => crate::phase::Step::BeginCombat,
+            Self::EndStep => crate::phase::Step::End,
+        }
+    }
+}
+
+/// Whose turn a [`TriggerCondition::BeginningOfStep`] has to be for it to fire.
+///
+/// This distinction is most of what a step trigger *means*: "at the beginning of your
+/// upkeep" happens once every other turn and "at the beginning of each upkeep" happens
+/// every turn, and the two are otherwise the same ability. Scoped relative to the
+/// source's controller, exactly as [`ObservedPermanent`] and [`StaticAffects`] are.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TurnScope {
+    /// Only on the source controller's own turn — the "your" of "your upkeep".
+    Yours,
+    /// On every player's turn — the "each" of "each upkeep".
+    Each,
+}
+
+/// Which permanents a **watching** [`TriggerCondition`] observes.
+///
+/// The observer's counterpart to [`StaticAffects`], and deliberately the same shape: a
+/// closed selector naming a *class*, evaluated against each candidate relative to the
+/// watching ability's own source. Kept separate from `StaticAffects` because the two
+/// answer different questions — one selects permanents to *modify* continuously, this
+/// one selects events to *notice* — and collapsing them would make a future variant
+/// meaningful for one and nonsense for the other.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(tag = "scope", rename_all = "snake_case")]
+pub enum ObservedPermanent {
+    /// Creatures controlled by the watching ability's controller — "a creature you
+    /// control".
+    CreaturesYouControl {
+        /// Restrict to creatures whose subtypes include this one ("whenever a
+        /// **Dragon** you control enters"). Absent means every creature.
+        #[serde(default)]
+        subtype: Option<String>,
+        /// Exclude the watching ability's own source — the "another" of "whenever
+        /// another creature you control enters". Compares the *permanent*, so two
+        /// copies of one card do notice each other.
+        #[serde(default)]
+        except_this: bool,
+        /// Notice only permanents that are **cards** — the "nontoken" of "whenever
+        /// another nontoken Dragon you control enters". A token has no card behind it
+        /// (ADR 0015), which is exactly the distinction this draws, and it is what keeps
+        /// a card that makes a token off an infinite loop with its own trigger.
+        #[serde(default)]
+        nontoken: bool,
+    },
+    /// Any creature on the battlefield, whoever controls it — "a creature", and with
+    /// `except_this`, "another creature".
+    AnyCreature {
+        /// Restrict to creatures whose subtypes include this one.
+        #[serde(default)]
+        subtype: Option<String>,
+        /// Exclude the watching ability's own source.
+        #[serde(default)]
+        except_this: bool,
+        /// Notice only permanents that are cards, never tokens.
+        #[serde(default)]
+        nontoken: bool,
+    },
+}
+
+impl ObservedPermanent {
+    /// Whether `except_this` is set — whether the source excludes itself.
+    #[must_use]
+    pub fn excludes_source(&self) -> bool {
+        match self {
+            ObservedPermanent::CreaturesYouControl { except_this, .. }
+            | ObservedPermanent::AnyCreature { except_this, .. } => *except_this,
+        }
+    }
+
+    /// The subtype this selector restricts to, if any.
+    #[must_use]
+    pub fn subtype(&self) -> Option<&str> {
+        match self {
+            ObservedPermanent::CreaturesYouControl { subtype, .. }
+            | ObservedPermanent::AnyCreature { subtype, .. } => subtype.as_deref(),
+        }
+    }
+
+    /// Whether this selector notices only nontoken permanents (CR 111 — a token is not
+    /// a card).
+    #[must_use]
+    pub fn nontoken_only(&self) -> bool {
+        match self {
+            ObservedPermanent::CreaturesYouControl { nontoken, .. }
+            | ObservedPermanent::AnyCreature { nontoken, .. } => *nontoken,
+        }
+    }
+}
+
+/// Which spells a [`TriggerCondition::YouCastSpell`] notices.
+///
+/// A closed set deserialized from a bare `snake_case` tag. Deliberately named by the
+/// classes real cards ask about rather than by card type, because "instant or sorcery"
+/// is one class to a card and two types to the engine.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ObservedSpell {
+    /// An enchantment spell.
+    Enchantment,
+    /// An instant **or** sorcery spell — one class, as a card writes it.
+    InstantOrSorcery,
+}

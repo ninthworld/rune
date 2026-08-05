@@ -1,4 +1,4 @@
-/* The page, in ten files.
+/* The page, in twelve files.
 
    Split along the surfaces it dresses rather than by property, and every rule in them is the
    prototype's — the sandbox `docs/client-design.md` describes, which is the authority above the
@@ -7,16 +7,23 @@
 
    `material.css` is §5.5 — the panes, the recesses, and the buttons every screen is built out
    of — and it comes first because everything else is drawn on top of it. Then the card
-   (`cards.css`, §6), the table (`board.css`), one file per pre-game screen (`connect`, `lobby`,
-   `room`, `settings`, `deck`), one for the three surfaces that layer over any of them
-   (`overlay.css`: a pile, an arrow, a held card), and `narrow.css` last, because the
-   phone-sized board is the same rules with less room and it has to win over the ones above it.
+   (`cards.css`, §6), the table in three files (`board.css`, `panel.css`, `dock.css`), one file
+   per pre-game screen (`connect`, `lobby`, `room`, `settings`, `deck`), one for the three
+   surfaces that layer over any of them (`overlay.css`: a pile, an arrow, a held card), and
+   `narrow.css` last, because the phone-sized board is the same rules with less room and it has
+   to win over the ones above it.
+
+   The table's three files are one stylesheet cut for size (issue #711) and must stay imported
+   in this order, back to back: nothing in them was reordered, because in CSS order is
+   behavior.
 
    The imports come first, as the cascade requires, so a later rule in this file wins over the
    same specificity in one of them. */
 @import './styles/material.css';
 @import './styles/cards.css';
 @import './styles/board.css';
+@import './styles/panel.css';
+@import './styles/dock.css';
 @import './styles/connect.css';
 @import './styles/lobby.css';
 @import './styles/room.css';

@@ -25,7 +25,7 @@
   `functional_id` and resolve the handle (`CardDatabase::card_id`) — in decklists, in
   `scripted.rs`, and in tests (`crate::fixtures::fixture`).
 - `build.rs` may read catalog files at compile time. The running engine performs no I/O.
-  Shared validators live in `src/catalog.rs` so build-time and load-time checks agree.
+  Shared validators live in `src/catalog/` so build-time and load-time checks agree.
 - **Automation policy belongs to the server, not here.** The engine may expose pure rules
   *predicates* (`automation.rs`); the loop, the per-seat preferences, and the pacing
   decisions live in the room layer (ADR 0010). This seam is the reason the engine stays
@@ -34,13 +34,23 @@
 ## The IR is the constraint
 
 Catalog coverage is limited by what the ability IR can *express*, not by authoring
-throughput. Today `Cost` says tapping and mana and nothing else, so an activation cost
-paid by sacrificing or discarding is unwritable. `TriggerCondition` observes zone changes,
-attack declaration, life gain, casting, and step boundaries — but nothing may be *attached*
-to a trigger or an effect, so an intervening-if clause ("at the beginning of your upkeep,
-**if** you control a creature with power 4 or greater") is unwritable, and that one gap
-blocks more real cards than any other. Effect amounts are fixed numbers, never counted
-from the board. Read `data/exclusions.json` for the maintained list.
+throughput. Today `Cost` says tapping, mana, and loyalty, so an activation cost paid by
+sacrificing or discarding is unwritable. `TriggerCondition` observes zone changes (its own
+source's and, through `ObservedPermanent`, another permanent's), attack declaration, life
+gain, casting, and step boundaries — but not an activation, and its selectors filter by
+subtype, controller, and token-ness only. A condition *is* attachable now, as
+`Effect::Conditional`, and `Condition` names three questions: a permanent count, a mill by
+this resolution, and a discard by this resolution. It is judged as the effect is reached
+(CR 608.2), which is an if-clause on an effect rather than the CR 603.4 trigger check.
+An effect's amount may scale with a count of permanents (`count_of`); cards in a zone, life
+totals, and mana values feed nothing.
+
+**`data/exclusions.json` is the maintained list, and it is the one that has to stay
+right.** Every exclusion names a single blocker; `make compat` regenerates
+`docs/generated/compatibility.md` from it, and `cargo test` fails if the committed report
+has drifted. Prose in an `AGENTS.md` or in the brief drifts silently — this file does not,
+so when a paragraph here and an entry there disagree, believe the entry and fix the
+paragraph.
 
 Combat restrictions are a second layer-6 vocabulary beside `Keyword` (`CombatRestriction`):
 they are not keyword abilities, some carry a parameter, and each is enforced in exactly one

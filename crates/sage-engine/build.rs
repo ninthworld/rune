@@ -14,15 +14,21 @@
 //! changes is *who writes the `include_str!` list*: a build script instead of a human
 //! maintaining a `const` by hand.
 //!
-//! The validators live in `src/catalog.rs` and are pulled in below rather than
+//! The validators live in `src/catalog/` and are pulled in below rather than
 //! reimplemented here, so the rules enforced at build time are the same code the loader
 //! and the tests run (ADR 0008 §5).
 
-// `src/catalog.rs` is compiled into both this build script and the engine itself. Its
+// `src/catalog/` is compiled into both this build script and the engine itself. Its
 // items are `pub` for the engine's benefit; inside this bin crate they are reachable
 // only from `main`, and the engine exercises the parts this script does not.
+//
+// It is the one module in the crate written as `mod.rs` rather than `catalog.rs` beside
+// a `catalog/` directory (issue #711). A `#[path]` module resolves its *children*
+// against the directory the named file sits in, so with `src/catalog.rs` this script
+// would look for `src/violation.rs` while the engine looked for `src/catalog/violation.rs`.
+// Naming the file `mod.rs` makes both resolve to the same directory.
 #[allow(unreachable_pub, dead_code)]
-#[path = "src/catalog.rs"]
+#[path = "src/catalog/mod.rs"]
 mod catalog;
 
 use std::collections::HashMap;
@@ -56,7 +62,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Cargo's own incremental tracking: regenerate the manifest when — and only when —
     // a catalog or set file changes. An unrelated engine edit re-runs nothing.
     println!("cargo:rerun-if-changed=data");
-    println!("cargo:rerun-if-changed=src/catalog.rs");
+    println!("cargo:rerun-if-changed=src/catalog");
 
     let root = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")?);
     let definitions = read_catalog(&root.join("data/catalog"))?;

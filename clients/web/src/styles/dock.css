@@ -1,0 +1,356 @@
+/* The bar and the hand: what is being paid, what the bar is asking, the buttons, and the
+   cards you hold.
+
+   Last of the three files `board.css` became (issue #711), and it carries the tail of the
+   original file as well as the bar: rules added later that refine the table and the panel
+   (a seat's status flags, the log's kinds, the phase pills) are here because they were
+   *written* here, after the rules they override. Moving them back would change which
+   declaration wins. In CSS, order is behavior. */
+/* a tray the buttons sit in, so a grid of small panes doesn't read as
+   eight loose chips on the sidebar */
+/* Paying for a card the server has not offered yet: the printed cost, and
+   what is floating. Two groups rather than one line, because they are two
+   different facts and the bar must never look like it is doing the sum —
+   the server does that, by offering the cast or not. */
+.action-pay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  min-width: 0;
+}
+
+.pay-part {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px;
+  background: var(--well);
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  box-shadow: var(--well-lit);
+}
+
+.pay-part .c-pip {
+  width: 15px;
+  height: 15px;
+  filter: none;
+}
+
+.pay-label {
+  margin-right: 3px;
+  color: #8b8f98;
+  font-size: 11px;
+  text-transform: lowercase;
+}
+
+.pay-none {
+  color: #6b6f78;
+  font-size: 11px;
+}
+
+.helper-strip {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 8px 10px;
+  background: var(--well);
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  box-shadow: var(--well-lit);
+}
+
+/* The bar's tone says where in the turn you are — green on the turn's
+   bookends, blue while you may cast at will, red once combat is live. */
+.action-bar {
+  --act-bg: #14263e;
+  --act-line: #2a4a72;
+  --act-fg: #cfe0f4;
+  --act-sub: #8aa8cc;
+  --act-btn: #2e5c94;
+  --act-btn-line: #4a7cb8;
+  --act-btn-hover: #3a6ca8;
+  grid-area: actionbar;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  /* the pane an arrow is made of, at bar scale: the same tint, lit along
+     the top in the same accent an arrow is rimmed with */
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--act-bg) 86%, #ffffff) 0,
+    var(--act-bg) 60%,
+    color-mix(in srgb, var(--act-bg) 88%, #000000) 100%
+  );
+  border-top: 1px solid var(--act-btn-line);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--act-fg) 24%, transparent),
+    var(--cast-down);
+  color: var(--act-fg);
+}
+
+.action-green {
+  --act-bg: #16301f;
+  --act-line: #2f6440;
+  --act-fg: #cfe8d6;
+  --act-sub: #86b898;
+  --act-btn: #2f6b44;
+  --act-btn-line: #4a8f60;
+  --act-btn-hover: #3b8154;
+}
+
+.action-red {
+  --act-bg: #351d1c;
+  --act-line: #773932;
+  --act-fg: #f0d4ce;
+  --act-sub: #c39288;
+  --act-btn: #8a4038;
+  --act-btn-line: #b3594c;
+  --act-btn-hover: #a24d43;
+}
+
+.action-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.action-prompt {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* a cost in the prompt is the same pip the card prints */
+.action-prompt .c-pip {
+  width: 16px;
+  height: 16px;
+  filter: none;
+}
+
+.action-phase {
+  font-size: 12px;
+  color: var(--act-sub);
+}
+
+.action-btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.action-done {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--act-btn) 84%, #ffffff) 0,
+    var(--act-btn) 100%
+  );
+  border: 1px solid var(--act-btn-line);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    var(--cast-btn);
+  color: #f2f6fa;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 6px 22px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.action-done:hover {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--act-btn-hover) 80%, #ffffff) 0,
+    var(--act-btn-hover) 100%
+  );
+}
+
+/* the quieter half of a pair: declining, cancelling, mulliganing. Cut
+   out of the bar rather than raised off it — a hole, not a pane. */
+.action-alt {
+  background: var(--well);
+  border-color: var(--act-line);
+  box-shadow: var(--well-lit);
+  color: var(--act-sub);
+}
+
+.action-alt:hover {
+  background: color-mix(in srgb, var(--act-btn) 40%, transparent);
+  color: var(--act-fg);
+}
+
+.hand {
+  grid-area: hand;
+  container-type: size;
+  background: var(--pane-deep);
+  border-top: 1px solid var(--line-soft);
+  box-shadow: var(--lit);
+  padding: 10px 0;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.hand-scroll {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: safe center;
+  gap: 10px;
+  padding: 0 10px;
+}
+
+.hand .card {
+  --s: calc(100cqh / 600);
+}
+
+/* the connection, said in the one place that is about neither the board nor the game */
+.topbar-note {
+  font-size: 11px;
+  color: #b3958a;
+}
+
+/* the preview is pinned until it is released, and says which it is */
+.preview-unpin {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 2px 8px;
+  background: var(--pane-btn);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: var(--lit-btn), var(--cast-btn);
+  color: #a8acb4;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.preview-unpin:hover {
+  color: #d6d8dc;
+}
+
+/* a step this seat has told the server to stop at, and one a settle already passed for it */
+.phase-stop-own {
+  border-color: #3d5a7d;
+}
+
+.phase-stop-always {
+  border-color: #4a7cb8;
+  color: #b8c8dc;
+}
+
+.phase-passed {
+  opacity: 0.55;
+}
+
+/* what a seat is beyond its counts: the monarch, out of the game, gone from the socket */
+.player-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.player-flag {
+  padding: 1px 5px;
+  background: var(--well);
+  border-radius: 3px;
+  box-shadow: var(--well-lit);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: #8b8f98;
+}
+
+.player-out {
+  opacity: 0.6;
+}
+
+.zone-btn:disabled {
+  cursor: default;
+}
+
+.zone-btn:disabled:hover {
+  background: var(--well);
+  color: #8b8f98;
+}
+
+/* the questions an armed action is asking, in the bar rather than over the board. Only what the
+   board cannot answer is here (§6.5), which is why it is one row and not a panel. */
+.action-slots {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.slot-ask {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: #cfd6e2;
+}
+
+.slot-ask b {
+  font-weight: 600;
+  color: #9aa4b2;
+}
+
+.slot-number {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.slot-number input {
+  width: 64px;
+  padding: 3px 6px;
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: var(--well-lit);
+  color: #e4e7ec;
+  font: inherit;
+  font-size: 12px;
+}
+
+.action-chosen {
+  box-shadow: inset 0 1px 0 rgba(207, 224, 244, 0.18);
+  color: #eaf1fa;
+}
+
+/* the log, scannable by what a line is about */
+.log-combat {
+  color: #d8b3aa;
+}
+
+.log-life {
+  color: #b9c9a8;
+}
+
+.log-result {
+  color: #cfe0f4;
+}
+
+/* the strip is a list, so its steps are steps to a screen reader as well as pills to everyone
+   else; the item carries the pill and nothing of its own */
+.phase-pills > li {
+  display: flex;
+  min-width: 0;
+}

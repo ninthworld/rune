@@ -36,7 +36,9 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   is the authority above the document: where the two disagree, the prototype is what the client
   follows, and the document's §8 lists every rule the prototype retired. The prototype is still
   where a *new* screen is tried first — nothing ships from it, and it is not this client's
-  scaffolding.
+  scaffolding. That ordering settles **appearance only**: it never outranks a hard rule on this
+  list or an accepted ADR. The full statement is in
+  [`docs/brief.md`](../../docs/brief.md#which-document-wins).
 - **Dark, declared rather than followed.** A card is an object lying on a surface, it needs a
   ground darker than itself, and maintaining a light table as well is how neither gets good.
 - **An overlay renders the join and nothing else.** It is `aria-hidden`, because a drawn line is
@@ -53,8 +55,10 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
 - `src/normalize.ts` — turns wire absence into values a renderer can use. Every documented
   default lives here, so no component invents its own reading of a missing field.
 - **The arrangement is CSS.** There is no scene, no packer and no measured fitting module: the
-  board is a grid of `fr` rows (`styles/board.css`), a card is sized from the region it is in,
-  and a row that runs out of width pans. `scene.ts`, `pack.ts`, `fit.ts` and `overlay.ts` were
+  board is a grid of `fr` rows (`styles/board.css`, with `panel.css` and `dock.css` beside it
+  as one stylesheet cut for size — the three must stay imported back to back and in that order,
+  because in CSS order is behavior), a card is sized from the region it is in, and a row that
+  runs out of width pans. `scene.ts`, `pack.ts`, `fit.ts` and `overlay.ts` were
   the arithmetic that did this before and are gone; what survived them is `board.ts`, which
   answers which rows a field draws and what share of its height each takes.
 - `src/board.ts` — a battlefield, as rows. Groups permanents into creatures, other permanents,
