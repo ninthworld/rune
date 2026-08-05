@@ -5,7 +5,7 @@
  * beside it, and everything those surfaces need is worked out once here — the faces, what the
  * server named, what an id is called — so no surface holds a second reading of the view.
  *
- * **The arrangement is the stylesheet's** (`styles/board.css`, and `docs/client-design.md` §5).
+ * **The arrangement is the stylesheet's** (`styles/board.css` and its two continuations, and `docs/client-design.md` §5).
  * A grid of fr rows: the opponents' band takes one share per row of seats it holds, my half
  * takes the rest, the action bar is a permanent band above the hand, and the side column is a
  * fixed width beside all of it. Nothing here measures a viewport and nothing computes a box: a
