@@ -45,6 +45,7 @@ const SAMPLE: CardFace = {
   cardTypes: ['creature'],
   colorIdentity: ['G'],
   summoningSick: false,
+  skipsNextUntap: false,
 }
 
 const FACES: { style: ArtStyle; label: string; note: string }[] = [

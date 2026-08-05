@@ -177,6 +177,10 @@ pub(crate) fn personalized_view(
             // attacking and every `{T}` cost — so what the board shows and what the
             // action list offers are one answer rather than two.
             summoning_sick: summoning_sickness_restricts(state, perm, db),
+            // CR 502.4: the untap step this permanent will sit out. Raw engine state
+            // rather than a derivation — the spell that imposed it is gone, so nothing
+            // on the board explains it and no client could infer it.
+            skips_next_untap: perm.skips_untap,
             // What this permanent has *now* that its printed card never said (CR 613.1f).
             // The rules text on the card is the printed card's, so an until-end-of-turn
             // trample or an Aura's flying would otherwise be true of the object and
@@ -382,6 +386,9 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
             // Public exactly as it is in a seated view: summoning sickness is read off
             // the board, and a spectator reads the same board (CR 302.6).
             summoning_sick: summoning_sickness_restricts(state, perm, db),
+            // Public exactly as summoning sickness is, and for the same reason: it is a
+            // fact about the board, and a spectator reads the same board (CR 502.4).
+            skips_next_untap: perm.skips_untap,
             // The keywords this permanent has and its printed card does not (CR 613.1f):
             // the trample a pump gave it, the flying an Aura grants. Public, like the
             // rest of the board.
@@ -722,6 +729,7 @@ mod tests {
             entered_turn: 0,
             attacking: None,
             blocking: None,
+            skips_untap: false,
             damage: 0,
             counters: std::collections::BTreeMap::new(),
             attached_to: None,

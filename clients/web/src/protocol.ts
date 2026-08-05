@@ -248,6 +248,14 @@ export const Permanent = z.object({
    */
   summoning_sick: z.boolean().optional(),
   /**
+   * Whether this permanent will not untap in its controller's next untap step (CR 502.4).
+   *
+   * Stated for the reason `summoning_sick` is: the spell that imposed it is in a graveyard
+   * and the permanent's own printed text says nothing, so a tapped creature that stays
+   * tapped through an untap step would otherwise be inexplicable on the board.
+   */
+  skips_next_untap: z.boolean().optional(),
+  /**
    * The keywords this permanent has that its **printed card does not** (CR 613 layer 6) —
    * the trample an until-end-of-turn pump gave it, the flying an Aura grants.
    *

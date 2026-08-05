@@ -18,6 +18,33 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             n => format!("draw {} cards", number(u32::from(*n))),
         },
         Effect::Tap { target } => format!("tap {}", target_noun(*target)),
+        // Two sentences where a card prints two, joined by the caller: the tap names
+        // whose creatures, and the skip refers back to them.
+        Effect::TapAll {
+            player_ref,
+            skip_next_untap,
+        } => {
+            // "you control", but "target player controls" — English agrees the verb
+            // with the subject, and only the second person drops the -s.
+            let controls = match player_ref {
+                PlayerRef::Controller => "control",
+                PlayerRef::EachOpponent | PlayerRef::TargetPlayer | PlayerRef::TargetOpponent => {
+                    "controls"
+                }
+            };
+            let tap = format!(
+                "tap all creatures {} {controls}",
+                subject_pronoun(*player_ref)
+            );
+            if *skip_next_untap {
+                format!(
+                    "{tap}. Those creatures don't untap during {} next untap step",
+                    possessive_pronoun(*player_ref)
+                )
+            } else {
+                tap
+            }
+        }
         Effect::CounterSpell { target } => format!("counter {}", target_noun(*target)),
         // A damage source is named, so a player can tell what dealt it (CR 120.3).
         Effect::DealDamage { subject, amount } => {

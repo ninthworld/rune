@@ -110,12 +110,22 @@ fn perform_turn_based_actions(state: &mut GameState, db: &CardDatabase) {
 
 /// Untap step turn-based action: untap every permanent the active player controls
 /// (CR 502.4). Permanents controlled by other players are unaffected.
+///
+/// A permanent carrying [`Permanent::skips_untap`](crate::Permanent::skips_untap) stays
+/// as it is and **spends the flag here**, whether or not it was tapped: the card named
+/// one untap step, this is that step, and a flag left set would go on skipping every
+/// untap step for the rest of the game.
 fn untap_active_players_permanents(state: &mut GameState) {
     let active = state.active_player;
     for perm in &mut state.battlefield {
-        if perm.controller == active {
-            perm.tapped = false;
+        if perm.controller != active {
+            continue;
         }
+        if perm.skips_untap {
+            perm.skips_untap = false;
+            continue;
+        }
+        perm.tapped = false;
     }
 }
 

@@ -335,6 +335,32 @@ describe('what the board adds to a card', () => {
     expect(settled.summoningSick).toBe(false)
     expect(faceSummary(settled)).not.toContain('summoning sick')
   })
+
+  it('reports a skipped untap step only where the server said so', () => {
+    const bear = { id: 'c4', name: 'Bear', type_line: 'Creature \u2014 Bear' }
+    const held = permanentFace({
+      id: 'perm_3',
+      controller: 'p1',
+      owner: 'p1',
+      card: bear,
+      tapped: true,
+      skips_next_untap: true,
+    })
+    expect(held.skipsNextUntap).toBe(true)
+    expect(faceSummary(held)).toContain("doesn't untap next untap step")
+
+    // The spell that imposed it is gone, so absent has to mean "not stated" — a client that
+    // guessed would be explaining a rule nobody told it about.
+    const free = permanentFace({
+      id: 'perm_4',
+      controller: 'p1',
+      owner: 'p1',
+      card: bear,
+      tapped: true,
+    })
+    expect(free.skipsNextUntap).toBe(false)
+    expect(faceSummary(free)).not.toContain("doesn't untap")
+  })
 })
 
 describe('a line of keywords', () => {

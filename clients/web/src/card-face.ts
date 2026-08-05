@@ -114,6 +114,12 @@ export interface CardFace {
    * and `false` on a face the server said nothing about is "not stated", not "may attack".
    */
   summoningSick: boolean
+  /**
+   * Whether the server said this permanent sits out its controller's next untap step
+   * (CR 502.4). Never a conclusion: the spell that imposed it has left the board, so
+   * nothing the client can see would let it work this out.
+   */
+  skipsNextUntap: boolean
 }
 
 /** Display wording for the stack kinds the server states (`docs/protocol.md`). */
@@ -168,6 +174,7 @@ function printedFace(id: string, card: Printed): CardFace {
     cardTypes: [],
     colorIdentity: list(card.color_identity),
     summoningSick: false,
+    skipsNextUntap: false,
   }
 }
 
@@ -234,6 +241,9 @@ export function permanentFace(permanent: Permanent): CardFace {
     // CR 302.6, stated. Nothing here concludes it from `entered_turn` (which is not on the
     // wire) or from the absence of an attack action (which means nothing outside one step).
     summoningSick: permanent.summoning_sick === true,
+    // CR 502.4, stated. The spell that imposed it is gone, so there is nothing left on the
+    // board to conclude it from.
+    skipsNextUntap: permanent.skips_next_untap === true,
   }
 }
 
@@ -258,6 +268,7 @@ export function stackFace(item: StackItem): CardFace {
       cardTypes: [],
       colorIdentity: [],
       summoningSick: false,
+      skipsNextUntap: false,
     }
   }
   const base = cardFace(item.card)
@@ -285,6 +296,7 @@ export function emblemFace(emblem: Emblem): CardFace {
     cardTypes: [],
     colorIdentity: [],
     summoningSick: false,
+    skipsNextUntap: false,
   }
 }
 
@@ -349,6 +361,10 @@ export function faceSummary(face: CardFace): string {
   // The one board fact with no mark of its own that a player acts on every turn, so it is said
   // as well as drawn — a dimmed card says nothing when read aloud.
   if (face.summoningSick) parts.push('summoning sick')
+  // Said for the same reason: a creature that stays tapped through an untap step is a rule
+  // the board applied and never explained, and a reader that skipped it would describe a
+  // creature that is simply, inexplicably, still tapped.
+  if (face.skipsNextUntap) parts.push("doesn't untap next untap step")
   // Read aloud with the rest of what is true of the object, because it is not in the card's
   // printed text and a reader that skipped it would describe a creature without its trample.
   parts.push(...face.grantedKeywords)

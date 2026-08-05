@@ -190,6 +190,7 @@ fn issue_152_aura_boosted_host_projects_current_pt() {
         entered_turn: 0,
         attacking: None,
         blocking: None,
+        skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
@@ -204,6 +205,7 @@ fn issue_152_aura_boosted_host_projects_current_pt() {
         entered_turn: 0,
         attacking: None,
         blocking: None,
+        skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: Some(host),
@@ -244,6 +246,7 @@ fn issue_68_permanent_counters_project_into_the_view() {
         entered_turn: 0,
         attacking: None,
         blocking: None,
+        skips_untap: false,
         damage: 0,
         // Insertion order is deliberately reversed from the expected wire
         // order to prove the projection sorts by kind, not by insertion.
@@ -265,6 +268,7 @@ fn issue_68_permanent_counters_project_into_the_view() {
         entered_turn: 0,
         attacking: None,
         blocking: None,
+        skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
@@ -335,6 +339,7 @@ fn issue_117_attack_and_block_state_project_into_the_view() {
         entered_turn: 0,
         attacking: Some(AttackTarget::Player(PlayerId(1))),
         blocking: None,
+        skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
@@ -349,6 +354,7 @@ fn issue_117_attack_and_block_state_project_into_the_view() {
         entered_turn: 0,
         attacking: None,
         blocking: Some(attacker),
+        skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
@@ -393,6 +399,7 @@ fn issue_118_marked_damage_projects_into_the_view() {
         entered_turn: 0,
         attacking: None,
         blocking: None,
+        skips_untap: false,
         damage: 2,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
@@ -445,6 +452,7 @@ fn issue_333_aura_attachment_projects_into_the_view() {
         entered_turn: 0,
         attacking: None,
         blocking: None,
+        skips_untap: false,
         damage: 0,
         counters: BTreeMap::new(),
         attached_to: None,
@@ -507,6 +515,7 @@ fn issue_153_keywords_project_onto_the_card_view() {
         entered_turn: 0,
         attacking: None,
         blocking: None,
+        skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
@@ -521,6 +530,7 @@ fn issue_153_keywords_project_onto_the_card_view() {
         entered_turn: 0,
         attacking: None,
         blocking: None,
+        skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
@@ -574,6 +584,7 @@ fn issue_374_granted_keyword_projects_onto_the_card_view() {
         entered_turn: 0,
         attacking: None,
         blocking: None,
+        skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
@@ -588,6 +599,7 @@ fn issue_374_granted_keyword_projects_onto_the_card_view() {
         entered_turn: 0,
         attacking: None,
         blocking: None,
+        skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
@@ -605,6 +617,7 @@ fn issue_374_granted_keyword_projects_onto_the_card_view() {
         entered_turn: 0,
         attacking: None,
         blocking: None,
+        skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: Some(host),
@@ -773,4 +786,35 @@ fn issue_194_an_unresolvable_card_projects_no_text_and_no_identity() {
     assert_eq!(view.name, "Unknown card 9999");
     assert_eq!(view.rules_text, "");
     assert_eq!(view.functional_id, "");
+}
+
+#[test]
+fn issue_730_a_skipped_untap_step_rides_the_wire() {
+    // The spell that imposes this is in a graveyard by the time anyone looks at the board,
+    // and the permanent's own printed text says nothing about it, so a client that was not
+    // told would be showing a creature that stays tapped for no stated reason. Projected
+    // from the engine's stored flag rather than derived — there is nothing to derive it
+    // from.
+    let db = CardDatabase::bundled().unwrap();
+    let mut state = GameState::new_two_player();
+    state.step = Step::PrecombatMain;
+
+    let held = put_permanent(&mut state, fixture("onakke_ogre"), PlayerId(0), true, false);
+    let free = put_permanent(&mut state, fixture("onakke_ogre"), PlayerId(0), true, false);
+    for perm in &mut state.battlefield {
+        if perm.id == held {
+            perm.skips_untap = true;
+        }
+    }
+
+    let view = personalized_view(&state, &db, PlayerId(0));
+    let skips = |id: PermanentId| {
+        view.battlefield
+            .iter()
+            .find(|p| p.id == permanent_entity_id(id))
+            .expect("the permanent is on the battlefield")
+            .skips_next_untap
+    };
+    assert!(skips(held));
+    assert!(!skips(free), "its neighbour untaps normally and says so");
 }

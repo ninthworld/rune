@@ -477,6 +477,7 @@ mod tests {
             entered_turn: 0,
             attacking: None,
             blocking: None,
+            skips_untap: false,
             damage: 0,
             counters: std::collections::BTreeMap::new(),
             attached_to: None,
