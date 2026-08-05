@@ -667,6 +667,35 @@ nothing to prune.
 Rules text is composed from the same selector the engine applies, so the sentence and the
 scope cannot disagree.
 
+### Continuous abilities about a player (CR 402.2)
+
+A static ability whose subject is a **player** rather than a permanent is its own ability
+kind, not a widening of `static`:
+
+```json
+{ "type": "player_static", "modification": { "kind": "no_maximum_hand_size" } }
+```
+
+The two share nothing but the word "continuous". A `static`'s `affects` names a class of
+permanents and its `modification` names a CR 613 layer; neither has anything to say about
+a player, and one variant carrying both vocabularies could express `{"affects": "source",
+"modification": "no_maximum_hand_size"}` — nonsense the loader would then have to reject
+at runtime instead of the type rejecting it outright.
+
+The subject is always the source's **controller**: every printed ability of this shape
+says "you", so there is no selector to author and none to get wrong.
+
+`no_maximum_hand_size` is the one modification today. It is read where the question is
+asked (`sage_engine::maximum_hand_size`), never applied anywhere, so it takes effect the
+instant its source is on the battlefield and stops the instant it leaves — the same
+derived-on-every-read rule a `static` follows, with nothing stored and nothing to prune.
+Emblems are walked alongside the battlefield, exactly as the characteristics loop walks
+them.
+
+**No maximum is a distinct state, not a large number.** The predicate answers
+`Option<usize>` and the view carries `{"cards": n}` or `"unlimited"`; a sentinel would be
+a number nobody printed that every reader would have to recognise.
+
 ### Effects that ask a player to choose cards
 
 Four effects stop mid-resolution and hand one named player a decision (issue #604). The

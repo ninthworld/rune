@@ -181,6 +181,15 @@ export const OpponentView = z.object({
 })
 export type OpponentView = z.infer<typeof OpponentView>
 
+/**
+ * How many cards this player may hold when the cleanup step ends (CR 402.2).
+ *
+ * Two states rather than a number: "no maximum" is not a large number, and any sentinel
+ * would be a value nobody printed that every reader would have to recognise.
+ */
+export const MaximumHandSize = z.union([z.object({ cards: z.number() }), z.literal('unlimited')])
+export type MaximumHandSize = z.infer<typeof MaximumHandSize>
+
 export const SelfView = z.object({
   life: z.number(),
   library_size: z.number(),
@@ -188,6 +197,11 @@ export const SelfView = z.object({
   /** Absent means **connected**, as on `OpponentView`. */
   connected: z.boolean().optional(),
   ai: z.boolean().optional(),
+  /**
+   * Absent means the ordinary seven (CR 402.2) — not a guess, but exactly what every game
+   * a server predating this field could run actually used.
+   */
+  maximum_hand_size: MaximumHandSize.optional(),
 })
 export type SelfView = z.infer<typeof SelfView>
 

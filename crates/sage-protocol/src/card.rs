@@ -205,6 +205,50 @@ pub struct SelfView {
     /// reason as [`Self::connected`]. Omitted (and defaults to `false`).
     #[serde(default, skip_serializing_if = "crate::is_false")]
     pub ai: bool,
+    /// The receiver's maximum hand size (CR 402.2) — how many cards they may still be
+    /// holding when the cleanup step ends, or [`MaximumHandSize::Unlimited`] if they
+    /// have none (issue #745).
+    ///
+    /// Stated because the cleanup discard is the one turn-based action a player is asked
+    /// to perform on their own hand, and a client that assumed the default seven would
+    /// tell a player holding nine cards that they are about to discard two when a land
+    /// on the battlefield says otherwise. Server-computed, like every other number here.
+    ///
+    /// Additive: omitted, it defaults to seven — which is not a guess but exactly what
+    /// every game a server predating this field could run actually used.
+    #[serde(default, skip_serializing_if = "MaximumHandSize::is_default")]
+    pub maximum_hand_size: MaximumHandSize,
+}
+
+/// How many cards a player may hold at the end of their turn (CR 402.2).
+///
+/// A two-state type rather than a number, because "no maximum" is a different state from
+/// a large one: any sentinel would be a number nobody printed, and every reader — the
+/// discard gate, the client's hand — would have to know which number meant "none" and
+/// get it right. Here the compiler asks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MaximumHandSize {
+    /// This many cards, the ordinary rule.
+    Cards(u32),
+    /// No maximum at all — the cleanup discard never applies.
+    Unlimited,
+}
+
+impl MaximumHandSize {
+    /// Whether this is the default seven, and so may be left off the wire.
+    #[must_use]
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+impl Default for MaximumHandSize {
+    /// Seven (CR 402.2) — the rule in force whenever nothing changes it, and therefore
+    /// the only honest reading of a payload that does not mention it.
+    fn default() -> Self {
+        Self::Cards(7)
+    }
 }
 
 impl Default for SelfView {
@@ -217,6 +261,7 @@ impl Default for SelfView {
             eliminated: false,
             connected: true,
             ai: false,
+            maximum_hand_size: MaximumHandSize::default(),
         }
     }
 }

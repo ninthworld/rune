@@ -1,7 +1,6 @@
 use super::*;
 use crate::combat::priority_after_step_change;
 use crate::phase::Step;
-use crate::player::MAX_HAND_SIZE;
 use crate::resolve::resolve_stack_object;
 use crate::state::Duration;
 
@@ -62,7 +61,7 @@ pub(crate) fn advance_through_turn_based_steps(state: &mut GameState, db: &CardD
             step: state.step,
         });
         perform_turn_based_actions(state, db);
-        if step_pauses_for_players(state) {
+        if step_pauses_for_players(state, db) {
             break;
         }
     }
@@ -75,21 +74,23 @@ pub(crate) fn advance_through_turn_based_steps(state: &mut GameState, db: &CardD
 /// while the active player is over the maximum hand size and thus owes a discard
 /// (CR 514.1); otherwise it grants no priority (CR 514.3) and is walked through.
 /// Every other step pauses to grant priority.
-fn step_pauses_for_players(state: &GameState) -> bool {
+fn step_pauses_for_players(state: &GameState, db: &CardDatabase) -> bool {
     match state.step {
         Step::Untap => false,
-        Step::Cleanup => active_player_over_hand_size(state),
+        Step::Cleanup => active_player_over_hand_size(state, db),
         _ => true,
     }
 }
 
-/// Whether the active player currently holds more than [`MAX_HAND_SIZE`] cards
-/// and so owes a cleanup-step discard (CR 514.1). `false` on a seatless state.
-pub(crate) fn active_player_over_hand_size(state: &GameState) -> bool {
-    state
-        .players
-        .get(state.active_player.0)
-        .is_some_and(|p| p.hand.len() > MAX_HAND_SIZE)
+/// Whether the active player currently holds more cards than their maximum hand size
+/// allows and so owes a cleanup-step discard (CR 514.1). `false` on a seatless state,
+/// and `false` for a player who has no maximum at all.
+///
+/// Delegates to [`crate::over_hand_size`], the one predicate the action generator also
+/// asks, so the step the game pauses at and the discards it offers there cannot
+/// disagree about who owes what.
+pub(crate) fn active_player_over_hand_size(state: &GameState, db: &CardDatabase) -> bool {
+    crate::over_hand_size(state, state.active_player, db)
 }
 
 /// Perform the turn-based actions of the step `state` has just entered

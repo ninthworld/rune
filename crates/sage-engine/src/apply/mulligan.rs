@@ -28,7 +28,7 @@ pub(crate) fn apply_discard(state: &mut GameState, card: CardInstance, db: &Card
         let discarded = player.hand.remove(pos);
         player.graveyard.push(discarded);
     }
-    if state.step == Step::Cleanup && !active_player_over_hand_size(state) {
+    if state.step == Step::Cleanup && !active_player_over_hand_size(state, db) {
         advance_through_turn_based_steps(state, db);
         state.consecutive_passes = 0;
         state.priority = priority_after_step_change(state);

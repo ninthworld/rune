@@ -96,9 +96,12 @@ pub(crate) fn apply_enters_replacements(db: &CardDatabase, perm: &mut Permanent)
             // effect read while computing characteristics, so it is already in force
             // the instant the permanent is on the battlefield, with nothing to apply
             // here (`characteristics::static_ability_effects`).
+            // A player-subject static is the same: read where the question is asked
+            // (`player::maximum_hand_size`), never applied to the permanent entering.
             crate::ability::Ability::Activated { .. }
             | crate::ability::Ability::Triggered { .. }
-            | crate::ability::Ability::Static { .. } => {}
+            | crate::ability::Ability::Static { .. }
+            | crate::ability::Ability::PlayerStatic { .. } => {}
         }
     }
 }

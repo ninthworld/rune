@@ -25,9 +25,9 @@ use sage_engine::{
     Ability, AdditionalCost, AuraGrant, CardData, CardFilter, CardType, Chooser, Color,
     CombatRestriction, Condition, Cost, CountScope, CounterKind, DamageSubject, Effect,
     FoundDestination, GraveyardCardClass, GraveyardScope, Keyword, ManaRestriction, MassAffects,
-    ObservedPermanent, ObservedSpell, PermanentCount, PlayerRef, StaticAffects, StaticCondition,
-    StaticModification, TargetCount, TargetSpec, TokenData, TriggerCondition, TriggerStep,
-    TurnScope,
+    ObservedPermanent, ObservedSpell, PermanentCount, PlayerModification, PlayerRef, StaticAffects,
+    StaticCondition, StaticModification, TargetCount, TargetSpec, TokenData, TriggerCondition,
+    TriggerStep, TurnScope,
 };
 
 mod effects;
@@ -175,6 +175,12 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
             "{source} enters the battlefield with {} on it.",
             counters(*counter, *count)
         ),
+        // A player-subject static says what is true of *you*, so the sentence has no
+        // object at all — the shortest ability the formatter composes, and the only one
+        // whose subject is a person.
+        Ability::PlayerStatic { modification } => match modification {
+            PlayerModification::NoMaximumHandSize => "You have no maximum hand size.".to_string(),
+        },
         // A static ability reads as a standing statement about other objects, with no
         // trigger word and no cost — "Other Elves you control get +1/+1." The subject
         // is the affected class, not the source, which is why `source` goes unused here.

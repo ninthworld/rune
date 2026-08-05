@@ -148,6 +148,71 @@ impl Player {
     }
 }
 
+/// The maximum hand size `player` currently has (CR 402.2), or `None` if they have
+/// **no** maximum.
+///
+/// Derived on every read, never stored, exactly as a permanent's characteristics are
+/// (ADR 0005 §1): the answer starts and stops with the permanent that changes it, so a
+/// land that leaves the battlefield mid-turn takes its effect with it and there is
+/// nothing to prune.
+///
+/// `None` is a distinct state rather than a very large number. A sentinel would have to
+/// be a number nobody printed, and every call site — the discard gate, the action
+/// generator, the view — would need to know which number meant "none" and get it right.
+/// An `Option` makes the two cases something the compiler asks about.
+///
+/// Both ability sources are walked: the battlefield, and the **emblems** (CR 114.1),
+/// which carry static abilities and belong to a player rather than to a zone. That is
+/// the same second source list the computed-characteristics loop already walks, for the
+/// same reason.
+#[must_use]
+pub fn maximum_hand_size(
+    state: &crate::GameState,
+    player: crate::PlayerId,
+    db: &crate::CardDatabase,
+) -> Option<usize> {
+    let removed = |ability: &crate::ability::Ability| {
+        matches!(
+            ability,
+            crate::ability::Ability::PlayerStatic {
+                modification: crate::ability::PlayerModification::NoMaximumHandSize,
+            }
+        )
+    };
+    let from_battlefield = state
+        .battlefield
+        .iter()
+        .filter(|perm| perm.controller == player)
+        .flat_map(|perm| crate::card::abilities_of_permanent(db, perm));
+    let from_emblems = state
+        .emblems
+        .iter()
+        .filter(|emblem| emblem.controller == player)
+        .flat_map(|emblem| emblem.abilities.clone());
+    if from_battlefield.chain(from_emblems).any(|a| removed(&a)) {
+        return None;
+    }
+    Some(MAX_HAND_SIZE)
+}
+
+/// Whether `player` holds more cards than their maximum hand size allows, and so owes
+/// the cleanup-step discard of CR 514.1.
+///
+/// The one predicate both the step gate and the action generator ask, so what the game
+/// pauses for and what it offers can never disagree. A player with no maximum never owes
+/// one, whatever they are holding.
+#[must_use]
+pub fn over_hand_size(
+    state: &crate::GameState,
+    player: crate::PlayerId,
+    db: &crate::CardDatabase,
+) -> bool {
+    let Some(hand) = state.players.get(player.0).map(|p| p.hand.len()) else {
+        return false;
+    };
+    maximum_hand_size(state, player, db).is_some_and(|max| hand > max)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

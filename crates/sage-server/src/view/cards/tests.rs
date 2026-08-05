@@ -818,3 +818,41 @@ fn issue_730_a_skipped_untap_step_rides_the_wire() {
     assert!(skips(held));
     assert!(!skips(free), "its neighbour untaps normally and says so");
 }
+
+#[test]
+fn issue_745_the_maximum_hand_size_rides_the_wire_as_two_states() {
+    // The cleanup discard is the one turn-based action a player performs on their own
+    // hand, so a client that assumed seven would tell a player holding nine that they are
+    // about to lose two when a land on the battlefield says otherwise. "No maximum" is a
+    // state of its own rather than a large number nobody printed.
+    let db = CardDatabase::bundled().unwrap();
+    let mut state = GameState::new_two_player();
+    state.step = Step::PrecombatMain;
+
+    let ordinary = personalized_view(&state, &db, PlayerId(0));
+    assert_eq!(
+        ordinary.me.maximum_hand_size,
+        sage_protocol::MaximumHandSize::Cards(7),
+        "the default rule, stated"
+    );
+
+    put_permanent(
+        &mut state,
+        fixture("reliquary_tower"),
+        PlayerId(0),
+        false,
+        false,
+    );
+    let towered = personalized_view(&state, &db, PlayerId(0));
+    assert_eq!(
+        towered.me.maximum_hand_size,
+        sage_protocol::MaximumHandSize::Unlimited
+    );
+    assert_eq!(
+        personalized_view(&state, &db, PlayerId(1))
+            .me
+            .maximum_hand_size,
+        sage_protocol::MaximumHandSize::Cards(7),
+        "the other seat's own record is unchanged — the ability says \"you\""
+    );
+}

@@ -116,6 +116,47 @@ pub enum Ability {
         #[serde(default)]
         condition: Option<StaticCondition>,
     },
+    /// A continuous ability whose subject is a **player** rather than a permanent —
+    /// `You have no maximum hand size.`
+    ///
+    /// The first of its kind, and a separate variant rather than a widening of
+    /// [`Self::Static`] because the two share nothing but the word "continuous".
+    /// A [`StaticAffects`] names a class of permanents and a [`StaticModification`]
+    /// names a CR 613 layer; neither has anything to say about a player, and a single
+    /// variant carrying both vocabularies would be able to express `{"affects":
+    /// "source", "modification": "no_maximum_hand_size"}` — nonsense the loader would
+    /// then have to reject at runtime instead of the type rejecting it outright.
+    ///
+    /// The subject is always the source's **controller**: every printed ability of this
+    /// shape says "you", so there is no selector to author and none to get wrong.
+    ///
+    /// Like [`Self::Static`] it is read where the question is asked rather than applied
+    /// anywhere — see [`maximum_hand_size`](crate::maximum_hand_size) — so it takes
+    /// effect the instant its source is on the battlefield and stops the instant it
+    /// leaves, with nothing stored and nothing to prune (ADR 0005 §1).
+    ///
+    /// Deserialized as `{"type":"player_static","modification":{"kind":"no_maximum_hand_size"}}`.
+    PlayerStatic {
+        /// What it does to that player.
+        modification: PlayerModification,
+    },
+}
+
+/// What an [`Ability::PlayerStatic`] does to its controller.
+///
+/// A closed, plain-data enum with one variant, which is the one M19 prints. It grows by
+/// adding variants — a card that *raises* a maximum hand size rather than removing it is
+/// a different thing to say, and would say it here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PlayerModification {
+    /// CR 402.2: the controller has **no** maximum hand size, so the cleanup-step
+    /// discard of CR 514.1 never applies to them.
+    ///
+    /// Deliberately not "a very large maximum". No maximum is a different state from a
+    /// big number: a sentinel would compare, print, and project as a number nobody
+    /// printed, and every call site would have to know which number meant "none".
+    NoMaximumHandSize,
 }
 
 /// Whether an ability is a **loyalty ability** (CR 606.1): an activated ability whose

@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (186)
+## Supported cards (187)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -138,6 +138,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `prodigious_growth` | Prodigious Growth | functional definition |
 | `psychic_symbiont` | Psychic Symbiont | functional definition |
 | `recollect` | Recollect | functional definition |
+| `reliquary_tower` | Reliquary Tower | functional definition |
 | `remorseful_cleric` | Remorseful Cleric | functional definition |
 | `revitalize` | Revitalize | functional definition |
 | `rhox_oracle` | Rhox Oracle | functional definition |
@@ -200,7 +201,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `wall_of_vines` | Wall of Vines | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (36)
+## Excluded (35)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
@@ -229,7 +230,6 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Keyword removal and loses-all-abilities effects | the ability-adding layer only adds abilities |
 | Kicker and other optional additional costs | no optional cost declared on announcement |
 | Mana filtering | mana is produced and spent, never converted; nothing changes the colour of mana already in a pool |
-| Maximum hand size modification | the cleanup discard uses a fixed hand size |
 | Modal spells that choose one | no mode choice on announcement |
 | Multi-face cards (transform, modal double-faced) | the card model has a single face |
 | Optional and conditional effects that choose a target | an optional effect's contents may not target, and neither may a conditional's branches; a wrapper cannot declare the slots of what it wraps |
