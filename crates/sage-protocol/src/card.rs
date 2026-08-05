@@ -313,9 +313,11 @@ pub struct Permanent {
     /// Whether the permanent is tapped.
     #[serde(default, skip_serializing_if = "crate::is_false")]
     pub tapped: bool,
-    /// Whether this permanent is currently attacking — declared as an attacker
-    /// this combat (CR 508). Server-computed; the client displays it and never
-    /// derives it. Omitted from the wire when `false`.
+    /// Whether this permanent is currently attacking (CR 508) — declared as an
+    /// attacker this combat, or put onto the battlefield attacking by an effect that
+    /// said so (CR 506.3c). The board draws both the same way, because in combat they
+    /// *are* the same. Server-computed; the client displays it and never derives it.
+    /// Omitted from the wire when `false`.
     #[serde(default, skip_serializing_if = "crate::is_false")]
     pub attacking: bool,
     /// The defending player this permanent is attacking (CR 508.1a), as their

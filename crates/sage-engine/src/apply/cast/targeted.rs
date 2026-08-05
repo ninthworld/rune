@@ -16,11 +16,17 @@ mod removal_tests;
 /// legal; a mismatched target-value kind is a no-op here. Effects with an
 /// implicit subject never reach this function — they route through
 /// [`apply_effect`].
+///
+/// `source` is the permanent the resolving object came from, or `None` for a spell or
+/// an emblem — the same reference [`apply_effect`] takes, and needed here for the same
+/// reason: an effect that says "attacking" is asking about the attack its own source is
+/// making.
 pub(crate) fn apply_targeted_effect(
     state: &mut GameState,
     effect: &Effect,
     target: Target,
     controller: PlayerId,
+    source: Option<PermanentId>,
     db: &CardDatabase,
 ) {
     match effect {
@@ -300,16 +306,21 @@ pub(crate) fn apply_targeted_effect(
         }
         // "Target player creates …" (CR 111.1): the token is created under the chosen
         // seat's control, which is the whole reason the creator is a reference rather
-        // than an assumption about the ability's controller.
+        // than an assumption about the ability's controller. Which attack an attacking
+        // token joins is answered by the one function the non-targeting spelling uses,
+        // so the chosen seat is judged against the source exactly as an implicit one is.
         Effect::CreateToken {
             token,
             count,
             tapped,
+            attacking,
             ..
         } => {
             if let Target::Player(seat) = target {
+                let joins =
+                    super::effects::attack_a_created_token_joins(state, *attacking, source, seat);
                 for _ in 0..*count {
-                    state.create_token(token.clone(), seat, *tapped, db);
+                    state.create_token(token.clone(), seat, *tapped, joins, db);
                 }
             }
         }

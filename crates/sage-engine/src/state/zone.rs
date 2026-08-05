@@ -1,6 +1,7 @@
 //! Zone mutation methods for permanents, life changes, and damage.
 
 use crate::card_type::CardType;
+use crate::combat::AttackTarget;
 use crate::id::{CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::player::Player;
 use crate::token::{Printed, TokenData};
@@ -215,13 +216,21 @@ impl GameState {
     /// permanent's identity fields stay uniform, and — a token never leaving the
     /// battlefield as a card (CR 111.7) — that id can never appear in another zone.
     ///
-    /// `tapped` is the entry state the creating effect dictates ("create a tapped 2/2
-    /// Zombie token"). Returns the new permanent's id.
+    /// `tapped` and `attacking` are the entry state the creating effect dictates
+    /// ("create a tapped 2/2 Zombie token", "create two Cat tokens that are tapped and
+    /// attacking"). `attacking` carries *what* is attacked rather than a bare yes,
+    /// because a token joining a declaration attacks the same player or planeswalker
+    /// the effect's source does — the caller answers that question, and `None` is both
+    /// "the effect did not say attacking" and "there was no attack to join". Nothing
+    /// here taps a token for attacking: it was never declared as an attacker
+    /// (CR 506.3c), so the only thing that taps it is `tapped`. Returns the new
+    /// permanent's id.
     pub(crate) fn create_token(
         &mut self,
         token: TokenData,
         controller: PlayerId,
         tapped: bool,
+        attacking: Option<AttackTarget>,
         db: &CardDatabase,
     ) -> PermanentId {
         let id = PermanentId(self.mint_id());
@@ -234,7 +243,7 @@ impl GameState {
             controller,
             tapped,
             entered_turn,
-            attacking: None,
+            attacking,
             blocking: None,
             skips_untap: false,
             damage: 0,

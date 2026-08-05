@@ -85,6 +85,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "leonin_warleader",
+    "collector_number": "23",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "loxodon_line_breaker",
     "collector_number": "24",
     "rarity": "common"

@@ -538,7 +538,7 @@ pub(crate) fn apply_effects_with_targets(
             Some(group) => {
                 for target in taken {
                     if target_is_legal(group.spec, target, state, controller, db) {
-                        apply_targeted_effect(state, &effect, target, controller, db);
+                        apply_targeted_effect(state, &effect, target, controller, source, db);
                     }
                 }
             }

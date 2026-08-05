@@ -936,6 +936,36 @@ fn issue_605_a_token_creation_reads_as_the_card_prints_it() {
 }
 
 #[test]
+fn issue_734_a_token_created_attacking_says_so_after_the_noun() {
+    let db = bundled();
+
+    // Both entry states at once, each where a card prints it: "tapped" ahead of the
+    // noun, "that are attacking" trailing it, after the keyword clause.
+    assert_eq!(
+        text_of(&db, "leonin_warleader"),
+        "Whenever Leonin Warleader attacks, you create two tapped 1/1 white Cat \
+         creature tokens with lifelink that are attacking."
+    );
+
+    // The singular agrees, and attacking is independent of tapped.
+    let inline = CardDatabase::from_json(
+        r#"[{"schema_version":1,"functional_id":"test_outrider","name":"Test Outrider",
+             "types":["creature"],"subtypes":["Cat"],"mana_cost":"{1}{W}","colors":["white"],
+             "power":2,"toughness":2,
+             "abilities":[{"type":"triggered","event":"self_attacks","effects":[
+               {"kind":"create_token","attacking":true,
+                "token":{"name":"Cat","types":["creature"],"subtypes":["Cat"],
+                         "colors":["white"],"power":1,"toughness":1}}]}]}]"#,
+    )
+    .unwrap();
+    assert_eq!(
+        text_of(&inline, "test_outrider"),
+        "Whenever Test Outrider attacks, you create a 1/1 white Cat creature token \
+         that's attacking."
+    );
+}
+
+#[test]
 fn issue_608_a_loyalty_ability_reads_as_the_signed_number_the_card_prints() {
     // CR 606.1: a loyalty cost is written as the number in the ability's symbol — `+1`,
     // `0`, `−2` — with the typographic minus a card uses rather than a hyphen. No

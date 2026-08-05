@@ -516,6 +516,26 @@ pub enum Effect {
         /// say so). Defaults to `false`, an ordinary untapped entry.
         #[serde(default)]
         tapped: bool,
+        /// Whether each token enters **attacking** (CR 506.3c) — `create two 1/1
+        /// white Cat creature tokens that are tapped and attacking`. Defaults to
+        /// `false`, and it is a sibling of [`tapped`](Self::CreateToken::tapped)
+        /// rather than a mode of it: the same effect may say one, both, or neither.
+        ///
+        /// **What it attacks is not authored, because a card never states it.** The
+        /// token joins the declaration already in progress: it attacks the player or
+        /// planeswalker the effect's own source is attacking, which is what makes
+        /// "that are attacking" mean the same thing on every card that prints it.
+        /// Outside combat — and after the source has left it — there is no attack to
+        /// join, so the tokens are created and simply are not attacking; the effect
+        /// never invents a defender.
+        ///
+        /// It was **never declared** as an attacker (CR 506.3c), so it is not tapped
+        /// by attacking, it is not restricted by summoning sickness, and no
+        /// "whenever … attacks" ability triggers for it — the last of which is a rule
+        /// about the *declaration*, enforced where triggers are collected rather than
+        /// here.
+        #[serde(default)]
+        attacking: bool,
     },
     /// **You may** apply `effects`, and — when `cost` is present — only if you pay it:
     /// `you may draw a card`, and `you may pay {1}. If you do, draw a card`.

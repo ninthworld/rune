@@ -128,7 +128,7 @@
     "blocker": "CR 704.5j applies, but which copy survives is a deterministic policy (the newest) rather than the controller's choice"
   },
   {
-    "name": "Tokens created attacking, or as copies of another permanent",
-    "blocker": "a created token enters untapped or tapped and out of combat; there is no copiable-values model"
+    "name": "Tokens created as copies of another permanent",
+    "blocker": "there is no copiable-values model; a copy is decided at CR 613 layer 1, ahead of every layer the engine applies"
   }
 ]

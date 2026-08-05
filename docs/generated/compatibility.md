@@ -106,6 +106,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `lathliss_dragon_queen` | Lathliss, Dragon Queen | functional definition |
 | `lava_axe` | Lava Axe | functional definition |
 | `leonin_vanguard` | Leonin Vanguard | functional definition |
+| `leonin_warleader` | Leonin Warleader | functional definition |
 | `lich_s_caress` | Lich's Caress | functional definition |
 | `lightning_strike` | Lightning Strike | functional definition |
 | `liliana_s_spoils` | Liliana's Spoils | functional definition |
@@ -248,4 +249,4 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Spells with X in their cost | mana costs are fixed strings with no X announcement |
 | Static abilities that affect anything but the source or creatures its controller controls | the continuous-effect selector names the source or one class of that controller's creatures, so a permanent or an emblem may modify no other |
 | The legend-rule choice among duplicates | CR 704.5j applies, but which copy survives is a deterministic policy (the newest) rather than the controller's choice |
-| Tokens created attacking, or as copies of another permanent | a created token enters untapped or tapped and out of combat; there is no copiable-values model |
+| Tokens created as copies of another permanent | there is no copiable-values model; a copy is decided at CR 613 layer 1, ahead of every layer the engine applies |

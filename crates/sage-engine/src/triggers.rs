@@ -516,6 +516,12 @@ fn fire_count(
         // `attacking` is set after and was not before — so it fires once, from the
         // declare-attackers action, and never from a creature that was merely tapped
         // or that is still attacking from an earlier check.
+        //
+        // CR 506.3c: a permanent *put onto the battlefield attacking* was never
+        // declared, so this does not fire for it. The diff alone cannot tell the two
+        // apart — an object that was not there before has no previous `attacking`
+        // either way — so the rule is stated as the extra condition it is: the
+        // permanent has to have been on the battlefield to be declared from it.
         TriggerCondition::SelfAttacks => usize::from(watcher.permanent.is_some_and(|perm| {
             let attacking_in = |state: &GameState| {
                 state
@@ -523,7 +529,7 @@ fn fire_count(
                     .iter()
                     .any(|p| p.id == perm.id && p.attacking.is_some())
             };
-            attacking_in(after) && !attacking_in(before)
+            on_battlefield(before, perm) && attacking_in(after) && !attacking_in(before)
         })),
         // The watching conditions count rather than answer. Each first asks whether its
         // source is still there to watch — a permanent must still be on the battlefield,

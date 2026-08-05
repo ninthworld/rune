@@ -196,17 +196,26 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         // the token's own characteristics as a noun phrase ("two 1/1 white Soldier
         // creature tokens"). Composed from the same `TokenData` the engine creates the
         // object from, so the sentence and the object cannot disagree.
+        //
+        // "Attacking" trails the noun as a relative clause, because that is where a card
+        // prints it and because the keywords already occupy the position before it:
+        // "two 1/1 white Cat creature tokens with lifelink that are attacking".
         Effect::CreateToken {
             token,
             count,
             player_ref,
             tapped,
+            attacking,
         } => {
-            let tapped = if *tapped { "tapped " } else { "" };
+            let attacking = match (*attacking, *count) {
+                (false, _) => "",
+                (true, 1) => " that's attacking",
+                (true, _) => " that are attacking",
+            };
             format!(
-                "{} {tapped}{}",
+                "{} {}{attacking}",
                 conjugate(*player_ref, "create"),
-                token_noun(token, u32::from(*count))
+                token_noun(token, u32::from(*count), *tapped)
             )
         }
         Effect::Scry { count } => format!("scry {}", number(u32::from(*count))),
