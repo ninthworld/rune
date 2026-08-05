@@ -557,15 +557,38 @@ battlefield, with nothing ever put on the stack — an anthem or a lord:
 }
 ```
 
-- `subtype` restricts the class ("other **Elves** you control"); omit it for every
-  creature its controller controls.
-- `except_this` excludes the source itself — the "other" in a lord's wording. It compares
-  the *permanent*, not the card, so two copies of one lord do pump each other.
+- `affects` names the class. `creatures_you_control` takes `subtype` (which restricts it
+  to a lord's tribe — "other **Elves** you control") and `except_this` (the "other" in a
+  lord's wording, comparing the *permanent* rather than the card, so two copies of one
+  lord do pump each other). `{"scope": "source"}` is the class of one — the "this
+  creature" of a card that modifies itself, which flows through the same selector, the
+  same timestamp, and the same layer as an anthem rather than needing a path of its own.
 - `modification` is either `power_toughness` (layer 7c, folded after counters in timestamp
   order) or `grant_keyword` (layer 6, idempotent).
+- `condition` is the optional `as long as …` clause. Absent is unconditional, which is
+  what every anthem and lord says:
+
+  ```json
+  {"type": "static", "affects": {"scope": "source"},
+   "modification": {"kind": "power_toughness", "power": 1, "toughness": 0},
+   "condition": {"kind": "controls_at_least",
+                 "permanents": {"card_type": "artifact"}}}
+  ```
+
+  The conditions are `controls_at_least` — the same `permanents` selector an
+  intervening-if counts, with `count` defaulting to the "an" of "as long as you control
+  **an** artifact" — and `source_is_attacking`. It is a separate vocabulary from the
+  `Condition` an `Effect::Conditional` takes, because two of that one's three variants
+  ask what *this resolution* has already done and a continuous ability is not a
+  resolution: it has no window to read and no start to measure from.
+
+  A `permanents` selector gains a `color` alongside its `card_type` and `subtype`, which
+  is what lets a card ask for "a **blue** creature" or "an **Ajani** planeswalker".
 
 The effect is **derived from the battlefield on every read, never stored**: it starts and
-stops with its source, so a static ability cannot outlive the permanent that printed it.
+stops with its source, so a static ability cannot outlive the permanent that printed it —
+and a conditional one starts and stops with its condition, for the same reason and with
+nothing to prune.
 Rules text is composed from the same selector the engine applies, so the sentence and the
 scope cannot disagree.
 

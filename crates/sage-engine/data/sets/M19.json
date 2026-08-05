@@ -185,6 +185,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "gearsmith_prodigy",
+    "collector_number": "57",
+    "rarity": "common"
+  },
+  {
     "functional_id": "horizon_scholar",
     "collector_number": "59",
     "rarity": "uncommon"
@@ -620,6 +625,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "aerial_engineer",
+    "collector_number": "211",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "draconic_disciple",
     "collector_number": "215",
     "rarity": "uncommon"
@@ -668,6 +678,11 @@
     "functional_id": "fountain_of_renewal",
     "collector_number": "235",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "gearsmith_guardian",
+    "collector_number": "237",
+    "rarity": "common"
   },
   {
     "functional_id": "manalith",

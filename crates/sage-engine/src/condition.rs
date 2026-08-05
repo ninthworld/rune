@@ -89,6 +89,9 @@ pub(crate) fn count_permanents(
                 .subtype
                 .as_deref()
                 .is_none_or(|subtype| face.has_subtype(subtype))
+            && wanted
+                .color
+                .is_none_or(|color| face.colors().contains(&color))
     });
     u32::try_from(matching.count()).unwrap_or(u32::MAX)
 }

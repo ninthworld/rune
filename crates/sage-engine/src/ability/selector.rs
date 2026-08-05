@@ -60,6 +60,11 @@ pub struct PermanentCount {
     /// Restrict to permanents with this printed subtype. Absent counts every subtype.
     #[serde(default)]
     pub subtype: Option<String>,
+    /// Restrict to permanents of this printed colour (CR 105.2) — the "**blue**
+    /// creature" of a conditional static ability. Absent counts every colour, including
+    /// colourless.
+    #[serde(default)]
+    pub color: Option<Color>,
 }
 
 /// Whose permanents a [`PermanentCount`] counts, relative to the effect's controller.

@@ -109,6 +109,12 @@ pub enum Ability {
         affects: StaticAffects,
         /// What it does to them, and therefore which CR 613 layer it applies in.
         modification: StaticModification,
+        /// What has to be true for it to be in force at all — the `as long as …` of a
+        /// conditional continuous ability. Absent is unconditional, which is what every
+        /// anthem and lord says. Re-asked on every read, so the modification appears and
+        /// disappears with the condition and there is nothing to prune.
+        #[serde(default)]
+        condition: Option<StaticCondition>,
     },
 }
 

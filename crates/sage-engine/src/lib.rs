@@ -46,8 +46,8 @@ pub use ability::{
     maximum_targets, minimum_targets, target_counts, Ability, CardFilter, Chooser, Condition, Cost,
     CountScope, DamageSubject, Effect, FoundDestination, GraveyardCardClass, GraveyardScope,
     ManaRestriction, MassAffects, ObservedPermanent, ObservedSpell, PermanentCount, PlayerRef,
-    StaticAffects, StaticModification, Target, TargetCount, TargetGroup, TargetSpec,
-    TriggerCondition, TriggerStep, TurnScope,
+    StaticAffects, StaticCondition, StaticModification, Target, TargetCount, TargetGroup,
+    TargetSpec, TriggerCondition, TriggerStep, TurnScope,
 };
 pub use actions::{
     auto_payment, discard_cost, is_plain_mana_source, mana_ability_pips, payment_pips,

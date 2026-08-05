@@ -5,6 +5,11 @@
     "rarity": "rare"
   },
   {
+    "functional_id": "court_cleric",
+    "collector_number": "283",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "serra_s_guardian",
     "collector_number": "284",
     "rarity": "rare"
@@ -20,6 +25,16 @@
     "rarity": "common"
   },
   {
+    "functional_id": "tezzeret_s_strider",
+    "collector_number": "290",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "arisen_gorgon",
+    "collector_number": "292",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "gravewaker",
     "collector_number": "293",
     "rarity": "rare"
@@ -32,6 +47,11 @@
   {
     "functional_id": "tattered_mummy",
     "collector_number": "295",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "kargan_dragonrider",
+    "collector_number": "297",
     "rarity": "common"
   },
   {
@@ -72,6 +92,11 @@
   {
     "functional_id": "mist_cloaked_herald",
     "collector_number": "310",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "grasping_scoundrel",
+    "collector_number": "312",
     "rarity": "common"
   },
   {

@@ -7,13 +7,14 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (170)
+## Supported cards (178)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
 | Functional ID | Name | Implementation |
 | --- | --- | --- |
 | `aegis_of_the_heavens` | Aegis of the Heavens | functional definition |
+| `aerial_engineer` | Aerial Engineer | functional definition |
 | `aether_tunnel` | Aether Tunnel | functional definition |
 | `aethershield_artificer` | Aethershield Artificer | functional definition |
 | `aggressive_mammoth` | Aggressive Mammoth | functional definition |
@@ -24,6 +25,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `ajani_s_welcome` | Ajani's Welcome | functional definition |
 | `angel_of_the_dawn` | Angel of the Dawn | functional definition |
 | `arcane_encyclopedia` | Arcane Encyclopedia | functional definition |
+| `arisen_gorgon` | Arisen Gorgon | functional definition |
 | `aven_wind_mage` | Aven Wind Mage | functional definition |
 | `aviation_pioneer` | Aviation Pioneer | functional definition |
 | `befuddle` | Befuddle | functional definition |
@@ -38,6 +40,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `child_of_night` | Child of Night | functional definition |
 | `cinder_barrens` | Cinder Barrens | functional definition |
 | `colossal_dreadmaw` | Colossal Dreadmaw | functional definition |
+| `court_cleric` | Court Cleric | functional definition |
 | `crash_through` | Crash Through | functional definition |
 | `daggerback_basilisk` | Daggerback Basilisk | functional definition |
 | `daybreak_chaplain` | Daybreak Chaplain | functional definition |
@@ -68,10 +71,13 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `fountain_of_renewal` | Fountain of Renewal | functional definition |
 | `frilled_sea_serpent` | Frilled Sea Serpent | functional definition |
 | `gallant_cavalry` | Gallant Cavalry | functional definition |
+| `gearsmith_guardian` | Gearsmith Guardian | functional definition |
+| `gearsmith_prodigy` | Gearsmith Prodigy | functional definition |
 | `giant_spider` | Giant Spider | functional definition |
 | `gigantosaurus` | Gigantosaurus | functional definition |
 | `goblin_instigator` | Goblin Instigator | functional definition |
 | `goblin_motivator` | Goblin Motivator | functional definition |
+| `grasping_scoundrel` | Grasping Scoundrel | functional definition |
 | `gravewaker` | Gravewaker | functional definition |
 | `greenwood_sentinel` | Greenwood Sentinel | functional definition |
 | `guttersnipe` | Guttersnipe | functional definition |
@@ -86,6 +92,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `inspired_charge` | Inspired Charge | functional definition |
 | `invoke_the_divine` | Invoke the Divine | functional definition |
 | `island` | Island | functional definition |
+| `kargan_dragonrider` | Kargan Dragonrider | functional definition |
 | `knight_of_the_tusk` | Knight of the Tusk | functional definition |
 | `knight_s_pledge` | Knight's Pledge | functional definition |
 | `knightly_valor` | Knightly Valor | functional definition |
@@ -161,6 +168,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `tattered_mummy` | Tattered Mummy | functional definition |
 | `tectonic_rift` | Tectonic Rift | functional definition |
 | `tezzeret_artifice_master` | Tezzeret, Artifice Master | functional definition |
+| `tezzeret_s_strider` | Tezzeret's Strider | functional definition |
 | `thornhide_wolves` | Thornhide Wolves | functional definition |
 | `timber_gorge` | Timber Gorge | functional definition |
 | `titanic_growth` | Titanic Growth | functional definition |
