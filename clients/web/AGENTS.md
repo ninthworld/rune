@@ -36,7 +36,9 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   is the authority above the document: where the two disagree, the prototype is what the client
   follows, and the document's §8 lists every rule the prototype retired. The prototype is still
   where a *new* screen is tried first — nothing ships from it, and it is not this client's
-  scaffolding.
+  scaffolding. That ordering settles **appearance only**: it never outranks a hard rule on this
+  list or an accepted ADR. The full statement is in
+  [`docs/brief.md`](../../docs/brief.md#which-document-wins).
 - **Dark, declared rather than followed.** A card is an object lying on a surface, it needs a
   ground darker than itself, and maintaining a light table as well is how neither gets good.
 - **An overlay renders the join and nothing else.** It is `aria-hidden`, because a drawn line is
