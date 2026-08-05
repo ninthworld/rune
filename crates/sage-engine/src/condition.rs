@@ -55,6 +55,14 @@ pub(crate) fn condition_holds(
 /// engine: the type-changing layers are not implemented, so printed types are current
 /// types, and a count taken from computed characteristics would recurse through the very
 /// layer system a static ability's count would be feeding.
+///
+/// [`PermanentCount::min_power`] is the one exception and is deliberately narrow: power
+/// *is* changed by layers that exist, so a printed reading would be wrong on every
+/// pumped creature. The computed reading is taken **lazily** — nothing calls
+/// [`crate::characteristics`] unless a bound is authored — and the catalog validator
+/// refuses the field inside a static ability's condition, which is the only caller that
+/// would recurse. Together those two facts are why this function is safe to call from
+/// inside the layer system.
 #[must_use]
 pub(crate) fn count_permanents(
     state: &GameState,
@@ -82,7 +90,7 @@ pub(crate) fn count_permanents(
         let Some(face) = perm.printed.face(db) else {
             return false;
         };
-        wanted
+        let printed_ok = wanted
             .card_type
             .is_none_or(|card_type| face.has_type(card_type))
             && wanted
@@ -91,7 +99,17 @@ pub(crate) fn count_permanents(
                 .is_none_or(|subtype| face.has_subtype(subtype))
             && wanted
                 .color
-                .is_none_or(|color| face.colors().contains(&color))
+                .is_none_or(|color| face.colors().contains(&color));
+        if !printed_ok {
+            return false;
+        }
+        // Computed, and only when a bound is authored (see this function's docs). A
+        // permanent with no power — a land, an enchantment — satisfies no bound.
+        wanted.min_power.is_none_or(|min| {
+            crate::characteristics::characteristics(state, perm.id, db)
+                .power
+                .is_some_and(|power| power >= min)
+        })
     });
     u32::try_from(matching.count()).unwrap_or(u32::MAX)
 }

@@ -60,6 +60,18 @@ pub enum CombatRestriction {
     /// not alone — so it is enforced over the assembled selection in the
     /// declare-blockers legality gate, beside menace, and never in the pairwise check.
     CantBeBlockedByMoreThanOne,
+    /// This creature can't be blocked by creatures whose power is at most the named
+    /// amount (CR 509.1b) — the same shape of evasion [`Self::CantBeBlockedBy`] carries,
+    /// naming a number instead of a colour. Enforced in
+    /// [`blocker_can_block_attacker`](crate::combat::blocker_can_block_attacker), the
+    /// pairwise gate the colour form already lives in.
+    ///
+    /// The blocker's power is read through the **computed**
+    /// [`Characteristics`](crate::Characteristics), not its printed face: a 1/1 pumped
+    /// out of range really can block, and one shrunk into range really cannot. That is
+    /// the opposite of the colour form, which reads printed colour only because CR 613
+    /// layer 5 is not implemented.
+    CantBeBlockedByPowerOrLess(i32),
 }
 
 impl CombatRestriction {
@@ -74,6 +86,23 @@ impl CombatRestriction {
             CombatRestriction::CantAttack
             | CombatRestriction::CantBlock
             | CombatRestriction::CantBeBlocked
+            | CombatRestriction::CantBeBlockedByMoreThanOne
+            | CombatRestriction::CantBeBlockedByPowerOrLess(_) => None,
+        }
+    }
+
+    /// The power at or below which this restriction forbids a blocker, if it names one.
+    ///
+    /// The numeric counterpart of [`Self::forbidden_blocker_color`], and a named
+    /// accessor for the same reason: one question, asked in one place.
+    #[must_use]
+    pub fn forbidden_blocker_power(self) -> Option<i32> {
+        match self {
+            CombatRestriction::CantBeBlockedByPowerOrLess(power) => Some(power),
+            CombatRestriction::CantAttack
+            | CombatRestriction::CantBlock
+            | CombatRestriction::CantBeBlocked
+            | CombatRestriction::CantBeBlockedBy(_)
             | CombatRestriction::CantBeBlockedByMoreThanOne => None,
         }
     }

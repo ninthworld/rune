@@ -113,15 +113,15 @@
   },
   {
     "name": "Protection, and evasion that names a subtype or a land type",
-    "blocker": "a blocking restriction names a colour or a count; there is no protection layer"
+    "blocker": "a blocking restriction names a colour, a count, or a power; there is no protection layer"
   },
   {
     "name": "Replacement effects",
     "blocker": "no replacement-effect layer in the rules engine"
   },
   {
-    "name": "Selectors that filter by power or toughness",
-    "blocker": "no numeric power or toughness threshold in a target, trigger, or mass-effect selector; only a mid-resolution card choice may cap printed power"
+    "name": "Selectors that filter by toughness, or by a power relative to another permanent's",
+    "blocker": "a permanent count, an enters-or-dies trigger selector, a blocking restriction, and a card choice each name a fixed power threshold; a target spec, a mass-effect class, and a static ability's condition name none, no threshold reads toughness, and no threshold is another permanent's power"
   },
   {
     "name": "Spells with X in their cost",

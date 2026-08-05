@@ -358,10 +358,21 @@ fn count_subject(count: &PermanentCount) -> String {
         (None, Some(card_type)) => format!("{}s", card_type_word(card_type)),
         (None, None) => "permanents".to_string(),
     };
-    match count.scope {
+    let class = match count.scope {
         CountScope::YouControl => format!("{noun} you control"),
         CountScope::OpponentsControl => format!("{noun} your opponents control"),
         CountScope::Any => noun,
+    };
+    power_clause(&class, count)
+}
+
+/// A class with its power bound trailing it, where a card prints it: "creatures you
+/// control **with power 4 or greater**". One function so the counted and the
+/// distributive forms cannot word the same bound differently.
+fn power_clause(class: &str, count: &PermanentCount) -> String {
+    match count.min_power {
+        None => class.to_string(),
+        Some(min) => format!("{class} with power {min} or greater"),
     }
 }
 
@@ -383,11 +394,12 @@ fn count_noun(count: &PermanentCount) -> String {
         (None, Some(card_type)) => noun.push_str(card_type_word(card_type)),
         (None, None) => noun.push_str("permanent"),
     }
-    match count.scope {
+    let class = match count.scope {
         CountScope::YouControl => format!("{noun} you control"),
         CountScope::OpponentsControl => format!("{noun} your opponents control"),
         CountScope::Any => noun,
-    }
+    };
+    power_clause(&class, count)
 }
 
 /// A card type as the word a rules sentence uses.
@@ -418,11 +430,13 @@ pub(crate) fn restriction_phrase(restriction: &ManaRestriction) -> String {
 /// An intervening-if condition as the clause following the word "if".
 fn condition_clause(condition: &Condition) -> String {
     match condition {
-        Condition::ControlsAtLeast { permanents, count } => format!(
-            "you control {} or more {}",
-            number(*count),
-            count_subject(permanents)
-        ),
+        // The same composer the static `as long as …` clause uses. It was worth sharing
+        // rather than duplicating: the local phrasing read "you control 1 or more
+        // creatures you control", because the count's own scope already says "you
+        // control" and this clause said it again.
+        Condition::ControlsAtLeast { permanents, count } => {
+            format!("you control {}", counted_permanents(permanents, *count))
+        }
         Condition::MilledThisWay { filter } => {
             format!(
                 "at least one {} was milled this way",

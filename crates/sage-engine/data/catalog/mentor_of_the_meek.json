@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "functional_id": "mentor_of_the_meek",
+  "name": "Mentor of the Meek",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Soldier"
+  ],
+  "mana_cost": "{2}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 2,
+  "toughness": 2,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "permanent_enters": {
+          "scope": "creatures_you_control",
+          "except_this": true,
+          "max_power": 2
+        }
+      },
+      "effects": [
+        {
+          "kind": "may",
+          "cost": "{1}",
+          "effects": [
+            {
+              "kind": "draw_card",
+              "count": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

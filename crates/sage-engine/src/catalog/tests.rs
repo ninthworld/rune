@@ -370,3 +370,31 @@ fn duplicate_collector_numbers_in_one_set_are_rejected() {
         }
     );
 }
+
+#[test]
+fn a_static_condition_may_not_count_by_power() {
+    // A power bound is read through the computed characteristics, and a static
+    // ability's condition is evaluated *inside* the computation of a permanent's
+    // characteristics. Asking there would ask again, forever. Rejected at build time
+    // so the failure is a sentence rather than a stack overflow.
+    let statik = r#", "power": 1, "toughness": 1, "types": ["creature"],
+        "abilities": [{"type": "static", "affects": {"scope": "source"},
+            "modification": {"kind": "power_toughness", "power": 1, "toughness": 0},
+            "condition": {"kind": "controls_at_least",
+                          "permanents": {"card_type": "creature", "min_power": 4}}}]"#;
+    assert_eq!(
+        validate_definition(None, &definition(statik)),
+        Err(Violation::PowerInStaticCondition {
+            functional_id: "test_card".to_string(),
+        }),
+    );
+
+    // The same condition shape on an `Effect::Conditional` is evaluated during a
+    // resolution, where nothing recurses, and stays authorable. This is the whole
+    // reason the check names `type: "static"` rather than the condition itself.
+    let intervening_if = r#", "spell_effects": [{"kind": "conditional",
+        "condition": {"kind": "controls_at_least",
+                      "permanents": {"card_type": "creature", "min_power": 4}, "count": 1},
+        "then": [{"kind": "draw_card", "count": 1}]}]"#;
+    assert!(validate_definition(None, &definition(intervening_if)).is_ok());
+}

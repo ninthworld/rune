@@ -166,14 +166,24 @@ pub fn blocker_can_block_attacker(
         .face(db)
         .map(|face| face.colors().to_vec())
         .unwrap_or_default();
+    // The blocker's power, unlike its colour, is read through the computed
+    // characteristics: the layers that change power are implemented, so a pumped blocker
+    // really has escaped a power-based evasion.
+    let blocker_power = crate::characteristics::characteristics(state, blocker, db).power;
     for restriction in permanent_restrictions(state, attacker, db) {
         match restriction {
             CombatRestriction::CantBeBlocked => return false,
             CombatRestriction::CantBeBlockedBy(color) if blocker_colors.contains(&color) => {
                 return false
             }
+            CombatRestriction::CantBeBlockedByPowerOrLess(max)
+                if blocker_power.is_some_and(|power| power <= max) =>
+            {
+                return false
+            }
             // Not pairwise facts, or not about being blocked at all.
             CombatRestriction::CantBeBlockedBy(_)
+            | CombatRestriction::CantBeBlockedByPowerOrLess(_)
             | CombatRestriction::CantAttack
             | CombatRestriction::CantBlock
             | CombatRestriction::CantBeBlockedByMoreThanOne => {}

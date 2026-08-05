@@ -184,6 +184,14 @@ pub enum ObservedPermanent {
         /// a card that makes a token off an infinite loop with its own trigger.
         #[serde(default)]
         nontoken: bool,
+        /// Notice only creatures whose power is at most this — the "with **power 2 or
+        /// less**" of an enters-the-battlefield watcher. Absent notices every power.
+        ///
+        /// Read through the **computed** characteristics of the state the observed
+        /// event happened in, so a creature that entered pumped is judged by what it
+        /// was then, not by its printed face.
+        #[serde(default)]
+        max_power: Option<i32>,
     },
     /// Any creature on the battlefield, whoever controls it — "a creature", and with
     /// `except_this`, "another creature".
@@ -197,6 +205,10 @@ pub enum ObservedPermanent {
         /// Notice only permanents that are cards, never tokens.
         #[serde(default)]
         nontoken: bool,
+        /// Notice only creatures whose power is at most this, read through the computed
+        /// characteristics exactly as the sibling variant's is.
+        #[serde(default)]
+        max_power: Option<i32>,
     },
 }
 
@@ -226,6 +238,15 @@ impl ObservedPermanent {
         match self {
             ObservedPermanent::CreaturesYouControl { nontoken, .. }
             | ObservedPermanent::AnyCreature { nontoken, .. } => *nontoken,
+        }
+    }
+
+    /// The upper power bound this selector restricts to, if any.
+    #[must_use]
+    pub fn max_power(&self) -> Option<i32> {
+        match self {
+            ObservedPermanent::CreaturesYouControl { max_power, .. }
+            | ObservedPermanent::AnyCreature { max_power, .. } => *max_power,
         }
     }
 }

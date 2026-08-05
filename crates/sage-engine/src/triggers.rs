@@ -298,10 +298,18 @@ fn events_in<'a>(before: &GameState, after: &'a GameState) -> impl Iterator<Item
 /// Whether `candidate` is one of the permanents `observes` watches, for an ability on
 /// `source`. Evaluated relative to the source, exactly as [`crate::StaticAffects`] is:
 /// "you" is the source's controller and "another" excludes the source itself.
+///
+/// `seen_in` is the state the observed event happened in — the state **after** for a
+/// permanent entering, and the state **before** for one dying, since a dead permanent
+/// is on neither battlefield afterwards. It exists only so a power bound can be read
+/// through the computed characteristics: "a creature with power 2 or less entered" is a
+/// question about the creature as it entered, and a printed reading would answer it
+/// wrongly for every creature that entered with a counter or under an anthem.
 fn observed_matches(
     observes: &ObservedPermanent,
     candidate: &Permanent,
     source: Watcher<'_>,
+    seen_in: &GameState,
     db: &CardDatabase,
 ) -> bool {
     // An emblem is not a permanent, so it is never the "this" an `except_this`
@@ -324,6 +332,14 @@ fn observed_matches(
     // (ADR 0015), so `Printed::card()` answering `None` is the whole of the test.
     if observes.nontoken_only() && candidate.printed.card().is_none() {
         return false;
+    }
+    // Computed, and only when a bound is authored. A permanent with no power satisfies
+    // no bound — though the creature test above has already excluded every such case.
+    if let Some(max) = observes.max_power() {
+        let power = crate::characteristics::characteristics(seen_in, candidate.id, db).power;
+        if power.is_none_or(|power| power > max) {
+            return false;
+        }
     }
     match observes {
         ObservedPermanent::CreaturesYouControl { .. } => candidate.controller == source.controller,
@@ -412,12 +428,12 @@ fn fire_count(
                 return 0;
             }
             entered(before, after)
-                .filter(|candidate| observed_matches(observes, candidate, watcher, db))
+                .filter(|candidate| observed_matches(observes, candidate, watcher, after, db))
                 .count()
         }
         TriggerCondition::PermanentDies(observes) => died(before, after)
             .into_iter()
-            .filter(|candidate| observed_matches(observes, candidate, watcher, db))
+            .filter(|candidate| observed_matches(observes, candidate, watcher, before, db))
             .count(),
         TriggerCondition::YouGainLife => {
             if !watcher.still_present(after) {

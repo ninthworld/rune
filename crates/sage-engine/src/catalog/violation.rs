@@ -129,6 +129,21 @@ pub enum Violation {
         /// The definition at fault.
         functional_id: String,
     },
+    /// A **static** ability's `as long as …` condition counts permanents by
+    /// `min_power`.
+    ///
+    /// A power bound is the one selector field read through the computed
+    /// characteristics rather than the printed face, because power is what the
+    /// implemented layers actually change. That reading is correct everywhere a
+    /// condition is evaluated during a resolution, and non-terminating in the one place
+    /// it is evaluated *inside* the layer system: computing a permanent's
+    /// characteristics would ask for another permanent's characteristics, which would
+    /// ask again. Rejected at build time rather than left as a stack overflow nobody
+    /// can read.
+    PowerInStaticCondition {
+        /// The definition at fault.
+        functional_id: String,
+    },
     /// A `create_emblem` effect gives the emblem an ability an emblem cannot have
     /// (CR 114.1–114.4) — anything but a static or triggered ability.
     ///
@@ -261,6 +276,12 @@ impl fmt::Display for Violation {
             Self::TargetInsideConditional { functional_id } => write!(
                 f,
                 "{functional_id}: a conditional effect's branch may not choose a target"
+            ),
+            Self::PowerInStaticCondition { functional_id } => write!(
+                f,
+                "{functional_id}: a static ability's condition may not count by \
+                 `min_power`; a computed power read from inside the layer system \
+                 would not terminate"
             ),
             Self::EmblemAbilityIsNotStaticOrTriggered { functional_id } => write!(
                 f,

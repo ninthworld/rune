@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "functional_id": "colossal_majesty",
+  "name": "Colossal Majesty",
+  "types": [
+    "enchantment"
+  ],
+  "mana_cost": "{2}{G}",
+  "colors": [
+    "green"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "beginning_of_step": {
+          "step": "upkeep",
+          "whose_turn": "yours"
+        }
+      },
+      "effects": [
+        {
+          "kind": "conditional",
+          "condition": {
+            "kind": "controls_at_least",
+            "permanents": {
+              "card_type": "creature",
+              "min_power": 4
+            },
+            "count": 1
+          },
+          "then": [
+            {
+              "kind": "draw_card",
+              "count": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

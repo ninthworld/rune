@@ -100,6 +100,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "mentor_of_the_meek",
+    "collector_number": "27",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "mighty_leap",
     "collector_number": "28",
     "rarity": "common"
@@ -535,6 +540,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "colossal_majesty",
+    "collector_number": "173",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "daggerback_basilisk",
     "collector_number": "174",
     "rarity": "common"
@@ -558,6 +568,11 @@
     "functional_id": "elvish_rejuvenator",
     "collector_number": "180",
     "rarity": "common"
+  },
+  {
+    "functional_id": "ghirapur_guide",
+    "collector_number": "182",
+    "rarity": "uncommon"
   },
   {
     "functional_id": "giant_spider",

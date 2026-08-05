@@ -150,6 +150,7 @@ parameter. A unit restriction is its bare name and a parameterized one wraps its
 | `cant_be_blocked` | no creature may block it | the pairwise block check |
 | `cant_be_blocked_by` | no creature of the named colour may block it | the pairwise block check |
 | `cant_be_blocked_by_more_than_one` | at most one blocker may be assigned to it | the whole-selection block check |
+| `cant_be_blocked_by_power_or_less` | no creature of at most the named power may block it | the pairwise block check |
 
 Printed restrictions belong only on creatures; the loader rejects them elsewhere. They are
 read through the computed characteristics at CR 613 layer 6, exactly as keywords are, so a
@@ -165,6 +166,12 @@ does nothing.
 The colour test reads the blocker's **printed** colours: CR 613 layer 5 (colour-changing
 effects) is not implemented, so printed colour is current colour, the same way printed
 types stand in for current types elsewhere in the engine.
+
+The power test reads the blocker's **computed** power, and the difference from the colour
+test is deliberate rather than an inconsistency: the layers that change power *are*
+implemented, so a blocker pumped past the bound has really escaped it and one shrunk into
+it has really fallen in. Printed colour stands in for current colour only because nothing
+in the engine can change a colour yet.
 
 Attack and block *requirements* ("attacks each combat if able") are not modeled: a
 declaration can be restricted but never required.
@@ -442,8 +449,19 @@ never tell the two apart. The window survives a suspension, so a discard that st
 question still answers `discarded_this_way` correctly when it resumes.
 
 A `permanents` selector is a small product — `scope` (`you_control`, `opponents_control`,
-`any`; default `you_control`), optional `card_type`, optional `subtype` — read against
-printed types, like every other selector in the engine.
+`any`; default `you_control`), optional `card_type`, optional `subtype`, optional `color`,
+and optional `min_power` — read against printed types, like every other selector in the
+engine.
+
+`min_power` is the one exception to that, and the exception is the point: it is read
+through the **computed** characteristics, because power is what the implemented layers
+actually change. "If you control a creature with power 4 or greater" is satisfied by a 3/3
+under an anthem and stops being satisfied when the anthem leaves; a printed reading would
+get both wrong. It is therefore **rejected inside a static ability's `condition`**
+(`Violation::PowerInStaticCondition`): that condition is evaluated from inside the
+computation of a permanent's characteristics, and asking there would ask again, forever.
+Only a lower bound exists, because only a lower bound is printed on a card the catalog
+defines.
 
 A branch **may not choose a target**, for the reason an optional effect's contents may not:
 one effect declares at most one target group, and a wrapper cannot honestly declare the groups
@@ -760,7 +778,11 @@ carries a selector wraps it:
 `permanent_enters` and `permanent_dies` take an observed-permanent selector — `scope` is
 `creatures_you_control` or `any_creature`, with an optional `subtype`, an `except_this` that
 means "another", and a `nontoken` that excludes tokens (CR 111 — a token is not a card),
-which is what keeps a card that makes tokens off a loop with its own trigger.
+which is what keeps a card that makes tokens off a loop with its own trigger. An optional
+`max_power` narrows it to creatures of at most that power — "whenever another creature you
+control **with power 2 or less** enters" — read through the computed characteristics of
+the state the event happened in, so a creature that entered pumped is judged by what it was
+then and one that died shrunk by what it was as it died.
 `you_cast_spell` takes `enchantment` or `instant_or_sorcery`.
 
 `beginning_of_step` is about the turn rather than about an object:

@@ -220,11 +220,17 @@ fn observed_subject(observes: &ObservedPermanent) -> String {
         (true, Some(subtype)) => format!("nontoken {subtype}"),
         (true, None) => "nontoken creature".to_string(),
     };
-    match observes {
+    let class = match observes {
         ObservedPermanent::CreaturesYouControl { .. } => {
             format!("{article} {noun} you control")
         }
         ObservedPermanent::AnyCreature { .. } => format!("{article} {noun}"),
+    };
+    // A power bound trails the whole class, where a card prints it: "another creature
+    // you control with power 2 or less".
+    match observes.max_power() {
+        None => class,
+        Some(max) => format!("{class} with power {max} or less"),
     }
 }
 
@@ -298,8 +304,12 @@ fn static_condition_clause(condition: &StaticCondition) -> String {
 }
 
 /// A permanent count as a noun phrase — "an artifact", "three or more artifacts", "an
-/// Ajani planeswalker", "a blue creature".
-fn counted_permanents(permanents: &PermanentCount, count: u32) -> String {
+/// Ajani planeswalker", "a blue creature", "a creature with power 4 or greater".
+///
+/// Shared with the intervening if in [`effects`], which asks the same question of the
+/// same selector: one composer, so the static and the resolution-time readings of one
+/// `controls_at_least` cannot be worded differently.
+pub(super) fn counted_permanents(permanents: &PermanentCount, count: u32) -> String {
     let mut noun = String::new();
     if let Some(color) = permanents.color {
         noun.push_str(color.word());
@@ -319,9 +329,15 @@ fn counted_permanents(permanents: &PermanentCount, count: u32) -> String {
             "permanent"
         }
     });
-    match count {
+    let phrase = match count {
         1 => format!("{} {noun}", indefinite_article(&noun)),
         n => format!("{} or more {}", number(n), plural(&noun)),
+    };
+    // A power bound trails the noun, where a card prints it: "a creature with power 4
+    // or greater".
+    match permanents.min_power {
+        None => phrase,
+        Some(min) => format!("{phrase} with power {min} or greater"),
     }
 }
 

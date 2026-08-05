@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (182)
+## Supported cards (185)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -40,6 +40,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `child_of_night` | Child of Night | functional definition |
 | `cinder_barrens` | Cinder Barrens | functional definition |
 | `colossal_dreadmaw` | Colossal Dreadmaw | functional definition |
+| `colossal_majesty` | Colossal Majesty | functional definition |
 | `court_cleric` | Court Cleric | functional definition |
 | `crash_through` | Crash Through | functional definition |
 | `daggerback_basilisk` | Daggerback Basilisk | functional definition |
@@ -74,6 +75,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `gallant_cavalry` | Gallant Cavalry | functional definition |
 | `gearsmith_guardian` | Gearsmith Guardian | functional definition |
 | `gearsmith_prodigy` | Gearsmith Prodigy | functional definition |
+| `ghirapur_guide` | Ghirapur Guide | functional definition |
 | `giant_spider` | Giant Spider | functional definition |
 | `gigantosaurus` | Gigantosaurus | functional definition |
 | `goblin_instigator` | Goblin Instigator | functional definition |
@@ -111,6 +113,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `make_a_stand` | Make a Stand | functional definition |
 | `manalith` | Manalith | functional definition |
 | `meandering_river` | Meandering River | functional definition |
+| `mentor_of_the_meek` | Mentor of the Meek | functional definition |
 | `meteor_golem` | Meteor Golem | functional definition |
 | `mighty_leap` | Mighty Leap | functional definition |
 | `militia_bugler` | Militia Bugler | functional definition |
@@ -230,9 +233,9 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Multi-face cards (transform, modal double-faced) | the card model has a single face |
 | Optional and conditional effects that choose a target | an optional effect's contents may not target, and neither may a conditional's branches; a wrapper cannot declare the slots of what it wraps |
 | Optional costs paid with anything but mana | an optional effect's cost is a mana payment; sacrificing, discarding, or exiling to pay is unwritable |
-| Protection, and evasion that names a subtype or a land type | a blocking restriction names a colour or a count; there is no protection layer |
+| Protection, and evasion that names a subtype or a land type | a blocking restriction names a colour, a count, or a power; there is no protection layer |
 | Replacement effects | no replacement-effect layer in the rules engine |
-| Selectors that filter by power or toughness | no numeric power or toughness threshold in a target, trigger, or mass-effect selector; only a mid-resolution card choice may cap printed power |
+| Selectors that filter by toughness, or by a power relative to another permanent's | a permanent count, an enters-or-dies trigger selector, a blocking restriction, and a card choice each name a fixed power threshold; a target spec, a mass-effect class, and a static ability's condition name none, no threshold reads toughness, and no threshold is another permanent's power |
 | Spells with X in their cost | mana costs are fixed strings with no X announcement |
 | Static abilities that affect anything but the source or creatures its controller controls | the continuous-effect selector names the source or one class of that controller's creatures, so a permanent or an emblem may modify no other |
 | The legend-rule choice among duplicates | CR 704.5j applies, but which copy survives is a deterministic policy (the newest) rather than the controller's choice |

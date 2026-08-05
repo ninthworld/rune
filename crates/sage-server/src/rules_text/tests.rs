@@ -934,3 +934,26 @@ fn issue_608_a_loyalty_ability_reads_as_the_signed_number_the_card_prints() {
          \u{2212}2: Test Warden deals 2 damage to any target."
     );
 }
+
+#[test]
+fn a_power_bound_is_spoken_by_every_selector_that_carries_one() {
+    // Three selectors learned a power threshold at once, and each has to say so in the
+    // position a printed card puts it: trailing the class it narrows. Asserted against
+    // the real cards, so the sentence and the selector the engine applies cannot drift.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "mentor_of_the_meek"),
+        "Whenever another creature you control with power 2 or less enters the \
+         battlefield, you may pay {1}. If you do, draw a card."
+    );
+    assert_eq!(
+        text_of(&db, "colossal_majesty"),
+        "At the beginning of your upkeep, if you control a creature with power 4 or \
+         greater, draw a card."
+    );
+    assert_eq!(
+        text_of(&db, "ghirapur_guide"),
+        "{2}{G}: Target creature you control can't be blocked by creatures with \
+         power 2 or less this turn."
+    );
+}
