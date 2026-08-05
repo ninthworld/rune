@@ -168,9 +168,11 @@ pub(crate) fn personalized_view(
             blocking: perm.blocking.map(permanent_entity_id),
             // Marked combat damage (CR 120.3 / 510), for lethal-damage display.
             damage: perm.damage,
-            // Aura attachment (CR 303.4): the host this permanent is attached to,
+            // Attachment (CR 303.4 / 301.5): the host this permanent is attached to,
             // projected from the engine's `PermanentId` to its view entity id
-            // exactly as `blocking` above. `None` for an unattached permanent.
+            // exactly as `blocking` above. `None` for an unattached permanent — which
+            // an **Equipment** may well be while sitting on the battlefield between
+            // hosts, so the client reads this as "attached to", never "is an Aura".
             attached_to: perm.attached_to.map(permanent_entity_id),
             // Commander marker (CR 903.3, issue #553): whether this object *is* its
             // controller's commander. Matched on the card **instance**, the designation

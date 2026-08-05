@@ -550,7 +550,7 @@ fn issue_152_aura_castable_only_with_a_legal_enchant_target_cr_303_4c() {
     let json = r#"[
         {"schema_version":1,"functional_id":"test_aura","name":"Test Aura","types":["enchantment"],"subtypes":["Aura"],
          "mana_cost":"{G}",
-         "aura":{"enchant":"any_creature","power":1,"toughness":1}},
+         "attachment":{"kind":"aura","attach_to":"any_creature","power":1,"toughness":1}},
         {"schema_version":1,"functional_id":"test_charm","name":"Test Charm","types":["enchantment"],
          "mana_cost":"{G}"},
         {"schema_version":1,"functional_id":"test_bear","name":"Test Bear","types":["creature"],"mana_cost":"",

@@ -579,7 +579,7 @@ fn aura_db() -> CardDatabase {
     let json = r#"[
         {"schema_version":1,"functional_id":"test_aegis","name":"Test Aegis",
          "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{1}{G}","colors":["green"],
-         "aura":{"enchant":"any_creature","power":2,"toughness":2}},
+         "attachment":{"kind":"aura","attach_to":"any_creature","power":2,"toughness":2}},
         {"schema_version":1,"functional_id":"test_scout","name":"Test Scout",
          "types":["creature"],"subtypes":["Elf"],"mana_cost":"{G}","colors":["green"],
          "power":1,"toughness":1}

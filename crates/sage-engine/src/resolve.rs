@@ -401,8 +401,14 @@ pub(crate) fn put_resolved_spell_in_its_final_zone(
         // An Aura enters attached to the object its enchant ability chose
         // (CR 303.4d). That target was picked at cast (CR 601.2c) and re-checked
         // on resolution (CR 608.2b), so an already-illegal one has fizzled and only
-        // a legal host remains; a non-Aura permanent enters attached to nothing.
-        let attached_to = if db.card(card.card).is_some_and(|c| c.aura.is_some()) {
+        // a legal host remains; every other permanent — an **Equipment** included,
+        // which chose nothing at cast and waits for its equip ability (CR 301.5c) —
+        // enters attached to nothing.
+        let attached_to = if db.card(card.card).is_some_and(|c| {
+            c.attachment
+                .as_ref()
+                .is_some_and(|a| a.kind == crate::card::AttachmentKind::Aura)
+        }) {
             spell.targets.iter().find_map(|t| match t {
                 crate::ability::Target::Permanent(host) => Some(*host),
                 _ => None,

@@ -20,10 +20,10 @@
 //! The division of labor is deliberate:
 //!
 //! - **Here**: rules about a definition's *shape* that hold before the IR is known —
-//!   the schema version, the authored identity, the type/P&T and Aura invariants.
+//!   the schema version, the authored identity, the type/P&T and attachment invariants.
 //! - **In the type system**: rules serde already makes unrepresentable. Every
 //!   targeting [`Effect`](crate::Effect) variant declares `target: TargetSpec` as a
-//!   required field, as does [`AuraGrant::enchant`](crate::AuraGrant::enchant), so
+//!   required field, as does [`Attachment::attach_to`](crate::Attachment::attach_to), so
 //!   "an effect that needs a target spec but has none" cannot be written down — it is
 //!   a parse error, not a validation failure. No check here re-states it.
 //! - **In the loader**: the one rule that is impossible to check here — whether a
@@ -43,8 +43,13 @@ use std::fmt;
 pub const SCHEMA_VERSION: u32 = 1;
 
 /// The subtype that makes a card an Aura (CR 303.4), and therefore the only kind of
-/// card an `aura` grant may appear on.
+/// card an `attachment` of kind `aura` may appear on.
 const AURA_SUBTYPE: &str = "Aura";
+
+/// The subtype that makes a card an Equipment (CR 301.5) — the Equipment counterpart of
+/// [`AURA_SUBTYPE`], and the only kind of card an `attachment` of kind `equipment` may
+/// appear on.
+const EQUIPMENT_SUBTYPE: &str = "Equipment";
 
 /// The card type that requires printed power and toughness.
 const CREATURE_TYPE: &str = "creature";
@@ -246,14 +251,36 @@ pub(crate) fn validate_definition(
         validate_token(&functional_id, effect.get("token"))?;
     }
 
-    // An `aura` grant is the Aura ability (CR 303.4), so it belongs only on an Aura.
-    if object.contains_key("aura") {
-        let is_aura = object
+    // An `attachment` block is the Aura ability (CR 303.4) or the Equipment's equip
+    // ability (CR 301.5), so the card must actually bear the subtype it claims — and, for
+    // an Equipment, must name the cost its derived equip ability charges (CR 702.6a).
+    if let Some(attachment) = object.get("attachment") {
+        let kind = attachment.get("kind").and_then(serde_json::Value::as_str);
+        let subtype = match kind {
+            Some("equipment") => EQUIPMENT_SUBTYPE,
+            // Anything else is either `aura` or a value serde will reject when the
+            // definition is deserialized; either way the Aura subtype is what to demand.
+            _ => AURA_SUBTYPE,
+        };
+        let bears_subtype = object
             .get("subtypes")
             .and_then(serde_json::Value::as_array)
-            .is_some_and(|subtypes| subtypes.iter().any(|s| s.as_str() == Some(AURA_SUBTYPE)));
-        if !is_aura {
-            return Err(Violation::AuraOnNonAura { functional_id });
+            .is_some_and(|subtypes| subtypes.iter().any(|s| s.as_str() == Some(subtype)));
+        if !bears_subtype {
+            return Err(Violation::AttachmentSubtypeMismatch {
+                functional_id,
+                subtype,
+            });
+        }
+        // The both-directions pairing the P/T and loyalty checks make, for the same
+        // reason: an Equipment with no equip cost could never be attached to anything,
+        // and an equip cost on an Aura names an ability it does not have.
+        let is_equipment = kind == Some("equipment");
+        if is_equipment != attachment.get("equip").is_some_and(|c| !c.is_null()) {
+            return Err(Violation::EquipCostMismatch {
+                functional_id,
+                equipment: is_equipment,
+            });
         }
     }
 

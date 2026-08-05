@@ -17,7 +17,7 @@
 //! ignored. The authored schema is documented in `docs/card-schema.md`.
 
 mod additional_cost;
-mod aura;
+mod attachment;
 mod card_data;
 mod catalog;
 mod database;
@@ -32,11 +32,11 @@ mod tests;
 
 pub use crate::catalog::SCHEMA_VERSION;
 pub use additional_cost::AdditionalCost;
-pub use aura::AuraGrant;
+pub use attachment::{Attachment, AttachmentKind};
 pub use card_data::CardData;
 pub use database::CardDatabase;
 pub use error::CatalogError;
-pub use helpers::{abilities_of, abilities_of_permanent};
+pub use helpers::{abilities_of, abilities_of_permanent, equip_ability};
 pub use keyword::Keyword;
 pub use printing::{Printing, PrintingDatabase};
 pub use rarity::Rarity;

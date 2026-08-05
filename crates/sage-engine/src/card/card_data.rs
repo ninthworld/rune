@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-use super::aura::AuraGrant;
+use super::attachment::{Attachment, AttachmentKind};
 use super::keyword::Keyword;
 use super::restriction::CombatRestriction;
 use crate::ability::{Ability, Effect, TargetSpec};
@@ -102,13 +102,18 @@ pub struct CardData {
     /// is cast (CR 601.2c); read them with [`crate::card::spell_effects_of`].
     #[serde(default)]
     pub spell_effects: Vec<Effect>,
-    /// The Aura ability of an Aura card (CR 303.4): its enchant restriction and
-    /// static power/toughness grant. `None` for every non-Aura card. When present,
-    /// the card is castable only with a legal enchant target (CR 303.4c/601.2c),
-    /// enters attached to that target (CR 303.4d), and contributes its P/T grant to
-    /// the host while attached (CR 613.7c) — see [`AuraGrant`].
+    /// The attachment ability of an **Aura** (CR 303.4) or an **Equipment**
+    /// (CR 301.5): what it may be attached to, and what it grants its host while it is.
+    /// `None` for every card that attaches to nothing, which is nearly all of them.
+    ///
+    /// One block for both kinds because the grant is one thing — see [`Attachment`].
+    /// The kind decides how it *arrives*: an Aura is castable only with a legal enchant
+    /// target (CR 303.4c/601.2c) and enters attached to it (CR 303.4d), while an
+    /// Equipment is cast like any other artifact and moved onto a creature by the equip
+    /// ability derived from this block ([`equip_ability`](super::equip_ability),
+    /// CR 702.6b).
     #[serde(default)]
-    pub aura: Option<AuraGrant>,
+    pub attachment: Option<Attachment>,
     /// The card's printed keyword abilities (CR 702), e.g. flying or haste. Empty
     /// for a card with none. Read with [`CardData::has_keyword`] for the *printed*
     /// set; a permanent's *current* keywords fold these together with any granted by
@@ -204,14 +209,17 @@ impl CardData {
     /// [`Self::cast_target_specs`], and the one every gate reads.
     ///
     /// An Aura's enchant restriction is a single required target (CR 303.4a), so it
-    /// contributes a one-target group.
+    /// contributes a one-target group. An **Equipment** contributes none: it is cast like
+    /// any other artifact and enters attached to nothing (CR 301.5c), choosing its host
+    /// later, on its equip activation.
     #[must_use]
     pub fn cast_target_groups(&self) -> Vec<crate::ability::TargetGroup> {
         let mut groups: Vec<crate::ability::TargetGroup> = self
-            .aura
+            .attachment
             .as_ref()
+            .filter(|a| a.kind == AttachmentKind::Aura)
             .map(|a| crate::ability::TargetGroup {
-                spec: a.enchant,
+                spec: a.attach_to,
                 min: 1,
                 max: 1,
             })

@@ -178,19 +178,27 @@ fn static_condition_holds(
     }
 }
 
-/// The layer-7c power/toughness [`StaticEffect`] a single attached Aura `aura`
-/// contributes to its host (CR 303.4 / 613.7c), or `None` if `aura` is not an
-/// attached Aura (no host, or its card carries no [`AuraGrant`](crate::AuraGrant)).
+/// The layer-7c power/toughness [`StaticEffect`] a single attached permanent
+/// contributes to its host (CR 303.4 / 301.5 / 613.7c), or `None` if `attachment` is not
+/// attached to anything or carries no [`Attachment`](crate::Attachment) block.
 ///
-/// Synthesized on demand rather than stored (ADR 0005): its `source` is the Aura's
+/// **One function for both kinds**, which is the whole point of one attachment block: at
+/// layer 7c an Equipment's `+2/+1` and an Aura's `+2/+2` are the same kind of thing, so a
+/// creature holding a sword and one under an Aura are indistinguishable to every reader
+/// of a permanent's power.
+///
+/// Synthesized on demand rather than stored (ADR 0005): its `source` is the attachment's
 /// own object id — a strictly increasing, replayable timestamp (CR 613.7) — and it
 /// is keyed to the specific host permanent, so it folds in exactly like a pump
-/// keyed to that permanent, and disappears when the Aura leaves.
-pub(super) fn aura_pt_effect(aura: &Permanent, db: &CardDatabase) -> Option<StaticEffect> {
-    let host = aura.attached_to?;
-    let grant = aura.printed.face(db)?.aura()?;
+/// keyed to that permanent, and disappears when the attachment leaves *or moves*.
+pub(super) fn attachment_pt_effect(
+    attachment: &Permanent,
+    db: &CardDatabase,
+) -> Option<StaticEffect> {
+    let host = attachment.attached_to?;
+    let grant = attachment.printed.face(db)?.attachment()?;
     Some(StaticEffect {
-        source: aura.id.0,
+        source: attachment.id.0,
         affects: EffectAffects::SpecificPermanent(host),
         modification: Modification::PowerToughness {
             power: grant.power,

@@ -180,6 +180,25 @@ pub fn is_loyalty_ability(ability: &Ability) -> bool {
     )
 }
 
+/// Whether an ability is an **equip ability** (CR 702.6a): an activated ability that
+/// attaches its source to the permanent it targets.
+///
+/// The predicate CR 702.6b's timing rule hangs off — equip is activated only when its
+/// controller could cast a sorcery — and the exact counterpart of [`is_loyalty_ability`]:
+/// derived from what the ability *does*, never stored and never a flag on the card, so an
+/// ability cannot equip without being bound by equip's timing.
+///
+/// An equip ability is never a mana ability: [`is_mana_ability`] requires every effect to
+/// be a mana verb and [`Effect::Attach`] is not one, so no exclusion has to be written
+/// here.
+#[must_use]
+pub fn is_equip_ability(ability: &Ability) -> bool {
+    matches!(
+        ability,
+        Ability::Activated { effects, .. } if effects.iter().any(|e| matches!(e, Effect::Attach { .. }))
+    )
+}
+
 /// Whether an ability is a mana ability (CR 605.1a, simplified): an activated
 /// ability whose every effect adds mana, **and which is not a loyalty ability**. Mana
 /// abilities resolve immediately and do not use the stack (see `crate::apply_action`).

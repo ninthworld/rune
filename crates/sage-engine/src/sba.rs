@@ -3,6 +3,7 @@
 //! [`run_state_based_actions`] as a pipeline stage.
 
 use crate::ability::Target;
+use crate::card::AttachmentKind;
 use crate::characteristics::characteristics;
 use crate::commander::COMMANDER_DAMAGE_LOSS_THRESHOLD;
 use crate::id::{PermanentId, PlayerId};
@@ -33,9 +34,12 @@ use crate::CardDatabase;
 ///   Aura or `-1/-1` counters that drop current toughness to 0 trigger it.
 /// - **CR 704.5g** — a creature with lethal marked damage (damage ≥ its
 ///   toughness, toughness > 0) is destroyed and put into its owner's graveyard.
-/// - **CR 704.5m** — an Aura attached to an illegal object, or whose host has left
-///   the battlefield, is put into its owner's graveyard.
-/// - **CR 704.5n** — an Aura attached to nothing is put into its owner's graveyard.
+/// - **CR 704.5m** — an Aura attached to an illegal object, attached to nothing, or whose
+///   host has left the battlefield, is put into its owner's graveyard.
+/// - **CR 704.5n** — an **Equipment** attached to an illegal permanent becomes unattached
+///   and *stays on the battlefield*. The same event — a host dying — therefore has two
+///   different outcomes depending on what is attached to it, which is the one place the
+///   two kinds of attachment genuinely differ.
 /// - **CR 704.5h** — a creature dealt any nonzero damage this turn by a source
 ///   with deathtouch is destroyed, regardless of whether that damage is lethal by
 ///   toughness. The struck creatures are recorded in
@@ -221,17 +225,22 @@ pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) 
                 changed = true;
             }
         }
-        // CR 704.5m/704.5n: put into the graveyard every Aura that is illegally
-        // attached — attached to nothing (CR 704.5n) or to an object it can no
-        // longer legally enchant, including a host that has just left the
-        // battlefield above (CR 704.5m). Judged after the creature deaths so a host
-        // dying this same check orphans its Aura; the outer loop re-runs to a fixed
-        // point regardless. The Aura's derived P/T contribution disappears with it —
-        // nothing keyed in `static_effects` to prune (see `characteristics.rs`).
+        // CR 704.5m: put into the graveyard every **Aura** that is illegally attached —
+        // attached to nothing, or to an object it can no longer legally enchant,
+        // including a host that has just left the battlefield above. Judged after the
+        // creature deaths so a host dying this same check orphans its Aura; the outer
+        // loop re-runs to a fixed point regardless. The Aura's derived P/T contribution
+        // disappears with it — nothing keyed in `static_effects` to prune (see
+        // `characteristics.rs`).
         let doomed_auras: Vec<PermanentId> = state
             .battlefield
             .iter()
-            .filter(|perm| aura_is_illegally_attached(perm, state, db))
+            .filter(|perm| {
+                matches!(
+                    attachment_legality(perm, state, db),
+                    Some((AttachmentKind::Aura, false))
+                )
+            })
             .map(|perm| perm.id)
             .collect();
         for id in doomed_auras {
@@ -239,6 +248,31 @@ pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) 
             // 700.4 — only creatures "die"), so it uses the bare zone move and logs
             // no `permanent_died`.
             if state.move_permanent_to_graveyard(id).is_some() {
+                changed = true;
+            }
+        }
+        // CR 704.5n: an **Equipment** attached to an illegal permanent becomes unattached
+        // — *and remains on the battlefield*. This is the one place the two kinds of
+        // attachment part company, and it is the whole of the difference: the same host
+        // dying that sends an Aura to a graveyard leaves a sword lying on the table,
+        // ready to be equipped again. An Equipment attached to nothing is already in its
+        // resting state and is not a candidate, which is why this reads the host rather
+        // than the absence of one.
+        let unequipped: Vec<PermanentId> = state
+            .battlefield
+            .iter()
+            .filter(|perm| {
+                perm.attached_to.is_some()
+                    && matches!(
+                        attachment_legality(perm, state, db),
+                        Some((AttachmentKind::Equipment, false))
+                    )
+            })
+            .map(|perm| perm.id)
+            .collect();
+        for id in unequipped {
+            if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
+                perm.attached_to = None;
                 changed = true;
             }
         }
@@ -379,30 +413,43 @@ fn legend_rule_losers(state: &GameState, db: &CardDatabase) -> Vec<PermanentId> 
         .collect()
 }
 
-/// Whether `perm` is an Aura that is now illegally attached and so must go to its
-/// owner's graveyard (CR 704.5m/n). `false` for a non-Aura permanent.
+/// What kind of attachment `perm` is and whether it is **legally attached right now**, or
+/// `None` for a permanent that attaches to nothing (which is nearly all of them).
 ///
-/// An Aura is illegal when it is attached to nothing (CR 704.5n) or when its host is
-/// no longer a legal object for its enchant restriction (CR 704.5m) — which
-/// [`target_is_legal`] reports `false` for once the host has left the battlefield or
-/// stopped matching (e.g. a creature Aura on something no longer a creature).
-fn aura_is_illegally_attached(perm: &Permanent, state: &GameState, db: &CardDatabase) -> bool {
-    let Some(grant) = perm.printed.face(db).and_then(|face| face.aura()) else {
-        return false;
-    };
-    match perm.attached_to {
-        None => true,
-        // The Aura's own controller is the frame of reference for a possessive
-        // enchant restriction ("enchant creature you control"), exactly as it was
-        // when the Aura chose that host at cast (CR 601.2c).
-        Some(host) => !target_is_legal(
-            grant.enchant,
+/// One question asked once, because the two state-based actions that consume it disagree
+/// only about the *remedy*: CR 704.5m bins an illegally-attached Aura and CR 704.5n
+/// unattaches an illegally-attached Equipment. Deciding legality in two places would let
+/// them drift into disagreeing about the diagnosis as well.
+///
+/// A host is judged by [`AttachmentKind::host_legality`] rather than by the authored
+/// `attach_to`, which matters for exactly one kind: an Aura may only stay on what its
+/// enchant ability permits (CR 303.4a), while an Equipment need only be on a creature
+/// (CR 301.5c). [`target_is_legal`] reports `false` once the host has left the
+/// battlefield or stopped matching, which is how a dead host reaches both actions.
+///
+/// Attached to nothing counts as **illegal** here, which is the right answer for an Aura
+/// (CR 704.5m sends it to the graveyard) and irrelevant for an Equipment, whose caller
+/// asks only about ones that *are* attached.
+fn attachment_legality(
+    perm: &Permanent,
+    state: &GameState,
+    db: &CardDatabase,
+) -> Option<(AttachmentKind, bool)> {
+    let grant = perm.printed.face(db).and_then(|face| face.attachment())?;
+    let legal = match perm.attached_to {
+        None => false,
+        // The attachment's own controller is the frame of reference for a possessive
+        // restriction ("enchant creature you control"), exactly as it was when the Aura
+        // chose that host at cast (CR 601.2c).
+        Some(host) => target_is_legal(
+            grant.kind.host_legality(grant.attach_to),
             Target::Permanent(host),
             state,
             crate::characteristics::controller_of(state, perm),
             db,
         ),
-    }
+    };
+    Some((grant.kind, legal))
 }
 
 #[cfg(test)]
@@ -430,10 +477,10 @@ mod tests {
         let json = r#"[
             {"schema_version":1,"functional_id":"test_aegis","name":"Test Aegis",
              "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{1}{G}","colors":["green"],
-             "aura":{"enchant":"any_creature","power":2,"toughness":2}},
+             "attachment":{"kind":"aura","attach_to":"any_creature","power":2,"toughness":2}},
             {"schema_version":1,"functional_id":"test_curse","name":"Test Curse",
              "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{B}","colors":["black"],
-             "aura":{"enchant":"any_creature","power":-2,"toughness":-2}},
+             "attachment":{"kind":"aura","attach_to":"any_creature","power":-2,"toughness":-2}},
             {"schema_version":1,"functional_id":"test_boar","name":"Test Boar",
              "types":["creature"],"subtypes":["Boar"],"mana_cost":"{2}{G}","colors":["green"],
              "power":3,"toughness":2},

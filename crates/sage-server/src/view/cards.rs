@@ -299,10 +299,11 @@ fn face_card_view(entity_id: String, face: PrintedFace<'_>, db: &CardDatabase) -
 /// Build the [`CardView`] for a battlefield permanent, projecting its **current**
 /// power/toughness (CR 613 layer 7c) and keywords (CR 613.1f, layer 6) from the
 /// engine's computed [`characteristics`] rather than the printed card. This is what
-/// makes counters, until-end-of-turn pumps, and an attached Aura's P/T grant
-/// (CR 303.4) visible on the wire — a Boar enchanted with a `+2/+2` Aura projects as
-/// a 5/4 — and, equally, what makes a granted keyword show up like a printed one: a
-/// creature enchanted with an Aura granting flying projects with `flying`. Every
+/// makes counters, until-end-of-turn pumps, and an attachment's P/T grant
+/// (CR 303.4 / 301.5) visible on the wire — a Boar enchanted with a `+2/+2` Aura, or
+/// equipped with a `+2/+1` Axe, projects as a 5/4 — and, equally, what makes a granted
+/// keyword show up like a printed one: a creature enchanted with an Aura granting flying
+/// projects with `flying`. Every
 /// other field is the printed projection ([`card_view`]); a non-creature keeps its
 /// absent P/T.
 pub(crate) fn permanent_card_view(

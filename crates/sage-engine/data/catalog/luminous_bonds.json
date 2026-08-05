@@ -12,8 +12,9 @@
   "colors": [
     "white"
   ],
-  "aura": {
-    "enchant": "any_creature",
+  "attachment": {
+    "kind": "aura",
+    "attach_to": "any_creature",
     "restrictions": [
       "cant_attack",
       "cant_block"

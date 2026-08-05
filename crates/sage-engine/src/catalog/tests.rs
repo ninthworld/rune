@@ -264,12 +264,62 @@ fn an_additional_cost_that_could_never_be_paid_is_rejected() {
 fn an_aura_grant_on_a_card_that_is_not_an_aura_is_rejected() {
     let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
                    "types": ["enchantment"], "subtypes": ["Shrine"], "mana_cost": "{G}",
-                   "aura": {"enchant": "any_creature", "power": 1, "toughness": 1}}"#;
+                   "attachment": {"kind": "aura", "attach_to": "any_creature",
+                                  "power": 1, "toughness": 1}}"#;
     let card = serde_json::from_str(json).unwrap();
     assert_eq!(
         validate_definition(None, &card).unwrap_err(),
-        Violation::AuraOnNonAura {
-            functional_id: "test_card".to_string()
+        Violation::AttachmentSubtypeMismatch {
+            functional_id: "test_card".to_string(),
+            subtype: "Aura",
+        }
+    );
+}
+
+#[test]
+fn issue_728_an_equipment_grant_on_a_card_that_is_not_an_equipment_is_rejected() {
+    // The Equipment half of the same rule: the subtype is what makes a card one of
+    // these things, and the block only says what it does while attached.
+    let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                   "types": ["artifact"], "mana_cost": "{3}",
+                   "attachment": {"kind": "equipment", "attach_to": "any_creature_you_control",
+                                  "equip": "{2}", "power": 1, "toughness": 1}}"#;
+    let card = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        validate_definition(None, &card).unwrap_err(),
+        Violation::AttachmentSubtypeMismatch {
+            functional_id: "test_card".to_string(),
+            subtype: "Equipment",
+        }
+    );
+}
+
+#[test]
+fn issue_728_an_equip_cost_must_agree_with_the_attachment_kind() {
+    // Both directions, like the P/T and loyalty pairings: an Equipment with no equip
+    // cost could never be attached to anything, and an Aura with one would advertise an
+    // ability the rules do not give it.
+    let costless = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                   "types": ["artifact"], "subtypes": ["Equipment"], "mana_cost": "{3}",
+                   "attachment": {"kind": "equipment", "attach_to": "any_creature_you_control",
+                                  "power": 1, "toughness": 1}}"#;
+    assert_eq!(
+        validate_definition(None, &serde_json::from_str(costless).unwrap()).unwrap_err(),
+        Violation::EquipCostMismatch {
+            functional_id: "test_card".to_string(),
+            equipment: true,
+        }
+    );
+
+    let paying_aura = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                   "types": ["enchantment"], "subtypes": ["Aura"], "mana_cost": "{G}",
+                   "attachment": {"kind": "aura", "attach_to": "any_creature", "equip": "{2}",
+                                  "power": 1, "toughness": 1}}"#;
+    assert_eq!(
+        validate_definition(None, &serde_json::from_str(paying_aura).unwrap()).unwrap_err(),
+        Violation::EquipCostMismatch {
+            functional_id: "test_card".to_string(),
+            equipment: false,
         }
     );
 }
@@ -277,7 +327,8 @@ fn an_aura_grant_on_a_card_that_is_not_an_aura_is_rejected() {
 #[test]
 fn issue_606_printed_restrictions_on_a_non_creature_are_rejected() {
     // A combat restriction restricts attacking or blocking, so on a non-creature it
-    // could only ever be inert. An Aura imposes restrictions through `aura` instead.
+    // could only ever be inert. An Aura imposes restrictions through `attachment`
+    // instead.
     let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
                    "types": ["enchantment"], "mana_cost": "{1}",
                    "restrictions": ["cant_block"]}"#;
@@ -383,7 +434,18 @@ fn issue_606_printed_restrictions_on_a_creature_are_accepted() {
 fn an_aura_grant_on_an_aura_is_accepted() {
     let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
                    "types": ["enchantment"], "subtypes": ["Aura"], "mana_cost": "{G}",
-                   "aura": {"enchant": "any_creature", "power": 1, "toughness": 1}}"#;
+                   "attachment": {"kind": "aura", "attach_to": "any_creature",
+                                  "power": 1, "toughness": 1}}"#;
+    let card = serde_json::from_str(json).unwrap();
+    assert!(validate_definition(None, &card).is_ok());
+}
+
+#[test]
+fn issue_728_an_equipment_grant_on_an_equipment_is_accepted() {
+    let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                   "types": ["artifact"], "subtypes": ["Equipment"], "mana_cost": "{3}",
+                   "attachment": {"kind": "equipment", "attach_to": "any_creature_you_control",
+                                  "equip": "{2}", "power": 2, "toughness": 1}}"#;
     let card = serde_json::from_str(json).unwrap();
     assert!(validate_definition(None, &card).is_ok());
 }

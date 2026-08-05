@@ -22,12 +22,12 @@
 //! Legal Considerations).
 
 use sage_engine::{
-    Ability, ActivatorScope, AdditionalCost, AuraGrant, CardData, CardFilter, CardType, Chooser,
-    Color, CombatRestriction, Condition, Cost, CountScope, CounterKind, DamageSubject, Effect,
-    FoundDestination, GraveyardCardClass, GraveyardScope, Keyword, ManaRestriction, MassAffects,
-    ObservedPermanent, ObservedSpell, PermanentCount, PlayerModification, PlayerRef, StaticAffects,
-    StaticCondition, StaticModification, TargetCount, TargetSpec, TokenData, TriggerCondition,
-    TriggerStep, TurnScope,
+    equip_ability, Ability, ActivatorScope, AdditionalCost, Attachment, AttachmentKind, CardData,
+    CardFilter, CardType, Chooser, Color, CombatRestriction, Condition, Cost, CountScope,
+    CounterKind, DamageSubject, Effect, FoundDestination, GraveyardCardClass, GraveyardScope,
+    Keyword, ManaRestriction, MassAffects, ObservedPermanent, ObservedSpell, PermanentCount,
+    PlayerModification, PlayerRef, StaticAffects, StaticCondition, StaticModification, TargetCount,
+    TargetSpec, TokenData, TriggerCondition, TriggerStep, TurnScope,
 };
 
 mod effects;
@@ -44,9 +44,10 @@ pub(crate) use words::*;
 /// does (ADR 0008 §7). The engine's catalog loader enforces that pairing in both
 /// directions, so a scripted card can never reach this function with no text to show.
 ///
-/// Clauses are emitted in a fixed order — keywords, abilities, spell effects, the Aura
-/// grant, then any scripted text — one per line. A vanilla card generates the empty
-/// string: it has no rules, and inventing words for it would be noise.
+/// Clauses are emitted in a fixed order — keywords, abilities, spell effects, the
+/// attachment grant (and, for an Equipment, its equip ability), then any scripted text —
+/// one per line. A vanilla card generates the empty string: it has no rules, and inventing
+/// words for it would be noise.
 #[must_use]
 pub(crate) fn rules_text(data: &CardData, scripted: Option<&str>) -> String {
     let source = data.name.as_str();
@@ -82,8 +83,8 @@ pub(crate) fn rules_text(data: &CardData, scripted: Option<&str>) -> String {
         lines.push(finish(&effect_clause(source, effect)));
     }
 
-    if let Some(aura) = &data.aura {
-        lines.extend(aura_text(aura));
+    if let Some(attachment) = &data.attachment {
+        lines.extend(attachment_text(data, attachment));
     }
 
     if let Some(text) = scripted {
@@ -457,41 +458,58 @@ fn static_verb(modification: &StaticModification) -> String {
     }
 }
 
-/// The Aura's enchant restriction (CR 303.4a) and its static grants — a
-/// power/toughness modification (CR 613.7c) and/or granted keywords (CR 613.1f) — as
-/// separate sentences. Each grant sentence is omitted when it grants nothing.
-fn aura_text(aura: &AuraGrant) -> Vec<String> {
-    let mut lines = vec![format!("Enchant {}.", object_noun(aura.enchant))];
-    if aura.power != 0 || aura.toughness != 0 {
-        lines.push(format!(
-            "Enchanted {} gets {:+}/{:+}.",
-            object_noun(aura.enchant),
-            aura.power,
-            aura.toughness
-        ));
+/// An attachment's restriction and its static grants — a power/toughness modification
+/// (CR 613.7c) and/or granted keywords and combat restrictions (CR 613.1f) — as separate
+/// sentences. Each grant sentence is omitted when it grants nothing.
+///
+/// The two kinds differ only in how the host is named. An Aura states its enchant
+/// restriction as a sentence of its own (CR 303.4a) and then speaks of "enchanted
+/// creature"; an Equipment has no such sentence — its restriction is a target on the
+/// equip ability, printed with that ability — and speaks of "equipped creature", which is
+/// the only thing an Equipment can ever be attached to (CR 301.5c) whatever its equip
+/// ability may target.
+fn attachment_text(data: &CardData, attachment: &Attachment) -> Vec<String> {
+    // The word a grant sentence calls the host, and — for an Aura only — the sentence
+    // that says what may be enchanted at all.
+    let (host, mut lines) = match attachment.kind {
+        AttachmentKind::Aura => (
+            format!("enchanted {}", object_noun(attachment.attach_to)),
+            vec![format!("Enchant {}.", object_noun(attachment.attach_to))],
+        ),
+        AttachmentKind::Equipment => ("equipped creature".to_string(), Vec::new()),
+    };
+    if attachment.power != 0 || attachment.toughness != 0 {
+        lines.push(sentence_case(&format!(
+            "{host} gets {:+}/{:+}.",
+            attachment.power, attachment.toughness
+        )));
     }
-    if !aura.keywords.is_empty() {
-        let words: Vec<&str> = aura.keywords.iter().map(|&kw| keyword_word(kw)).collect();
-        lines.push(format!(
-            "Enchanted {} has {}.",
-            object_noun(aura.enchant),
-            words.join(", ")
-        ));
+    if !attachment.keywords.is_empty() {
+        let words: Vec<&str> = attachment
+            .keywords
+            .iter()
+            .map(|&kw| keyword_word(kw))
+            .collect();
+        lines.push(sentence_case(&format!("{host} has {}.", words.join(", "))));
     }
-    if !aura.restrictions.is_empty() {
+    if !attachment.restrictions.is_empty() {
         // Restrictions are predicates rather than nouns, so they are joined into one
         // sentence about the host — "enchanted creature can't attack and can't block".
-        let clauses: Vec<String> = aura
+        let clauses: Vec<String> = attachment
             .restrictions
             .iter()
             .map(|&r| restriction_predicate(r))
             .collect();
-        lines.push(finish(&format!(
-            "enchanted {} {}",
-            object_noun(aura.enchant),
+        lines.push(sentence_case(&finish(&format!(
+            "{host} {}",
             clauses.join(" and ")
-        )));
+        ))));
     }
+    // The equip ability, composed from the same value the engine activates
+    // ([`equip_ability`]) and worded by the same [`ability_text`] that labels the dock
+    // button — so the line a player reads on the card and the line they click are one
+    // string, not two that agree today.
+    lines.extend(equip_ability(data).map(|ability| ability_text(&data.name, &ability)));
     lines
 }
 

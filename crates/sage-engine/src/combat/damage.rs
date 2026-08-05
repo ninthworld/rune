@@ -705,7 +705,7 @@ pub(crate) mod tests {
             r#"[
                 {"schema_version":1,"functional_id":"test_flight","name":"Test Flight",
                  "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{U}","colors":["blue"],
-                 "aura":{"enchant":"any_creature","keywords":["flying"]}},
+                 "attachment":{"kind":"aura","attach_to":"any_creature","keywords":["flying"]}},
                 {"schema_version":1,"functional_id":"test_corpse","name":"Test Corpse",
                  "types":["creature"],"subtypes":["Zombie"],"mana_cost":"{1}{B}","colors":["black"],
                  "power":2,"toughness":2}

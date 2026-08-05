@@ -17,10 +17,12 @@ mod removal_tests;
 /// implicit subject never reach this function — they route through
 /// [`apply_effect`].
 ///
-/// `source` is the permanent the resolving object came from, or `None` for a spell or
-/// an emblem — the same reference [`apply_effect`] takes, and needed here for the same
-/// reason: an effect that says "attacking" is asking about the attack its own source is
-/// making.
+/// `source` is the permanent the resolving object came from, or `None` for a spell (which
+/// has no permanent on the battlefield while it resolves) and for an emblem's ability — the
+/// same reference [`apply_effect`] takes. Two effects here read it, both because they name
+/// an object no player chose: an effect that says "attacking" is asking about the attack its
+/// own source is making, and [`Effect::Attach`] names *two* objects, the host it targets and
+/// the source it moves.
 pub(crate) fn apply_targeted_effect(
     state: &mut GameState,
     effect: &Effect,
@@ -410,6 +412,23 @@ pub(crate) fn apply_targeted_effect(
                 if let Some(player) = state.players.get_mut(seat.0) {
                     let cards: Vec<_> = player.graveyard.drain(..).collect();
                     player.exile.extend(cards);
+                }
+            }
+        }
+        // Attach the ability's own source to the targeted permanent — the equip action
+        // (CR 702.6b), and the one effect whose subject is not the target.
+        //
+        // Writing the one field *is* the move (CR 701.3c): an Equipment already attached
+        // to another creature becomes unattached from it and attached to this one in the
+        // same step, and because the grant is derived from the attachment on every read
+        // (ADR 0005), the old host loses it and the new host gains it with nothing to
+        // migrate. A source that has left the battlefield since the ability was activated
+        // is not there to attach, and the effect does nothing — the Equipment was
+        // destroyed in response, and the creature simply keeps standing there.
+        Effect::Attach { .. } => {
+            if let (Some(equipment), Target::Permanent(host)) = (source, target) {
+                if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == equipment) {
+                    perm.attached_to = Some(host);
                 }
             }
         }

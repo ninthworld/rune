@@ -12,8 +12,9 @@
   "colors": [
     "green"
   ],
-  "aura": {
-    "enchant": "any_creature",
+  "attachment": {
+    "kind": "aura",
+    "attach_to": "any_creature",
     "power": 7,
     "toughness": 7,
     "keywords": [

@@ -393,7 +393,7 @@ fn flight_db() -> CardDatabase {
         r#"[
             {"schema_version":1,"functional_id":"test_flight","name":"Test Flight",
              "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{U}","colors":["blue"],
-             "aura":{"enchant":"any_creature","keywords":["flying"]}},
+             "attachment":{"kind":"aura","attach_to":"any_creature","keywords":["flying"]}},
             {"schema_version":1,"functional_id":"test_ogre","name":"Test Ogre",
              "types":["creature"],"subtypes":["Ogre"],"mana_cost":"{2}{R}","colors":["red"],
              "power":4,"toughness":2}
@@ -409,7 +409,7 @@ fn restriction_db() -> CardDatabase {
         r#"[
             {"schema_version":1,"functional_id":"test_bonds","name":"Test Bonds",
              "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{2}{W}","colors":["white"],
-             "aura":{"enchant":"any_creature","restrictions":["cant_attack","cant_block"]}},
+             "attachment":{"kind":"aura","attach_to":"any_creature","restrictions":["cant_attack","cant_block"]}},
             {"schema_version":1,"functional_id":"test_evader","name":"Test Evader",
              "types":["creature"],"subtypes":["Horse"],"mana_cost":"{2}{G}","colors":["green"],
              "power":3,"toughness":3,"restrictions":[{"cant_be_blocked_by":"black"}]}
