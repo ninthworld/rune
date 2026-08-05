@@ -464,6 +464,33 @@ The resulting fixed modifier is what the layer system folds in, so a Zombie that
 the turn does not give the shrunk creature its toughness back — which is what the printed card
 means and what a re-evaluated selector would get wrong.
 
+`gain_life_by_count` and `deal_damage_by_count` are the same idea for the other two amounts,
+and take the same `count_of` selector:
+
+```json
+{ "kind": "gain_life_by_count", "player_ref": "controller", "amount_per": 1,
+  "count_of": { "card_type": "creature" } }
+{ "kind": "deal_damage_by_count", "target": "any_creature_an_opponent_controls",
+  "amount_per": 1, "count_of": { "subtype": "Goblin" } }
+```
+
+Each takes X **once, on resolution**, from the board as it stands then, and each keeps the
+subject vocabulary its fixed sibling has — a `player_ref` for life, and the same
+target/`player_ref`/`affects` choice for damage. The count is relative to the effect's
+*controller* even when the life or the damage goes elsewhere, because "each creature you
+control" says "you" and the subject clause does not change who that is.
+
+### Emptying a graveyard, and the top of a library
+
+`exile_graveyard` moves **every** card of the named player's graveyard to exile at once. Its
+subject is the same `player_ref` a mill takes, with the same rule — `target_player` fills a
+slot and `each_opponent` does not — and an already-empty graveyard is a legal subject and a
+resolution that does nothing.
+
+`put_on_top_of_library` is the third destination a permanent can be pushed to, beside
+`return_to_hand`'s hand and `exile`'s exile. A **token** put anywhere but the battlefield
+ceases to exist (CR 111.7), so a bounced token never arrives in the library either.
+
 ### Mana in any combination of colours
 
 `add_mana_any_color` produces mana whose **colours the player chooses**, one point at a time:

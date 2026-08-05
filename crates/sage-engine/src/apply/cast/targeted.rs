@@ -59,6 +59,26 @@ pub(crate) fn apply_targeted_effect(
         // record the damage (including nonlethal) as a `DamageDealt` event. A
         // class-subject damage effect chose no target and never reaches here — it is
         // applied by [`apply_effect`] over the class it names.
+        // The count-derived damage verb: X is taken here, on resolution (CR 608.2),
+        // from the board as it stands — the same moment the fixed verb's amount is read
+        // off the card, and the same seams take it from there.
+        Effect::DealDamageByCount {
+            amount_per,
+            count_of,
+            ..
+        } => {
+            let count = crate::condition::count_permanents(state, count_of, controller, db);
+            let amount = amount_per.saturating_mul(count);
+            match target {
+                Target::Permanent(id) => {
+                    state.deal_damage_to_permanent(id, amount, db);
+                }
+                Target::Player(seat) => {
+                    state.deal_damage_to_player(seat, amount);
+                }
+                Target::Card(_) | Target::Spell(_) => {}
+            }
+        }
         Effect::DealDamage { amount, .. } => match target {
             Target::Permanent(id) => {
                 state.deal_damage_to_permanent(id, *amount, db);
@@ -311,7 +331,27 @@ pub(crate) fn apply_targeted_effect(
         | Effect::RestrictAll { .. }
         | Effect::PumpSelf { .. }
         | Effect::RestrictSelf { .. }
+        | Effect::GainLifeByCount { .. }
         | Effect::PutCountersOnSelf { .. } => {}
+        // "Target player's graveyard": the targeting form of the same verb, routed here
+        // for the reason a targeted mill is — the reference chose a seat, and this is
+        // where a chosen seat arrives.
+        Effect::ExileGraveyard { .. } => {
+            if let Target::Player(seat) = target {
+                if let Some(player) = state.players.get_mut(seat.0) {
+                    let cards: Vec<_> = player.graveyard.drain(..).collect();
+                    player.exile.extend(cards);
+                }
+            }
+        }
+        // Put the targeted permanent on top of its owner's library (CR 400.7). A token
+        // put anywhere but the battlefield ceases to exist (CR 111.7), so it never
+        // arrives — which the one leaves-battlefield seam below already knows.
+        Effect::PutOnTopOfLibrary { .. } => {
+            if let Target::Permanent(id) = target {
+                state.put_permanent_on_top_of_library(id);
+            }
+        }
     }
 }
 

@@ -151,19 +151,9 @@ pub(crate) fn apply_effect(
         // marked on each creature for the lethal-damage SBA (CR 704.5g), lost life for
         // each player (CR 120.3a). A targeting subject named a target instead and is
         // applied through [`apply_targeted_effect`], so it is a no-op here.
-        Effect::DealDamage { subject, amount } => match subject {
-            DamageSubject::Target(_) => {}
-            DamageSubject::Players(player_ref) => {
-                for seat in non_targeting_subjects(state, *player_ref, controller) {
-                    state.deal_damage_to_player(seat, *amount);
-                }
-            }
-            DamageSubject::Permanents(affects) => {
-                for id in permanents_in(state, affects, controller, db) {
-                    state.deal_damage_to_permanent(id, *amount, db);
-                }
-            }
-        },
+        Effect::DealDamage { subject, amount } => {
+            apply_class_damage(state, subject, *amount, controller, db);
+        }
         // A mass, non-targeting until-end-of-turn modification (CR 611.2c): the
         // affected class is enumerated **once, here**, and one modifier is keyed to
         // each permanent found. Freezing the set is the point — an anthem is
@@ -276,7 +266,45 @@ pub(crate) fn apply_effect(
         | Effect::GrantKeyword { .. }
         | Effect::ReturnCardToBattlefield { .. }
         | Effect::ReturnCardToHand { .. }
+        | Effect::PutOnTopOfLibrary { .. }
         | Effect::Restrict { .. } => {}
+        // X is taken **once, on resolution** (CR 608.2), from the board as it stands
+        // then — a creature that dies afterwards does not take the life back. The count
+        // is relative to the effect's controller even when the life goes elsewhere,
+        // because "each creature you control" says "you".
+        Effect::GainLifeByCount {
+            player_ref,
+            amount_per,
+            count_of,
+        } => {
+            let count = crate::condition::count_permanents(state, count_of, controller, db);
+            let delta = i32::try_from(amount_per.saturating_mul(count)).unwrap_or(i32::MAX);
+            for seat in non_targeting_subjects(state, *player_ref, controller) {
+                state.change_life(seat, delta);
+            }
+        }
+        // The same count, feeding damage instead. A targeting subject never reaches
+        // here — it is applied by [`apply_targeted_effect`] — so this arm handles only
+        // the class forms.
+        Effect::DealDamageByCount {
+            subject,
+            amount_per,
+            count_of,
+        } => {
+            let count = crate::condition::count_permanents(state, count_of, controller, db);
+            let amount = amount_per.saturating_mul(count);
+            apply_class_damage(state, subject, amount, controller, db);
+        }
+        // Every card of the named graveyard, at once. An empty graveyard is a legal
+        // subject and a resolution that does nothing.
+        Effect::ExileGraveyard { player_ref } => {
+            for seat in non_targeting_subjects(state, *player_ref, controller) {
+                if let Some(player) = state.players.get_mut(seat.0) {
+                    let cards: Vec<_> = player.graveyard.drain(..).collect();
+                    player.exile.extend(cards);
+                }
+            }
+        }
     }
 }
 
@@ -401,5 +429,34 @@ pub(crate) fn non_targeting_subjects(
             .map(|(seat, _)| PlayerId(seat))
             .collect(),
         PlayerRef::TargetPlayer | PlayerRef::TargetOpponent => Vec::new(),
+    }
+}
+
+/// Deal `amount` damage to whatever `subject` names **as a class**, on behalf of
+/// `controller` (CR 120.3).
+///
+/// The shared body of the fixed and the count-derived damage verbs: by the time either
+/// reaches here the amount is a number, so nothing below knows which one it came from.
+/// A [`DamageSubject::Target`] chose a target and is applied by
+/// [`apply_targeted_effect`] instead, so it is a no-op here.
+fn apply_class_damage(
+    state: &mut GameState,
+    subject: &DamageSubject,
+    amount: u32,
+    controller: PlayerId,
+    db: &CardDatabase,
+) {
+    match subject {
+        DamageSubject::Target(_) => {}
+        DamageSubject::Players(player_ref) => {
+            for seat in non_targeting_subjects(state, *player_ref, controller) {
+                state.deal_damage_to_player(seat, amount);
+            }
+        }
+        DamageSubject::Permanents(affects) => {
+            for id in permanents_in(state, affects, controller, db) {
+                state.deal_damage_to_permanent(id, amount, db);
+            }
+        }
     }
 }

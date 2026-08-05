@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "functional_id": "dwarven_priest",
+  "name": "Dwarven Priest",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Dwarf",
+    "Cleric"
+  ],
+  "mana_cost": "{3}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 2,
+  "toughness": 4,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "gain_life_by_count",
+          "player_ref": "controller",
+          "amount_per": 1,
+          "count_of": {
+            "card_type": "creature"
+          }
+        }
+      ]
+    }
+  ]
+}

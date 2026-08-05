@@ -40,6 +40,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "dwarven_priest",
+    "collector_number": "11",
+    "rarity": "common"
+  },
+  {
     "functional_id": "gallant_cavalry",
     "collector_number": "12",
     "rarity": "common"
@@ -108,6 +113,11 @@
     "functional_id": "oreskos_swiftclaw",
     "collector_number": "31",
     "rarity": "common"
+  },
+  {
+    "functional_id": "remorseful_cleric",
+    "collector_number": "33",
+    "rarity": "rare"
   },
   {
     "functional_id": "revitalize",
@@ -237,6 +247,11 @@
   {
     "functional_id": "tolarian_scholar",
     "collector_number": "80",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "totally_lost",
+    "collector_number": "81",
     "rarity": "common"
   },
   {
@@ -497,6 +512,11 @@
   {
     "functional_id": "volcanic_dragon",
     "collector_number": "167",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "volley_veteran",
+    "collector_number": "168",
     "rarity": "uncommon"
   },
   {

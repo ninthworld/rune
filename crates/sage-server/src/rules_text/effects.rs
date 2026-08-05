@@ -240,6 +240,32 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             "return {} to its owner's hand",
             target_phrase(*target, *targets)
         ),
+        // A count-derived amount says the *rule* rather than a number, because the
+        // number does not exist until the effect resolves.
+        Effect::GainLifeByCount {
+            player_ref,
+            amount_per,
+            count_of,
+        } => format!(
+            "{} {amount_per} life for each {}",
+            conjugate(*player_ref, "gain"),
+            count_noun(count_of)
+        ),
+        Effect::DealDamageByCount {
+            subject,
+            amount_per,
+            count_of,
+        } => format!(
+            "{source} deals {amount_per} damage to {} for each {}",
+            damage_recipient(subject),
+            count_noun(count_of)
+        ),
+        Effect::ExileGraveyard { player_ref } => {
+            format!("exile {}'s graveyard", possessive_subject(*player_ref))
+        }
+        Effect::PutOnTopOfLibrary { target } => {
+            format!("put {} on top of its owner's library", target_noun(*target))
+        }
         Effect::PumpByCount {
             target,
             power_per,
@@ -332,6 +358,31 @@ fn count_subject(count: &PermanentCount) -> String {
         (None, Some(card_type)) => format!("{}s", card_type_word(card_type)),
         (None, None) => "permanents".to_string(),
     };
+    match count.scope {
+        CountScope::YouControl => format!("{noun} you control"),
+        CountScope::OpponentsControl => format!("{noun} your opponents control"),
+        CountScope::Any => noun,
+    }
+}
+
+/// The same class in the **singular**, for the distributive "for each …" of a
+/// count-derived amount: "1 life for each creature you control".
+///
+/// A separate function from [`count_subject`] for the reason [`mass_recipient`] is
+/// separate from [`mass_subject`] — English puts a class in the plural when it is
+/// counted and in the singular after "each", and one function per position keeps both
+/// exhaustive.
+fn count_noun(count: &PermanentCount) -> String {
+    let mut noun = String::new();
+    if let Some(color) = count.color {
+        noun.push_str(color.word());
+        noun.push(' ');
+    }
+    match (&count.subtype, count.card_type) {
+        (Some(subtype), _) => noun.push_str(subtype),
+        (None, Some(card_type)) => noun.push_str(card_type_word(card_type)),
+        (None, None) => noun.push_str("permanent"),
+    }
     match count.scope {
         CountScope::YouControl => format!("{noun} you control"),
         CountScope::OpponentsControl => format!("{noun} your opponents control"),

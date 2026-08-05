@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (178)
+## Supported cards (182)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -55,6 +55,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `druid_of_the_cowl` | Druid of the Cowl | functional definition |
 | `dryad_greenseeker` | Dryad Greenseeker | functional definition |
 | `duress` | Duress | functional definition |
+| `dwarven_priest` | Dwarven Priest | functional definition |
 | `electrify` | Electrify | functional definition |
 | `elvish_clancaller` | Elvish Clancaller | functional definition |
 | `elvish_rejuvenator` | Elvish Rejuvenator | functional definition |
@@ -134,6 +135,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `prodigious_growth` | Prodigious Growth | functional definition |
 | `psychic_symbiont` | Psychic Symbiont | functional definition |
 | `recollect` | Recollect | functional definition |
+| `remorseful_cleric` | Remorseful Cleric | functional definition |
 | `revitalize` | Revitalize | functional definition |
 | `rhox_oracle` | Rhox Oracle | functional definition |
 | `rustwing_falcon` | Rustwing Falcon | functional definition |
@@ -174,6 +176,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `titanic_growth` | Titanic Growth | functional definition |
 | `tolarian_scholar` | Tolarian Scholar | functional definition |
 | `tormenting_voice` | Tormenting Voice | functional definition |
+| `totally_lost` | Totally Lost | functional definition |
 | `tranquil_expanse` | Tranquil Expanse | functional definition |
 | `trumpet_blast` | Trumpet Blast | functional definition |
 | `trusty_packbeast` | Trusty Packbeast | functional definition |
@@ -187,6 +190,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `vine_mare` | Vine Mare | functional definition |
 | `vivien_reid` | Vivien Reid | functional definition |
 | `volcanic_dragon` | Volcanic Dragon | functional definition |
+| `volley_veteran` | Volley Veteran | functional definition |
 | `walking_corpse` | Walking Corpse | functional definition |
 | `wall_of_mist` | Wall of Mist | functional definition |
 | `wall_of_vines` | Wall of Vines | functional definition |
@@ -211,9 +215,9 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Damage prevention | no prevention shield or damage-replacement layer |
 | Effects that ask a player to name a colour, type, or card | no player choice recorded on a permanent or spell |
 | Effects that let a player choose the order of cards put back on a library | a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random |
-| Effects that return cards from a graveyard to a hand | a targeted creature card returns from a graveyard to the battlefield; there is no graveyard-to-hand effect |
+| Effects that return a card from a graveyard to a zone other than a hand or the battlefield | a targeted card returns from a graveyard to a hand or to the battlefield, and a whole graveyard can be exiled; nothing else moves a card out of one |
 | Effects that untap, or that stop a permanent untapping | no untap effect and no skipped-untap flag |
-| Effects whose amount is derived from anything but a count of permanents | an amount may scale with a count of permanents; cards in a zone, life totals, and mana values feed nothing |
+| Effects whose amount is derived from anything but a count of permanents | an amount may scale with a count of permanents — power/toughness, life, or damage; cards in a zone, life totals, and mana values feed nothing |
 | Emblems with an activated ability | an emblem carries static and triggered abilities only; nothing offers a way to activate one |
 | Equipment | no equip action or attachment outside the Aura model |
 | Fight, and other effects taking two differently-specified targets | one effect's target slots all share a single spec, so two differently-specified slots are unwritable |
@@ -230,7 +234,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Replacement effects | no replacement-effect layer in the rules engine |
 | Selectors that filter by power or toughness | no numeric power or toughness threshold in a target, trigger, or mass-effect selector; only a mid-resolution card choice may cap printed power |
 | Spells with X in their cost | mana costs are fixed strings with no X announcement |
-| Static abilities that affect anything but creatures their controller controls | the continuous-effect selector names one class, so a permanent or an emblem may modify no other |
+| Static abilities that affect anything but the source or creatures its controller controls | the continuous-effect selector names the source or one class of that controller's creatures, so a permanent or an emblem may modify no other |
 | The legend-rule choice among duplicates | CR 704.5j applies, but which copy survives is a deterministic policy (the newest) rather than the controller's choice |
 | Tokens created attacking, or as copies of another permanent | a created token enters untapped or tapped and out of combat; there is no copiable-values model |
 | Trigger selectors that filter by a keyword | observed-permanent selectors filter by subtype, controller, and token-ness only |
