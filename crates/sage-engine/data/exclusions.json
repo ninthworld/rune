@@ -92,10 +92,6 @@
     "blocker": "mana is produced and spent, never converted; nothing changes the colour of mana already in a pool"
   },
   {
-    "name": "Maximum hand size modification",
-    "blocker": "the cleanup discard uses a fixed hand size"
-  },
-  {
     "name": "Modal spells that choose one",
     "blocker": "no mode choice on announcement"
   },

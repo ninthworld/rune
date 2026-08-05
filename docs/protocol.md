@@ -41,7 +41,7 @@ redacted before serialization.
 | `you` | `PlayerId` | Receiver’s opaque player id |
 | `my_hand` | `CardView[]` | Receiver’s visible hand |
 | `revealed` | `CardView[]` | Cards from a **hidden zone this receiver alone is currently being shown** (issue #604) — the candidates of a mid-resolution choice they are answering. Omitted when empty, which is every view outside that window; never present on another seat’s view or on a `SpectatorView` |
-| `me` | `SelfView` | Receiver’s `life` and `library_size` |
+| `me` | `SelfView` | Receiver’s `life`, `library_size`, and `maximum_hand_size` |
 | `opponents` | `OpponentView[]` | Public opponent state and hidden-zone counts |
 | `battlefield` | `Permanent[]` | Public permanents and computed state |
 | `emblems` | `Emblem[]` | The emblems in the game (CR 114, issue #620); omitted when empty |
@@ -126,7 +126,17 @@ arrives only at game over, and the bounded `log` window is not reconstructable, 
 may stand in for it). `connected` is the **one flag on the wire whose omitted value is
 `true`**: the server holds a disconnected seat open, so the flag rides the wire only as
 `false` and a client must test `=== false` rather than falsiness — an older server that
-never sends it means every seat is connected. `ai` carries the lobby’s `SeatView.ai` into
+never sends it means every seat is connected.
+
+`SelfView.maximum_hand_size` (issue #745) is how many cards the receiver may still be
+holding when the cleanup step ends (CR 402.2). It is either `{"cards": n}` or the string
+`"unlimited"`, and never a number standing in for "no maximum": a sentinel would be a
+value nobody printed that every reader would have to recognise. It is stated because the
+cleanup discard is the one turn-based action a player performs on their own hand, and a
+client that assumed the default seven would tell a player holding nine cards they are
+about to discard two when a permanent on the battlefield says otherwise. Omitted, it means
+`{"cards": 7}` — not a guess, but exactly what every game an older server could run
+actually used. `ai` carries the lobby’s `SeatView.ai` into
 the match so the marker is not lost at the hand-off; it is public presentation information
 and exposes nothing about the AI’s decisions or policy. Both default to
 connected/human when omitted. `Permanent` likewise gains `is_commander`, the server-computed

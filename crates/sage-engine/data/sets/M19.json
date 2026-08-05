@@ -775,6 +775,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "reliquary_tower",
+    "collector_number": "254",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "stone_quarry",
     "collector_number": "256",
     "rarity": "common"

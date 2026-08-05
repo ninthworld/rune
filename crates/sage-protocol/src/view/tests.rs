@@ -278,6 +278,7 @@ fn game_view_round_trips_through_json() {
             eliminated: false,
             connected: true,
             ai: false,
+            maximum_hand_size: crate::MaximumHandSize::default(),
         },
         opponents: vec![OpponentView {
             player_id: "p2".into(),

@@ -45,9 +45,9 @@ pub use ability::{
     activation_taps, group_target_counts, is_emblem_ability, is_loyalty_ability, is_mana_ability,
     maximum_targets, minimum_targets, target_counts, Ability, CardFilter, Chooser, Condition, Cost,
     CountScope, DamageSubject, Effect, FoundDestination, GraveyardCardClass, GraveyardScope,
-    ManaRestriction, MassAffects, ObservedPermanent, ObservedSpell, PermanentCount, PlayerRef,
-    StaticAffects, StaticCondition, StaticModification, Target, TargetCount, TargetGroup,
-    TargetSpec, TriggerCondition, TriggerStep, TurnScope,
+    ManaRestriction, MassAffects, ObservedPermanent, ObservedSpell, PermanentCount,
+    PlayerModification, PlayerRef, StaticAffects, StaticCondition, StaticModification, Target,
+    TargetCount, TargetGroup, TargetSpec, TriggerCondition, TriggerStep, TurnScope,
 };
 pub use actions::{
     auto_payment, discard_cost, is_plain_mana_source, mana_ability_pips, payment_pips,
@@ -86,7 +86,9 @@ pub use id::{
 pub use mana::{parse_mana_cost, Color, ManaCost, ManaPool, RestrictedMana, SpendPurpose};
 pub use mulligan::{bottom_requirement, BottomRequirement, MulliganState, PlayerMulligan};
 pub use phase::Step;
-pub use player::{LossReason, Player, MAX_HAND_SIZE, STARTING_LIFE};
+pub use player::{
+    maximum_hand_size, over_hand_size, LossReason, Player, MAX_HAND_SIZE, STARTING_LIFE,
+};
 pub use scripted::scripted_rules_text;
 pub use setup::{
     GameSetup, PlayerSetup, SetupError, DEFAULT_STARTING_HAND_SIZE, DEFAULT_STARTING_LIFE,

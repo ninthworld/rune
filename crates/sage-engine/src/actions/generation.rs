@@ -6,7 +6,6 @@ use crate::choice::ChoiceQuestion;
 use crate::commander::commander_tax_cost;
 use crate::mana::parse_mana_cost;
 use crate::phase::Step;
-use crate::player::MAX_HAND_SIZE;
 use crate::state::GameState;
 use crate::CardDatabase;
 
@@ -145,8 +144,10 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
     if state.step == Step::Cleanup {
         let mut actions = Vec::new();
         if priority == state.active_player {
-            if let Some(player) = state.players.get(priority.0) {
-                if player.hand.len() > MAX_HAND_SIZE {
+            // The same predicate the step gate asks, so a step the game paused at
+            // always has discards to offer and one it walked through never does.
+            if crate::over_hand_size(state, priority, db) {
+                if let Some(player) = state.players.get(priority.0) {
                     for &card in &player.hand {
                         actions.push(Action::Discard { card });
                     }

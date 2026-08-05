@@ -31,7 +31,7 @@ use sage_protocol::{
     ActionDestination, CardType, CardView, ChooseAction, CommanderDamage as CommanderDamageView,
     CommanderIdentity as CommanderIdentityView, CommanderTax as CommanderTaxView, Counter,
     Emblem as EmblemView, GameLogEntry, GameLogEvent, GameOverReason, GameResult as GameResultView,
-    GameView, LogBlock, LogDamageTarget, LogEntity, ManaOption, OpponentView,
+    GameView, LogBlock, LogDamageTarget, LogEntity, ManaOption, MaximumHandSize, OpponentView,
     Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, SpectatorView, StackItem,
     StackItemKind, StackTarget, TargetChoice, TargetRequirement, ValidAction, ZonePile,
 };
@@ -223,6 +223,13 @@ pub(crate) fn personalized_view(
             // Room knowledge, defaulted here and overlaid by the room (see `opponents`).
             connected: true,
             ai: false,
+            // CR 402.2, from the engine's own predicate — the same one the cleanup step
+            // and the discard offer read, so a hand the client says is safe is a hand
+            // the server will not ask about.
+            maximum_hand_size: match sage_engine::maximum_hand_size(state, viewer, db) {
+                Some(max) => MaximumHandSize::Cards(count(max)),
+                None => MaximumHandSize::Unlimited,
+            },
         })
         .unwrap_or_default();
 

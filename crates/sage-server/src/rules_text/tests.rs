@@ -969,3 +969,14 @@ fn a_mass_tap_names_whose_creatures_and_the_step_they_sit_out() {
          their next untap step."
     );
 }
+
+#[test]
+fn a_player_subject_static_says_what_is_true_of_you() {
+    // The only ability the formatter composes whose subject is a person rather than an
+    // object, so it is the only one with no source name in it at all.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "reliquary_tower"),
+        "You have no maximum hand size.\n{T}: Add {C}."
+    );
+}
