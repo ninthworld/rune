@@ -28,8 +28,8 @@
     "blocker": "every attacker and blocker assigns damage equal to its current power"
   },
   {
-    "name": "Conditions other than a permanent count, a mill, or a discard",
-    "blocker": "the intervening-if vocabulary names three questions and grows one variant at a time"
+    "name": "Conditions other than a permanent count, a mill, a discard, or life gained this turn",
+    "blocker": "a permanent count cannot require distinct names, and no condition asks what one permanent has done — on the intervening-if side or the continuous one"
   },
   {
     "name": "Cost reduction and cost increase effects",

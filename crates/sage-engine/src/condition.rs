@@ -6,15 +6,18 @@
 //!
 //! - a question about the **board** ([`Condition::ControlsAtLeast`]) counts permanents,
 //!   the way every mass selector does;
-//! - a question about **what this resolution has already done**
-//!   ([`Condition::MilledThisWay`], [`Condition::DiscardedThisWay`]) reads the events the
-//!   resolution recorded, over a window that begins where the resolution did.
+//! - a question about **what has already happened**
+//!   ([`Condition::MilledThisWay`], [`Condition::DiscardedThisWay`],
+//!   [`Condition::GainedLifeThisTurn`]) reads the events that were recorded, over a
+//!   window that is either the resolution or the turn.
 //!
 //! The second kind is why this is a module rather than a match arm. A snapshot cannot
 //! answer it: a Zombie already in a graveyard is indistinguishable from one milled a
-//! moment ago, and a hand that is one card lighter is indistinguishable from one that was
-//! never that big. Reading the recorded events is the same discipline the life-gain and
-//! cast trigger conditions already follow (ADR 0007), applied to a narrower window.
+//! moment ago, a hand that is one card lighter is indistinguishable from one that was
+//! never that big, and a life total that did not move is indistinguishable from a life
+//! total that went up and came back down. Reading the recorded events is the same
+//! discipline the life-gain and cast trigger conditions already follow (ADR 0007),
+//! applied to a window this module chooses.
 
 use crate::ability::{CardFilter, Condition, CountScope, PermanentCount};
 use crate::id::PlayerId;
@@ -46,6 +49,9 @@ pub(crate) fn condition_holds(
             matches!(event, GameEvent::CardsDiscarded { player, count }
                 if *player == controller && *count > 0)
         }),
+        Condition::GainedLifeThisTurn { amount } => {
+            life_gained_this_turn(state, controller) >= *amount
+        }
     }
 }
 
@@ -125,6 +131,49 @@ fn events_since(state: &GameState, from: u64) -> impl Iterator<Item = &GameEvent
         .iter()
         .filter(move |entry| entry.sequence >= from)
         .map(|entry| &entry.event)
+}
+
+/// How much life `player` has **gained** so far this turn (CR 118.3).
+///
+/// A sum of the turn's gains, not a net and not a maximum: three gained twice is six,
+/// and three gained and then lost is still three. Only a positive
+/// [`GameEvent::LifeChanged`] is a gain — a payment or a loss is a negative one, and
+/// damage to a player is recorded as damage rather than as a life change, so neither
+/// ever reaches this.
+#[must_use]
+fn life_gained_this_turn(state: &GameState, player: PlayerId) -> u32 {
+    events_since(state, turn_start(state))
+        .filter_map(|event| match event {
+            GameEvent::LifeChanged {
+                player: gained_by,
+                amount,
+            } if *gained_by == player && *amount > 0 => u32::try_from(*amount).ok(),
+            _ => None,
+        })
+        .fold(0, u32::saturating_add)
+}
+
+/// The log sequence this turn's events begin at — the window a "…this turn" condition
+/// reads.
+///
+/// Found by walking **backwards** to the last step the *previous* turn recorded, rather
+/// than forwards to the first step this one did. The log is a bounded ring, and the two
+/// differ exactly when it has dropped entries: a forward search would then find the
+/// earliest surviving step of this turn and wrongly exclude everything the ring still
+/// holds from before it. Walking backwards degrades the other way — with no previous
+/// turn left in the window every surviving entry belongs to this turn, which is what
+/// `0` says. A turn that overflowed the ring outright can therefore under-count its
+/// earliest gains and can never over-count.
+#[must_use]
+fn turn_start(state: &GameState) -> u64 {
+    state
+        .log
+        .iter()
+        .rev()
+        .find(|entry| {
+            matches!(entry.event, GameEvent::StepChanged { turn, .. } if turn != state.turn)
+        })
+        .map_or(0, |entry| entry.sequence + 1)
 }
 
 /// Whether the printed card `card` satisfies `filter`.

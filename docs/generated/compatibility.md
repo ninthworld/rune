@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (189)
+## Supported cards (191)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -140,8 +140,10 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `prodigious_growth` | Prodigious Growth | functional definition |
 | `psychic_symbiont` | Psychic Symbiont | functional definition |
 | `recollect` | Recollect | functional definition |
+| `regal_bloodlord` | Regal Bloodlord | functional definition |
 | `reliquary_tower` | Reliquary Tower | functional definition |
 | `remorseful_cleric` | Remorseful Cleric | functional definition |
+| `resplendent_angel` | Resplendent Angel | functional definition |
 | `revitalize` | Revitalize | functional definition |
 | `rhox_oracle` | Rhox Oracle | functional definition |
 | `rustwing_falcon` | Rustwing Falcon | functional definition |
@@ -217,7 +219,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Auras that enchant a player or land, or move between hosts | only enchant-creature Auras granting P/T, keywords, or combat restrictions are modeled |
 | Casting from a zone other than the hand, the command zone, or a one-turn graveyard permission | no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure) |
 | Combat damage assigned by a value other than power | every attacker and blocker assigns damage equal to its current power |
-| Conditions other than a permanent count, a mill, or a discard | the intervening-if vocabulary names three questions and grows one variant at a time |
+| Conditions other than a permanent count, a mill, a discard, or life gained this turn | a permanent count cannot require distinct names, and no condition asks what one permanent has done — on the intervening-if side or the continuous one |
 | Cost reduction and cost increase effects | no cost-modification layer |
 | Damage prevention | no prevention shield or damage-replacement layer |
 | Effects that ask a player to name a colour, type, or card | no player choice recorded on a permanent or spell |

@@ -39,9 +39,11 @@ sacrificing or discarding is unwritable. `TriggerCondition` observes zone change
 source's and, through `ObservedPermanent`, another permanent's), attack declaration, life
 gain, casting, and step boundaries — but not an activation, and its selectors filter by
 subtype, controller, and token-ness only. A condition *is* attachable now, as
-`Effect::Conditional`, and `Condition` names three questions: a permanent count, a mill by
-this resolution, and a discard by this resolution. It is judged as the effect is reached
-(CR 608.2), which is an if-clause on an effect rather than the CR 603.4 trigger check.
+`Effect::Conditional`, and `Condition` names four questions: a permanent count, a mill by
+this resolution, a discard by this resolution, and life gained this turn. It is judged as
+the effect is reached (CR 608.2), which is an if-clause on an effect rather than the
+CR 603.4 trigger check. Every question but the count reads recorded events over a window —
+the resolution, or the turn — because none of them can be answered from a snapshot.
 An effect's amount may scale with a count of permanents (`count_of`); cards in a zone, life
 totals, and mana values feed nothing.
 

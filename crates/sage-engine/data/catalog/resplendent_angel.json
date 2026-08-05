@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "functional_id": "resplendent_angel",
+  "name": "Resplendent Angel",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Angel"
+  ],
+  "mana_cost": "{1}{W}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 3,
+  "toughness": 3,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "beginning_of_step": {
+          "step": "end_step",
+          "whose_turn": "each"
+        }
+      },
+      "effects": [
+        {
+          "kind": "conditional",
+          "condition": {
+            "kind": "gained_life_this_turn",
+            "amount": 5
+          },
+          "then": [
+            {
+              "kind": "create_token",
+              "token": {
+                "name": "Angel",
+                "types": [
+                  "creature"
+                ],
+                "subtypes": [
+                  "Angel"
+                ],
+                "colors": [
+                  "white"
+                ],
+                "power": 4,
+                "toughness": 4,
+                "keywords": [
+                  "flying",
+                  "vigilance"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
