@@ -1045,3 +1045,64 @@ fn a_life_gained_condition_states_its_threshold_only_when_there_is_one() {
          this turn, you create a 4/4 white Angel creature token with flying and vigilance."
     );
 }
+
+#[test]
+fn the_watched_draw_attack_and_activation_each_have_words() {
+    // A draw and an activation, from the two real cards that watch them. The activation
+    // sentence states the CR 605.3a exclusion the condition enforces structurally,
+    // because a player reading the card has to know that a tapped land will give the
+    // watcher nothing.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "psychic_corrosion"),
+        "Whenever you draw a card, each opponent mills two cards."
+    );
+    assert_eq!(
+        text_of(&db, "runic_armasaur"),
+        "Whenever an opponent activates a nonmana ability of a creature or land, \
+         you may draw a card."
+    );
+
+    // The watching attack condition and the keyword filter have no authorable card
+    // yet — the M19 cards that want them need vocabulary that does not exist — so
+    // their words are asserted from an inline definition rather than by inventing a
+    // card for the catalog.
+    let inline = CardDatabase::from_json(
+        r#"[
+        {"schema_version":1,"functional_id":"test_sky_watch","name":"Test Sky Watch",
+         "types":["enchantment"],"mana_cost":"{2}{U}","colors":["blue"],
+         "abilities":[{"type":"triggered",
+            "event":{"permanent_attacks":{"scope":"any_creature","keyword":"flying"}},
+            "effects":[{"kind":"draw_card","count":1}]}]},
+        {"schema_version":1,"functional_id":"test_small_guard","name":"Test Small Guard",
+         "types":["enchantment"],"mana_cost":"{1}{W}","colors":["white"],
+         "abilities":[{"type":"triggered",
+            "event":{"permanent_enters":{"scope":"creatures_you_control","except_this":true,
+                "keyword":"defender","max_power":2}},
+            "effects":[{"kind":"gain_life","player_ref":"controller","amount":1}]}]},
+        {"schema_version":1,"functional_id":"test_watch_all","name":"Test Watch All",
+         "types":["enchantment"],"mana_cost":"{W}","colors":["white"],
+         "abilities":[{"type":"triggered",
+            "event":{"ability_activated":{}},
+            "effects":[{"kind":"gain_life","player_ref":"controller","amount":1}]}]}
+        ]"#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        text_of(&inline, "test_sky_watch"),
+        "Whenever a creature with flying attacks, draw a card."
+    );
+    // Two qualifiers on one class join rather than repeating the preposition.
+    assert_eq!(
+        text_of(&inline, "test_small_guard"),
+        "Whenever another creature you control with defender and power 2 or less \
+         enters the battlefield, you gain 1 life."
+    );
+    // An activation watcher that names no types and no seat drops both clauses rather
+    // than inventing them.
+    assert_eq!(
+        text_of(&inline, "test_watch_all"),
+        "Whenever a player activates a nonmana ability, you gain 1 life."
+    );
+}

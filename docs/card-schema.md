@@ -878,9 +878,9 @@ permanent, are out of scope and listed in the exclusions.
 
 ### Trigger conditions
 
-Conditions about the ability's **own source** are authored as bare strings:
-`self_enters_battlefield`, `self_dies`, `self_attacks`, `you_gain_life`. A condition that
-carries a selector wraps it:
+Conditions about the ability's **own source**, and about its controller, are authored as
+bare strings: `self_enters_battlefield`, `self_dies`, `self_attacks`, `you_gain_life`,
+`you_draw_card`. A condition that carries a selector wraps it:
 
 ```json
 { "type": "triggered",
@@ -888,15 +888,33 @@ carries a selector wraps it:
   "effects": [{ "kind": "lose_life", "player_ref": "each_opponent", "amount": 1 }] }
 ```
 
-`permanent_enters` and `permanent_dies` take an observed-permanent selector — `scope` is
+`permanent_enters`, `permanent_dies`, and `permanent_attacks` take an observed-permanent
+selector — `scope` is
 `creatures_you_control` or `any_creature`, with an optional `subtype`, an `except_this` that
 means "another", and a `nontoken` that excludes tokens (CR 111 — a token is not a card),
 which is what keeps a card that makes tokens off a loop with its own trigger. An optional
 `max_power` narrows it to creatures of at most that power — "whenever another creature you
-control **with power 2 or less** enters" — read through the computed characteristics of
-the state the event happened in, so a creature that entered pumped is judged by what it was
-then and one that died shrunk by what it was as it died.
+control **with power 2 or less** enters" — and an optional `keyword` to creatures that have
+it, "whenever a creature **with flying** attacks". Both are read through the computed
+characteristics of the state the event happened in, so a creature that entered pumped is
+judged by what it was then, one that died shrunk by what it was as it died, and one that was
+*granted* flying is a flier for exactly as long as the grant lasts.
 `you_cast_spell` takes `enchantment` or `instant_or_sorcery`.
+
+`ability_activated` watches a player activating an ability (CR 602.2), with two optional
+filters: `activator` is `any` (the default) or `opponents`, and `source_types` names the
+permanent types whose abilities count, satisfied by any one of them.
+
+```json
+{ "type": "triggered",
+  "event": { "ability_activated": { "activator": "opponents",
+                                    "source_types": ["creature", "land"] } },
+  "effects": [{ "kind": "may", "effects": [{ "kind": "draw_card", "count": 1 }] }] }
+```
+
+**A mana ability never fires it** (CR 605.3a), and no card has to say so: the condition
+looks at the objects a transition put on the stack, and a mana ability resolves without
+ever using one.
 
 `beginning_of_step` is about the turn rather than about an object:
 
@@ -915,10 +933,12 @@ same card.
 
 Every condition is observed by diffing the state before and after an action, never by a
 listener. A condition about an **event** rather than a board position (life gain, casting,
-a step beginning) is read from the events that transition recorded, because gaining and
-losing the same life leaves every total unchanged and still triggered — and because one
+a draw, a step beginning) is read from the events that transition recorded, because gaining
+and losing the same life leaves every total unchanged and still triggered — and because one
 pass of priority can walk through several steps at once, so comparing the step before with
-the step after would miss every crossing but the last.
+the step after would miss every crossing but the last. A draw is the same shape: a card
+drawn and then discarded leaves the hand the size it was, and each card drawn is its own
+event, so a two-card draw fires a draw-watcher twice.
 
 A watching condition reports **how many times** it was met, not whether: two creatures
 dying at once trigger a death-watcher twice. A watching ability must still be on the

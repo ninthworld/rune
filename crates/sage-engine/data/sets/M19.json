@@ -225,6 +225,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "psychic_corrosion",
+    "collector_number": "68",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "salvager_of_secrets",
     "collector_number": "70",
     "rarity": "common"
@@ -658,6 +663,11 @@
     "functional_id": "rhox_oracle",
     "collector_number": "198",
     "rarity": "common"
+  },
+  {
+    "functional_id": "runic_armasaur",
+    "collector_number": "200",
+    "rarity": "rare"
   },
   {
     "functional_id": "thornhide_wolves",

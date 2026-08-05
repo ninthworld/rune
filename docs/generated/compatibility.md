@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (193)
+## Supported cards (195)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -139,6 +139,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `plummet` | Plummet | functional definition |
 | `poison_tip_archer` | Poison-Tip Archer | functional definition |
 | `prodigious_growth` | Prodigious Growth | functional definition |
+| `psychic_corrosion` | Psychic Corrosion | functional definition |
 | `psychic_symbiont` | Psychic Symbiont | functional definition |
 | `reclamation_sage` | Reclamation Sage | functional definition |
 | `recollect` | Recollect | functional definition |
@@ -148,6 +149,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `resplendent_angel` | Resplendent Angel | functional definition |
 | `revitalize` | Revitalize | functional definition |
 | `rhox_oracle` | Rhox Oracle | functional definition |
+| `runic_armasaur` | Runic Armasaur | functional definition |
 | `rustwing_falcon` | Rustwing Falcon | functional definition |
 | `salvager_of_secrets` | Salvager of Secrets | functional definition |
 | `sarkhan_fireblood` | Sarkhan, Fireblood | functional definition |
@@ -207,15 +209,14 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `wall_of_vines` | Wall of Vines | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (35)
+## Excluded (33)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
 | Excluded | Blocker |
 | --- | --- |
-| Abilities that trigger on an ability being activated | no trigger condition observes an activation |
-| Abilities that trigger on another permanent attacking | the attack trigger condition observes only its own source |
-| Abilities that trigger on drawing a card | trigger conditions observe zone changes, attack declaration, life gain, casting, and step boundaries |
+| Abilities that trigger on a mana ability being activated | the activation condition watches the objects a transition put on the stack, which a mana ability never reaches (CR 605.3a) |
+| Abilities that trigger on someone else drawing a card | the draw trigger condition observes only its own controller's draws |
 | Activation costs paid by sacrificing another permanent, or by discarding | a cast carries its chosen sacrifices and discards on the action, but an activation names only its source, its ability, and its targets |
 | Attack and block requirements, and blocking an additional creature | a declaration can be restricted but never required, and a blocker blocks one attacker |
 | Auras that enchant a player or land, or move between hosts | only enchant-creature Auras granting P/T, keywords, or combat restrictions are modeled |
@@ -247,4 +248,3 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Static abilities that affect anything but the source or creatures its controller controls | the continuous-effect selector names the source or one class of that controller's creatures, so a permanent or an emblem may modify no other |
 | The legend-rule choice among duplicates | CR 704.5j applies, but which copy survives is a deterministic policy (the newest) rather than the controller's choice |
 | Tokens created attacking, or as copies of another permanent | a created token enters untapped or tapped and out of combat; there is no copiable-values model |
-| Trigger selectors that filter by a keyword | observed-permanent selectors filter by subtype, controller, and token-ness only |

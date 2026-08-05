@@ -4,11 +4,14 @@
 //! never via listeners or observers (crate `AGENTS.md`). [`crate::apply_action`]
 //! calls [`collect_triggers`] and puts each resulting [`Trigger`] on the stack.
 
-use crate::ability::{Ability, ObservedPermanent, ObservedSpell, TriggerCondition, TurnScope};
+use crate::ability::{
+    Ability, ActivatorScope, ObservedActivation, ObservedPermanent, ObservedSpell,
+    TriggerCondition, TurnScope,
+};
 use crate::card::abilities_of_permanent;
 use crate::card_type::CardType;
 use crate::id::{CardInstanceId, PermanentId, PlayerId};
-use crate::stack::{AbilitySource, StackId, StackObjectKind};
+use crate::stack::{AbilityOrigin, AbilitySource, StackId, StackObject, StackObjectKind};
 use crate::state::{GameEvent, GameState, Permanent};
 use crate::{CardDatabase, Effect};
 
@@ -249,6 +252,92 @@ fn died<'a>(before: &'a GameState, after: &GameState) -> Vec<&'a Permanent> {
         .collect()
 }
 
+/// The permanents **declared as attackers** across the diff: attacking in `after` and
+/// not attacking in `before`.
+///
+/// The [`TriggerCondition::SelfAttacks`] test applied to the whole board, reading the
+/// one field a declaration writes, so "attacks" means exactly the same thing whether an
+/// ability watches itself or its neighbours: a creature that was already attacking when
+/// the transition began has not attacked again, and one that merely became tapped has
+/// not attacked at all.
+fn attacked<'a>(before: &GameState, after: &'a GameState) -> impl Iterator<Item = &'a Permanent> {
+    let already: Vec<PermanentId> = before
+        .battlefield
+        .iter()
+        .filter(|p| p.attacking.is_some())
+        .map(|p| p.id)
+        .collect();
+    after
+        .battlefield
+        .iter()
+        .filter(move |p| p.attacking.is_some() && !already.contains(&p.id))
+}
+
+/// The objects **put on the stack** by this transition: present in `after`, absent from
+/// `before`. A [`StackId`] is minted once and never reused, so its presence is the whole
+/// test.
+fn pushed_onto_stack<'a>(
+    before: &GameState,
+    after: &'a GameState,
+) -> impl Iterator<Item = &'a StackObject> {
+    let ids: Vec<StackId> = before.stack.iter().map(|object| object.id).collect();
+    after
+        .stack
+        .iter()
+        .filter(move |object| !ids.contains(&object.id))
+}
+
+/// Whether the stack object `object` is an **activation** that `observes` notices, for
+/// an ability on `source`.
+///
+/// Three questions, in the order that makes the cheapest one first: was this object put
+/// there by a player activating an ability of a permanent (CR 602.2 — an
+/// [`AbilityOrigin::Activated`] push, which a triggered ability and a cast spell are
+/// not), was that player one this selector watches, and is the permanent whose ability
+/// it was one of the named types.
+///
+/// The activating permanent is read from `before`, the state it was activated in: an
+/// activation is announced from the battlefield, and a cost paid by sacrificing the
+/// source (CR 701.17) leaves nothing in `after` to ask.
+fn observed_activation_matches(
+    observes: &ObservedActivation,
+    object: &StackObject,
+    source: Watcher<'_>,
+    before: &GameState,
+    db: &CardDatabase,
+) -> bool {
+    let StackObjectKind::Ability {
+        source: AbilitySource::Permanent(activated),
+        origin: AbilityOrigin::Activated,
+        ..
+    } = &object.kind
+    else {
+        return false;
+    };
+    match observes.activator {
+        ActivatorScope::Any => {}
+        ActivatorScope::Opponents => {
+            if object.controller == source.controller {
+                return false;
+            }
+        }
+    }
+    if observes.source_types.is_empty() {
+        return true;
+    }
+    let Some(perm) = before.battlefield.iter().find(|p| p.id == *activated) else {
+        return false;
+    };
+    let Some(face) = perm.printed.face(db) else {
+        return false;
+    };
+    // "A creature **or** land": any one of the named types satisfies it.
+    observes
+        .source_types
+        .iter()
+        .any(|&card_type| face.has_type(card_type))
+}
+
 /// Whether the permanent `perm`, which has left the battlefield across this
 /// transition, left it by **dying** (CR 700.4) rather than by being bounced, exiled,
 /// or removed with its controller.
@@ -338,6 +427,17 @@ fn observed_matches(
     if let Some(max) = observes.max_power() {
         let power = crate::characteristics::characteristics(seen_in, candidate.id, db).power;
         if power.is_none_or(|power| power > max) {
+            return false;
+        }
+    }
+    // Computed too, and for the same reason: a keyword grant is a CR 613 layer-6 effect
+    // the engine implements, so the printed face is the wrong reading — a creature given
+    // flying is one a flying watcher notices, and stops being one when the grant ends.
+    if let Some(keyword) = observes.keyword() {
+        if !crate::characteristics::characteristics(seen_in, candidate.id, db)
+            .keywords
+            .contains(&keyword)
+        {
             return false;
         }
     }
@@ -435,6 +535,18 @@ fn fire_count(
             .into_iter()
             .filter(|candidate| observed_matches(observes, candidate, watcher, before, db))
             .count(),
+        // CR 508.1: the watching form of `SelfAttacks`, counted over every attacker the
+        // declaration produced. The selector is judged in `after` — the state the
+        // declaration made — so a creature granted flying beforehand really is one a
+        // flying watcher notices.
+        TriggerCondition::PermanentAttacks(observes) => {
+            if !watcher.still_present(after) {
+                return 0;
+            }
+            attacked(before, after)
+                .filter(|candidate| observed_matches(observes, candidate, watcher, after, db))
+                .count()
+        }
         TriggerCondition::YouGainLife => {
             if !watcher.still_present(after) {
                 return 0;
@@ -469,6 +581,37 @@ fn fire_count(
                             TurnScope::Each => true,
                         })
                 })
+                .count()
+        }
+        // CR 121.1: the controller drew. Counted over the cards the recorded draw
+        // events say actually moved, which is the only reading that survives a
+        // draw-and-discard (the hand is the size it was) and an empty library (nothing
+        // was drawn, and the game is being lost instead). Each card is its own event as
+        // far as a watcher is concerned (CR 121.2), so the counts are summed rather
+        // than the events counted.
+        TriggerCondition::YouDrawCard => {
+            if !watcher.still_present(after) {
+                return 0;
+            }
+            events_in(before, after)
+                .filter_map(|event| match event {
+                    GameEvent::CardsDrawn { player, count } if *player == watcher.controller => {
+                        Some(usize::try_from(*count).unwrap_or(usize::MAX))
+                    }
+                    _ => None,
+                })
+                .sum()
+        }
+        // CR 602.2: a player activated an ability. Observed on the stack rather than in
+        // the event log, because the push is where the activation is recorded — and
+        // because a mana ability never reaches the stack at all (CR 605.3a), which is
+        // what makes tapping a land for mana silent here without any card saying so.
+        TriggerCondition::AbilityActivated(observes) => {
+            if !watcher.still_present(after) {
+                return 0;
+            }
+            pushed_onto_stack(before, after)
+                .filter(|object| observed_activation_matches(observes, object, watcher, before, db))
                 .count()
         }
         TriggerCondition::YouCastSpell(spell) => {

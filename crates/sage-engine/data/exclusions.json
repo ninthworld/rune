@@ -1,15 +1,11 @@
 [
   {
-    "name": "Abilities that trigger on an ability being activated",
-    "blocker": "no trigger condition observes an activation"
+    "name": "Abilities that trigger on a mana ability being activated",
+    "blocker": "the activation condition watches the objects a transition put on the stack, which a mana ability never reaches (CR 605.3a)"
   },
   {
-    "name": "Abilities that trigger on another permanent attacking",
-    "blocker": "the attack trigger condition observes only its own source"
-  },
-  {
-    "name": "Abilities that trigger on drawing a card",
-    "blocker": "trigger conditions observe zone changes, attack declaration, life gain, casting, and step boundaries"
+    "name": "Abilities that trigger on someone else drawing a card",
+    "blocker": "the draw trigger condition observes only its own controller's draws"
   },
   {
     "name": "Attack and block requirements, and blocking an additional creature",
@@ -134,9 +130,5 @@
   {
     "name": "Tokens created attacking, or as copies of another permanent",
     "blocker": "a created token enters untapped or tapped and out of combat; there is no copiable-values model"
-  },
-  {
-    "name": "Trigger selectors that filter by a keyword",
-    "blocker": "observed-permanent selectors filter by subtype, controller, and token-ness only"
   }
 ]
