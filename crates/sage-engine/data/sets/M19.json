@@ -125,6 +125,11 @@
     "rarity": "rare"
   },
   {
+    "functional_id": "resplendent_angel",
+    "collector_number": "34",
+    "rarity": "mythic"
+  },
+  {
     "functional_id": "revitalize",
     "collector_number": "35",
     "rarity": "common"
@@ -698,6 +703,11 @@
     "functional_id": "psychic_symbiont",
     "collector_number": "221",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "regal_bloodlord",
+    "collector_number": "222",
+    "rarity": "rare"
   },
   {
     "functional_id": "satyr_enchanter",

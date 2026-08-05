@@ -465,11 +465,26 @@ The conditions are:
 | `controls_at_least` | Whether the controller controls at least `count` permanents matching `permanents` |
 | `milled_this_way` | Whether a card matching `filter` was milled **by this resolution** |
 | `discarded_this_way` | Whether the controller discarded a card during this resolution |
+| `gained_life_this_turn` | Whether the controller gained at least `amount` life **this turn** |
 
-The last two read the events this resolution recorded rather than the zones, and that is the
-point: a Zombie already in the graveyard was not milled this way, and a graveyard scan could
-never tell the two apart. The window survives a suspension, so a discard that stops to ask a
-question still answers `discarded_this_way` correctly when it resumes.
+Every one but the first reads the recorded events rather than the zones or the totals, and
+that is the point: a Zombie already in the graveyard was not milled this way, and a graveyard
+scan could never tell the two apart. The window survives a suspension, so a discard that stops
+to ask a question still answers `discarded_this_way` correctly when it resumes.
+
+```json
+{ "kind": "conditional",
+  "condition": { "kind": "gained_life_this_turn", "amount": 5 },
+  "then":      [{ "kind": "create_token", "token": { "name": "Angel", "types": ["creature"] } }] }
+```
+
+`gained_life_this_turn` is the one whose window is the **turn** rather than the resolution,
+and it reads the turn's life-gain *events* for the same reason the `you_gain_life` trigger
+does: gaining three life and losing it again leaves every total where it started and is still
+three life gained, so no reading of a life total — against the turn's opening total or any
+other — could answer it. `amount` is an inclusive lower bound on the turn's gains **in
+total**, so two gains of three satisfy a threshold of five; `1` is the plain "if you gained
+life this turn" and is written that way in the generated rules text.
 
 A `permanents` selector is a small product — `scope` (`you_control`, `opponents_control`,
 `any`; default `you_control`), optional `card_type`, optional `subtype`, optional `color`,
@@ -676,9 +691,9 @@ battlefield, with nothing ever put on the stack — an anthem or a lord:
   The conditions are `controls_at_least` — the same `permanents` selector an
   intervening-if counts, with `count` defaulting to the "an" of "as long as you control
   **an** artifact" — and `source_is_attacking`. It is a separate vocabulary from the
-  `Condition` an `Effect::Conditional` takes, because two of that one's three variants
-  ask what *this resolution* has already done and a continuous ability is not a
-  resolution: it has no window to read and no start to measure from.
+  `Condition` an `Effect::Conditional` takes, because most of that one's variants ask what
+  a *resolution* or a *turn* has already done and a continuous ability is neither: it has
+  no window of its own to read and no start to measure from.
 
   A `permanents` selector gains a `color` alongside its `card_type` and `subtype`, which
   is what lets a card ask for "a **blue** creature" or "an **Ajani** planeswalker".

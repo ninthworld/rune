@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "functional_id": "regal_bloodlord",
+  "name": "Regal Bloodlord",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Vampire",
+    "Noble"
+  ],
+  "mana_cost": "{3}{B}{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 2,
+  "toughness": 4,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "beginning_of_step": {
+          "step": "end_step",
+          "whose_turn": "yours"
+        }
+      },
+      "effects": [
+        {
+          "kind": "conditional",
+          "condition": {
+            "kind": "gained_life_this_turn",
+            "amount": 1
+          },
+          "then": [
+            {
+              "kind": "create_token",
+              "token": {
+                "name": "Bat",
+                "types": [
+                  "creature"
+                ],
+                "subtypes": [
+                  "Bat"
+                ],
+                "colors": [
+                  "black"
+                ],
+                "power": 2,
+                "toughness": 2,
+                "keywords": [
+                  "flying"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

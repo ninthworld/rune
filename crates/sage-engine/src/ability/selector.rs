@@ -7,9 +7,9 @@ use super::*;
 ///
 /// A closed, plain-data predicate evaluated against the state as the conditional is
 /// reached, deliberately separate from [`TargetSpec`] and [`CardFilter`]: those select
-/// *objects*, this answers a *question about the game*. Two of the three are about what
-/// the resolution itself has already done, which is the whole reason a condition is a
-/// thing rather than an inline count.
+/// *objects*, this answers a *question about the game*. Most of them are about what has
+/// already *happened* rather than about a board position, which is the whole reason a
+/// condition is a thing rather than an inline count.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Condition {
@@ -39,6 +39,26 @@ pub enum Condition {
     /// empty hand. Read from the recorded events over the same window
     /// [`Self::MilledThisWay`] uses.
     DiscardedThisWay,
+    /// The effect's controller has **gained at least `amount` life this turn** — the
+    /// `if you gained life this turn` of a Bat-making end step, and the `if you gained
+    /// 5 or more life this turn` of an Angel-making one.
+    ///
+    /// The first condition here whose window is the **turn** rather than the
+    /// resolution, and it reads the recorded [`GameEvent::LifeChanged`](crate::GameEvent)
+    /// entries for exactly the reason [`TriggerCondition::YouGainLife`] does: the
+    /// question is about the *events*, not the net. Gaining three life and losing it
+    /// again leaves every total where it started and is still three life gained, so a
+    /// comparison of life totals — against the turn's opening total or any other — would
+    /// answer no to a card that means yes. Life lost is not a gain, and damage is never
+    /// one, so neither subtracts from the amount.
+    ///
+    /// Only a lower bound exists, because only a lower bound is printed, and it counts
+    /// the turn's gains **in total** rather than any single one: a card that gained
+    /// three twice has gained five or more.
+    GainedLifeThisTurn {
+        /// The threshold, inclusive. `1` is the plain "if you gained life this turn".
+        amount: u32,
+    },
 }
 
 /// A class of permanents to **count**, relative to an effect's controller.

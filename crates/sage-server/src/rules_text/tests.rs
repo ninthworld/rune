@@ -997,3 +997,21 @@ fn an_additional_cost_states_what_it_takes_before_what_the_spell_does() {
         "Flying, trample\nAs an additional cost to cast this spell, sacrifice a creature."
     );
 }
+
+#[test]
+fn a_life_gained_condition_states_its_threshold_only_when_there_is_one() {
+    // "if you gained life this turn" and "if you gained five or more life this turn"
+    // are one condition with a number, and the number is written only when it is more
+    // than the "any" a card leaves unsaid.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "regal_bloodlord"),
+        "Flying\nAt the beginning of your end step, if you gained life this turn, \
+         you create a 2/2 black Bat creature token with flying."
+    );
+    assert_eq!(
+        text_of(&db, "resplendent_angel"),
+        "Flying\nAt the beginning of each end step, if you gained five or more life \
+         this turn, you create a 4/4 white Angel creature token with flying and vigilance."
+    );
+}

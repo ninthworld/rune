@@ -471,6 +471,12 @@ fn condition_clause(condition: &Condition) -> String {
             )
         }
         Condition::DiscardedThisWay => "a card is discarded this way".to_string(),
+        // A threshold of one is the "any" a card leaves unwritten: "if you gained life
+        // this turn", never "if you gained 1 or more life this turn".
+        Condition::GainedLifeThisTurn { amount: 1 } => "you gained life this turn".to_string(),
+        Condition::GainedLifeThisTurn { amount } => {
+            format!("you gained {} or more life this turn", number(*amount))
+        }
     }
 }
 
