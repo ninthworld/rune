@@ -171,9 +171,7 @@ pub(crate) fn target_spec_prompt(spec: TargetSpec) -> &'static str {
         TargetSpec::AnyArtifactEnchantmentOrCreatureWithFlying => {
             "Choose target artifact, enchantment, or creature with flying"
         }
-        TargetSpec::CreatureCardInYourGraveyard { .. } => {
-            "Choose target creature card in your graveyard"
-        }
+        TargetSpec::CardInGraveyard { .. } => "Choose target card in a graveyard",
     }
 }
 

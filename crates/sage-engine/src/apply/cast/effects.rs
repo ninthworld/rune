@@ -275,6 +275,7 @@ pub(crate) fn apply_effect(
         | Effect::PumpByCount { .. }
         | Effect::GrantKeyword { .. }
         | Effect::ReturnCardToBattlefield { .. }
+        | Effect::ReturnCardToHand { .. }
         | Effect::Restrict { .. } => {}
     }
 }

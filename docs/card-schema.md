@@ -198,26 +198,44 @@ resolution (CR 608.2b). The classes are `any_player`, `any_player_or_planeswalke
 `any_creature_with_flying`, `any_tapped_creature`, `any_artifact`, `any_enchantment`,
 `any_artifact_or_enchantment`, `any_artifact_enchantment_or_creature_with_flying`,
 `any_land`, `spell_on_stack`, `creature_spell_on_stack`, `any_target`, and
-`creature_card_in_your_graveyard`.
+`card_in_graveyard`.
 
 `any_player_or_planeswalker` is the burn class that names both halves and no creature —
 `Lava Axe deals 5 damage to target player or planeswalker`. It is neither `any_player`
 (which would drop the planeswalker half) nor `any_target` (which would add creatures the
 card cannot hit).
 
-`creature_card_in_your_graveyard` is the one class that names a **card in a zone** rather than
-an object on the battlefield or the stack, so it is the only one a chosen card target
-satisfies. It carries a cap, and is written in the enum's tagged form rather than as a bare
-string:
+`card_in_graveyard` is the one class that names a **card in a zone** rather than an object
+on the battlefield or the stack, so it is the only one a chosen card target satisfies. It is
+written in the enum's tagged form rather than as a bare string, and carries the three
+independent things a printed card says about such a target:
 
 ```json
 { "kind": "return_card_to_battlefield",
-  "target": { "creature_card_in_your_graveyard": { "max_mana_value": 2 } } }
+  "target": { "card_in_graveyard": { "class": "creature", "max_mana_value": 2 } } }
+{ "kind": "return_card_to_hand",
+  "target": { "card_in_graveyard": { "class": "instant_or_sorcery" } } }
+{ "kind": "return_card_to_battlefield", "tapped": true,
+  "target": { "card_in_graveyard": { "scope": "any", "class": "creature" } } }
 ```
 
-`max_mana_value` compares against the card's mana value (CR 202.3), derived from its cost
-through the same parser every payment uses; `null` means any. A graveyard is public, so its
-candidates are enumerable exactly as a battlefield's are.
+- `scope` is `yours` (the default — "from **your** graveyard") or `any` ("from **a**
+  graveyard"). The difference is most of what such a card costs to print, so it is a field
+  rather than an assumption.
+- `class` is `any` (the default), `creature`, `instant_or_sorcery`, `artifact`, or `land`,
+  read off the card's **printed** types — a card in a graveyard is not on the battlefield,
+  so it has no computed characteristics to read instead. It is a small enum of its own
+  rather than the `filter` the mid-resolution choices take, because a target spec is
+  threaded by value through every targeting path and a filter carrying a subtype string
+  would cost all of them that for no card in this set.
+- `max_mana_value` compares against the card's mana value (CR 202.3), derived from its cost
+  through the same parser every payment uses; absent means any.
+
+A graveyard is public, so its candidates are enumerable exactly as a battlefield's are.
+`return_card_to_hand` sends its target to that card's **owner's** hand (CR 400.7), and is
+the second effect after `put_counters` that may name more than one target — "return up to
+two target creature cards from your graveyard to your hand" is one effect with a two-slot
+group.
 
 Every class is evaluated **relative to the choosing object's controller**, which is what
 lets one authored card mean "you" from either seat. Classes read through the computed

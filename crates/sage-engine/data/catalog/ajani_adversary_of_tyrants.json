@@ -49,7 +49,8 @@
         {
           "kind": "return_card_to_battlefield",
           "target": {
-            "creature_card_in_your_graveyard": {
+            "card_in_graveyard": {
+              "class": "creature",
               "max_mana_value": 2
             }
           }

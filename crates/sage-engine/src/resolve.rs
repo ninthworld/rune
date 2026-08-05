@@ -5,7 +5,7 @@
 //! re-checks the object's chosen targets against current state (CR 608.2b), then
 //! routes a spell by its card types and applies an ability's effects.
 
-use crate::ability::{Effect, Target, TargetGroup, TargetSpec};
+use crate::ability::{Effect, GraveyardScope, Target, TargetGroup, TargetSpec};
 use crate::apply::{apply_effect, apply_targeted_effect};
 use crate::card::{spell_effects_of, CardData, Keyword};
 use crate::card_type::CardType;
@@ -193,15 +193,24 @@ pub(crate) fn target_is_legal(
         // names a card rather than a battlefield object, so it is the only one a
         // `Target::Card` satisfies — and it is scoped to *your* graveyard, so an
         // opponent's identically-named creature card is never a candidate.
-        (TargetSpec::CreatureCardInYourGraveyard { max_mana_value }, Target::Card(instance)) => {
-            state
-                .players
-                .get(controller.0)
-                .and_then(|player| player.graveyard.iter().find(|card| card.id == instance))
+        (
+            TargetSpec::CardInGraveyard {
+                scope,
+                class,
+                max_mana_value,
+            },
+            Target::Card(instance),
+        ) => {
+            let seats: Box<dyn Iterator<Item = &crate::player::Player>> = match scope {
+                GraveyardScope::Yours => Box::new(state.players.get(controller.0).into_iter()),
+                GraveyardScope::Any => Box::new(state.players.iter()),
+            };
+            seats
+                .flat_map(|player| player.graveyard.iter())
+                .find(|card| card.id == instance)
                 .and_then(|card| db.card(card.card))
                 .is_some_and(|data| {
-                    data.has_type(CardType::Creature)
-                        && max_mana_value.is_none_or(|cap| data.mana_value() <= cap)
+                    class.matches(data) && max_mana_value.is_none_or(|cap| data.mana_value() <= cap)
                 })
         }
         // "Any target" (CR 115.4): legal against a player still in the game, a creature

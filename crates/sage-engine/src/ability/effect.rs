@@ -552,6 +552,33 @@ pub enum Effect {
     ReturnCardToBattlefield {
         /// What this effect is allowed to target (a card in a graveyard).
         target: TargetSpec,
+        /// Whether it arrives **tapped** — the creating effect's say, exactly as it is
+        /// for a token (CR 111.1). Defaults to untapped.
+        #[serde(default)]
+        tapped: bool,
+    },
+    /// Return the **card in a graveyard** this effect targets to its owner's **hand**
+    /// (`Return target creature card from your graveyard to your hand.`) — the
+    /// graveyard→hand counterpart of [`Effect::ReturnCardToBattlefield`], and the
+    /// card-in-a-zone counterpart of [`Effect::ReturnToHand`], which bounces a
+    /// permanent.
+    ///
+    /// Its target is a [`Target::Card`] against a [`TargetSpec::CardInGraveyard`], so
+    /// the class of card and whose graveyard it sits in are the spec's business rather
+    /// than this effect's. The card goes to its **owner's** hand (CR 400.7), which for
+    /// every card in a graveyard is the player whose graveyard that is.
+    ///
+    /// The one effect here that may name **more than one** target beside
+    /// [`Effect::PutCounters`]: `return up to two target creature cards from your
+    /// graveyard to your hand` is one effect with a two-slot group, applied once per
+    /// target still legal on resolution.
+    ReturnCardToHand {
+        /// What each of this effect's slots is allowed to target (a card in a
+        /// graveyard).
+        target: TargetSpec,
+        /// How many targets are chosen. Defaults to exactly one.
+        #[serde(default)]
+        targets: TargetCount,
     },
     /// Give the single creature this effect targets `power_per`/`toughness_per` **per
     /// permanent** matching `count_of`, until end of turn — the count-derived
@@ -638,7 +665,10 @@ impl Effect {
             // of the same effect leaves the count at its default of one.
             Effect::PutCounters {
                 target, targets, ..
-            } => Some(TargetGroup::counted(*target, *targets)),
+            }
+            | Effect::ReturnCardToHand { target, targets } => {
+                Some(TargetGroup::counted(*target, *targets))
+            }
             Effect::Tap { target }
             | Effect::CounterSpell { target }
             | Effect::Destroy { target }
@@ -647,7 +677,7 @@ impl Effect {
             | Effect::PumpByCount { target, .. }
             | Effect::GrantKeyword { target, .. }
             | Effect::Restrict { target, .. }
-            | Effect::ReturnCardToBattlefield { target }
+            | Effect::ReturnCardToBattlefield { target, .. }
             | Effect::ReturnToHand { target } => Some(TargetGroup::single(*target)),
             // A player-subject effect targets exactly when its reference does
             // (CR 115.1) — "target opponent loses 2 life" fills a slot, "each

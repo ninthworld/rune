@@ -276,17 +276,23 @@ pub(crate) fn apply_targeted_effect(
         // own enters-the-battlefield replacements, and is seen by the trigger diff
         // exactly as a resolving creature spell is. The caller has re-checked that the
         // card is still there and still matches (CR 608.2b).
-        Effect::ReturnCardToBattlefield { .. } => {
+        Effect::ReturnCardToBattlefield { tapped, .. } => {
             if let Target::Card(instance) = target {
-                let card = state.players.get_mut(controller.0).and_then(|player| {
-                    player
-                        .graveyard
-                        .iter()
-                        .position(|card| card.id == instance)
-                        .map(|pos| player.graveyard.remove(pos))
-                });
-                if let Some(card) = card {
-                    state.put_card_onto_battlefield(card, controller, false, None, db);
+                if let Some(card) = take_from_a_graveyard(state, instance) {
+                    state.put_card_onto_battlefield(card, controller, *tapped, None, db);
+                }
+            }
+        }
+        // The graveyard→hand counterpart. The card goes to its **owner's** hand
+        // (CR 400.7), which for a card in a graveyard is the seat whose graveyard it
+        // was in — so a reanimation-to-hand of an opponent's card hands it back to
+        // them, which is what every card printed this way says.
+        Effect::ReturnCardToHand { .. } => {
+            if let Target::Card(instance) = target {
+                if let Some((owner, card)) = take_from_a_graveyard_with_owner(state, instance) {
+                    if let Some(player) = state.players.get_mut(owner.0) {
+                        player.hand.push(card);
+                    }
                 }
             }
         }
@@ -307,4 +313,34 @@ pub(crate) fn apply_targeted_effect(
         | Effect::RestrictSelf { .. }
         | Effect::PutCountersOnSelf { .. } => {}
     }
+}
+
+/// Remove the card `instance` from whichever graveyard holds it, or `None` when no
+/// graveyard does.
+///
+/// The one lookup both graveyard-return effects share. It searches **every** seat
+/// rather than the effect controller's own because a
+/// [`TargetSpec::CardInGraveyard`](crate::TargetSpec) may name any of them
+/// ([`GraveyardScope::Any`](crate::GraveyardScope)); which graveyards were *legal* was
+/// settled at announcement and re-checked on resolution, so by the time the card is
+/// being moved the only question left is where it is.
+fn take_from_a_graveyard(
+    state: &mut GameState,
+    instance: crate::id::CardInstanceId,
+) -> Option<crate::id::CardInstance> {
+    take_from_a_graveyard_with_owner(state, instance).map(|(_, card)| card)
+}
+
+/// [`take_from_a_graveyard`], paired with the seat it came out of — the card's owner
+/// (CR 400.7), and therefore whose hand it goes back to.
+fn take_from_a_graveyard_with_owner(
+    state: &mut GameState,
+    instance: crate::id::CardInstanceId,
+) -> Option<(PlayerId, crate::id::CardInstance)> {
+    for (seat, player) in state.players.iter_mut().enumerate() {
+        if let Some(pos) = player.graveyard.iter().position(|card| card.id == instance) {
+            return Some((PlayerId(seat), player.graveyard.remove(pos)));
+        }
+    }
+    None
 }

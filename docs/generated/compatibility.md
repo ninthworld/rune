@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (165)
+## Supported cards (170)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -72,6 +72,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `gigantosaurus` | Gigantosaurus | functional definition |
 | `goblin_instigator` | Goblin Instigator | functional definition |
 | `goblin_motivator` | Goblin Motivator | functional definition |
+| `gravewaker` | Gravewaker | functional definition |
 | `greenwood_sentinel` | Greenwood Sentinel | functional definition |
 | `guttersnipe` | Guttersnipe | functional definition |
 | `havoc_devils` | Havoc Devils | functional definition |
@@ -98,6 +99,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `llanowar_elves` | Llanowar Elves | functional definition |
 | `loxodon_line_breaker` | Loxodon Line Breaker | functional definition |
 | `luminous_bonds` | Luminous Bonds | functional definition |
+| `macabre_waltz` | Macabre Waltz | functional definition |
 | `make_a_stand` | Make a Stand | functional definition |
 | `manalith` | Manalith | functional definition |
 | `meandering_river` | Meandering River | functional definition |
@@ -124,9 +126,11 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `poison_tip_archer` | Poison-Tip Archer | functional definition |
 | `prodigious_growth` | Prodigious Growth | functional definition |
 | `psychic_symbiont` | Psychic Symbiont | functional definition |
+| `recollect` | Recollect | functional definition |
 | `revitalize` | Revitalize | functional definition |
 | `rhox_oracle` | Rhox Oracle | functional definition |
 | `rustwing_falcon` | Rustwing Falcon | functional definition |
+| `salvager_of_secrets` | Salvager of Secrets | functional definition |
 | `sarkhan_fireblood` | Sarkhan, Fireblood | functional definition |
 | `sarkhan_s_dragonfire` | Sarkhan's Dragonfire | functional definition |
 | `satyr_enchanter` | Satyr Enchanter | functional definition |
@@ -164,6 +168,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `tormenting_voice` | Tormenting Voice | functional definition |
 | `tranquil_expanse` | Tranquil Expanse | functional definition |
 | `trumpet_blast` | Trumpet Blast | functional definition |
+| `trusty_packbeast` | Trusty Packbeast | functional definition |
 | `two_headed_zombie` | Two-Headed Zombie | functional definition |
 | `uncomfortable_chill` | Uncomfortable Chill | functional definition |
 | `valiant_knight` | Valiant Knight | functional definition |

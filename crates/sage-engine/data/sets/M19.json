@@ -125,6 +125,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "trusty_packbeast",
+    "collector_number": "41",
+    "rarity": "common"
+  },
+  {
     "functional_id": "valiant_knight",
     "collector_number": "42",
     "rarity": "rare"
@@ -192,6 +197,11 @@
   {
     "functional_id": "omenspeaker",
     "collector_number": "64",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "salvager_of_secrets",
+    "collector_number": "70",
     "rarity": "common"
   },
   {
@@ -283,6 +293,11 @@
     "functional_id": "liliana_untouched_by_death",
     "collector_number": "106",
     "rarity": "mythic"
+  },
+  {
+    "functional_id": "macabre_waltz",
+    "collector_number": "108",
+    "rarity": "common"
   },
   {
     "functional_id": "mind_rot",
@@ -563,6 +578,11 @@
     "functional_id": "prodigious_growth",
     "collector_number": "194",
     "rarity": "rare"
+  },
+  {
+    "functional_id": "recollect",
+    "collector_number": "197",
+    "rarity": "uncommon"
   },
   {
     "functional_id": "rhox_oracle",

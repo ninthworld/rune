@@ -24,9 +24,9 @@
 use sage_engine::{
     Ability, AdditionalCost, AuraGrant, CardData, CardFilter, CardType, Chooser, Color,
     CombatRestriction, Condition, Cost, CountScope, CounterKind, DamageSubject, Effect,
-    FoundDestination, Keyword, ManaRestriction, MassAffects, ObservedPermanent, ObservedSpell,
-    PermanentCount, PlayerRef, StaticAffects, StaticModification, TargetCount, TargetSpec,
-    TokenData, TriggerCondition, TriggerStep, TurnScope,
+    FoundDestination, GraveyardCardClass, GraveyardScope, Keyword, ManaRestriction, MassAffects,
+    ObservedPermanent, ObservedSpell, PermanentCount, PlayerRef, StaticAffects, StaticModification,
+    TargetCount, TargetSpec, TokenData, TriggerCondition, TriggerStep, TurnScope,
 };
 
 mod effects;

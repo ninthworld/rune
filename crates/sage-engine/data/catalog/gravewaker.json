@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "functional_id": "gravewaker",
+  "name": "Gravewaker",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Bird",
+    "Spirit"
+  ],
+  "mana_cost": "{4}{B}{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 5,
+  "toughness": 5,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{5}{B}{B}"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "return_card_to_battlefield",
+          "target": {
+            "card_in_graveyard": {
+              "class": "creature"
+            }
+          },
+          "tapped": true
+        }
+      ]
+    }
+  ]
+}

@@ -98,17 +98,53 @@ pub(super) fn target_noun(spec: TargetSpec) -> &'static str {
         TargetSpec::AnyArtifactEnchantmentOrCreatureWithFlying => {
             "target artifact, enchantment, or creature with flying"
         }
-        TargetSpec::CreatureCardInYourGraveyard {
-            max_mana_value: None,
-        } => "target creature card in your graveyard",
-        // The cap is the printed number, so the two mana values M19 needs read as the
-        // card prints them rather than as an interpolated string.
-        TargetSpec::CreatureCardInYourGraveyard {
-            max_mana_value: Some(2),
-        } => "target creature card with mana value 2 or less in your graveyard",
-        TargetSpec::CreatureCardInYourGraveyard { .. } => {
-            "target creature card of a limited mana value in your graveyard"
+        TargetSpec::CardInGraveyard { .. } => graveyard_noun(spec, true),
+    }
+}
+
+/// A graveyard target as a noun phrase — the one spec whose wording is a product of
+/// three fields rather than a fixed string, so it is composed rather than enumerated.
+///
+/// The mana-value cap is the printed number, so the values M19 needs read as the cards
+/// print them. Returns a `&'static str`, which is what forces the small table below:
+/// the phrasings are finite because the fields are, and a table keeps both callers
+/// borrowing rather than allocating a string per render.
+fn graveyard_noun(spec: TargetSpec, targeted: bool) -> &'static str {
+    let TargetSpec::CardInGraveyard {
+        scope,
+        class,
+        max_mana_value,
+    } = spec
+    else {
+        return "card in a graveyard";
+    };
+    let whose = match scope {
+        GraveyardScope::Yours => "your graveyard",
+        GraveyardScope::Any => "a graveyard",
+    };
+    let kind = match class {
+        GraveyardCardClass::Any => "card",
+        GraveyardCardClass::Creature => "creature card",
+        GraveyardCardClass::InstantOrSorcery => "instant or sorcery card",
+        GraveyardCardClass::Artifact => "artifact card",
+        GraveyardCardClass::Land => "land card",
+    };
+    match (targeted, whose, kind, max_mana_value) {
+        (true, "your graveyard", "creature card", Some(2)) => {
+            "target creature card with mana value 2 or less in your graveyard"
         }
+        (true, "your graveyard", "creature card", None) => "target creature card in your graveyard",
+        (true, "your graveyard", "instant or sorcery card", None) => {
+            "target instant or sorcery card in your graveyard"
+        }
+        (true, "your graveyard", "artifact card", None) => "target artifact card in your graveyard",
+        (true, "your graveyard", "land card", None) => "target land card in your graveyard",
+        (true, "your graveyard", "card", None) => "target card in your graveyard",
+        (true, "a graveyard", "creature card", None) => "target creature card in a graveyard",
+        (true, "a graveyard", _, _) => "target card in a graveyard",
+        (true, _, _, _) => "target card of a limited mana value in your graveyard",
+        (false, "a graveyard", _, _) => "card in a graveyard",
+        (false, _, _, _) => "card in your graveyard",
     }
 }
 
@@ -140,7 +176,7 @@ pub(super) fn object_noun(spec: TargetSpec) -> &'static str {
         TargetSpec::AnyArtifactEnchantmentOrCreatureWithFlying => {
             "artifact, enchantment, or creature with flying"
         }
-        TargetSpec::CreatureCardInYourGraveyard { .. } => "creature card in your graveyard",
+        TargetSpec::CardInGraveyard { .. } => graveyard_noun(spec, false),
     }
 }
 

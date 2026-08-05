@@ -231,9 +231,15 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 format!("{head}. Otherwise, {}", clauses(source, otherwise))
             }
         }
-        Effect::ReturnCardToBattlefield { target } => {
-            format!("return {} to the battlefield", target_noun(*target))
-        }
+        Effect::ReturnCardToBattlefield { target, tapped } => format!(
+            "return {} to the battlefield{}",
+            target_noun(*target),
+            if *tapped { " tapped" } else { "" }
+        ),
+        Effect::ReturnCardToHand { target, targets } => format!(
+            "return {} to its owner's hand",
+            target_phrase(*target, *targets)
+        ),
         Effect::PumpByCount {
             target,
             power_per,
