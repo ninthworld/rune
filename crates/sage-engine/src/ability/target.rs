@@ -188,6 +188,14 @@ pub enum TargetSpec {
     /// Any permanent that is not a land — "target nonland permanent". **Includes a
     /// planeswalker**, which is a permanent and is not a land.
     AnyNonlandPermanent,
+    /// Any nonland permanent controlled by an opponent of the object's controller —
+    /// "target nonland permanent an opponent controls", the one-sided removal a colorless
+    /// creature's enters-the-battlefield trigger names.
+    ///
+    /// **Includes a planeswalker**, for [`Self::AnyNonlandPermanent`]'s reason: it is a
+    /// permanent and it is not a land. The controller's own permanents are never
+    /// candidates, which is the whole difference between this spec and that one.
+    AnyNonlandPermanentAnOpponentControls,
     /// Any creature on the battlefield (a permanent whose printed types include
     /// [`crate::CardType::Creature`]). Never a planeswalker: the two types are
     /// disjoint on every card the schema can express, and a spell that wants both says
@@ -203,6 +211,11 @@ pub enum TargetSpec {
     /// exactly as a printed one) — the "target creature with flying" of an anti-air
     /// removal spell. Never a planeswalker (see [`Self::AnyCreature`]).
     AnyCreatureWithFlying,
+    /// Any **artifact creature** the object's controller controls — "target artifact
+    /// creature you control". Both types are read off the printed card, the way every
+    /// other type test in the engine is. Never a planeswalker (see
+    /// [`Self::AnyCreature`]).
+    AnyArtifactCreatureYouControl,
     /// Any creature that is currently tapped — "target tapped creature". Never a
     /// planeswalker: a planeswalker can be tapped in principle, but this spec is a
     /// creature spec first and the tapped-ness is a filter on it.
@@ -249,21 +262,87 @@ pub enum TargetSpec {
     /// as [`Self::AnyCreatureWithFlying`] reads it. Never a planeswalker: none of the
     /// three classes it names is one.
     AnyArtifactEnchantmentOrCreatureWithFlying,
-    /// A **creature card in the object controller's graveyard**, optionally capped at a
-    /// mana value — `target creature card with mana value 2 or less from your
-    /// graveyard`.
+    /// A **card in a graveyard** — `target creature card with mana value 2 or less from
+    /// your graveyard`, `target instant or sorcery card from your graveyard`, `target
+    /// creature card from a graveyard`.
     ///
     /// The only spec that names a card in a zone rather than an object on the
     /// battlefield or the stack, so it is the only one a [`Target::Card`] satisfies.
     /// A graveyard is public, so there is no hidden information to protect and the
-    /// candidate set is enumerable exactly as a battlefield one is. Never a
-    /// planeswalker: it names a *creature* card, and the two types are disjoint on
-    /// every card the schema can express.
-    CreatureCardInYourGraveyard {
+    /// candidate set is enumerable exactly as a battlefield one is.
+    ///
+    /// Its three fields are the three independent things a printed card says about such
+    /// a target — *whose* graveyard, *what kind* of card, and *how expensive* — rather
+    /// than one variant per phrasing. The class is a small `Copy` enum of its own rather
+    /// than the [`CardFilter`] the mid-resolution choices use, because [`TargetSpec`] is
+    /// `Copy` and threaded by value through every targeting path; a filter carrying a
+    /// subtype string would take that away from all of them to serve no card here.
+    CardInGraveyard {
+        /// Whose graveyards are candidates. Defaults to the object controller's own,
+        /// which is what nearly every card printed this way says.
+        #[serde(default)]
+        scope: GraveyardScope,
+        /// Which class of card qualifies. Defaults to any of them.
+        #[serde(default)]
+        class: GraveyardCardClass,
         /// The greatest mana value (CR 202.3) a matching card may have. Absent means
         /// any.
+        #[serde(default)]
         max_mana_value: Option<u32>,
     },
+}
+
+/// Whose graveyards a [`TargetSpec::CardInGraveyard`] draws candidates from.
+///
+/// The difference between "from your graveyard" and "from a graveyard" is the whole
+/// content of a reanimation spell's colour pie position, so it is a field rather than an
+/// assumption.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GraveyardScope {
+    /// The object controller's own graveyard — "from your graveyard".
+    #[default]
+    Yours,
+    /// Every player's graveyard — "from a graveyard".
+    Any,
+}
+
+/// Which class of card a [`TargetSpec::CardInGraveyard`] accepts, read off the card's
+/// **printed** types: a card in a graveyard is not on the battlefield, so it has no
+/// computed characteristics to read instead.
+///
+/// Deliberately a closed list of the classes printed cards name, and deliberately `Copy`
+/// — see [`TargetSpec::CardInGraveyard`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GraveyardCardClass {
+    /// Any card at all — "target card in your graveyard".
+    #[default]
+    Any,
+    /// A creature card.
+    Creature,
+    /// An instant **or** sorcery card — one class as a card writes it, not two types.
+    InstantOrSorcery,
+    /// An artifact card.
+    Artifact,
+    /// A land card.
+    Land,
+}
+
+impl GraveyardCardClass {
+    /// Whether `data`'s printed types put it in this class.
+    #[must_use]
+    pub fn matches(self, data: &crate::CardData) -> bool {
+        match self {
+            GraveyardCardClass::Any => true,
+            GraveyardCardClass::Creature => data.has_type(CardType::Creature),
+            GraveyardCardClass::InstantOrSorcery => {
+                data.has_type(CardType::Instant) || data.has_type(CardType::Sorcery)
+            }
+            GraveyardCardClass::Artifact => data.has_type(CardType::Artifact),
+            GraveyardCardClass::Land => data.has_type(CardType::Land),
+        }
+    }
 }
 
 /// A **chosen target**: a resolved reference to one specific game object the

@@ -24,9 +24,10 @@
 use sage_engine::{
     Ability, AdditionalCost, AuraGrant, CardData, CardFilter, CardType, Chooser, Color,
     CombatRestriction, Condition, Cost, CountScope, CounterKind, DamageSubject, Effect,
-    FoundDestination, Keyword, ManaRestriction, MassAffects, ObservedPermanent, ObservedSpell,
-    PermanentCount, PlayerRef, StaticAffects, StaticModification, TargetCount, TargetSpec,
-    TokenData, TriggerCondition, TriggerStep, TurnScope,
+    FoundDestination, GraveyardCardClass, GraveyardScope, Keyword, ManaRestriction, MassAffects,
+    ObservedPermanent, ObservedSpell, PermanentCount, PlayerRef, StaticAffects, StaticCondition,
+    StaticModification, TargetCount, TargetSpec, TokenData, TriggerCondition, TriggerStep,
+    TurnScope,
 };
 
 mod effects;
@@ -180,11 +181,22 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
         Ability::Static {
             affects,
             modification,
-        } => sentence_case(&format!(
-            "{} {}.",
-            static_subject(affects),
-            static_verb(modification)
-        )),
+            condition,
+        } => {
+            let statement = format!(
+                "{} {}",
+                static_subject(affects, source),
+                static_verb(modification)
+            );
+            // The `as long as …` clause trails the statement, where a card prints it.
+            match condition {
+                None => sentence_case(&format!("{statement}.")),
+                Some(condition) => sentence_case(&format!(
+                    "{statement} as long as {}.",
+                    static_condition_clause(condition)
+                )),
+            }
+        }
     }
 }
 
@@ -251,8 +263,11 @@ fn observed_spell_noun(spell: ObservedSpell) -> &'static str {
 /// Composed from the selector rather than authored, so the printed text and the
 /// permanents actually modified cannot disagree — the same reason rules text is
 /// generated at all (ADR 0008 §6).
-fn static_subject(affects: &StaticAffects) -> String {
+fn static_subject(affects: &StaticAffects, source: &str) -> String {
     match affects {
+        // A class of one reads as the card's own name, which is how a printed card
+        // refers to itself in a standing statement.
+        StaticAffects::Source => source.to_string(),
         StaticAffects::CreaturesYouControl {
             subtype,
             except_this,
@@ -265,6 +280,57 @@ fn static_subject(affects: &StaticAffects) -> String {
                 None => format!("{other}creatures you control"),
             }
         }
+    }
+}
+
+/// The `as long as …` clause of a conditional static ability, as the words that follow
+/// "as long as".
+///
+/// Composed from the same selector the engine re-asks on every read, so the sentence and
+/// the condition cannot disagree.
+fn static_condition_clause(condition: &StaticCondition) -> String {
+    match condition {
+        StaticCondition::ControlsAtLeast { permanents, count } => {
+            format!("you control {}", counted_permanents(permanents, *count))
+        }
+        StaticCondition::SourceIsAttacking => "it's attacking".to_string(),
+    }
+}
+
+/// A permanent count as a noun phrase — "an artifact", "three or more artifacts", "an
+/// Ajani planeswalker", "a blue creature".
+fn counted_permanents(permanents: &PermanentCount, count: u32) -> String {
+    let mut noun = String::new();
+    if let Some(color) = permanents.color {
+        noun.push_str(color.word());
+        noun.push(' ');
+    }
+    if let Some(subtype) = &permanents.subtype {
+        noun.push_str(subtype);
+        noun.push(' ');
+    }
+    noun.push_str(match permanents.card_type {
+        Some(CardType::Creature) => "creature",
+        Some(CardType::Artifact) => "artifact",
+        Some(CardType::Enchantment) => "enchantment",
+        Some(CardType::Land) => "land",
+        Some(CardType::Planeswalker) => "planeswalker",
+        Some(CardType::Instant) | Some(CardType::Sorcery) | Some(CardType::Battle) | None => {
+            "permanent"
+        }
+    });
+    match count {
+        1 => format!("{} {noun}", indefinite_article(&noun)),
+        n => format!("{} or more {}", number(n), plural(&noun)),
+    }
+}
+
+/// "a" or "an" for `noun` — read off its first letter, which is right for every noun
+/// this composer can produce.
+fn indefinite_article(noun: &str) -> &'static str {
+    match noun.chars().next() {
+        Some('a' | 'e' | 'i' | 'o' | 'u' | 'A' | 'E' | 'I' | 'O' | 'U') => "an",
+        _ => "a",
     }
 }
 

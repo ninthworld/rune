@@ -59,6 +59,26 @@ pub(crate) fn apply_targeted_effect(
         // record the damage (including nonlethal) as a `DamageDealt` event. A
         // class-subject damage effect chose no target and never reaches here — it is
         // applied by [`apply_effect`] over the class it names.
+        // The count-derived damage verb: X is taken here, on resolution (CR 608.2),
+        // from the board as it stands — the same moment the fixed verb's amount is read
+        // off the card, and the same seams take it from there.
+        Effect::DealDamageByCount {
+            amount_per,
+            count_of,
+            ..
+        } => {
+            let count = crate::condition::count_permanents(state, count_of, controller, db);
+            let amount = amount_per.saturating_mul(count);
+            match target {
+                Target::Permanent(id) => {
+                    state.deal_damage_to_permanent(id, amount, db);
+                }
+                Target::Player(seat) => {
+                    state.deal_damage_to_player(seat, amount);
+                }
+                Target::Card(_) | Target::Spell(_) => {}
+            }
+        }
         Effect::DealDamage { amount, .. } => match target {
             Target::Permanent(id) => {
                 state.deal_damage_to_permanent(id, *amount, db);
@@ -276,17 +296,23 @@ pub(crate) fn apply_targeted_effect(
         // own enters-the-battlefield replacements, and is seen by the trigger diff
         // exactly as a resolving creature spell is. The caller has re-checked that the
         // card is still there and still matches (CR 608.2b).
-        Effect::ReturnCardToBattlefield { .. } => {
+        Effect::ReturnCardToBattlefield { tapped, .. } => {
             if let Target::Card(instance) = target {
-                let card = state.players.get_mut(controller.0).and_then(|player| {
-                    player
-                        .graveyard
-                        .iter()
-                        .position(|card| card.id == instance)
-                        .map(|pos| player.graveyard.remove(pos))
-                });
-                if let Some(card) = card {
-                    state.put_card_onto_battlefield(card, controller, false, None, db);
+                if let Some(card) = take_from_a_graveyard(state, instance) {
+                    state.put_card_onto_battlefield(card, controller, *tapped, None, db);
+                }
+            }
+        }
+        // The graveyard→hand counterpart. The card goes to its **owner's** hand
+        // (CR 400.7), which for a card in a graveyard is the seat whose graveyard it
+        // was in — so a reanimation-to-hand of an opponent's card hands it back to
+        // them, which is what every card printed this way says.
+        Effect::ReturnCardToHand { .. } => {
+            if let Target::Card(instance) = target {
+                if let Some((owner, card)) = take_from_a_graveyard_with_owner(state, instance) {
+                    if let Some(player) = state.players.get_mut(owner.0) {
+                        player.hand.push(card);
+                    }
                 }
             }
         }
@@ -305,6 +331,56 @@ pub(crate) fn apply_targeted_effect(
         | Effect::RestrictAll { .. }
         | Effect::PumpSelf { .. }
         | Effect::RestrictSelf { .. }
+        | Effect::GainLifeByCount { .. }
         | Effect::PutCountersOnSelf { .. } => {}
+        // "Target player's graveyard": the targeting form of the same verb, routed here
+        // for the reason a targeted mill is — the reference chose a seat, and this is
+        // where a chosen seat arrives.
+        Effect::ExileGraveyard { .. } => {
+            if let Target::Player(seat) = target {
+                if let Some(player) = state.players.get_mut(seat.0) {
+                    let cards: Vec<_> = player.graveyard.drain(..).collect();
+                    player.exile.extend(cards);
+                }
+            }
+        }
+        // Put the targeted permanent on top of its owner's library (CR 400.7). A token
+        // put anywhere but the battlefield ceases to exist (CR 111.7), so it never
+        // arrives — which the one leaves-battlefield seam below already knows.
+        Effect::PutOnTopOfLibrary { .. } => {
+            if let Target::Permanent(id) = target {
+                state.put_permanent_on_top_of_library(id);
+            }
+        }
     }
+}
+
+/// Remove the card `instance` from whichever graveyard holds it, or `None` when no
+/// graveyard does.
+///
+/// The one lookup both graveyard-return effects share. It searches **every** seat
+/// rather than the effect controller's own because a
+/// [`TargetSpec::CardInGraveyard`](crate::TargetSpec) may name any of them
+/// ([`GraveyardScope::Any`](crate::GraveyardScope)); which graveyards were *legal* was
+/// settled at announcement and re-checked on resolution, so by the time the card is
+/// being moved the only question left is where it is.
+fn take_from_a_graveyard(
+    state: &mut GameState,
+    instance: crate::id::CardInstanceId,
+) -> Option<crate::id::CardInstance> {
+    take_from_a_graveyard_with_owner(state, instance).map(|(_, card)| card)
+}
+
+/// [`take_from_a_graveyard`], paired with the seat it came out of — the card's owner
+/// (CR 400.7), and therefore whose hand it goes back to.
+fn take_from_a_graveyard_with_owner(
+    state: &mut GameState,
+    instance: crate::id::CardInstanceId,
+) -> Option<(PlayerId, crate::id::CardInstance)> {
+    for (seat, player) in state.players.iter_mut().enumerate() {
+        if let Some(pos) = player.graveyard.iter().position(|card| card.id == instance) {
+            return Some((PlayerId(seat), player.graveyard.remove(pos)));
+        }
+    }
+    None
 }

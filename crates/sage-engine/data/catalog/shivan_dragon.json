@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "functional_id": "shivan_dragon",
+  "name": "Shivan Dragon",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Dragon"
+  ],
+  "mana_cost": "{4}{R}{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 5,
+  "toughness": 5,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{R}"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "pump_self",
+          "power": 1,
+          "toughness": 0
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "functional_id": "court_cleric",
+  "name": "Court Cleric",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Cleric"
+  ],
+  "mana_cost": "{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 1,
+  "toughness": 1,
+  "keywords": [
+    "lifelink"
+  ],
+  "abilities": [
+    {
+      "type": "static",
+      "affects": {
+        "scope": "source"
+      },
+      "modification": {
+        "kind": "power_toughness",
+        "power": 1,
+        "toughness": 1
+      },
+      "condition": {
+        "kind": "controls_at_least",
+        "permanents": {
+          "card_type": "planeswalker",
+          "subtype": "Ajani"
+        }
+      }
+    }
+  ]
+}

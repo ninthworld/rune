@@ -132,6 +132,23 @@ impl GameState {
         Some(perm)
     }
 
+    /// Put the permanent `id` on **top of its owner's library** — the third
+    /// battlefield-departure seam beside the graveyard and the hand.
+    ///
+    /// A token put anywhere but the battlefield ceases to exist (CR 111.7), and
+    /// `card_leaving` is where that rule lives, so a bounced token simply never arrives.
+    /// The top of a library is its last element, matching every other read of it.
+    pub(crate) fn put_permanent_on_top_of_library(&mut self, id: PermanentId) -> Option<Permanent> {
+        let pos = self.battlefield.iter().position(|p| p.id == id)?;
+        let perm = self.battlefield.remove(pos);
+        if let (Some(card), Some(owner)) =
+            (card_leaving(&perm), self.players.get_mut(perm.controller.0))
+        {
+            owner.library.push(card);
+        }
+        Some(perm)
+    }
+
     /// Put the physical card `card` onto the battlefield under `controller` — the
     /// single card → battlefield seam.
     ///

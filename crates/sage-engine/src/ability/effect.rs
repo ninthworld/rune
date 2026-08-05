@@ -552,6 +552,33 @@ pub enum Effect {
     ReturnCardToBattlefield {
         /// What this effect is allowed to target (a card in a graveyard).
         target: TargetSpec,
+        /// Whether it arrives **tapped** — the creating effect's say, exactly as it is
+        /// for a token (CR 111.1). Defaults to untapped.
+        #[serde(default)]
+        tapped: bool,
+    },
+    /// Return the **card in a graveyard** this effect targets to its owner's **hand**
+    /// (`Return target creature card from your graveyard to your hand.`) — the
+    /// graveyard→hand counterpart of [`Effect::ReturnCardToBattlefield`], and the
+    /// card-in-a-zone counterpart of [`Effect::ReturnToHand`], which bounces a
+    /// permanent.
+    ///
+    /// Its target is a [`Target::Card`] against a [`TargetSpec::CardInGraveyard`], so
+    /// the class of card and whose graveyard it sits in are the spec's business rather
+    /// than this effect's. The card goes to its **owner's** hand (CR 400.7), which for
+    /// every card in a graveyard is the player whose graveyard that is.
+    ///
+    /// The one effect here that may name **more than one** target beside
+    /// [`Effect::PutCounters`]: `return up to two target creature cards from your
+    /// graveyard to your hand` is one effect with a two-slot group, applied once per
+    /// target still legal on resolution.
+    ReturnCardToHand {
+        /// What each of this effect's slots is allowed to target (a card in a
+        /// graveyard).
+        target: TargetSpec,
+        /// How many targets are chosen. Defaults to exactly one.
+        #[serde(default)]
+        targets: TargetCount,
     },
     /// Give the single creature this effect targets `power_per`/`toughness_per` **per
     /// permanent** matching `count_of`, until end of turn — the count-derived
@@ -571,6 +598,64 @@ pub enum Effect {
         toughness_per: i32,
         /// Which permanents are counted, relative to the effect's controller.
         count_of: PermanentCount,
+    },
+    /// The referenced player gains `amount_per` life **per permanent** matching
+    /// `count_of` (`You gain 1 life for each creature you control.`) — the
+    /// count-derived counterpart of [`Effect::GainLife`], and the life-total sibling of
+    /// [`Effect::PumpByCount`].
+    ///
+    /// X is computed **on resolution** (CR 608.2), once, from the board as it stands
+    /// then: a creature that dies afterwards does not take the life back, which is what
+    /// the printed card means. The count is relative to the effect's *controller* even
+    /// when the life goes to someone else, because "each creature you control" says
+    /// "you" and the subject clause does not change who that is.
+    GainLifeByCount {
+        /// Which player gains the life.
+        player_ref: PlayerRef,
+        /// How much life each counted permanent is worth.
+        amount_per: u32,
+        /// Which permanents are counted, relative to the effect's controller.
+        count_of: PermanentCount,
+    },
+    /// Deal `amount_per` damage **per permanent** matching `count_of` to what
+    /// [`DamageSubject`] names (`This creature deals damage to target creature an
+    /// opponent controls equal to the number of Goblins you control.`) — the
+    /// count-derived counterpart of [`Effect::DealDamage`], which it matches in every
+    /// other respect including how the subject decides whether a target is chosen.
+    ///
+    /// Like [`Self::GainLifeByCount`] the count is taken once, on resolution, and is
+    /// relative to the effect's controller.
+    DealDamageByCount {
+        /// Who or what takes the damage — one chosen target, or a class.
+        #[serde(flatten)]
+        subject: DamageSubject,
+        /// How much damage each counted permanent is worth.
+        amount_per: u32,
+        /// Which permanents are counted, relative to the effect's controller.
+        count_of: PermanentCount,
+    },
+    /// **Exile the referenced player's whole graveyard** (`Exile target player's
+    /// graveyard.`) — the graveyard-hate verb.
+    ///
+    /// The subject is a [`PlayerRef`] exactly as [`Effect::Mill`]'s is, and decides on
+    /// its own whether a target is chosen. Every card in that graveyard moves to its
+    /// owner's exile zone at once; an already-empty graveyard is a legal target and a
+    /// resolution that does nothing, which is what the printed card says.
+    ExileGraveyard {
+        /// Whose graveyard is exiled.
+        player_ref: PlayerRef,
+    },
+    /// Put the single permanent this effect targets **on top of its owner's library**
+    /// (`Put target nonland permanent on top of its owner's library.`) — the third
+    /// destination beside [`Effect::ReturnToHand`]'s hand and [`Effect::Exile`]'s exile,
+    /// and the harshest of the three, since the card is both gone and in the way.
+    ///
+    /// Like [`Effect::Tap`] the subject is an explicit target, chosen at cast
+    /// (CR 601.2c) and re-checked on resolution (CR 608.2b). A **token** put anywhere
+    /// but the battlefield ceases to exist (CR 111.7), so it never reaches the library.
+    PutOnTopOfLibrary {
+        /// What this effect is allowed to target.
+        target: TargetSpec,
     },
     /// Add `amount` mana of `color` to the controller's pool that may be spent only as
     /// `restriction` allows (`Add {R}{R}. Spend this mana only to cast Dragon
@@ -638,7 +723,10 @@ impl Effect {
             // of the same effect leaves the count at its default of one.
             Effect::PutCounters {
                 target, targets, ..
-            } => Some(TargetGroup::counted(*target, *targets)),
+            }
+            | Effect::ReturnCardToHand { target, targets } => {
+                Some(TargetGroup::counted(*target, *targets))
+            }
             Effect::Tap { target }
             | Effect::CounterSpell { target }
             | Effect::Destroy { target }
@@ -647,7 +735,8 @@ impl Effect {
             | Effect::PumpByCount { target, .. }
             | Effect::GrantKeyword { target, .. }
             | Effect::Restrict { target, .. }
-            | Effect::ReturnCardToBattlefield { target }
+            | Effect::ReturnCardToBattlefield { target, .. }
+            | Effect::PutOnTopOfLibrary { target }
             | Effect::ReturnToHand { target } => Some(TargetGroup::single(*target)),
             // A player-subject effect targets exactly when its reference does
             // (CR 115.1) — "target opponent loses 2 life" fills a slot, "each
@@ -659,6 +748,8 @@ impl Effect {
             // player discards two cards" fills a slot and can fizzle, "each opponent
             // discards a card" fills none and cannot.
             | Effect::Discard { player_ref, .. }
+            | Effect::GainLifeByCount { player_ref, .. }
+            | Effect::ExileGraveyard { player_ref }
             // And a token creation names its creator the same way: "create a 2/4 white
             // Ox token" is made by you, "target player creates …" fills a slot.
             | Effect::CreateToken { player_ref, .. } => {
@@ -666,7 +757,7 @@ impl Effect {
             }
             // Damage asks its subject the same question: "any target" fills a slot,
             // "each opponent" and "each creature" fill none (CR 115.1).
-            Effect::DealDamage { subject, .. } => {
+            Effect::DealDamage { subject, .. } | Effect::DealDamageByCount { subject, .. } => {
                 subject.target_spec().map(TargetGroup::single)
             }
             Effect::AddMana { .. }

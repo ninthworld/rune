@@ -1,6 +1,6 @@
 //! Action targeting — enumeration of legal targets per action and target slot.
 
-use crate::ability::{Ability, Effect, Target, TargetGroup, TargetSpec};
+use crate::ability::{Ability, Effect, GraveyardScope, Target, TargetGroup, TargetSpec};
 use crate::id::PlayerId;
 use crate::resolve::target_is_legal;
 use crate::state::GameState;
@@ -150,11 +150,13 @@ pub(crate) fn legal_targets_for_spec(
         TargetSpec::AnyPlayerOrPlaneswalker => players.into_iter().chain(permanents).collect(),
         TargetSpec::AnyPermanent
         | TargetSpec::AnyNonlandPermanent
+        | TargetSpec::AnyNonlandPermanentAnOpponentControls
         | TargetSpec::AnyCreature
         | TargetSpec::AnyCreatureYouControl
         | TargetSpec::AnyCreatureAnOpponentControls
         | TargetSpec::AnyCreatureWithFlying
         | TargetSpec::AnyTappedCreature
+        | TargetSpec::AnyArtifactCreatureYouControl
         | TargetSpec::AnyArtifact
         | TargetSpec::AnyEnchantment
         | TargetSpec::AnyArtifactOrEnchantment
@@ -164,17 +166,24 @@ pub(crate) fn legal_targets_for_spec(
         // is — the universe is the choosing player's own graveyard, and the
         // `target_is_legal` filter below keeps only the creature cards within the mana
         // value the spec names.
-        TargetSpec::CreatureCardInYourGraveyard { .. } => state
-            .players
-            .get(controller.0)
-            .map(|player| {
-                player
-                    .graveyard
-                    .iter()
-                    .map(|card| Target::Card(card.id))
-                    .collect()
-            })
-            .unwrap_or_default(),
+        TargetSpec::CardInGraveyard { scope, .. } => match scope {
+            GraveyardScope::Yours => state
+                .players
+                .get(controller.0)
+                .map(|player| {
+                    player
+                        .graveyard
+                        .iter()
+                        .map(|card| Target::Card(card.id))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            GraveyardScope::Any => state
+                .players
+                .iter()
+                .flat_map(|player| player.graveyard.iter().map(|card| Target::Card(card.id)))
+                .collect(),
+        },
         // "Any target" (CR 115.4): players and battlefield permanents together; the
         // `target_is_legal` filter below keeps only creatures, planeswalkers, and
         // in-game players, so an artifact or a land never survives it.

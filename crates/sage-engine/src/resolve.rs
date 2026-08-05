@@ -5,7 +5,7 @@
 //! re-checks the object's chosen targets against current state (CR 608.2b), then
 //! routes a spell by its card types and applies an ability's effects.
 
-use crate::ability::{Effect, Target, TargetGroup, TargetSpec};
+use crate::ability::{Effect, GraveyardScope, Target, TargetGroup, TargetSpec};
 use crate::apply::{apply_effect, apply_targeted_effect};
 use crate::card::{spell_effects_of, CardData, Keyword};
 use crate::card_type::CardType;
@@ -114,6 +114,16 @@ pub(crate) fn target_is_legal(
         (TargetSpec::AnyNonlandPermanent, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| !has_type(p, CardType::Land, db))
         }
+        // The one-sided form: the same class, minus the controller's own board. An
+        // eliminated seat controls nothing that can be targeted, so its permanents drop
+        // out for the same reason a targeted opponent does.
+        (TargetSpec::AnyNonlandPermanentAnOpponentControls, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| {
+                p.controller != controller
+                    && player_in_game(state, p.controller)
+                    && !has_type(p, CardType::Land, db)
+            })
+        }
         // A creature target additionally requires the permanent's printed types
         // to include Creature (the layer system's type-changing effects are
         // future work, so printed types are authoritative here).
@@ -138,6 +148,15 @@ pub(crate) fn target_is_legal(
         (TargetSpec::AnyCreatureWithFlying, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| has_type(p, CardType::Creature, db))
                 && permanent_has_keyword(state, id, Keyword::Flying, db)
+        }
+        // Both types together, both printed: an "artifact creature you control" is one
+        // permanent that is both, not two slots.
+        (TargetSpec::AnyArtifactCreatureYouControl, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| {
+                p.controller == controller
+                    && has_type(p, CardType::Artifact, db)
+                    && has_type(p, CardType::Creature, db)
+            })
         }
         (TargetSpec::AnyTappedCreature, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| {
@@ -174,15 +193,24 @@ pub(crate) fn target_is_legal(
         // names a card rather than a battlefield object, so it is the only one a
         // `Target::Card` satisfies — and it is scoped to *your* graveyard, so an
         // opponent's identically-named creature card is never a candidate.
-        (TargetSpec::CreatureCardInYourGraveyard { max_mana_value }, Target::Card(instance)) => {
-            state
-                .players
-                .get(controller.0)
-                .and_then(|player| player.graveyard.iter().find(|card| card.id == instance))
+        (
+            TargetSpec::CardInGraveyard {
+                scope,
+                class,
+                max_mana_value,
+            },
+            Target::Card(instance),
+        ) => {
+            let seats: Box<dyn Iterator<Item = &crate::player::Player>> = match scope {
+                GraveyardScope::Yours => Box::new(state.players.get(controller.0).into_iter()),
+                GraveyardScope::Any => Box::new(state.players.iter()),
+            };
+            seats
+                .flat_map(|player| player.graveyard.iter())
+                .find(|card| card.id == instance)
                 .and_then(|card| db.card(card.card))
                 .is_some_and(|data| {
-                    data.has_type(CardType::Creature)
-                        && max_mana_value.is_none_or(|cap| data.mana_value() <= cap)
+                    class.matches(data) && max_mana_value.is_none_or(|cap| data.mana_value() <= cap)
                 })
         }
         // "Any target" (CR 115.4): legal against a player still in the game, a creature

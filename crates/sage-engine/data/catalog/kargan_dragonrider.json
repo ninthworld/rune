@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "functional_id": "kargan_dragonrider",
+  "name": "Kargan Dragonrider",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Warrior"
+  ],
+  "mana_cost": "{1}{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 2,
+  "toughness": 2,
+  "abilities": [
+    {
+      "type": "static",
+      "affects": {
+        "scope": "source"
+      },
+      "modification": {
+        "kind": "grant_keyword",
+        "keyword": "flying"
+      },
+      "condition": {
+        "kind": "controls_at_least",
+        "permanents": {
+          "subtype": "Dragon"
+        }
+      }
+    }
+  ]
+}

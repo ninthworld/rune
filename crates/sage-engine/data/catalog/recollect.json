@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "functional_id": "recollect",
+  "name": "Recollect",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{2}{G}",
+  "colors": [
+    "green"
+  ],
+  "spell_effects": [
+    {
+      "kind": "return_card_to_hand",
+      "target": {
+        "card_in_graveyard": {
+          "class": "any"
+        }
+      }
+    }
+  ]
+}

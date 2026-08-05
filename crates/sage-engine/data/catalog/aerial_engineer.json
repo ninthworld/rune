@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "functional_id": "aerial_engineer",
+  "name": "Aerial Engineer",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Artificer"
+  ],
+  "mana_cost": "{2}{W}{U}",
+  "colors": [
+    "white",
+    "blue"
+  ],
+  "power": 2,
+  "toughness": 4,
+  "abilities": [
+    {
+      "type": "static",
+      "affects": {
+        "scope": "source"
+      },
+      "modification": {
+        "kind": "power_toughness",
+        "power": 2,
+        "toughness": 0
+      },
+      "condition": {
+        "kind": "controls_at_least",
+        "permanents": {
+          "card_type": "artifact"
+        }
+      }
+    },
+    {
+      "type": "static",
+      "affects": {
+        "scope": "source"
+      },
+      "modification": {
+        "kind": "grant_keyword",
+        "keyword": "flying"
+      },
+      "condition": {
+        "kind": "controls_at_least",
+        "permanents": {
+          "card_type": "artifact"
+        }
+      }
+    }
+  ]
+}

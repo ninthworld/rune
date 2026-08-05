@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "functional_id": "tezzeret_s_strider",
+  "name": "Tezzeret's Strider",
+  "types": [
+    "artifact",
+    "creature"
+  ],
+  "subtypes": [
+    "Golem"
+  ],
+  "mana_cost": "{3}",
+  "colors": [],
+  "power": 3,
+  "toughness": 1,
+  "abilities": [
+    {
+      "type": "static",
+      "affects": {
+        "scope": "source"
+      },
+      "modification": {
+        "kind": "grant_keyword",
+        "keyword": "menace"
+      },
+      "condition": {
+        "kind": "controls_at_least",
+        "permanents": {
+          "card_type": "planeswalker",
+          "subtype": "Tezzeret"
+        }
+      }
+    }
+  ]
+}

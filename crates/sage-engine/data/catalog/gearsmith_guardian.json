@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "functional_id": "gearsmith_guardian",
+  "name": "Gearsmith Guardian",
+  "types": [
+    "artifact",
+    "creature"
+  ],
+  "subtypes": [
+    "Construct"
+  ],
+  "mana_cost": "{5}",
+  "colors": [],
+  "power": 3,
+  "toughness": 5,
+  "abilities": [
+    {
+      "type": "static",
+      "affects": {
+        "scope": "source"
+      },
+      "modification": {
+        "kind": "power_toughness",
+        "power": 2,
+        "toughness": 0
+      },
+      "condition": {
+        "kind": "controls_at_least",
+        "permanents": {
+          "card_type": "creature",
+          "color": "blue"
+        }
+      }
+    }
+  ]
+}

@@ -73,7 +73,10 @@ pub(crate) fn apply_activate_ability(
         .iter()
         .filter_map(|c| match c {
             Cost::Mana { mana } => Some(parse_mana_cost(mana)),
-            Cost::Tap | Cost::Loyalty { .. } => None,
+            Cost::Tap
+            | Cost::Loyalty { .. }
+            | Cost::SacrificeThis
+            | Cost::RemoveCounters { .. } => None,
         })
         .collect();
     if !mana_due.is_empty() {
@@ -119,9 +122,29 @@ pub(crate) fn apply_activate_ability(
                     state.loyalty_activations.push(permanent);
                 }
             }
+            // CR 118.3: spend the counters the cost names. Only ever reached for a cost
+            // `cost_payable` has already found the permanent holds, so the removal
+            // cannot underflow — it saturates anyway, since a cost that could is a bug.
+            Cost::RemoveCounters { counter, count } => {
+                if let Some(p) = state.battlefield.iter_mut().find(|p| p.id == permanent) {
+                    let held = p.counters.entry(*counter).or_insert(0);
+                    *held = held.saturating_sub(*count);
+                }
+            }
             // Already settled against the pool above.
             Cost::Mana { .. } => {}
+            // Applied after this loop: sacrificing the source first would leave a `{T}`
+            // beside it with nothing to tap.
+            Cost::SacrificeThis => {}
         }
+    }
+
+    // CR 701.17: the sacrifice, last, so every other component of the cost was charged
+    // against a permanent that was still on the battlefield. This is a real death — it
+    // goes through the one leaves-battlefield seam, so a dies trigger (including the
+    // source's own) observes it in the diff `apply_action` takes of the whole action.
+    if cost.contains(&Cost::SacrificeThis) {
+        state.move_permanent_to_graveyard(permanent);
     }
 
     if is_mana_ability(&ability) {

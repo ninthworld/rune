@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "functional_id": "remorseful_cleric",
+  "name": "Remorseful Cleric",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Spirit",
+    "Cleric"
+  ],
+  "mana_cost": "{1}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 2,
+  "toughness": 1,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "sacrifice_this"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "exile_graveyard",
+          "player_ref": "target_player"
+        }
+      ]
+    }
+  ]
+}

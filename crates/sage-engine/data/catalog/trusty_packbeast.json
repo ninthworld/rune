@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "functional_id": "trusty_packbeast",
+  "name": "Trusty Packbeast",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Beast"
+  ],
+  "mana_cost": "{2}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 2,
+  "toughness": 3,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "return_card_to_hand",
+          "target": {
+            "card_in_graveyard": {
+              "class": "artifact"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

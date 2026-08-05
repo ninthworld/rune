@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "functional_id": "catalyst_elemental",
+  "name": "Catalyst Elemental",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elemental"
+  ],
+  "mana_cost": "{2}{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 2,
+  "toughness": 2,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "sacrifice_this"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "add_mana",
+          "color": "red",
+          "amount": 2
+        }
+      ]
+    }
+  ]
+}

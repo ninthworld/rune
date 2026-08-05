@@ -33,11 +33,18 @@ pub(super) fn static_ability_effects(
             let Ability::Static {
                 affects,
                 modification,
+                condition,
             } = ability
             else {
                 continue;
             };
             if !static_affects_match(&affects, source, perm, is_creature, db) {
+                continue;
+            }
+            // The `as long as …` clause, re-asked on this read rather than remembered
+            // from a previous one — which is the whole reason a conditional continuous
+            // ability needs no pruning.
+            if !static_condition_holds(state, condition.as_ref(), source, db) {
                 continue;
             }
             effects.push(StaticEffect {
@@ -129,6 +136,37 @@ fn static_affects_match(
                     .is_some_and(|face| face.has_subtype(wanted)),
             }
         }
+        // A class of one. An emblem has no source permanent, so a `source` static on one
+        // applies to nothing — which is what `None == Some(perm.id)` says.
+        StaticAffects::Source => source.permanent == Some(perm.id),
+    }
+}
+
+/// Whether a printed static ability's `as long as …` clause currently holds for a
+/// source on `source`. `None` — an unconditional ability — always holds.
+///
+/// The board question delegates to the one permanent counter every other selector uses
+/// ([`crate::condition::count_permanents`]), so "you control an artifact" means the same
+/// thing here as it does in an intervening if. It reads **printed** types, which is both
+/// correct today and the only non-recursive option: asking for computed characteristics
+/// from inside the computation of a permanent's characteristics would not terminate.
+fn static_condition_holds(
+    state: &GameState,
+    condition: Option<&StaticCondition>,
+    source: StaticSource,
+    db: &CardDatabase,
+) -> bool {
+    match condition {
+        None => true,
+        Some(StaticCondition::ControlsAtLeast { permanents, count }) => {
+            crate::condition::count_permanents(state, permanents, source.controller, db) >= *count
+        }
+        Some(StaticCondition::SourceIsAttacking) => source.permanent.is_some_and(|id| {
+            state
+                .battlefield
+                .iter()
+                .any(|p| p.id == id && p.attacking.is_some())
+        }),
     }
 }
 

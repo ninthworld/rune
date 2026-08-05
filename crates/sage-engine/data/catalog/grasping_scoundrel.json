@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "functional_id": "grasping_scoundrel",
+  "name": "Grasping Scoundrel",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Pirate"
+  ],
+  "mana_cost": "{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 1,
+  "toughness": 1,
+  "abilities": [
+    {
+      "type": "static",
+      "affects": {
+        "scope": "source"
+      },
+      "modification": {
+        "kind": "power_toughness",
+        "power": 1,
+        "toughness": 0
+      },
+      "condition": {
+        "kind": "source_is_attacking"
+      }
+    }
+  ]
+}

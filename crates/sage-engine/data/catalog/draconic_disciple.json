@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "functional_id": "draconic_disciple",
+  "name": "Draconic Disciple",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Shaman"
+  ],
+  "mana_cost": "{1}{R}{G}",
+  "colors": [
+    "red",
+    "green"
+  ],
+  "power": 2,
+  "toughness": 2,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "tap"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "add_mana_any_color",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{7}"
+        },
+        {
+          "kind": "tap"
+        },
+        {
+          "kind": "sacrifice_this"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "create_token",
+          "token": {
+            "name": "Dragon",
+            "types": [
+              "creature"
+            ],
+            "subtypes": [
+              "Dragon"
+            ],
+            "colors": [
+              "red"
+            ],
+            "power": 5,
+            "toughness": 5,
+            "keywords": [
+              "flying"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

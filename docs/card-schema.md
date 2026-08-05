@@ -191,31 +191,51 @@ combination may be present.
 A targeting effect names a **class** with `target`, not an object; the player chooses one
 member as the spell or ability is announced (CR 601.2c) and the choice is re-checked on
 resolution (CR 608.2b). The classes are `any_player`, `any_player_or_planeswalker`,
-`any_opponent`, `any_permanent`, `any_nonland_permanent`, `any_creature`,
+`any_opponent`, `any_permanent`, `any_nonland_permanent`,
+`any_nonland_permanent_an_opponent_controls`, `any_artifact_creature_you_control`,
+`any_creature`,
 `any_creature_you_control`, `any_creature_an_opponent_controls`,
 `any_creature_with_flying`, `any_tapped_creature`, `any_artifact`, `any_enchantment`,
 `any_artifact_or_enchantment`, `any_artifact_enchantment_or_creature_with_flying`,
 `any_land`, `spell_on_stack`, `creature_spell_on_stack`, `any_target`, and
-`creature_card_in_your_graveyard`.
+`card_in_graveyard`.
 
 `any_player_or_planeswalker` is the burn class that names both halves and no creature —
 `Lava Axe deals 5 damage to target player or planeswalker`. It is neither `any_player`
 (which would drop the planeswalker half) nor `any_target` (which would add creatures the
 card cannot hit).
 
-`creature_card_in_your_graveyard` is the one class that names a **card in a zone** rather than
-an object on the battlefield or the stack, so it is the only one a chosen card target
-satisfies. It carries a cap, and is written in the enum's tagged form rather than as a bare
-string:
+`card_in_graveyard` is the one class that names a **card in a zone** rather than an object
+on the battlefield or the stack, so it is the only one a chosen card target satisfies. It is
+written in the enum's tagged form rather than as a bare string, and carries the three
+independent things a printed card says about such a target:
 
 ```json
 { "kind": "return_card_to_battlefield",
-  "target": { "creature_card_in_your_graveyard": { "max_mana_value": 2 } } }
+  "target": { "card_in_graveyard": { "class": "creature", "max_mana_value": 2 } } }
+{ "kind": "return_card_to_hand",
+  "target": { "card_in_graveyard": { "class": "instant_or_sorcery" } } }
+{ "kind": "return_card_to_battlefield", "tapped": true,
+  "target": { "card_in_graveyard": { "scope": "any", "class": "creature" } } }
 ```
 
-`max_mana_value` compares against the card's mana value (CR 202.3), derived from its cost
-through the same parser every payment uses; `null` means any. A graveyard is public, so its
-candidates are enumerable exactly as a battlefield's are.
+- `scope` is `yours` (the default — "from **your** graveyard") or `any` ("from **a**
+  graveyard"). The difference is most of what such a card costs to print, so it is a field
+  rather than an assumption.
+- `class` is `any` (the default), `creature`, `instant_or_sorcery`, `artifact`, or `land`,
+  read off the card's **printed** types — a card in a graveyard is not on the battlefield,
+  so it has no computed characteristics to read instead. It is a small enum of its own
+  rather than the `filter` the mid-resolution choices take, because a target spec is
+  threaded by value through every targeting path and a filter carrying a subtype string
+  would cost all of them that for no card in this set.
+- `max_mana_value` compares against the card's mana value (CR 202.3), derived from its cost
+  through the same parser every payment uses; absent means any.
+
+A graveyard is public, so its candidates are enumerable exactly as a battlefield's are.
+`return_card_to_hand` sends its target to that card's **owner's** hand (CR 400.7), and is
+the second effect after `put_counters` that may name more than one target — "return up to
+two target creature cards from your graveyard to your hand" is one effect with a two-slot
+group.
 
 Every class is evaluated **relative to the choosing object's controller**, which is what
 lets one authored card mean "you" from either seat. Classes read through the computed
@@ -292,10 +312,33 @@ non-combat damage are out of scope.
 
 `cost` entries are `{"kind":"tap"}` (the `{T}` symbol),
 `{"kind":"mana","mana":"{1}{R}"}` — written in the same curly-brace notation a card's
-`mana_cost` uses — and `{"kind":"loyalty","amount":-2}` (below). Mana is paid from the
+`mana_cost` uses — `{"kind":"loyalty","amount":-2}` (below), `{"kind":"sacrifice_this"}`,
+and `{"kind":"remove_counters","counter":"charge","count":1}`. Mana is paid from the
 activating player's pool through the same seam a cast uses, and the whole cost is paid all
 or nothing — a failed mana payment never leaves the source tapped. CR 302.6 still forbids
 a summoning-sick creature paying `{T}`, including for a mana ability.
+
+The two costs that spend the **source** rather than a resource are deliberately about the
+source and nothing else: neither requires the player to pick anything, so neither needs a
+choice to ride on the action.
+
+- `sacrifice_this` (CR 701.17) is always payable — an ability is only offered from a
+  permanent on the battlefield, and one on the battlefield can always be sacrificed. It is
+  applied **last**, whatever order the costs are written in, so a `{T}` beside it taps a
+  permanent that is still there. Sacrificing is a real death: the permanent goes to its
+  owner's graveyard through the one leaves-battlefield seam, so a dies trigger — including
+  the source's own — sees it. The ability itself is unaffected and still resolves
+  (CR 113.7a), which is the whole point of a card that spends itself for an effect.
+- `remove_counters` is payable only while the source holds that many, which is the entire
+  content of a charge-counter card: the ability is offered three times and then stops. It
+  is not a loyalty cost: that one is signed, may *add*, and carries CR 606.3's two
+  timing rules, and collapsing the two would make a charge counter a loyalty ability.
+
+The counter kinds are `plus_one_plus_one`, `minus_one_minus_one`, `loyalty`, and the four
+that fold into no characteristic and no state-based action — `charge`, `gold`, `wish`, and
+`corpse`. Those four are a name and a count that the printing card's own abilities read;
+they are kept distinct from one another rather than aliased, because two cards on one
+battlefield may name different counters and one card's ability must not spend the other's.
 
 ### Planeswalkers and loyalty (CR 306, CR 606)
 
@@ -421,6 +464,33 @@ The resulting fixed modifier is what the layer system folds in, so a Zombie that
 the turn does not give the shrunk creature its toughness back — which is what the printed card
 means and what a re-evaluated selector would get wrong.
 
+`gain_life_by_count` and `deal_damage_by_count` are the same idea for the other two amounts,
+and take the same `count_of` selector:
+
+```json
+{ "kind": "gain_life_by_count", "player_ref": "controller", "amount_per": 1,
+  "count_of": { "card_type": "creature" } }
+{ "kind": "deal_damage_by_count", "target": "any_creature_an_opponent_controls",
+  "amount_per": 1, "count_of": { "subtype": "Goblin" } }
+```
+
+Each takes X **once, on resolution**, from the board as it stands then, and each keeps the
+subject vocabulary its fixed sibling has — a `player_ref` for life, and the same
+target/`player_ref`/`affects` choice for damage. The count is relative to the effect's
+*controller* even when the life or the damage goes elsewhere, because "each creature you
+control" says "you" and the subject clause does not change who that is.
+
+### Emptying a graveyard, and the top of a library
+
+`exile_graveyard` moves **every** card of the named player's graveyard to exile at once. Its
+subject is the same `player_ref` a mill takes, with the same rule — `target_player` fills a
+slot and `each_opponent` does not — and an already-empty graveyard is a legal subject and a
+resolution that does nothing.
+
+`put_on_top_of_library` is the third destination a permanent can be pushed to, beside
+`return_to_hand`'s hand and `exile`'s exile. A **token** put anywhere but the battlefield
+ceases to exist (CR 111.7), so a bounced token never arrives in the library either.
+
 ### Mana in any combination of colours
 
 `add_mana_any_color` produces mana whose **colours the player chooses**, one point at a time:
@@ -486,10 +556,12 @@ target, so they choose nothing and never fizzle:
 ```
 
 The `scope` values are `creatures_you_control`, `each_creature`,
-`creatures_your_opponents_control`, and `creatures_without_flying`. The first three are read
-relative to the effect's controller so one authored card means "you" from either seat; the
-last reads flying through the computed keywords, so a *granted* flying excludes a creature
-exactly as a printed one does. `deal_damage` takes the same set.
+`creatures_your_opponents_control`, `creatures_without_flying`, and
+`attacking_creatures`. The first three are read relative to the effect's controller so one
+authored card means "you" from either seat; `creatures_without_flying` reads flying through
+the computed keywords, so a *granted* flying excludes a creature exactly as a printed one
+does; and `attacking_creatures` is read off the declaration the combat step produced, so it
+is empty outside combat. `deal_damage` takes the same set.
 
 `creatures_you_control` additionally takes a `subtype`, which narrows the class to a tribe
 and replaces the noun in the generated text — `{"scope": "creatures_you_control", "subtype":
@@ -512,15 +584,38 @@ battlefield, with nothing ever put on the stack — an anthem or a lord:
 }
 ```
 
-- `subtype` restricts the class ("other **Elves** you control"); omit it for every
-  creature its controller controls.
-- `except_this` excludes the source itself — the "other" in a lord's wording. It compares
-  the *permanent*, not the card, so two copies of one lord do pump each other.
+- `affects` names the class. `creatures_you_control` takes `subtype` (which restricts it
+  to a lord's tribe — "other **Elves** you control") and `except_this` (the "other" in a
+  lord's wording, comparing the *permanent* rather than the card, so two copies of one
+  lord do pump each other). `{"scope": "source"}` is the class of one — the "this
+  creature" of a card that modifies itself, which flows through the same selector, the
+  same timestamp, and the same layer as an anthem rather than needing a path of its own.
 - `modification` is either `power_toughness` (layer 7c, folded after counters in timestamp
   order) or `grant_keyword` (layer 6, idempotent).
+- `condition` is the optional `as long as …` clause. Absent is unconditional, which is
+  what every anthem and lord says:
+
+  ```json
+  {"type": "static", "affects": {"scope": "source"},
+   "modification": {"kind": "power_toughness", "power": 1, "toughness": 0},
+   "condition": {"kind": "controls_at_least",
+                 "permanents": {"card_type": "artifact"}}}
+  ```
+
+  The conditions are `controls_at_least` — the same `permanents` selector an
+  intervening-if counts, with `count` defaulting to the "an" of "as long as you control
+  **an** artifact" — and `source_is_attacking`. It is a separate vocabulary from the
+  `Condition` an `Effect::Conditional` takes, because two of that one's three variants
+  ask what *this resolution* has already done and a continuous ability is not a
+  resolution: it has no window to read and no start to measure from.
+
+  A `permanents` selector gains a `color` alongside its `card_type` and `subtype`, which
+  is what lets a card ask for "a **blue** creature" or "an **Ajani** planeswalker".
 
 The effect is **derived from the battlefield on every read, never stored**: it starts and
-stops with its source, so a static ability cannot outlive the permanent that printed it.
+stops with its source, so a static ability cannot outlive the permanent that printed it —
+and a conditional one starts and stops with its condition, for the same reason and with
+nothing to prune.
 Rules text is composed from the same selector the engine applies, so the sentence and the
 scope cannot disagree.
 
@@ -554,8 +649,11 @@ as it is *at that moment* — see `docs/decisions/0013-mid-resolution-player-cho
   `creature_or_land` (one class as a card writes it, not two), `permanent` (CR 110.1 — what a
   search that puts its find straight onto the battlefield names), `subtype` (a card with that
   printed subtype whatever its card type — "a **Zombie** card" is not "a Zombie **creature**
-  card"), or `same_name_as_source` ("a card named *this card*", matched on printed identity so
-  two copies of one printing find each other).
+  card"), `same_name_as_source` ("a card named *this card*", matched on printed identity so
+  two copies of one printing find each other), `color` (a card of a printed colour —
+  `{"kind": "color", "color": "white"}` — read off the colour indicator rather than the mana
+  cost, so a colourless artifact matches none and a gold card matches each of its own),
+  `instant_or_sorcery` (one class as a card writes it), or `artifact`.
 
   The same filter vocabulary is what `milled_this_way` and `allow_casting_from_graveyard` read,
   so a Zombie is a Zombie in all three.

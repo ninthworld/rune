@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "functional_id": "befuddle",
+  "name": "Befuddle",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{2}{U}",
+  "colors": [
+    "blue"
+  ],
+  "spell_effects": [
+    {
+      "kind": "pump",
+      "target": "any_creature",
+      "power": -4,
+      "toughness": 0
+    },
+    {
+      "kind": "draw_card",
+      "count": 1
+    }
+  ]
+}

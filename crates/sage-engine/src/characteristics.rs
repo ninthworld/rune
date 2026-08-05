@@ -24,7 +24,7 @@ use continuous::*;
 use layer_seven::*;
 use layer_six::*;
 
-use crate::ability::{Ability, StaticAffects};
+use crate::ability::{Ability, StaticAffects, StaticCondition};
 use crate::card::{abilities_of_permanent, CardDatabase, CombatRestriction, Keyword};
 use crate::card_type::{CardType, Supertype};
 use crate::id::PermanentId;

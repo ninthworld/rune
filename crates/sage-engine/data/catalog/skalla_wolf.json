@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "functional_id": "skalla_wolf",
+  "name": "Skalla Wolf",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Wolf",
+    "Spirit"
+  ],
+  "mana_cost": "{3}{G}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 3,
+  "toughness": 3,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "look_at_top",
+          "count": 5,
+          "take": 1,
+          "filter": {
+            "kind": "color",
+            "color": "green"
+          },
+          "destination": "hand"
+        }
+      ]
+    }
+  ]
+}

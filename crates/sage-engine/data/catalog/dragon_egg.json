@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "functional_id": "dragon_egg",
+  "name": "Dragon Egg",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Dragon",
+    "Egg"
+  ],
+  "mana_cost": "{2}{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 0,
+  "toughness": 2,
+  "keywords": [
+    "defender"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_dies",
+      "effects": [
+        {
+          "kind": "create_token",
+          "token": {
+            "name": "Dragon",
+            "types": [
+              "creature"
+            ],
+            "subtypes": [
+              "Dragon"
+            ],
+            "colors": [
+              "red"
+            ],
+            "power": 2,
+            "toughness": 2,
+            "keywords": [
+              "flying"
+            ],
+            "abilities": [
+              {
+                "type": "activated",
+                "cost": [
+                  {
+                    "kind": "mana",
+                    "mana": "{R}"
+                  }
+                ],
+                "effects": [
+                  {
+                    "kind": "pump_self",
+                    "power": 1,
+                    "toughness": 0
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

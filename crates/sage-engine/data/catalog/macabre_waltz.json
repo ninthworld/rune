@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "functional_id": "macabre_waltz",
+  "name": "Macabre Waltz",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{1}{B}",
+  "colors": [
+    "black"
+  ],
+  "spell_effects": [
+    {
+      "kind": "return_card_to_hand",
+      "target": {
+        "card_in_graveyard": {
+          "class": "creature"
+        }
+      },
+      "targets": {
+        "up_to": 2
+      }
+    },
+    {
+      "kind": "discard",
+      "player_ref": "controller",
+      "count": 1
+    }
+  ]
+}

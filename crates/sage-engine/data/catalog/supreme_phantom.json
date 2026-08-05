@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "functional_id": "supreme_phantom",
+  "name": "Supreme Phantom",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Spirit"
+  ],
+  "mana_cost": "{1}{U}",
+  "colors": [
+    "blue"
+  ],
+  "power": 1,
+  "toughness": 3,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "static",
+      "affects": {
+        "scope": "creatures_you_control",
+        "subtype": "Spirit",
+        "except_this": true
+      },
+      "modification": {
+        "kind": "power_toughness",
+        "power": 1,
+        "toughness": 1
+      }
+    }
+  ]
+}

@@ -5,6 +5,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "aethershield_artificer",
+    "collector_number": "2",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "ajani_adversary_of_tyrants",
     "collector_number": "3",
     "rarity": "mythic"
@@ -25,8 +30,23 @@
     "rarity": "common"
   },
   {
+    "functional_id": "cavalry_drillmaster",
+    "collector_number": "8",
+    "rarity": "common"
+  },
+  {
     "functional_id": "daybreak_chaplain",
     "collector_number": "10",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "dwarven_priest",
+    "collector_number": "11",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "gallant_cavalry",
+    "collector_number": "12",
     "rarity": "common"
   },
   {
@@ -55,6 +75,16 @@
     "rarity": "common"
   },
   {
+    "functional_id": "knightly_valor",
+    "collector_number": "20",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "leonin_vanguard",
+    "collector_number": "22",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "loxodon_line_breaker",
     "collector_number": "24",
     "rarity": "common"
@@ -65,14 +95,29 @@
     "rarity": "common"
   },
   {
+    "functional_id": "make_a_stand",
+    "collector_number": "26",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "mighty_leap",
     "collector_number": "28",
     "rarity": "common"
   },
   {
+    "functional_id": "militia_bugler",
+    "collector_number": "29",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "oreskos_swiftclaw",
     "collector_number": "31",
     "rarity": "common"
+  },
+  {
+    "functional_id": "remorseful_cleric",
+    "collector_number": "33",
+    "rarity": "rare"
   },
   {
     "functional_id": "revitalize",
@@ -90,6 +135,16 @@
     "rarity": "common"
   },
   {
+    "functional_id": "trusty_packbeast",
+    "collector_number": "41",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "valiant_knight",
+    "collector_number": "42",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "aether_tunnel",
     "collector_number": "43",
     "rarity": "uncommon"
@@ -97,6 +152,11 @@
   {
     "functional_id": "aven_wind_mage",
     "collector_number": "45",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "aviation_pioneer",
+    "collector_number": "46",
     "rarity": "common"
   },
   {
@@ -135,9 +195,49 @@
     "rarity": "common"
   },
   {
+    "functional_id": "gearsmith_prodigy",
+    "collector_number": "57",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "horizon_scholar",
+    "collector_number": "59",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "mystic_archaeologist",
+    "collector_number": "63",
+    "rarity": "rare"
+  },
+  {
+    "functional_id": "omenspeaker",
+    "collector_number": "64",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "salvager_of_secrets",
+    "collector_number": "70",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "scholar_of_stars",
+    "collector_number": "71",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "sift",
+    "collector_number": "72",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "snapping_drake",
     "collector_number": "75",
     "rarity": "common"
+  },
+  {
+    "functional_id": "supreme_phantom",
+    "collector_number": "76",
+    "rarity": "rare"
   },
   {
     "functional_id": "tezzeret_artifice_master",
@@ -147,6 +247,16 @@
   {
     "functional_id": "tolarian_scholar",
     "collector_number": "80",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "totally_lost",
+    "collector_number": "81",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "uncomfortable_chill",
+    "collector_number": "82",
     "rarity": "common"
   },
   {
@@ -165,9 +275,24 @@
     "rarity": "common"
   },
   {
+    "functional_id": "death_baron",
+    "collector_number": "90",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "diregraf_ghoul",
     "collector_number": "92",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "doomed_dissenter",
+    "collector_number": "93",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "duress",
+    "collector_number": "94",
+    "rarity": "common"
   },
   {
     "functional_id": "epicure_of_blood",
@@ -190,9 +315,24 @@
     "rarity": "mythic"
   },
   {
+    "functional_id": "macabre_waltz",
+    "collector_number": "108",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "mind_rot",
+    "collector_number": "109",
+    "rarity": "common"
+  },
+  {
     "functional_id": "murder",
     "collector_number": "110",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "open_the_graves",
+    "collector_number": "112",
+    "rarity": "rare"
   },
   {
     "functional_id": "plague_mare",
@@ -213,6 +353,11 @@
     "functional_id": "sovereign_s_bite",
     "collector_number": "120",
     "rarity": "common"
+  },
+  {
+    "functional_id": "stitcher_s_supplier",
+    "collector_number": "121",
+    "rarity": "uncommon"
   },
   {
     "functional_id": "strangling_spores",
@@ -245,9 +390,19 @@
     "rarity": "common"
   },
   {
+    "functional_id": "catalyst_elemental",
+    "collector_number": "132",
+    "rarity": "common"
+  },
+  {
     "functional_id": "crash_through",
     "collector_number": "133",
     "rarity": "common"
+  },
+  {
+    "functional_id": "dragon_egg",
+    "collector_number": "138",
+    "rarity": "uncommon"
   },
   {
     "functional_id": "electrify",
@@ -255,8 +410,18 @@
     "rarity": "common"
   },
   {
+    "functional_id": "fiery_finish",
+    "collector_number": "140",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "fire_elemental",
     "collector_number": "141",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "goblin_instigator",
+    "collector_number": "142",
     "rarity": "common"
   },
   {
@@ -330,6 +495,16 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "tormenting_voice",
+    "collector_number": "164",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "trumpet_blast",
+    "collector_number": "165",
+    "rarity": "common"
+  },
+  {
     "functional_id": "viashino_pyromancer",
     "collector_number": "166",
     "rarity": "common"
@@ -337,6 +512,11 @@
   {
     "functional_id": "volcanic_dragon",
     "collector_number": "167",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "volley_veteran",
+    "collector_number": "168",
     "rarity": "uncommon"
   },
   {
@@ -362,6 +542,21 @@
   {
     "functional_id": "druid_of_the_cowl",
     "collector_number": "177",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "dryad_greenseeker",
+    "collector_number": "178",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "elvish_clancaller",
+    "collector_number": "179",
+    "rarity": "rare"
+  },
+  {
+    "functional_id": "elvish_rejuvenator",
+    "collector_number": "180",
     "rarity": "common"
   },
   {
@@ -410,6 +605,11 @@
     "rarity": "rare"
   },
   {
+    "functional_id": "recollect",
+    "collector_number": "197",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "rhox_oracle",
     "collector_number": "198",
     "rarity": "common"
@@ -445,8 +645,28 @@
     "rarity": "common"
   },
   {
+    "functional_id": "aerial_engineer",
+    "collector_number": "211",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "draconic_disciple",
+    "collector_number": "215",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "heroic_reinforcements",
+    "collector_number": "217",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "poison_tip_archer",
     "collector_number": "220",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "psychic_symbiont",
+    "collector_number": "221",
     "rarity": "uncommon"
   },
   {
@@ -460,9 +680,39 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "dragon_s_hoard",
+    "collector_number": "232",
+    "rarity": "rare"
+  },
+  {
+    "functional_id": "explosive_apparatus",
+    "collector_number": "233",
+    "rarity": "common"
+  },
+  {
     "functional_id": "field_creeper",
     "collector_number": "234",
     "rarity": "common"
+  },
+  {
+    "functional_id": "fountain_of_renewal",
+    "collector_number": "235",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "gearsmith_guardian",
+    "collector_number": "237",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "manalith",
+    "collector_number": "239",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "meteor_golem",
+    "collector_number": "241",
+    "rarity": "uncommon"
   },
   {
     "functional_id": "millstone",
@@ -531,7 +781,37 @@
   },
   {
     "functional_id": "plains",
+    "collector_number": "261",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "plains",
+    "collector_number": "262",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "plains",
+    "collector_number": "263",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "plains",
     "collector_number": "264",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "island",
+    "collector_number": "265",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "island",
+    "collector_number": "266",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "island",
+    "collector_number": "267",
     "rarity": "common"
   },
   {
@@ -541,7 +821,37 @@
   },
   {
     "functional_id": "swamp",
+    "collector_number": "269",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "swamp",
+    "collector_number": "270",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "swamp",
+    "collector_number": "271",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "swamp",
     "collector_number": "272",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "mountain",
+    "collector_number": "273",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "mountain",
+    "collector_number": "274",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "mountain",
+    "collector_number": "275",
     "rarity": "common"
   },
   {
@@ -551,42 +861,22 @@
   },
   {
     "functional_id": "forest",
+    "collector_number": "277",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "forest",
+    "collector_number": "278",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "forest",
+    "collector_number": "279",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "forest",
     "collector_number": "280",
-    "rarity": "common"
-  },
-  {
-    "functional_id": "serra_s_guardian",
-    "collector_number": "284",
-    "rarity": "rare"
-  },
-  {
-    "functional_id": "silverbeak_griffin",
-    "collector_number": "285",
-    "rarity": "common"
-  },
-  {
-    "functional_id": "tattered_mummy",
-    "collector_number": "295",
-    "rarity": "common"
-  },
-  {
-    "functional_id": "aggressive_mammoth",
-    "collector_number": "302",
-    "rarity": "rare"
-  },
-  {
-    "functional_id": "sun_sentinel",
-    "collector_number": "307",
-    "rarity": "common"
-  },
-  {
-    "functional_id": "air_elemental",
-    "collector_number": "308",
-    "rarity": "uncommon"
-  },
-  {
-    "functional_id": "llanowar_elves",
-    "collector_number": "314",
     "rarity": "common"
   }
 ]

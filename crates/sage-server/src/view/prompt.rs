@@ -152,6 +152,10 @@ pub(crate) fn target_spec_prompt(spec: TargetSpec) -> &'static str {
         TargetSpec::AnyOpponent => "Choose target opponent",
         TargetSpec::AnyPermanent => "Choose target permanent",
         TargetSpec::AnyNonlandPermanent => "Choose target nonland permanent",
+        TargetSpec::AnyNonlandPermanentAnOpponentControls => {
+            "Choose target nonland permanent an opponent controls"
+        }
+        TargetSpec::AnyArtifactCreatureYouControl => "Choose target artifact creature you control",
         TargetSpec::AnyCreature => "Choose target creature",
         TargetSpec::AnyCreatureYouControl => "Choose target creature you control",
         TargetSpec::AnyCreatureAnOpponentControls => "Choose target creature an opponent controls",
@@ -167,9 +171,7 @@ pub(crate) fn target_spec_prompt(spec: TargetSpec) -> &'static str {
         TargetSpec::AnyArtifactEnchantmentOrCreatureWithFlying => {
             "Choose target artifact, enchantment, or creature with flying"
         }
-        TargetSpec::CreatureCardInYourGraveyard { .. } => {
-            "Choose target creature card in your graveyard"
-        }
+        TargetSpec::CardInGraveyard { .. } => "Choose target card in a graveyard",
     }
 }
 

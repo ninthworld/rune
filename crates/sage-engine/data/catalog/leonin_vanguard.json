@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "functional_id": "leonin_vanguard",
+  "name": "Leonin Vanguard",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Cat",
+    "Soldier"
+  ],
+  "mana_cost": "{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 1,
+  "toughness": 1,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "beginning_of_step": {
+          "step": "begin_combat",
+          "whose_turn": "yours"
+        }
+      },
+      "effects": [
+        {
+          "kind": "conditional",
+          "condition": {
+            "kind": "controls_at_least",
+            "permanents": {
+              "card_type": "creature"
+            },
+            "count": 3
+          },
+          "then": [
+            {
+              "kind": "pump_self",
+              "power": 1,
+              "toughness": 1
+            },
+            {
+              "kind": "gain_life",
+              "player_ref": "controller",
+              "amount": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

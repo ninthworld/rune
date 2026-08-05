@@ -36,8 +36,8 @@
     "blocker": "no cost-modification layer"
   },
   {
-    "name": "Costs paid by sacrificing or discarding",
-    "blocker": "an activation cost models only tapping, mana, and loyalty, and the one additional cast cost is a discard"
+    "name": "Costs paid by sacrificing a permanent the player chooses, or by discarding",
+    "blocker": "an activation cost may sacrifice its own source and remove its own counters, but a cost that requires picking another permanent or a card has no way to carry the choice"
   },
   {
     "name": "Damage prevention",
@@ -52,8 +52,8 @@
     "blocker": "a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random"
   },
   {
-    "name": "Effects that return cards from a graveyard to a hand",
-    "blocker": "a targeted creature card returns from a graveyard to the battlefield; there is no graveyard-to-hand effect"
+    "name": "Effects that return a card from a graveyard to a zone other than a hand or the battlefield",
+    "blocker": "a targeted card returns from a graveyard to a hand or to the battlefield, and a whole graveyard can be exiled; nothing else moves a card out of one"
   },
   {
     "name": "Effects that untap, or that stop a permanent untapping",
@@ -61,7 +61,7 @@
   },
   {
     "name": "Effects whose amount is derived from anything but a count of permanents",
-    "blocker": "an amount may scale with a count of permanents; cards in a zone, life totals, and mana values feed nothing"
+    "blocker": "an amount may scale with a count of permanents — power/toughness, life, or damage; cards in a zone, life totals, and mana values feed nothing"
   },
   {
     "name": "Emblems with an activated ability",
@@ -128,8 +128,8 @@
     "blocker": "mana costs are fixed strings with no X announcement"
   },
   {
-    "name": "Static abilities that affect anything but creatures their controller controls",
-    "blocker": "the continuous-effect selector names one class, so a permanent or an emblem may modify no other"
+    "name": "Static abilities that affect anything but the source or creatures its controller controls",
+    "blocker": "the continuous-effect selector names the source or one class of that controller's creatures, so a permanent or an emblem may modify no other"
   },
   {
     "name": "The legend-rule choice among duplicates",

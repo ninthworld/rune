@@ -49,6 +49,13 @@ pub(crate) fn cost_payable(state: &GameState, cost: &[Cost], permanent: &Permane
         // at 4. A `+N` or `0` cost is always payable — there is no upper bound on
         // loyalty.
         Cost::Loyalty { amount } => loyalty_cost_is_payable(permanent, *amount),
+        // A permanent on the battlefield can always be sacrificed (CR 701.17a), and an
+        // ability is only ever offered from one that is.
+        Cost::SacrificeThis => true,
+        // CR 118.3: a cost that removes counters is payable only out of counters the
+        // permanent actually has, which is what makes a three-charge artifact offer its
+        // ability three times and then stop.
+        Cost::RemoveCounters { counter, count } => permanent.counter_count(*counter) >= *count,
     })
 }
 

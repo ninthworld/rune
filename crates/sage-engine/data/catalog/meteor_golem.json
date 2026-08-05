@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "functional_id": "meteor_golem",
+  "name": "Meteor Golem",
+  "types": [
+    "artifact",
+    "creature"
+  ],
+  "subtypes": [
+    "Golem"
+  ],
+  "mana_cost": "{7}",
+  "colors": [],
+  "power": 3,
+  "toughness": 3,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "destroy",
+          "target": "any_nonland_permanent_an_opponent_controls"
+        }
+      ]
+    }
+  ]
+}

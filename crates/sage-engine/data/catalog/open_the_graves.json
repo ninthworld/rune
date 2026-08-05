@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "functional_id": "open_the_graves",
+  "name": "Open the Graves",
+  "types": [
+    "enchantment"
+  ],
+  "mana_cost": "{3}{B}{B}",
+  "colors": [
+    "black"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "permanent_dies": {
+          "scope": "creatures_you_control",
+          "nontoken": true
+        }
+      },
+      "effects": [
+        {
+          "kind": "create_token",
+          "token": {
+            "name": "Zombie",
+            "types": [
+              "creature"
+            ],
+            "subtypes": [
+              "Zombie"
+            ],
+            "colors": [
+              "black"
+            ],
+            "power": 2,
+            "toughness": 2
+          }
+        }
+      ]
+    }
+  ]
+}

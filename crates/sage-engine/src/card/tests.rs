@@ -8,7 +8,7 @@ use super::database::CardDatabase;
 use crate::id::{CardId, FunctionalId};
 
 /// The number of functional definitions in `data/catalog/`.
-pub(crate) const CATALOG_SIZE: usize = 134;
+pub(crate) const CATALOG_SIZE: usize = 182;
 
 /// Every handle the bundled catalog interned: `CardId(0..n)` (ADR 0008 §3).
 pub(crate) fn every_id() -> impl Iterator<Item = CardId> {

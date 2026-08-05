@@ -24,6 +24,58 @@ pub enum StaticAffects {
         #[serde(default)]
         except_this: bool,
     },
+    /// The source permanent and nothing else — the "this creature" of `This creature
+    /// gets +1/+0 as long as you control an artifact.`
+    ///
+    /// A class of one, and deliberately a class rather than a special case: it flows
+    /// through the same selector, the same timestamp, and the same layer as an anthem,
+    /// so a self-modifying static ability needs no path of its own. An emblem is not a
+    /// permanent and so has no source to affect; a `source` static on one applies to
+    /// nothing, which is the honest answer rather than a panic.
+    Source,
+}
+
+/// What has to be true for a printed [`Ability::Static`] to be **in force** — the
+/// `as long as …` of a conditional continuous ability.
+///
+/// Absent from an ability means unconditional, which is what every anthem and lord
+/// says. Present, it is re-asked on **every read** of the affected permanent's
+/// characteristics, exactly as the static ability itself is derived on every read
+/// (ADR 0005 §1): a creature that gets +2/+0 while you control an artifact loses it the
+/// instant the artifact does, with nothing to prune and no way for the modifier to
+/// outlive the condition.
+///
+/// Deliberately a small enum of its own rather than the [`Condition`] an
+/// [`Effect::Conditional`] takes. Two of that enum's three variants ask what *this
+/// resolution* has already done, and a continuous ability is not a resolution: it has no
+/// window to read and no start to measure from, so those questions would be
+/// unanswerable rather than merely unused.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum StaticCondition {
+    /// The source's controller controls at least `count` permanents matching
+    /// `permanents` — `as long as you control an artifact`, `as long as you control an
+    /// Ajani planeswalker`.
+    ControlsAtLeast {
+        /// Which permanents are counted, relative to the source's controller.
+        permanents: crate::ability::PermanentCount,
+        /// The threshold, inclusive. Defaults to one, which is what "as long as you
+        /// control **an** artifact" means.
+        #[serde(default = "one_permanent")]
+        count: u32,
+    },
+    /// The source permanent is currently **attacking** — `as long as it's attacking`.
+    ///
+    /// Read off the declaration the combat step produced, so it turns on when attackers
+    /// are declared and off when the permanent leaves combat, with no event to observe
+    /// in either direction.
+    SourceIsAttacking,
+}
+
+/// The default threshold of a [`StaticCondition::ControlsAtLeast`]: one, the "an" of
+/// "as long as you control **an** artifact".
+fn one_permanent() -> u32 {
+    1
 }
 
 /// What a printed [`Ability::Static`] does to the permanents it affects. The
