@@ -333,9 +333,26 @@ struct SeatGate {
     /// [`deck`](SeatGate::deck); carried here so [`Lobby::start_game`] can hand it to
     /// [`PlayerSetup::with_commander`]. Never leaves the server as deck contents.
     commander: Option<CardId>,
+    /// What the seat shows the table about the deck it submitted: the colours it is in
+    /// (WUBRG) and the `functional_id` of its commander.
+    ///
+    /// Derived once, where the deck is accepted, rather than in the view — the view
+    /// builder reads the registry and has no card database, and a summary computed on
+    /// every broadcast would be recomputing a constant. Cleared with the deck it
+    /// describes, so it can never outlive it.
+    shown: SeatShown,
     /// Whether the seat has declared itself ready. A seat may ready only once
     /// [`deck`](SeatGate::deck) is `Some`.
     ready: bool,
+}
+
+/// The public summary of a seat's deck: what a player at the table can see of it.
+#[derive(Clone, Default)]
+struct SeatShown {
+    /// The deck's colour identity in WUBRG order, empty when the seat has no deck.
+    colors: Vec<sage_protocol::Color>,
+    /// The designated commander's `functional_id`, if the seat designated one.
+    commander: Option<String>,
 }
 
 impl Lobby {

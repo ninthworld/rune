@@ -11,6 +11,15 @@
  * drawn as what every table currently does, unpressable, rather than left out and having to be
  * designed back in the day the server carries them.
  *
+ * **A seat shows what its player brought, and both seats are drawn the same way** (§9.7): the deck's
+ * colours, and the commander it was built around. Your own comes from the draft on this device;
+ * everybody else's is the summary the server put on their `SeatView`. Neither is this screen
+ * reading a decklist — nothing here can, and nothing here tries.
+ *
+ * **The two deck controls on your seat are the deck editor's, made small.** `Change` opens the same
+ * loader the editor loads from, and `Edit` opens the sideboard line with a way through to the
+ * editor itself; both are gated on `submit_deck` being advertised.
+ *
  * **The footer is the board's action bar doing the same job before the game starts** (§6.5):
  * blue while the table is still waiting, green once every seat is ready, carrying the tally in
  * words and your `Ready`. It has no `Start game`, because the protocol has none: the room starts
@@ -24,11 +33,11 @@
 import { useState } from 'react'
 
 import { deckColors, formatOf, type Catalog, type DeckDraft } from './../../deck'
-import { STARTER_DECKS, type StarterDeck } from './../../decks'
+import { STARTER_DECKS } from './../../decks'
 import { roster, tableLabel } from './../../lobby'
 import type { LobbyCommand, LobbyRejection, LobbyView, RoomView } from './../../protocol'
 import { rejectionText } from './../../deck'
-import { AiPicker, DeckPicker } from './Pickers'
+import { AiPicker } from './Pickers'
 import { OpenSeat, Seat } from './Seat'
 import { SidePanel } from './SidePanel'
 
@@ -61,10 +70,10 @@ export function Room({
   onSide(open: boolean): void
   onSettings(): void
   onEditDeck(): void
-  onDeck(deck: StarterDeck): void
+  /** Opens the deck chooser, which is the same dialog the deck editor loads from. */
+  onDeck(): void
   send(command: LobbyCommand): void
 }) {
-  const [picking, setPicking] = useState(false)
   const [seating, setSeating] = useState<number | undefined>(undefined)
 
   const rows = roster(room, view.you, catalog.aiNames)
@@ -149,19 +158,27 @@ export function Room({
                 catalog={catalog}
                 {...(row.you
                   ? {
+                      // Your own seat is drawn from the draft on this device, which is ahead of
+                      // anything the server has been told.
                       deck: {
                         name:
                           deckName ?? (draft.entries.length > 0 ? 'Your deck' : 'No deck chosen'),
                         colors,
-                        ...(format?.requires_commander && draft.commander !== undefined
-                          ? { commander: draft.commander }
-                          : {}),
+                        ...(draft.commander === undefined ? {} : { commander: draft.commander }),
                       },
                     }
-                  : {})}
-                {...(row.you && canDeck
-                  ? { onDeck: () => setPicking(true), onEdit: onEditDeck }
-                  : {})}
+                  : row.decked
+                    ? {
+                        // Everybody else's is what the server said about theirs: the colours it
+                        // is in and the commander it named, and never a card of it.
+                        deck: {
+                          name: 'Deck submitted',
+                          colors: row.colors,
+                          ...(row.commander === undefined ? {} : { commander: row.commander }),
+                        },
+                      }
+                    : {})}
+                {...(row.you && canDeck ? { onDeck, onEdit: onEditDeck } : {})}
                 {...(canRemoveAi && row.ai !== undefined
                   ? { onRemove: () => send({ type: 'remove_ai', seat: row.seat }) }
                   : {})}
@@ -222,23 +239,20 @@ export function Room({
         </div>
       </div>
 
-      {picking && (
-        <DeckPicker
-          decks={STARTER_DECKS}
-          {...(deckName !== undefined
-            ? { current: STARTER_DECKS.find((deck) => deck.name === deckName)?.id }
-            : {})}
-          onClose={() => setPicking(false)}
-          onPick={onDeck}
-        />
-      )}
-
       {seating !== undefined && (
         <AiPicker
           kinds={catalog.ai}
           decks={STARTER_DECKS}
           onClose={() => setSeating(undefined)}
-          onSeat={(kind, cards) => send({ type: 'add_ai', seat: seating, kind, cards: [...cards] })}
+          onSeat={(kind, cards, commander) =>
+            send({
+              type: 'add_ai',
+              seat: seating,
+              kind,
+              cards: [...cards],
+              ...(commander === undefined ? {} : { commander }),
+            })
+          }
         />
       )}
     </div>

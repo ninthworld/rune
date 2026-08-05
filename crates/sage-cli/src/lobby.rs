@@ -700,6 +700,8 @@ mod tests {
             name: None,
             decked,
             ready,
+            colors: Vec::new(),
+            commander: None,
             ai: None,
         }
     }

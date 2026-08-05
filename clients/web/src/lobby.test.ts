@@ -168,3 +168,31 @@ describe('the roster of a table', () => {
     expect(roster({ room_id: 'r_1', config: { seats: 2, game_setup: 'x' } }, 'p0')).toEqual([])
   })
 })
+
+describe('what a seat shows the table', () => {
+  it('carries the colours and commander the server stated, and nothing where it stated none', () => {
+    const rows = roster(
+      {
+        room_id: 'r_1',
+        config: { seats: 2, game_setup: 'commander' },
+        seats: [
+          {
+            seat: 0,
+            occupied_by: 'p0',
+            decked: true,
+            colors: ['R', 'G'],
+            commander: 'lathliss_dragon_queen',
+          },
+          { seat: 1, occupied_by: 'p1', decked: true },
+        ],
+      },
+      'p0',
+    )
+
+    expect(rows[0]?.colors).toEqual(['R', 'G'])
+    expect(rows[0]?.commander).toBe('lathliss_dragon_queen')
+    // A seat the server said nothing about shows nothing — not an empty deck, nothing.
+    expect(rows[1]?.colors).toEqual([])
+    expect(rows[1]?.commander).toBeUndefined()
+  })
+})

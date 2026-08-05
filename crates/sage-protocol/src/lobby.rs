@@ -98,7 +98,9 @@ pub struct RoomConfig {
 
 /// One seat in a room's roster, as seen by any connection. Hidden information
 /// stays redacted: a seat's decklist contents are never exposed, only the fact
-/// that the seat is decked.
+/// that the seat is decked, the colours that deck is in, and the commander it
+/// designated — the two things a player shows the table before a game rather than
+/// keeps to themselves.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SeatView {
     /// Zero-based seat index within the room.
@@ -117,6 +119,22 @@ pub struct SeatView {
     /// Whether this seat has submitted a server-validated deck.
     #[serde(default, skip_serializing_if = "crate::is_false")]
     pub decked: bool,
+    /// The colours of the deck this seat submitted (CR 903.4), in WUBRG order — the
+    /// union of its cards' colour identities, computed when the deck was accepted.
+    ///
+    /// **This is a summary, never the list.** It says a seat is playing red and green;
+    /// it says nothing about which cards, and a seat that has submitted no deck carries
+    /// none. Public because the colours a player brings to a table are what everyone at
+    /// it can see before the first card is drawn.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub colors: Vec<crate::Color>,
+    /// The commander this seat designated (CR 903.3), as its stable `functional_id`.
+    ///
+    /// Public for the same reason the physical card is: a commander begins the game in
+    /// the command zone, face up, where every player can read it. `None`/omitted for a
+    /// seat with no commander, which is every seat in a format that wants none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commander: Option<CardIdentity>,
     /// Whether this seat has declared itself ready.
     #[serde(default, skip_serializing_if = "crate::is_false")]
     pub ready: bool,

@@ -1093,6 +1093,10 @@ Each seat contains:
 - optional public `name`, the occupant’s chosen display name (issue #294), omitted for
   an empty or unnamed seat;
 - `decked`, indicating a validated deck was submitted;
+- optional `colors`, the colour identity of that deck (CR 903.4) in WUBRG order, omitted
+  for a seat that has submitted none;
+- optional `commander`, the `CardIdentity` the seat designated (CR 903.3), omitted for a
+  seat that designated none;
 - `ready`; and
 - optional `ai`, the id of the **AI opponent** kind filling the seat (issue #415), omitted
   for an empty or human seat.
@@ -1100,6 +1104,16 @@ Each seat contains:
 Deck contents are private and never appear in another connection’s view. A seat’s `name`
 is public and un-redacted; when it is absent a client falls back to a seat-derived label
 (e.g. `"Player 2"`, using the real `seat` index — never by parsing the opaque id).
+
+`colors` and `commander` are what a player **shows** the table, and both are server-derived
+when a deck is accepted rather than sent by the client: `colors` is the union of the deck’s
+cards’ colour identities, and `commander` is the identity the `submit_deck` designated. They
+summarise a decklist without disclosing it — a seat is red and green, and which cards make it
+so stays private. A commander is public for the same reason the physical card is: it begins
+the game face up in the command zone (`Permanent.is_commander` marks the same card in play).
+Both elide from the wire at their empty values, so an older client that never reads them sees
+exactly what it saw before, and a client MUST NOT treat their absence as “no deck” — `decked`
+remains the only statement about that.
 
 A seat filled by an AI opponent (issue #415) carries `ai` set to the AI kind’s id (e.g.
 `"random"`), no `occupied_by` (it is not a session), and `decked`/`ready` both `true` — its

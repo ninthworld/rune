@@ -16,6 +16,9 @@
  * - **A seat's status is the flags the server sent.** `decked` and `ready` are stated per seat,
  *   including for an AI seat, and are rendered as stated. What a room needs before it starts is
  *   the server's gate; this module only says which stated flag is still false.
+ * - **What a seat shows about its deck is the server's summary of it**, not a reading of a
+ *   decklist this client cannot see: `colors` and `commander` are carried across as stated, and a
+ *   seat the server said nothing about shows nothing rather than an empty deck.
  *
  * The one piece of prose the client owns is a fallback label. The server never invents a name
  * for an unnamed table or an unnamed occupant (a deliberate protocol decision — no prose rides
@@ -125,6 +128,13 @@ export interface SeatRow {
   /** The AI kind occupying this seat (`SeatView::ai`), if one does. */
   ai?: string
   decked: boolean
+  /**
+   * What this seat shows the table about its deck: the colours the server said it is in, and
+   * the commander it designated. Both are the server's summary of a decklist nobody else can
+   * read, so a seat that has submitted nothing carries neither.
+   */
+  colors: readonly string[]
+  commander?: string
   ready: boolean
   /** What this seat still owes, as marks. Empty for a seat nobody is in: it owes nothing yet. */
   marks: readonly SeatMark[]
@@ -175,6 +185,8 @@ function seatRow(
     you: you !== undefined && seat.occupied_by === you,
     ai: seat.ai,
     decked,
+    colors: list(seat.colors),
+    commander: seat.commander,
     ready,
     marks,
     awaiting: !occupied

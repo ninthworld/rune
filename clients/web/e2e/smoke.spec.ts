@@ -51,8 +51,9 @@ test('a fresh page to a played action, a reload, and a conceded game', async ({ 
   //    it: the server is what says a deck is legal.
   await page.getByRole('button', { name: 'Change' }).click()
   await page
-    .getByRole('dialog', { name: 'Choose a deck' })
-    .getByRole('button', { name: 'Choose' })
+    .getByRole('dialog', { name: 'Load a deck' })
+    .getByRole('button', { name: 'Load' })
+    .first()
     .click()
 
   // The AI kinds are the catalog's too, so seating one is only possible because the catalog

@@ -9,15 +9,16 @@
  * **An empty seat is a hole in the table, not a pane on it**: a dashed recess carrying `Open
  * seat` and the one thing that can fill it — an AI, from the kinds the catalog advertised.
  *
- * **A seat's deck is drawn as its colours**, and in a format that wants a commander it is drawn
+ * **A seat's deck is drawn as its colours**, and where the seat designated a commander it is drawn
  * as the card the deck is built around: the real card frame, ringed in the gold the command zone
  * wears, with the commander's name in gold beneath it. This is the one place in the client where
  * a card is used as an *identity* rather than as an object.
  *
- * What can be drawn about a deck differs by seat, and that is the wire's shape rather than a
- * choice: your own draft is on this device, so its colours and its commander are known here,
- * while another seat states only `decked`. That seat says what the server said about it and
- * nothing more.
+ * **Every seat is drawn the same way, and the two sources meet in one shape.** Your own comes from
+ * the draft on this device, which is ahead of anything the server has been told; everybody else's
+ * is what the server stated on their `SeatView` — the colours of the deck it accepted and the
+ * commander it was given, and never a card of the list itself. A seat that has submitted nothing
+ * says so; a seat says what it was given about it and nothing more, whichever source that was.
  */
 import { catalogFace } from './../../card-face'
 import type { Catalog } from './../../deck'
@@ -26,11 +27,17 @@ import type { ManaColor } from './../../mana'
 import { Card } from './../card/Card'
 import { Pip } from './../card/Pips'
 
-/** What this client knows about the deck in a seat. */
+/**
+ * What this client knows about the deck in a seat.
+ *
+ * For your own seat that is the draft on this device; for every other it is what the server
+ * stated on the seat — the colours the deck is in and the commander it designated, never its
+ * cards. The two arrive in the same shape because a seat is drawn one way whoever is in it.
+ */
 export interface SeatDeck {
   name: string
-  colors: readonly ManaColor[]
-  /** The card the deck is built around, in a format that asks for one. */
+  colors: readonly (ManaColor | string)[]
+  /** The card the deck is built around, where the seat designated one. */
   commander?: string
 }
 

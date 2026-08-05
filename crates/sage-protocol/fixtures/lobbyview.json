@@ -23,6 +23,8 @@
         "occupied_by": "p1",
         "name": "Practice bot",
         "decked": true,
+        "colors": ["W"],
+        "commander": "serra_angel",
         "ai": "random"
       }
     ]

@@ -2,17 +2,11 @@
    All geometry lives in Card.tsx as paths; only sizing, the per-color
    palette, and foreignObject typography live here. Inside each
    foreignObject 1 CSS px = 1 reference pixel, so type is set in px. */
-.card {
-  --s: 1px;
-  --u: calc(var(--s) * 600 / 291);
-  width: calc(207 * var(--u));
-  height: calc(291 * var(--u));
-  flex-shrink: 0;
-  display: block;
-  border-radius: calc(7 * var(--u));
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
-  color: #131110;
-  /* per-color derived tones; --f1/--f2 come from the color class */
+/* per-color derived tones; --f1/--f2 come from the color class. Declared for the whole
+   card and for a piece of the frame drawn on its own, because the same bar has to come
+   out the same colour in both. */
+.card,
+.c-band {
   --panel: color-mix(in srgb, var(--f1) 32%, #f8f5e9);
   --panel-deep: color-mix(in srgb, var(--f1) 45%, #eeebd6);
   --field: color-mix(in srgb, var(--f1) 16%, #fdfcf6);
@@ -22,6 +16,25 @@
   --accent: color-mix(in srgb, var(--f1) 85%, #ffffff);
   --key: color-mix(in srgb, var(--f2) 60%, #17150f);
   --key-soft: color-mix(in srgb, var(--f2) 50%, #55534b);
+  color: #131110;
+}
+
+.card {
+  --s: 1px;
+  --u: calc(var(--s) * 600 / 291);
+  width: calc(207 * var(--u));
+  height: calc(291 * var(--u));
+  flex-shrink: 0;
+  display: block;
+  border-radius: calc(7 * var(--u));
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+/* the title bar alone: it takes the width it is given and keeps the bar's proportion */
+.c-band {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 /* per-color frame palettes */
@@ -149,6 +162,16 @@
   border-top: 1px solid rgba(0, 0, 0, 0.28);
   color: #1d4b2a;
 }
+/* The loyalty symbol leading an ability: sized off the text it leads, like an inline
+   pip, and squarer than one because the shape is what says which way the cost goes. */
+.c-loyalty {
+  font-size: 0.55em;
+  width: 1.7em;
+  height: 1.7em;
+  vertical-align: middle;
+  margin-right: 0.12em;
+}
+
 .c-pip-inline {
   /* sized off its own font-size, so 1.55em is 0.85em of the text around it */
   font-size: 0.55em;

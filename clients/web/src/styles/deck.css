@@ -11,7 +11,9 @@
   /* the row is the panel's, not the list's: an implicit `auto` row would be sized by however
      many cards the catalog happens to hold, and the lists inside it would never scroll */
   grid-template-rows: minmax(0, 1fr);
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 190px;
+  /* the two lists are the tool and they are the same size; the card between them is a fixed
+     column, because a preview that grew would be taking width off the work */
+  grid-template-columns: minmax(0, 1fr) 210px minmax(0, 1fr);
 }
 
 .edit-pane {
@@ -39,6 +41,13 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: #8b8f98;
+}
+
+/* where the pane is two things, the switch between them stands in for its title — and it is
+   as wide as its two words, like the title it replaces, rather than stretched across the head */
+.edit-seg .seg-btn {
+  padding: 2px 8px;
+  font-size: 10px;
 }
 
 .edit-count {
@@ -91,6 +100,16 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* a row is the card's own title bar, the same drawing the builder's Titles view uses */
+.edit-band {
+  flex: 1;
+  min-width: 0;
+}
+
+.edit-row {
+  padding: 3px 8px;
 }
 
 /* the direction the click sends it, shown only when the row is live */

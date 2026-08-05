@@ -54,6 +54,7 @@ export function Lobby({
   onSettings,
   onDisconnect,
   onCreate,
+  onDecks,
   send,
 }: {
   view: LobbyView
@@ -66,6 +67,7 @@ export function Lobby({
   onSettings(): void
   onDisconnect(): void
   onCreate(): void
+  onDecks(): void
   send(command: LobbyCommand): void
 }) {
   const [query, setQuery] = useState('')
@@ -94,6 +96,9 @@ export function Lobby({
       <div className="topbar lobby-topbar">
         <button className="view-btn" onClick={onDisconnect}>
           ← Disconnect
+        </button>
+        <button className="view-btn" onClick={onDecks}>
+          Deck Editor
         </button>
         <span className="topbar-fill" />
         <span className="lobby-who">

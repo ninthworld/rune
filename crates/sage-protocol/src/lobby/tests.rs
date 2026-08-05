@@ -271,6 +271,8 @@ fn issue_415_seat_view_ai_round_trips_and_elides_when_absent() {
         name: Some("Random".into()),
         decked: true,
         ready: true,
+        colors: Vec::new(),
+        commander: None,
         ai: Some("random".into()),
     };
     let json = serde_json::to_value(&ai).unwrap();
@@ -371,6 +373,8 @@ fn lobby_view_round_trips_populated() {
                     name: Some("Alice".into()),
                     decked: true,
                     ready: true,
+                    colors: Vec::new(),
+                    commander: None,
                     ai: None,
                 },
                 SeatView {
@@ -379,6 +383,8 @@ fn lobby_view_round_trips_populated() {
                     name: None,
                     decked: true,
                     ready: false,
+                    colors: Vec::new(),
+                    commander: None,
                     ai: None,
                 },
             ],
@@ -418,6 +424,8 @@ fn lobby_view_elides_empties_and_redacts_seat_flags() {
         name: None,
         decked: false,
         ready: false,
+        colors: Vec::new(),
+        commander: None,
         ai: None,
     };
     let seat_json = serde_json::to_value(&empty_seat).unwrap();
@@ -581,6 +589,8 @@ fn seat_view_name_round_trips_and_elides_when_absent() {
         name: Some("Alice".into()),
         decked: true,
         ready: false,
+        colors: Vec::new(),
+        commander: None,
         ai: None,
     };
     let json = serde_json::to_value(&named).unwrap();

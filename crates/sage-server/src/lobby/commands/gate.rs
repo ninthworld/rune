@@ -63,6 +63,9 @@ impl Lobby {
                 .map_err(LobbyError::IllegalDeck)?;
         }
         if let Some(gate) = room.gate.get_mut(seat) {
+            // What this seat now shows the table, derived here because this is where a deck
+            // is accepted and where the card database is in hand.
+            gate.shown = shown_deck(&self.inner.db, &deck, commander);
             gate.deck = Some(deck);
             gate.commander = commander;
             gate.ready = false;
@@ -145,6 +148,8 @@ impl Lobby {
         // Store the AI's deck in the gate, decked + ready, so the ready gate and game
         // construction read it uniformly with human seats.
         if let Some(gate) = room.gate.get_mut(index) {
+            // A bot shows the table what it brought exactly as a human seat does.
+            gate.shown = shown_deck(&self.inner.db, &deck, commander);
             gate.deck = Some(deck);
             gate.commander = commander;
             gate.ready = true;
@@ -366,5 +371,34 @@ impl Lobby {
         // skipped by `push_view`, so their terminal `Start` hand-off is preserved).
         broadcast_views(registry);
         info!(%room_id, seats = occupants.len(), "ready gate passed; game constructed");
+    }
+}
+
+/// What a seat shows the table about the deck it just submitted: the colours it is in,
+/// and the commander it designated by name.
+///
+/// **A summary, computed once, from a deck that has already been validated.** The colours
+/// are the union of the cards' colour identities — the same reading
+/// [`color_identity_of`](crate::format::color_identity_of) gives one card, in the same
+/// WUBRG order a `CardView` carries — and the commander is its stable `functional_id`,
+/// which is what a client addresses a card by. Neither says which cards are in the deck,
+/// and neither is taken from the client: both are read off the resolved list here, so a
+/// seat cannot claim colours it is not playing.
+///
+/// Derived at the gate rather than in [`views`](crate::lobby::views) because the view
+/// builder holds the registry and no card database, and because a summary of a deck that
+/// only changes when the deck does has no business being recomputed on every broadcast.
+fn shown_deck(db: &CardDatabase, deck: &[CardId], commander: Option<CardId>) -> SeatShown {
+    let mut colors = std::collections::HashSet::new();
+    for card in deck {
+        if let Some(data) = db.card(*card) {
+            colors.extend(crate::format::color_identity_of(db, data));
+        }
+    }
+    SeatShown {
+        colors: crate::view::colors_in_wubrg(&colors),
+        commander: commander
+            .and_then(|card| db.card(card))
+            .map(|data| data.functional_id.to_string()),
     }
 }

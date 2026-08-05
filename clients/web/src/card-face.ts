@@ -294,6 +294,52 @@ export function emblemFace(emblem: Emblem): CardFace {
  * Built from the same model the frame draws, so what a screen reader hears and what the board
  * shows can never disagree.
  */
+/**
+ * Whether a paragraph of rules text is a line of keywords, and so set bold on the card.
+ *
+ * **The answer comes from the keywords the server stated**, not from reading the words: a line is
+ * a keyword line when everything on it, comma by comma, is one of them. That is what makes
+ * "Flying, haste" the same kind of line as "Flying", and keeps "First strike" one too — both of
+ * which a rule about spaces gets wrong.
+ *
+ * Reminder text in brackets and any mana symbols are dropped before matching, because they are
+ * printed alongside a keyword rather than being part of its name. A face the server stated no
+ * keywords for falls back to that older reading, so nothing that never carried them changes.
+ */
+export function keywordLine(para: string, keywords: readonly string[]): boolean {
+  const bare = para
+    .replace(/\([^)]*\)/g, '')
+    .replace(/\{[^}]+\}/g, '')
+    .trim()
+  if (bare === '') return false
+
+  const parts = bare
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part !== '')
+  if (parts.length === 0) return false
+  if (keywords.length === 0) return parts.length === 1 && !parts[0]!.includes(' ')
+
+  const stated = new Set(keywords.map((keyword) => keyword.toLowerCase()))
+  return parts.every((part) => stated.has(part.toLowerCase()))
+}
+
+/**
+ * A planeswalker's loyalty ability, split into the cost it is activated for and the rest of the
+ * line: `+1: Draw a card.` → `+1` and `Draw a card.`
+ *
+ * The server writes that cost as the signed number the card prints (CR 606.1) with the
+ * typographic minus, and a card prints it inside a symbol rather than as text. A hyphen is
+ * accepted too, because a minus sign is easy to lose in transit and the line still means the
+ * same thing.
+ */
+export function loyaltyCost(para: string): { cost: string; rest: string } | undefined {
+  const match = /^([+−-]?(?:\d+|X)):\s+(.*)$/s.exec(para.trim())
+  if (!match) return undefined
+  const [, cost, rest] = match
+  return { cost: cost!.replace('-', '−'), rest: rest! }
+}
+
 export function faceSummary(face: CardFace): string {
   const parts = [face.name]
   if (face.manaCost) parts.push(face.manaCost)
