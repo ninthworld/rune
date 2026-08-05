@@ -261,3 +261,13 @@ pub(crate) async fn seated_pair_in(lobby: &Lobby, game_setup: &str) -> (Client, 
     let _ = alice.view().await; // roster-updated push from bob's join
     (alice, bob, room_id)
 }
+
+/// `add_ai` filling `seat` of the sender's room with a `random` AI playing a valid deck.
+pub(crate) fn add_random_ai(seat: u8) -> LobbyCommand {
+    LobbyCommand::AddAi(sage_protocol::AddAi {
+        seat,
+        kind: "random".to_string(),
+        cards: decklist(),
+        commander: None,
+    })
+}
