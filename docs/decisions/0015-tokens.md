@@ -78,8 +78,8 @@ because a token cannot be in it.
 carries a `PlayerRef` — the same reference `mill` and `discard` use to name whose library
 or hand they act on — so "you create" and "target player creates" are the same effect with
 a different subject, and the fizzle rule for the targeting form is inherited rather than
-restated. It also carries `count` and `tapped`, because creation is not always "one,
-untapped".
+restated. It also carries `count`, `tapped`, and `attacking`, because creation is not
+always "one, untapped, out of combat".
 
 **7. The wire says "token" outright.** `CardView.token` is a boolean, additive and omitted
 when false, beside the `functional_id` that is empty for a token. Both are needed: the
@@ -106,13 +106,16 @@ token model makes each of them one primitive away instead of two, and `Printed::
 is already the first-class predicate three of them need, rather than an absence to be
 inferred.
 
-Two creation parameters are deliberately unmodeled and are named in the exclusions: a token
-created **already attacking** (Leonin Warleader, Sigiled Sword of Valeron), which needs a
-creation seam that knows about combat, and a token created as a **copy** of another
-permanent (Mirror Image), which needs a copiable-values model the layer system does not
-have. Both were designed for — `create_token` takes its entry state as parameters rather
-than assuming it, so attacking joins as one more — but neither was built ahead of the card
-that needs it.
+Two creation parameters were deliberately unmodeled here and named in the exclusions, and
+the first has since been built as this decision predicted it would be. A token created
+**already attacking** (issue #734, Leonin Warleader) is one more entry-state parameter
+beside `tapped`, taking its defender from the attack its own source is making rather than
+from the card, and CR 506.3c — never *declared*, so no attack trigger fires for it — is
+one condition in the diff-based trigger collector rather than a token special case
+anywhere. A token created as a **copy** of another permanent (Mirror Image) is still out:
+it needs a copiable-values model at CR 613 layer 1, ahead of every layer the engine
+applies, and that is a decision the control-change and replacement work has to settle
+first.
 
 The cost is that `Permanent` no longer answers "what card is this?" without a `match`. That
 is the honest shape: a battlefield object is not always a card, and code that assumed

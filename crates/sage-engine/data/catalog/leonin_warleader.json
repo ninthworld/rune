@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "functional_id": "leonin_warleader",
+  "name": "Leonin Warleader",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Cat",
+    "Soldier"
+  ],
+  "mana_cost": "{2}{W}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 4,
+  "toughness": 4,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_attacks",
+      "effects": [
+        {
+          "kind": "create_token",
+          "count": 2,
+          "tapped": true,
+          "attacking": true,
+          "token": {
+            "name": "Cat",
+            "types": [
+              "creature"
+            ],
+            "subtypes": [
+              "Cat"
+            ],
+            "colors": [
+              "white"
+            ],
+            "power": 1,
+            "toughness": 1,
+            "keywords": [
+              "lifelink"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
