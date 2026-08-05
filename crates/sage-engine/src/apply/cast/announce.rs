@@ -31,6 +31,7 @@ pub(crate) fn apply_play_land(state: &mut GameState, card: CardInstance, db: &Ca
         entered_turn,
         attacking: None,
         blocking: None,
+        skips_untap: false,
         damage: 0,
         counters: Default::default(),
         // A land is played directly, never attached to anything (CR 305).

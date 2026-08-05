@@ -349,6 +349,24 @@ pub struct Permanent {
     /// unchanged on the wire and a client that ignores it renders as it did.
     #[serde(default, skip_serializing_if = "crate::is_false")]
     pub summoning_sick: bool,
+    /// Whether this permanent will **not** untap in its controller's next untap step
+    /// (CR 502.4) — what a spell that said so left behind after the spell itself is
+    /// gone.
+    ///
+    /// Stated for the reason [`Self::summoning_sick`] is stated: no client can work it
+    /// out. The rules text that imposed it belongs to a spell now in a graveyard, and
+    /// the permanent's own printed text says nothing, so without this field a tapped
+    /// creature that stays tapped through an untap step is simply inexplicable — the
+    /// board would be telling a player a rule it never explained.
+    ///
+    /// Like summoning sickness it is a *restriction* a player is looking at, not a
+    /// mechanism: it reports what will happen, not how many steps are left, because a
+    /// card names one untap step and the engine holds one flag.
+    ///
+    /// Additive: omitted (and defaults to `false`), so every existing view is unchanged
+    /// on the wire and a client that ignores it renders as it did.
+    #[serde(default, skip_serializing_if = "crate::is_false")]
+    pub skips_next_untap: bool,
     /// The keywords this permanent has that its **printed card does not** — the trample
     /// an *until end of turn* pump gave it, the flying an Aura grants, the vigilance an
     /// anthem hands to a whole team (CR 613 layer 6, CR 613.1f).

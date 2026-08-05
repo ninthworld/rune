@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (185)
+## Supported cards (186)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -157,6 +157,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `skeleton_archer` | Skeleton Archer | functional definition |
 | `skymarch_bloodletter` | Skymarch Bloodletter | functional definition |
 | `skyscanner` | Skyscanner | functional definition |
+| `sleep` | Sleep | functional definition |
 | `smelt` | Smelt | functional definition |
 | `snapping_drake` | Snapping Drake | functional definition |
 | `sovereign_s_bite` | Sovereign's Bite | functional definition |
@@ -219,7 +220,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Effects that ask a player to name a colour, type, or card | no player choice recorded on a permanent or spell |
 | Effects that let a player choose the order of cards put back on a library | a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random |
 | Effects that return a card from a graveyard to a zone other than a hand or the battlefield | a targeted card returns from a graveyard to a hand or to the battlefield, and a whole graveyard can be exiled; nothing else moves a card out of one |
-| Effects that untap, or that stop a permanent untapping | no untap effect and no skipped-untap flag |
+| Effects that untap a permanent | a tapped permanent is untapped only by its controller's untap step, which an effect may make it sit out but no effect may bring forward |
 | Effects whose amount is derived from anything but a count of permanents | an amount may scale with a count of permanents — power/toughness, life, or damage; cards in a zone, life totals, and mana values feed nothing |
 | Emblems with an activated ability | an emblem carries static and triggered abilities only; nothing offers a way to activate one |
 | Equipment | no equip action or attachment outside the Aura model |

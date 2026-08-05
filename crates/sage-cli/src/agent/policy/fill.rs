@@ -346,6 +346,7 @@ mod tests {
             is_commander: false,
             counters: vec![],
             summoning_sick: false,
+            skips_next_untap: false,
             granted_keywords: vec![],
         }
     }

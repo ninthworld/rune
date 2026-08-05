@@ -235,6 +235,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "sleep",
+    "collector_number": "74",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "snapping_drake",
     "collector_number": "75",
     "rarity": "common"

@@ -274,6 +274,7 @@ mod tests {
             entered_turn,
             attacking: None,
             blocking: None,
+            skips_untap: false,
             damage: 0,
             counters: Default::default(),
             attached_to: None,

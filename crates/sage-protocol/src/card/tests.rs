@@ -61,6 +61,7 @@ fn permanent_combat_state_round_trips_and_elides_when_absent() {
         is_commander: false,
         counters: vec![],
         summoning_sick: false,
+        skips_next_untap: false,
         granted_keywords: Vec::new(),
     };
 
@@ -149,6 +150,7 @@ fn permanent_attachment_round_trips_and_elides_when_absent() {
         is_commander: false,
         counters: vec![],
         summoning_sick: false,
+        skips_next_untap: false,
         granted_keywords: Vec::new(),
     };
 
@@ -315,6 +317,7 @@ fn issue_650_the_physical_card_round_trips_and_elides_on_both_projections() {
         is_commander: false,
         counters: vec![],
         summoning_sick: false,
+        skips_next_untap: false,
         granted_keywords: Vec::new(),
     };
     let json = serde_json::to_value(&permanent).unwrap();
@@ -433,6 +436,7 @@ fn issue_650_two_copies_of_one_card_are_told_apart_by_the_physical_card_alone() 
         is_commander: false,
         counters: vec![],
         summoning_sick: false,
+        skips_next_untap: false,
         granted_keywords: Vec::new(),
     };
     let first = forest("perm_9", "card_5");

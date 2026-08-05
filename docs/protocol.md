@@ -438,6 +438,13 @@ A `Permanent` contains:
   stored engine state, haste may be granted by an Aura or a pump, and the absence of an attack
   action means nothing outside the declare-attackers step. It comes from the same engine
   predicate that gates attacking and `{T}` costs, so the board and the action list agree; and
+- optional `skips_next_untap` (default `false`, issue #730), whether this permanent will **not**
+  untap in its controller's next untap step (CR 502.4). Stated for the reason `summoning_sick`
+  is: the spell that imposed it is in a graveyard and the permanent's own printed text says
+  nothing about it, so without the field a tapped creature that stays tapped through an untap
+  step is a rule the board applied and never explained. Like summoning sickness it reports the
+  *restriction* a player is looking at rather than a mechanism — a card names one untap step and
+  the engine holds one flag, so there is no count to expose; and
 - optional `granted_keywords`, the keywords this permanent has that its **printed card does
   not** (CR 613 layer 6, CR 613.1f) — the trample an until-end-of-turn pump gave it, the
   flying an Aura grants, the vigilance an anthem hands a whole team. `card.keywords` already

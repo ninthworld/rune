@@ -93,6 +93,7 @@ fn place(
         entered_turn: 0,
         attacking: None,
         blocking: None,
+        skips_untap: false,
         damage: 0,
         counters: Default::default(),
         attached_to: None,

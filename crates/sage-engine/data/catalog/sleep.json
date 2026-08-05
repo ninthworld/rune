@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "functional_id": "sleep",
+  "name": "Sleep",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{2}{U}{U}",
+  "colors": [
+    "blue"
+  ],
+  "spell_effects": [
+    {
+      "kind": "tap_all",
+      "player_ref": "target_player",
+      "skip_next_untap": true
+    }
+  ]
+}

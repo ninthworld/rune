@@ -188,6 +188,7 @@ fn issue_345_multiplayer_combat_and_elimination_fields_round_trip_and_elide() {
         is_commander: false,
         counters: vec![],
         summoning_sick: false,
+        skips_next_untap: false,
         granted_keywords: Vec::new(),
     };
     let json = serde_json::to_value(&attacker).unwrap();
@@ -322,6 +323,7 @@ fn game_view_round_trips_through_json() {
                 count: 2,
             }],
             summoning_sick: false,
+            skips_next_untap: false,
             granted_keywords: Vec::new(),
         }],
         stack: vec![StackItem {

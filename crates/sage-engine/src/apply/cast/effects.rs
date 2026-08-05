@@ -125,6 +125,18 @@ pub(crate) fn apply_effect(
                 state.mill(seat, u32::from(*count));
             }
         }
+        // CR 502.4 / 611.2c: every creature the referenced player controls **right now**
+        // is tapped, and optionally flagged to skip that player's next untap step. A
+        // targeting reference names its seat instead and is applied through
+        // [`apply_targeted_effect`], so it is a no-op here.
+        Effect::TapAll {
+            player_ref,
+            skip_next_untap,
+        } => {
+            for seat in non_targeting_subjects(state, *player_ref, controller) {
+                tap_creatures_of(state, seat, *skip_next_untap, db);
+            }
+        }
         // CR 111.1: the referenced player creates `count` tokens, each with the
         // characteristics the effect describes. Tokens enter one at a time through the
         // one effect→battlefield seam, so each is a separate object with its own
@@ -332,6 +344,38 @@ fn apply_mass_modification(
             modification,
             duration: Duration::UntilEndOfTurn,
         });
+    }
+}
+
+/// Tap every creature `seat` controls, flagging each to skip that seat's next untap step
+/// when `skip_next_untap` (CR 502.4).
+///
+/// One function so the targeting and non-targeting spellings of [`Effect::TapAll`] tap
+/// exactly the same set: the difference between them is who the seat is, and nothing
+/// else. The set is enumerated **here, on resolution** (CR 611.2c) — a creature that
+/// arrives later is untouched, and one already tapped is flagged anyway, which is what
+/// stops a card from being a blank against a board that already attacked.
+pub(super) fn tap_creatures_of(
+    state: &mut GameState,
+    seat: PlayerId,
+    skip_next_untap: bool,
+    db: &CardDatabase,
+) {
+    for perm in &mut state.battlefield {
+        if perm.controller != seat {
+            continue;
+        }
+        if !perm
+            .printed
+            .face(db)
+            .is_some_and(|face| face.has_type(crate::card_type::CardType::Creature))
+        {
+            continue;
+        }
+        perm.tapped = true;
+        if skip_next_untap {
+            perm.skips_untap = true;
+        }
     }
 }
 

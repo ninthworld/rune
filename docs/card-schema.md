@@ -589,6 +589,36 @@ The affected set is locked in on resolution (CR 611.2c) — a creature that arri
 the turn is untouched. That is the whole difference between one of these and an
 `Ability::Static` anthem, which is re-derived on every read.
 
+### Tapping a whole seat's creatures, and skipping an untap step
+
+`tap_all` taps every creature a **named player** controls, and may flag those same
+creatures to sit out that player's next untap step (CR 502.4):
+
+```json
+{ "kind": "tap_all", "player_ref": "target_player", "skip_next_untap": true }
+```
+
+Its subject is the `player_ref` a `mill` takes, with the same rule — `target_player` fills
+a slot and can fizzle, `each_opponent` fills none and cannot. It is deliberately **not** a
+`pump_all`-style `affects` class: every one of those is read relative to the effect's
+controller and none of them targets, so "creatures *that player* controls" is unsayable
+there and sayable here without inventing anything.
+
+The skip rides on this effect rather than beside it as a second one, for the reason a
+`pump` carries its `keywords`: one effect declares one target group, so two effects would
+advertise two slots and let a player tap one seat's creatures while stopping another
+seat's untapping.
+
+The skip is a **flag, not a countdown**. A card names one untap step, so the flag is spent
+at the first untap step its controller reaches — whether or not the permanent is still
+tapped by then, since a flag left set would go on skipping every untap step for the rest of
+the game. It is stored on the permanent beside its damage, not computed: nothing about it
+is a continuous effect, it does not end at cleanup, and no layer applies to it. It rides the
+wire as `skips_next_untap` (`docs/protocol.md`), because the spell that imposed it is gone
+and no client could work it out.
+
+Untapping a permanent is a separate verb the IR does not have, and stays in the exclusions.
+
 ### Static abilities (continuous, CR 604.3)
 
 A printed static ability applies continuously for as long as its source is on the

@@ -54,6 +54,7 @@ pub(crate) fn put_permanent(
         // opponent, seat 1 (issue #341 made this the defending player).
         attacking: attacking.then_some(sage_engine::AttackTarget::Player(PlayerId(1))),
         blocking: None,
+        skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,

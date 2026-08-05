@@ -957,3 +957,15 @@ fn a_power_bound_is_spoken_by_every_selector_that_carries_one() {
          power 2 or less this turn."
     );
 }
+
+#[test]
+fn a_mass_tap_names_whose_creatures_and_the_step_they_sit_out() {
+    // Two sentences because the card prints two, and the verb agrees with the subject the
+    // `player_ref` names — "target player controls", never "target player control".
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "sleep"),
+        "Tap all creatures target player controls. Those creatures don't untap during \
+         their next untap step."
+    );
+}

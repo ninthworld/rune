@@ -467,6 +467,20 @@ pub struct Permanent {
     /// set when blockers are declared and cleared at the end-of-combat step
     /// (CR 511.3).
     pub blocking: Option<PermanentId>,
+    /// Whether this permanent skips its controller's **next** untap step (CR 502.4) —
+    /// what `Those creatures don't untap during that player's next untap step` leaves
+    /// behind after the spell that said it has gone.
+    ///
+    /// Raw stored state, and deliberately a **flag rather than a countdown**: the thing
+    /// a card names is one specific untap step, so the flag is spent at the first untap
+    /// step its controller reaches, whether or not the permanent is still tapped by
+    /// then. A counter would have to be decremented somewhere, and anywhere it was not
+    /// decremented the skip would silently outlive the card that granted it.
+    ///
+    /// It is *not* part of the computed characteristics: nothing about it is a
+    /// continuous effect, it does not end at cleanup, and no layer applies to it. The
+    /// permanent carries it the way it carries [`Self::damage`].
+    pub skips_untap: bool,
     /// Damage marked on this permanent this turn (CR 120.3). Raw stored state,
     /// zeroed as a turn-based action during the cleanup step (CR 514.2) and,
     /// once combat lands (issue #118), compared against toughness by the

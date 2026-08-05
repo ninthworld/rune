@@ -72,6 +72,33 @@ pub enum Effect {
         /// What this effect is allowed to target.
         target: TargetSpec,
     },
+    /// Tap **every creature a named player controls**, and optionally stop those same
+    /// creatures untapping in that player's next untap step (CR 502.4) — `Tap all
+    /// creatures target player controls. Those creatures don't untap during that
+    /// player's next untap step.`
+    ///
+    /// The subject is a [`PlayerRef`] exactly as [`Effect::Mill`]'s is, and decides on
+    /// its own whether a target is chosen: `target_player` fills a slot and can fizzle,
+    /// `each_opponent` fills none and cannot. It is deliberately **not** a
+    /// [`MassAffects`] class: every one of those is read relative to the effect's
+    /// controller and none of them targets, so "creatures *that player* controls" is
+    /// unsayable in that vocabulary and sayable in this one without inventing anything.
+    ///
+    /// The skip rides on this effect rather than beside it as a second effect for the
+    /// reason a pump carries its keywords: one effect declares one target group, so two
+    /// effects would advertise two slots and let a player tap one seat's creatures while
+    /// stopping another seat's untapping.
+    ///
+    /// The affected set is enumerated **on resolution** (CR 611.2c), so a creature that
+    /// arrives afterwards is neither tapped nor flagged.
+    TapAll {
+        /// Whose creatures are tapped. A targeting reference fills one slot.
+        player_ref: PlayerRef,
+        /// Whether the tapped creatures also skip their controller's next untap step.
+        /// `false` is a plain mass tap.
+        #[serde(default)]
+        skip_next_untap: bool,
+    },
     /// Counter the single spell on the stack this effect targets (CR 701.5a):
     /// on resolution the targeted spell is removed from the stack without
     /// resolving and put into its owner's graveyard. The first counterspell.
@@ -750,6 +777,10 @@ impl Effect {
             | Effect::Discard { player_ref, .. }
             | Effect::GainLifeByCount { player_ref, .. }
             | Effect::ExileGraveyard { player_ref }
+            // And a mass tap names whose creatures the same way: "tap all creatures
+            // target player controls" fills a slot, and a class relative to the
+            // controller would not.
+            | Effect::TapAll { player_ref, .. }
             // And a token creation names its creator the same way: "create a 2/4 white
             // Ox token" is made by you, "target player creates …" fills a slot.
             | Effect::CreateToken { player_ref, .. } => {

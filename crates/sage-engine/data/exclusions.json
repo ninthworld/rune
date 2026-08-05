@@ -56,8 +56,8 @@
     "blocker": "a targeted card returns from a graveyard to a hand or to the battlefield, and a whole graveyard can be exiled; nothing else moves a card out of one"
   },
   {
-    "name": "Effects that untap, or that stop a permanent untapping",
-    "blocker": "no untap effect and no skipped-untap flag"
+    "name": "Effects that untap a permanent",
+    "blocker": "a tapped permanent is untapped only by its controller's untap step, which an effect may make it sit out but no effect may bring forward"
   },
   {
     "name": "Effects whose amount is derived from anything but a count of permanents",

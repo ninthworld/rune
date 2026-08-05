@@ -240,6 +240,16 @@ pub(crate) fn apply_targeted_effect(
                 state.mill(seat, u32::from(*count));
             }
         }
+        // "Tap all creatures target player controls" (CR 502.4 / 611.2c): the chosen
+        // seat's creatures, enumerated now. Shares the one tapping function with the
+        // non-targeting spelling, so the two cannot disagree about what they tap.
+        Effect::TapAll {
+            skip_next_untap, ..
+        } => {
+            if let Target::Player(seat) = target {
+                super::effects::tap_creatures_of(state, seat, *skip_next_untap, db);
+            }
+        }
         // "Target player creates …" (CR 111.1): the token is created under the chosen
         // seat's control, which is the whole reason the creator is a reference rather
         // than an assumption about the ability's controller.
