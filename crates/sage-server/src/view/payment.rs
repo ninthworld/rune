@@ -29,6 +29,9 @@ fn pip_slot(index: usize) -> String {
 /// The slot a cast's additional-cost discard is answered on (CR 601.2b).
 const DISCARD_SLOT: &str = "cost_discard";
 
+/// The slot a cast's additional-cost sacrifice is answered on (CR 601.2b / 701.17).
+const SACRIFICE_SLOT: &str = "cost_sacrifice";
+
 /// The opaque id for one way to pay a pip: which permanent, and which of its abilities.
 ///
 /// Two options over one permanent differ only in the ability index, which is exactly what
@@ -70,6 +73,27 @@ pub(crate) fn cast_payment_prompts(
             count: u32::from(discard.count),
             min: None,
             candidates: discard.candidates.into_iter().map(card_entity_id).collect(),
+        });
+    }
+    // A sacrifice rides the same slot shape, over the battlefield instead of the hand.
+    // `zone` is a free-form string precisely so a new zone does not need a new prompt
+    // kind, and a client that renders "pick from this list" already renders this one.
+    if let Some(sacrifice) = sage_engine::sacrifice_cost(state, db, card) {
+        prompts.push(Prompt::SelectFromZone {
+            slot: SACRIFICE_SLOT.to_string(),
+            prompt: format!(
+                "Sacrifice a {}",
+                crate::rules_text::card_type_word(sacrifice.card_type)
+            ),
+            zone: "battlefield".to_string(),
+            owner: player_id(state.priority),
+            count: 1,
+            min: None,
+            candidates: sacrifice
+                .candidates
+                .into_iter()
+                .map(permanent_entity_id)
+                .collect(),
         });
     }
     prompts
@@ -192,15 +216,49 @@ pub(crate) fn bind_payment(
         // than half of it — see the note above on why this is not a top-up.
         return fallback_payment(state, db, card);
     }
-    match bind_discards(state, db, card, targets) {
-        Some(discards) => {
-            chosen.extend(discards);
-            chosen
-        }
-        // The non-mana half was owed and not answered (or answered with a card that is no
-        // longer in hand): the server pays the whole cost rather than half of it.
-        None => fallback_payment(state, db, card),
+    let (Some(discards), Some(sacrifices)) = (
+        bind_discards(state, db, card, targets),
+        bind_sacrifices(state, db, card, targets),
+    ) else {
+        // The non-mana half was owed and not answered (or answered with an object that has
+        // since moved): the server pays the whole cost rather than half of it.
+        return fallback_payment(state, db, card);
+    };
+    chosen.extend(discards);
+    chosen.extend(sacrifices);
+    chosen
+}
+
+/// The permanents a returned selection sacrifices to `card`'s additional cost, or `None`
+/// when the cost is owed and the answer does not pay it.
+///
+/// The battlefield counterpart of [`bind_discards`], with the same two rules: a card with
+/// no such cost accepts no answer at all, and one with a cost is paid by exactly what it
+/// asks for.
+fn bind_sacrifices(
+    state: &GameState,
+    db: &CardDatabase,
+    card: CardInstance,
+    targets: &[TargetChoice],
+) -> Option<Vec<CostPayment>> {
+    let answered = chosen_for(targets, SACRIFICE_SLOT);
+    let Some(cost) = sage_engine::sacrifice_cost(state, db, card) else {
+        return answered.is_empty().then(Vec::new);
+    };
+    if answered.len() != 1 {
+        return None;
     }
+    // Resolved against the **freshly recomputed** candidates, so a permanent that died,
+    // changed hands, or arrived since the view went out cannot be named.
+    answered
+        .iter()
+        .map(|id| {
+            cost.candidates
+                .iter()
+                .find(|candidate| permanent_entity_id(**candidate) == *id)
+                .map(|candidate| CostPayment::Sacrifice(*candidate))
+        })
+        .collect()
 }
 
 /// The cards a returned selection discards to `card`'s additional cost, or `None` when the
@@ -416,6 +474,77 @@ mod tests {
             after.battlefield.iter().filter(|p| p.tapped).count(),
             2,
             "and tapped no more than the cost"
+        );
+    }
+
+    /// A sacrifice cost is posed on the slot shape that already existed for choosing
+    /// objects out of a zone — over the battlefield rather than the hand. No new prompt
+    /// kind, because `zone` was always a free-form string for exactly this.
+    #[test]
+    fn a_sacrifice_cost_is_posed_over_the_battlefield_and_bound_back() {
+        let (mut state, db, _lands, spell) =
+            table(&["swamp", "swamp", "swamp", "swamp"], "blood_divination");
+        let mine = put_permanent(
+            &mut state,
+            fixture("centaur_courser"),
+            PlayerId(0),
+            false,
+            false,
+        );
+        // An opponent's creature is not a candidate: CR 701.17b lets a player sacrifice
+        // only what they control, and the candidate list is where that is enforced for the
+        // client rather than left for it to know.
+        put_permanent(
+            &mut state,
+            fixture("centaur_courser"),
+            PlayerId(1),
+            false,
+            false,
+        );
+
+        let action = cast_action(&state, &db, spell);
+        let slot = action
+            .prompts
+            .iter()
+            .find_map(|prompt| match prompt {
+                Prompt::SelectFromZone {
+                    slot,
+                    zone,
+                    count,
+                    candidates,
+                    ..
+                } if slot == SACRIFICE_SLOT => Some((zone.clone(), *count, candidates.clone())),
+                _ => None,
+            })
+            .expect("the sacrifice is posed as a slot");
+        assert_eq!(slot.0, "battlefield");
+        assert_eq!(slot.1, 1, "a cost is paid for exactly what it asks");
+        assert_eq!(
+            slot.2,
+            vec![permanent_entity_id(mine)],
+            "only the caster's own creature is a candidate"
+        );
+
+        // The answer binds back into the payment, and the cast really spends it.
+        let bound = resolve_action(
+            &state,
+            &db,
+            PlayerId(0),
+            &ChooseAction {
+                action_id: action.id.clone(),
+                token: action.token.clone(),
+                targets: vec![TargetChoice {
+                    slot: SACRIFICE_SLOT.to_string(),
+                    chosen: vec![permanent_entity_id(mine)],
+                }],
+                ..Default::default()
+            },
+        )
+        .expect("the answer binds");
+        let after = sage_engine::apply_action(&state, &bound, &db);
+        assert!(
+            !after.battlefield.iter().any(|perm| perm.id == mine),
+            "the named creature was sacrificed to the cost"
         );
     }
 

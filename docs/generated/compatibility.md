@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (187)
+## Supported cards (189)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -29,6 +29,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `aven_wind_mage` | Aven Wind Mage | functional definition |
 | `aviation_pioneer` | Aviation Pioneer | functional definition |
 | `befuddle` | Befuddle | functional definition |
+| `blood_divination` | Blood Divination | functional definition |
 | `boggart_brute` | Boggart Brute | functional definition |
 | `bogstomper` | Bogstomper | functional definition |
 | `bone_to_ash` | Bone to Ash | functional definition |
@@ -46,6 +47,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `daggerback_basilisk` | Daggerback Basilisk | functional definition |
 | `daybreak_chaplain` | Daybreak Chaplain | functional definition |
 | `death_baron` | Death Baron | functional definition |
+| `demon_of_catastrophes` | Demon of Catastrophes | functional definition |
 | `diregraf_ghoul` | Diregraf Ghoul | functional definition |
 | `disperse` | Disperse | functional definition |
 | `divination` | Divination | functional definition |
@@ -210,13 +212,13 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Abilities that trigger on an ability being activated | no trigger condition observes an activation |
 | Abilities that trigger on another permanent attacking | the attack trigger condition observes only its own source |
 | Abilities that trigger on drawing a card | trigger conditions observe zone changes, attack declaration, life gain, casting, and step boundaries |
+| Activation costs paid by sacrificing another permanent, or by discarding | a cast carries its chosen sacrifices and discards on the action, but an activation names only its source, its ability, and its targets |
 | Attack and block requirements, and blocking an additional creature | a declaration can be restricted but never required, and a blocker blocks one attacker |
 | Auras that enchant a player or land, or move between hosts | only enchant-creature Auras granting P/T, keywords, or combat restrictions are modeled |
 | Casting from a zone other than the hand, the command zone, or a one-turn graveyard permission | no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure) |
 | Combat damage assigned by a value other than power | every attacker and blocker assigns damage equal to its current power |
 | Conditions other than a permanent count, a mill, or a discard | the intervening-if vocabulary names three questions and grows one variant at a time |
 | Cost reduction and cost increase effects | no cost-modification layer |
-| Costs paid by sacrificing a permanent the player chooses, or by discarding | an activation cost may sacrifice its own source and remove its own counters, but a cost that requires picking another permanent or a card has no way to carry the choice |
 | Damage prevention | no prevention shield or damage-replacement layer |
 | Effects that ask a player to name a colour, type, or card | no player choice recorded on a permanent or spell |
 | Effects that let a player choose the order of cards put back on a library | a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random |

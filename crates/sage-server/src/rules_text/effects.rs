@@ -430,7 +430,7 @@ fn count_noun(count: &PermanentCount) -> String {
 }
 
 /// A card type as the word a rules sentence uses.
-fn card_type_word(card_type: CardType) -> &'static str {
+pub(crate) fn card_type_word(card_type: CardType) -> &'static str {
     match card_type {
         CardType::Land => "land",
         CardType::Creature => "creature",

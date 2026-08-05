@@ -735,6 +735,13 @@ coupling on resolution, so `requires` changes no legality, it only keeps a clien
 offering an answer that must be rejected.
 
 `select_from_zone` supports choices such as discarding, bottoming, scrying, or searching.
+Its `zone` is a **free-form string** rather than an enum precisely so a new zone needs no
+new prompt kind: a cast's additional cost poses `"hand"` for `As an additional cost,
+discard a card` and `"battlefield"` for `sacrifice a creature` (CR 601.2b / 701.17), on
+the `cost_discard` and `cost_sacrifice` slots, and both are answered with entity ids from
+the server-enumerated `candidates` like any other selection. A client that renders "pick
+from this list" already renders both; one that ignores the slots leaves the cost unpaid,
+and the server pays it (ADR 0010).
 Its `count` is the **maximum** number of ids a legal answer may name; `min` is the
 minimum, and is **omitted when it equals `count`** — which is every exact choice, and the
 only shape this prompt had before issue #604. It is present exactly when a player may

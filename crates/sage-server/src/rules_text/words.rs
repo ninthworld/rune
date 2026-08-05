@@ -305,6 +305,11 @@ pub(super) fn additional_cost_text(cost: AdditionalCost) -> String {
             "As an additional cost to cast this spell, discard {} cards.",
             number(u32::from(count))
         ),
+        AdditionalCost::Sacrifice { card_type } => format!(
+            "As an additional cost to cast this spell, sacrifice {} {}.",
+            indefinite_article(card_type_word(card_type)),
+            card_type_word(card_type)
+        ),
     }
 }
 

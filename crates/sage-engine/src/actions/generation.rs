@@ -254,7 +254,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             let timing_ok = data.has_type(CardType::Instant) || sorcery_speed;
             if timing_ok
                 && payable.covers(&parse_mana_cost(&data.mana_cost), spend_purpose(data))
-                && additional_cost_is_payable(state, priority, data, card.id)
+                && additional_cost_is_payable(state, priority, data, card.id, db)
             {
                 // A targeted spell is offered only when *every* target slot has at
                 // least one legal candidate (CR 601.2c — a spell that can't choose
@@ -290,7 +290,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             let timing_ok = data.has_type(CardType::Instant) || sorcery_speed;
             if timing_ok
                 && payable.covers(&parse_mana_cost(&data.mana_cost), spend_purpose(data))
-                && additional_cost_is_payable(state, priority, data, card.id)
+                && additional_cost_is_payable(state, priority, data, card.id, db)
                 && groups_are_fillable(&data.cast_target_groups(), state, priority, db)
             {
                 actions.push(Action::CastSpell {
@@ -320,7 +320,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 let cost = commander_tax_cost(&parse_mana_cost(&data.mana_cost), commander.casts);
                 if timing_ok
                     && payable.covers(&cost, spend_purpose(data))
-                    && additional_cost_is_payable(state, priority, data, card.id)
+                    && additional_cost_is_payable(state, priority, data, card.id, db)
                     && groups_are_fillable(&data.cast_target_groups(), state, priority, db)
                 {
                     actions.push(Action::CastSpell {
@@ -370,9 +370,10 @@ fn additional_cost_is_payable(
     actor: crate::id::PlayerId,
     data: &crate::card::CardData,
     casting: crate::id::CardInstanceId,
+    db: &CardDatabase,
 ) -> bool {
     data.additional_cost
-        .is_none_or(|cost| state.additional_cost_is_payable(actor, cost, casting))
+        .is_none_or(|cost| state.additional_cost_is_payable(actor, cost, casting, db))
 }
 
 /// The [`SpendPurpose`] a cast of `data` pays under (CR 106.6) — restricted mana asks

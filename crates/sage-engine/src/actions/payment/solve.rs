@@ -251,7 +251,41 @@ pub fn auto_payment(
     )?;
     let mut payment: Vec<CostPayment> = mana.into_iter().map(CostPayment::Mana).collect();
     payment.extend(auto_discards(state, db, card)?);
+    payment.extend(auto_sacrifices(state, db, card)?);
     Some(payment)
+}
+
+/// A permanent to sacrifice to `card`'s additional cost (CR 601.2b / 701.17), or `None`
+/// if the board cannot pay it. Empty for the overwhelming majority of cards.
+///
+/// The choice is **the first candidate in battlefield order**, which is a policy and not
+/// a judgement: this exists so a client that skips the slot still submits a legal action
+/// (ADR 0010 — the engine says what a legal payment is, the server decides whether to pay
+/// for the player). A seat that cares which of its creatures dies answers the slot.
+fn auto_sacrifices(
+    state: &GameState,
+    db: &CardDatabase,
+    card: CardInstance,
+) -> Option<Vec<CostPayment>> {
+    let Some(card_type) = db
+        .card(card.card)
+        .and_then(|data| data.additional_cost)
+        .and_then(crate::AdditionalCost::sacrifice_type)
+    else {
+        return Some(Vec::new());
+    };
+    let chosen = state
+        .battlefield
+        .iter()
+        .find(|perm| {
+            perm.controller == state.priority
+                && perm
+                    .printed
+                    .face(db)
+                    .is_some_and(|face| face.has_type(card_type))
+        })
+        .map(|perm| CostPayment::Sacrifice(perm.id))?;
+    Some(vec![chosen])
 }
 
 /// Cards to discard to `card`'s additional cost (CR 601.2b), or `None` if the hand

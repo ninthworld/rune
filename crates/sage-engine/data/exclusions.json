@@ -36,8 +36,8 @@
     "blocker": "no cost-modification layer"
   },
   {
-    "name": "Costs paid by sacrificing a permanent the player chooses, or by discarding",
-    "blocker": "an activation cost may sacrifice its own source and remove its own counters, but a cost that requires picking another permanent or a card has no way to carry the choice"
+    "name": "Activation costs paid by sacrificing another permanent, or by discarding",
+    "blocker": "a cast carries its chosen sacrifices and discards on the action, but an activation names only its source, its ability, and its targets"
   },
   {
     "name": "Damage prevention",

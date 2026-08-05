@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "functional_id": "blood_divination",
+  "name": "Blood Divination",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{3}{B}",
+  "colors": [
+    "black"
+  ],
+  "additional_cost": {
+    "kind": "sacrifice",
+    "card_type": "creature"
+  },
+  "spell_effects": [
+    {
+      "kind": "draw_card",
+      "count": 3
+    }
+  ]
+}
