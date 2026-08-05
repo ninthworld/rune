@@ -278,7 +278,7 @@ fn auto_sacrifices(
         .battlefield
         .iter()
         .find(|perm| {
-            perm.controller == state.priority
+            crate::characteristics::controller_of(state, perm) == state.priority
                 && perm
                     .printed
                     .face(db)

@@ -813,3 +813,78 @@ fn cr_613_7c_an_anthem_folds_together_with_counters_and_a_pump() {
     assert_eq!(characteristics(&state, bear, &db).power, Some(8));
     assert_eq!(characteristics(&state, bear, &db).toughness, Some(5));
 }
+
+// ----- CR 613 layer 2: control -----------------------------------------------
+
+/// Give control of `target` to `player`, timestamped by `source` (its object id).
+fn add_control_change(state: &mut GameState, source: u64, target: PermanentId, player: PlayerId) {
+    state.static_effects.push(StaticEffect {
+        source,
+        affects: EffectAffects::SpecificPermanent(target),
+        modification: Modification::GainControl(player),
+        duration: Duration::UntilEndOfTurn,
+    });
+}
+
+#[test]
+fn cr_613_layer_2_the_latest_control_change_is_the_one_that_answers() {
+    // Layer 2 is ordered by CR 613.7 like any other, so two effects in force resolve to
+    // the later timestamp — and removing it leaves the earlier one answering, with
+    // nothing to recompute. That is the whole reason control is derived rather than
+    // written onto the permanent.
+    let mut state = GameState::new_two_player();
+    let ogre = place_for(&mut state, fixture("onakke_ogre"), PlayerId(0));
+    assert_eq!(controller_of_id(&state, ogre), Some(PlayerId(0)));
+
+    add_control_change(&mut state, 100, ogre, PlayerId(1));
+    assert_eq!(controller_of_id(&state, ogre), Some(PlayerId(1)));
+
+    add_control_change(&mut state, 200, ogre, PlayerId(0));
+    assert_eq!(controller_of_id(&state, ogre), Some(PlayerId(0)));
+
+    state.static_effects.retain(|effect| effect.source != 200);
+    assert_eq!(
+        controller_of_id(&state, ogre),
+        Some(PlayerId(1)),
+        "the effect underneath applies again on its own"
+    );
+
+    state.static_effects.clear();
+    assert_eq!(controller_of_id(&state, ogre), Some(PlayerId(0)));
+    assert_eq!(
+        controller_of_id(&state, PermanentId(9_999)),
+        None,
+        "a permanent that is not on the battlefield has no controller"
+    );
+}
+
+#[test]
+fn cr_613_layer_2_is_applied_before_the_anthem_that_reads_it() {
+    // Layer 2 comes before layer 7c, so "creatures you control" is read against the
+    // *new* controller: an anthem lets go of a creature that has been taken and picks up
+    // one that has been given.
+    let db = lords_db();
+    let mut state = GameState::new_two_player();
+    let bear = place_for(&mut state, id_in(&db, "test_bear"), PlayerId(0));
+    place_for(&mut state, id_in(&db, "test_anthem"), PlayerId(0));
+    assert_eq!(characteristics(&state, bear, &db).power, Some(3));
+
+    add_control_change(&mut state, 100, bear, PlayerId(1));
+    assert_eq!(
+        characteristics(&state, bear, &db).power,
+        Some(2),
+        "the anthem's controller no longer controls it"
+    );
+
+    // The other direction: the anthem itself changes hands, and its "you" moves with it.
+    let mut swapped = GameState::new_two_player();
+    let theirs = place_for(&mut swapped, id_in(&db, "test_bear"), PlayerId(1));
+    let anthem = place_for(&mut swapped, id_in(&db, "test_anthem"), PlayerId(0));
+    assert_eq!(characteristics(&swapped, theirs, &db).power, Some(2));
+    add_control_change(&mut swapped, 100, anthem, PlayerId(1));
+    assert_eq!(
+        characteristics(&swapped, theirs, &db).power,
+        Some(3),
+        "a stolen lord speaks for the seat holding it"
+    );
+}

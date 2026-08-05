@@ -143,6 +143,28 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         Effect::ReturnToHand { target } => {
             format!("return {} to its owner's hand", target_noun(*target))
         }
+        // Three sentences where a card prints three, joined here because they are three
+        // things done to *one* target: the theft, the untap, and the keywords. Each is
+        // stated only when the effect actually does it, so a plain steal reads as one
+        // sentence.
+        Effect::GainControl {
+            target,
+            untap,
+            keywords,
+        } => {
+            let mut text = format!("gain control of {} until end of turn", target_noun(*target));
+            if *untap {
+                text.push_str(". Untap it");
+            }
+            if !keywords.is_empty() {
+                let words: Vec<&str> = keywords.iter().map(|&kw| keyword_word(kw)).collect();
+                text.push_str(&format!(
+                    ". It gains {} until end of turn",
+                    list_words(&words)
+                ));
+            }
+            text
+        }
         Effect::Mill { player_ref, count } => match count {
             1 => conjugate(*player_ref, "mill") + " a card",
             n => format!(

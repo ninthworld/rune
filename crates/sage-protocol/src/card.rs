@@ -271,9 +271,13 @@ impl Default for SelfView {
 pub struct Permanent {
     /// Entity id of this permanent.
     pub id: EntityId,
-    /// Player who currently controls it.
+    /// Player who controls it **right now**, after the CR 613 layer-2 control change —
+    /// the row a client draws it in. Stated, never inferred.
     pub controller: PlayerId,
-    /// Player who owns it (matters when control changes).
+    /// Player who owns it, and whose graveyard, hand, or library it goes to when it
+    /// leaves the battlefield (CR 400.7). Equal to [`Self::controller`] on almost every
+    /// board; the two differ exactly while a control-changing effect is in force, which
+    /// is how a client tells a borrowed permanent from an owned one.
     pub owner: PlayerId,
     /// The permanent's current (computed) card face.
     pub card: CardView,

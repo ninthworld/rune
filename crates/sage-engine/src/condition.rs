@@ -77,15 +77,18 @@ pub(crate) fn count_permanents(
     db: &CardDatabase,
 ) -> u32 {
     let matching = state.battlefield.iter().filter(|perm| {
+        // CR 613 layer 2, read through the one control path: a creature someone has
+        // gained control of counts for its *new* controller and not for its old one.
+        let perm_controller = crate::characteristics::controller_of(state, perm);
         let scope_ok = match wanted.scope {
-            CountScope::YouControl => perm.controller == controller,
+            CountScope::YouControl => perm_controller == controller,
             // A seat that has lost is no longer an opponent (CR 102.1) — the same
             // exclusion every other controller-relative selector makes.
             CountScope::OpponentsControl => {
-                perm.controller != controller
+                perm_controller != controller
                     && state
                         .players
-                        .get(perm.controller.0)
+                        .get(perm_controller.0)
                         .is_some_and(|player| !player.has_lost)
             }
             CountScope::Any => true,

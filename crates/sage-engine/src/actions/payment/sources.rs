@@ -158,7 +158,8 @@ pub(crate) fn mana_options(
 ) -> Vec<SourceOptions> {
     let mut sources = Vec::new();
     for perm in &state.battlefield {
-        if perm.controller != player {
+        // CR 613 layer 2: a stolen mana creature taps for its new controller.
+        if crate::characteristics::controller_of(state, perm) != player {
             continue;
         }
         let mut options = Vec::new();

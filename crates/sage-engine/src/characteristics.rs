@@ -13,21 +13,30 @@
 //! characteristics from printed values, folds `+1/+1` and `-1/-1` counters into
 //! power/toughness at CR 613 **layer 7c**, and then applies simple static P/T
 //! modifications (anthem-style "+X/+Y" effects) at that same layer **after**
-//! counters, in timestamp order. Layers 1–6 (copy, control, text, type, color,
-//! ability-adding) remain deferred behind this same function signature, so
-//! callers never change as they are filled in.
+//! counters, in timestamp order. Layers 1 and 3–5 (copy, text, type, color) remain
+//! deferred behind this same function signature, so callers never change as they are
+//! filled in.
+//!
+//! **Layer 2 — control — is [`controller_of`], not [`characteristics`].** Control is
+//! not a characteristic (CR 109.3) and has no place in the [`Characteristics`] value,
+//! but it is a continuous effect in a layer, it is ordered by the same CR 613.7
+//! timestamps, and every later layer is read against its answer. Keeping it a separate,
+//! non-recursive function is what lets the layer-6 and layer-7c selectors ask "does this
+//! permanent's controller match?" from inside the very computation they are part of.
 mod continuous;
 mod layer_seven;
 mod layer_six;
+mod layer_two;
 
 use continuous::*;
 use layer_seven::*;
 use layer_six::*;
+pub use layer_two::{controller_of, controller_of_id};
 
 use crate::ability::{Ability, StaticAffects, StaticCondition};
 use crate::card::{abilities_of_permanent, CardDatabase, CombatRestriction, Keyword};
 use crate::card_type::{CardType, Supertype};
-use crate::id::PermanentId;
+use crate::id::{PermanentId, PlayerId};
 use crate::state::{
     CounterKind, Duration, EffectAffects, GameState, Modification, Permanent, StaticEffect,
 };

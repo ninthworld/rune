@@ -84,7 +84,7 @@ pub(super) fn layer_six_modifications(
         state
             .static_effects
             .iter()
-            .filter(|effect| affects(effect, perm, is_creature))
+            .filter(|effect| affects(state, effect, perm, is_creature))
             .map(|effect| effect.modification),
     );
     // CR 604.3 / 613.1f: a printed static ability in force ("Creatures you control have

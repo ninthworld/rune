@@ -415,6 +415,11 @@ A `Permanent` contains:
   its own space, so it never collides with a card's — which says the two ids are different, and
   deliberately says nothing about whether the objects can be followed from one to the other. That
   question is `physical_card`'s;
+- `controller` is the seat that controls the permanent **right now**, after CR 613 layer 2, and
+  is the row a client draws it in. `owner` is the seat the card goes home to (CR 400.7). The two
+  differ exactly while a control-changing effect is in force — a permanent someone has gained
+  control of appears in the thief's row with the victim still named as its owner — and a client
+  infers neither: both are stated;
 - optional `physical_card` (issue #650), naming the **physical card** (CR 108.1) this permanent
   is a projection of. Omitted for a token, and by an older server — see
   [Following a card between zones](#following-a-card-between-zones);

@@ -213,7 +213,17 @@ export type Counter = z.infer<typeof Counter>
 
 export const Permanent = z.object({
   id: EntityId,
+  /**
+   * The seat that controls this permanent **right now**, after the server has applied any
+   * control-changing effect (CR 613 layer 2) — the row the board draws it in. Stated by
+   * the server; nothing here works it out.
+   */
   controller: PlayerId,
+  /**
+   * The seat that **owns** it, and whose graveyard, hand, or library it goes to when it
+   * leaves the battlefield (CR 400.7). Equal to `controller` on almost every board; the
+   * two differ exactly while someone has gained control of it.
+   */
   owner: PlayerId,
   card: CardView,
   /**

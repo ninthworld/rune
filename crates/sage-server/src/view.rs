@@ -130,9 +130,14 @@ pub(crate) fn personalized_view(
         .iter()
         .map(|perm| PermanentView {
             id: permanent_entity_id(perm.id),
-            controller: player_id(perm.controller),
-            // The engine models control but not separate ownership yet, so owner
-            // mirrors controller until zone-ownership lands.
+            // CR 613 layer 2, projected — never inferred by a client. A creature under
+            // a control-changing effect is filed under the seat that controls it *now*,
+            // which is the seat whose row the board draws it in.
+            controller: player_id(sage_engine::controller_of(state, perm)),
+            // The permanent's **base** controller, which is the engine's owner shim
+            // (CR 400.7): the seat it started under and the one its card goes home to.
+            // It differs from `controller` exactly while a control change is in force,
+            // and separate ownership beyond that is still untracked.
             owner: player_id(perm.controller),
             // Current (computed) characteristics, so counters/pumps/Auras show on
             // the host's P/T (CR 613.7c), not the printed values.
@@ -367,7 +372,7 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
         .iter()
         .map(|perm| PermanentView {
             id: permanent_entity_id(perm.id),
-            controller: player_id(perm.controller),
+            controller: player_id(sage_engine::controller_of(state, perm)),
             owner: player_id(perm.controller),
             card: permanent_card_view(state, perm, db),
             // Public, exactly as in a seated view (issue #650): the battlefield is the

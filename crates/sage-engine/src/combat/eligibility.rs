@@ -47,7 +47,7 @@ impl AttackTarget {
                 .battlefield
                 .iter()
                 .find(|p| p.id == id)
-                .map(|p| p.controller),
+                .map(|p| crate::characteristics::controller_of(state, p)),
         }
     }
 }
@@ -95,7 +95,7 @@ pub fn defender_candidates(state: &GameState, db: &CardDatabase) -> Vec<AttackTa
             .battlefield
             .iter()
             .filter(|perm| {
-                players.contains(&perm.controller)
+                players.contains(&crate::characteristics::controller_of(state, perm))
                     && perm
                         .printed
                         .face(db)
@@ -143,7 +143,7 @@ pub fn attacker_candidates(state: &GameState, db: &CardDatabase) -> Vec<Permanen
         .battlefield
         .iter()
         .filter(|perm| {
-            perm.controller == active
+            crate::characteristics::controller_of(state, perm) == active
                 && super::helpers::is_creature(perm, db)
                 && !perm.tapped
                 // CR 302.6, with the CR 702.10b haste exemption: a hasty creature
@@ -186,7 +186,7 @@ pub fn blocker_candidates_for(
         .battlefield
         .iter()
         .filter(|perm| {
-            perm.controller == defender
+            crate::characteristics::controller_of(state, perm) == defender
                 && super::helpers::is_creature(perm, db)
                 && !perm.tapped
                 && !permanent_has_restriction(state, perm.id, CombatRestriction::CantBlock, db)

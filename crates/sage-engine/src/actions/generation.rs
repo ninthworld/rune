@@ -438,7 +438,9 @@ fn offer_activations(
     actions: &mut Vec<Action>,
 ) {
     for perm in &state.battlefield {
-        if perm.controller != seat {
+        // CR 613 layer 2: a permanent's abilities are activated by whoever controls it
+        // *now*, which is what lets a player tap a creature they have just stolen.
+        if crate::characteristics::controller_of(state, perm) != seat {
             continue;
         }
         for (index, ability) in crate::card::abilities_of_permanent(db, perm)

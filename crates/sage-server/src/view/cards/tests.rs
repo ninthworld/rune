@@ -856,3 +856,52 @@ fn issue_745_the_maximum_hand_size_rides_the_wire_as_two_states() {
         "the other seat's own record is unchanged — the ability says \"you\""
     );
 }
+
+#[test]
+fn issue_729_a_control_change_files_the_permanent_under_its_new_seat() {
+    // The client computes nothing: it draws each permanent in the row of the seat the
+    // view files it under. So a control change has to arrive already applied, and it has
+    // to leave `owner` behind — that is the field a player reads to know whose card is
+    // being borrowed, and the seat CR 400.7 will send it back to.
+    let db = CardDatabase::bundled().unwrap();
+    let mut state = GameState::new_two_player();
+    state.step = Step::PrecombatMain;
+    let borrowed = put_permanent(
+        &mut state,
+        fixture("onakke_ogre"),
+        PlayerId(1),
+        false,
+        false,
+    );
+
+    let filed = |view: &sage_protocol::GameView| {
+        view.battlefield
+            .iter()
+            .find(|perm| perm.id == format!("perm_{}", borrowed.0))
+            .map(|perm| (perm.controller.clone(), perm.owner.clone()))
+            .expect("the permanent is on the projected battlefield")
+    };
+    assert_eq!(
+        filed(&personalized_view(&state, &db, PlayerId(0))),
+        ("p1".to_string(), "p1".to_string())
+    );
+
+    let source = state.mint_id();
+    state.static_effects.push(sage_engine::StaticEffect {
+        source,
+        affects: sage_engine::EffectAffects::SpecificPermanent(borrowed),
+        modification: sage_engine::Modification::GainControl(PlayerId(0)),
+        duration: sage_engine::Duration::UntilEndOfTurn,
+    });
+
+    assert_eq!(
+        filed(&personalized_view(&state, &db, PlayerId(0))),
+        ("p0".to_string(), "p1".to_string()),
+        "controlled by the thief, still owned by the seat it came from"
+    );
+    assert_eq!(
+        filed(&personalized_view(&state, &db, PlayerId(1))),
+        ("p0".to_string(), "p1".to_string()),
+        "and the board is the same board from either seat"
+    );
+}

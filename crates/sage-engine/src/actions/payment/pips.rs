@@ -117,7 +117,7 @@ pub fn sacrifice_cost(
         candidates: state
             .battlefield
             .iter()
-            .filter(|perm| perm.controller == state.priority)
+            .filter(|perm| crate::characteristics::controller_of(state, perm) == state.priority)
             .filter(|perm| {
                 perm.printed
                     .face(db)

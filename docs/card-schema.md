@@ -656,7 +656,43 @@ is a continuous effect, it does not end at cleanup, and no layer applies to it. 
 wire as `skips_next_untap` (`docs/protocol.md`), because the spell that imposed it is gone
 and no client could work it out.
 
-Untapping a permanent is a separate verb the IR does not have, and stays in the exclusions.
+Untapping a permanent on its own is a separate verb the IR does not have, and stays in the
+exclusions; the one untap that exists rides on `gain_control` below.
+
+### Gaining control of a permanent (CR 613 layer 2)
+
+`gain_control` takes the creature it targets until end of turn, and may untap it and grant
+it keywords in the same breath:
+
+```json
+{ "kind": "gain_control", "target": "any_creature", "untap": true, "keywords": ["haste"] }
+```
+
+The control change is applied at **CR 613 layer 2**, the earliest layer the engine models
+and the one the most rules read: who may attack with the permanent, who may activate its
+abilities, whose `creatures you control` counts it, and who its combat damage comes from
+all read the same computed answer. Layer 2 is applied *before* layers 6 and 7c, so an
+anthem lets go of a creature that has been taken and picks up one that has been given.
+
+It is **computed, never written onto the permanent** (ADR 0005). Two consequences follow,
+and both are the reason it is done this way:
+
+- the effect's `until end of turn` duration is ended by the cleanup step exactly as a
+  pump's is, and control simply reverts — nothing is put back, and two changes in force
+  resolve to the later timestamp with the earlier one still underneath;
+- the permanent's *stored* controller goes on standing in for its **owner**, so a creature
+  that dies while stolen goes to its owner's graveyard (CR 400.7), and the same is true of
+  a bounce, an exile, or a trip to the top of a library.
+
+A control change **re-triggers summoning sickness** (CR 302.6): the creature has not been
+under its new controller's control since their turn began. That is why the printed cards
+that do this grant haste, and why `untap` and `keywords` ride on this effect rather than
+beside it as two more — one effect declares one target group, so three effects would
+advertise three slots and let a player steal one creature, untap a second, and haste a
+third.
+
+Only the until-end-of-turn duration is expressible, and nothing exchanges control of two
+permanents; both stay in the exclusions.
 
 ### Static abilities (continuous, CR 604.3)
 

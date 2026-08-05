@@ -23,10 +23,17 @@ recompute itself when the earlier one goes away.
 
 ### 1. Store versus compute
 
-`Permanent` stores only **raw, non-derivable** state: identity, card, controller, tapped
-status, counters, and the per-permanent raw inputs a continuous effect needs. A permanent's
-**current characteristics are never stored** — power/toughness, current types and subtypes,
-colors, and the current ability set are all computed.
+`Permanent` stores only **raw, non-derivable** state: identity, card, base controller,
+tapped status, counters, and the per-permanent raw inputs a continuous effect needs. A
+permanent's **current characteristics are never stored** — power/toughness, current types
+and subtypes, colors, and the current ability set are all computed.
+
+The stored controller is the *base* controller — the seat the permanent arrived under —
+and not the answer to "who controls this?" A control-changing continuous effect is layer 2
+(see §3) and is never written onto the permanent. That falls out of the same reasoning as
+everything else here, and it pays for itself twice: control reverts when the effect ends
+with nothing to put back, and the stored field goes on standing in for the permanent's
+**owner**, which is what CR 400.7 reads when the card leaves the battlefield.
 
 Counters are stored because they are raw input, not derivation: nothing else in state
 determines how many `+1/+1` counters a permanent has. The no-cached-derivations rule forbids
@@ -57,8 +64,24 @@ order-sensitive modifiers carry one on the stored effect input.
 
 The full CR 613 order is copy → control → text → type → color → ability-adding →
 power/toughness. The power/toughness end (layer 7c) and keyword granting (layer 6) are
-implemented, because that is what counters, anthems, pumps, and keyword grants need. Layers
-1–5 sit behind the same function signature, so filling them in changes no call site.
+implemented, because that is what counters, anthems, pumps, and keyword grants need.
+**Control (layer 2) is implemented too**, and is the exception to the paragraph above:
+control is not a characteristic (CR 109.3), so it has no place in the `Characteristics`
+value and is answered by its own function instead —
+
+```
+controller_of(&GameState, &Permanent) -> PlayerId
+```
+
+That separation is load-bearing, not cosmetic. Layer 2 is applied before every other
+layer, so the layer-6 and layer-7c selectors have to ask it "does this permanent's
+controller match?" from *inside* the computation they are part of; a function that reads
+only stored effects and the base controller can answer that without recursing, and one
+routed through `characteristics()` could not. Reviewers should treat a direct read of
+`Permanent::controller` the same way §4 treats a direct read of printed `CardData`: it is
+legitimate only when the question is about **ownership**, which today means the four
+battlefield-departure seams. Layers 1 and 3–5 sit behind the existing signature, so filling
+them in changes no call site.
 
 ### 4. The invariant
 
@@ -79,5 +102,6 @@ where no permanent and no continuous effect exist.
   reading a cached field. That is an accepted trade for purity and correctness, and it matches
   the engine's recompute-everything stance everywhere else. Reviewers must guard against new
   direct printed-value reads for battlefield permanents.
-- **Not covered.** Layers 1–5; counter kinds beyond `+1/+1` and `-1/-1`; characteristic-defining
-  abilities. Each is an addition behind the existing signature.
+- **Not covered.** Layers 1 and 3–5; a control change lasting longer than a turn, or
+  exchanging two permanents' controllers; counter kinds beyond `+1/+1` and `-1/-1`;
+  characteristic-defining abilities. Each is an addition behind the existing signature.

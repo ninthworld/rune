@@ -7,12 +7,13 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (195)
+## Supported cards (196)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
 | Functional ID | Name | Implementation |
 | --- | --- | --- |
+| `act_of_treason` | Act of Treason | functional definition |
 | `aegis_of_the_heavens` | Aegis of the Heavens | functional definition |
 | `aerial_engineer` | Aerial Engineer | functional definition |
 | `aether_tunnel` | Aether Tunnel | functional definition |
@@ -228,12 +229,12 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Effects that ask a player to name a colour, type, or card | no player choice recorded on a permanent or spell |
 | Effects that let a player choose the order of cards put back on a library | a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random |
 | Effects that return a card from a graveyard to a zone other than a hand or the battlefield | a targeted card returns from a graveyard to a hand or to the battlefield, and a whole graveyard can be exiled; nothing else moves a card out of one |
-| Effects that untap a permanent | a tapped permanent is untapped only by its controller's untap step, which an effect may make it sit out but no effect may bring forward |
+| Effects that untap a permanent it did not just take | untapping rides on the control change that steals a creature, because one effect names one target; nothing else brings an untap forward |
 | Effects whose amount is derived from anything but a count of permanents | an amount may scale with a count of permanents — power/toughness, life, or damage; cards in a zone, life totals, and mana values feed nothing |
 | Emblems with an activated ability | an emblem carries static and triggered abilities only; nothing offers a way to activate one |
 | Equipment | no equip action or attachment outside the Aura model |
 | Fight, and other effects taking two differently-specified targets | one effect's target slots all share a single spec, so two differently-specified slots are unwritable |
-| Gaining control of a permanent | no control-change layer |
+| Gaining control of a permanent for longer than a turn, and exchanging control | a control change is a targeted layer-2 effect the cleanup step ends; no duration outlives the turn and nothing swaps two permanents' controllers |
 | Keyword removal and loses-all-abilities effects | the ability-adding layer only adds abilities |
 | Kicker and other optional additional costs | no optional cost declared on announcement |
 | Mana filtering | mana is produced and spent, never converted; nothing changes the colour of mana already in a pool |

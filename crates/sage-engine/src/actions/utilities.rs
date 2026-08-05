@@ -38,7 +38,7 @@ pub(crate) fn cost_payable(state: &GameState, cost: &[Cost], permanent: &Permane
         Cost::Tap => !permanent.tapped,
         Cost::Mana { mana } => state
             .players
-            .get(permanent.controller.0)
+            .get(crate::characteristics::controller_of(state, permanent).0)
             .is_some_and(|player| {
                 player
                     .mana_pool
@@ -90,7 +90,8 @@ pub(crate) fn loyalty_cost_is_payable(permanent: &Permanent, amount: i32) -> boo
 /// a planeswalker (there are none in the catalog, but the IR permits one) is bound only
 /// by the ordinary gates.
 pub(crate) fn loyalty_timing_allows(state: &GameState, permanent: &Permanent) -> bool {
-    let sorcery_speed = permanent.controller == state.active_player
+    let sorcery_speed = crate::characteristics::controller_of(state, permanent)
+        == state.active_player
         && matches!(
             state.step,
             crate::phase::Step::PrecombatMain | crate::phase::Step::PostcombatMain
@@ -129,7 +130,7 @@ pub(crate) fn potential_mana_pool(
         .map(|p| p.mana_pool.clone())
         .unwrap_or_default();
     for perm in &state.battlefield {
-        if perm.controller != player || perm.tapped {
+        if crate::characteristics::controller_of(state, perm) != player || perm.tapped {
             continue;
         }
         for ability in abilities_of_permanent(db, perm) {

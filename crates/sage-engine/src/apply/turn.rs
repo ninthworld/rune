@@ -118,8 +118,17 @@ fn perform_turn_based_actions(state: &mut GameState, db: &CardDatabase) {
 /// untap step for the rest of the game.
 fn untap_active_players_permanents(state: &mut GameState) {
     let active = state.active_player;
+    // CR 613 layer 2, taken before the mutable walk: a creature someone gained control
+    // of untaps in *their* untap step, not its owner's. Collected up front because the
+    // control answer is a read of the whole state and the loop below holds it mutably.
+    let theirs: Vec<crate::id::PermanentId> = state
+        .battlefield
+        .iter()
+        .filter(|perm| crate::characteristics::controller_of(state, perm) == active)
+        .map(|perm| perm.id)
+        .collect();
     for perm in &mut state.battlefield {
-        if perm.controller != active {
+        if !theirs.contains(&perm.id) {
             continue;
         }
         if perm.skips_untap {

@@ -56,8 +56,12 @@ impl GameState {
     /// collector ([`crate::triggers`]). Returns `true` when a permanent with that
     /// id was on the battlefield and moved.
     ///
-    /// Ownership apart from control is not tracked yet, so the controller stands
-    /// in as the owner (mirrors the engine→protocol `owner` shim); the physical
+    /// It goes to the graveyard of [`Permanent::controller`] — the permanent's *base*
+    /// controller, which is the engine's owner shim. That is CR 400.7 working: a control
+    /// change is a CR 613 layer-2 computation and never touches the stored field, so a
+    /// creature that dies while someone else controls it goes home to the seat it
+    /// started under rather than staying with the thief. Ownership apart from that
+    /// starting seat is still untracked. The physical
     /// [`CardInstance`](crate::id::CardInstance) carries over unchanged while the battlefield
     /// [`PermanentId`] is dropped, preserving zone-change identity.
     ///
@@ -88,9 +92,10 @@ impl GameState {
     /// Identity semantics are exactly the graveyard seam's: the physical
     /// [`CardInstance`](crate::id::CardInstance) carries over unchanged while the battlefield [`PermanentId`]
     /// is dropped, so a later return to any zone is a brand-new object (a fresh
-    /// [`PermanentId`] is minted only on battlefield re-entry). Ownership apart from
-    /// control is not tracked yet, so the controller stands in as the owner (the same
-    /// shim the graveyard seam uses). Returns the permanent that moved (so a caller can
+    /// [`PermanentId`] is minted only on battlefield re-entry). It goes to the exile of
+    /// the permanent's **base** controller — the owner shim the graveyard seam uses, and
+    /// the reason a stolen permanent is exiled to its own seat (CR 400.7). Returns the
+    /// permanent that moved (so a caller can
     /// inspect its identity), or `None` when no permanent with that id was on the
     /// battlefield. A bare zone move that records no log event of its own.
     pub(crate) fn move_permanent_to_exile(&mut self, id: PermanentId) -> Option<Permanent> {
@@ -113,8 +118,9 @@ impl GameState {
     /// Identity semantics are exactly those seams': the physical
     /// [`CardInstance`](crate::id::CardInstance) carries over unchanged while the battlefield
     /// [`PermanentId`] is dropped, so recasting the card produces a brand-new object with a
-    /// freshly minted id. Ownership apart from control is not tracked yet, so the controller
-    /// stands in as the owner (the same shim the other two seams use).
+    /// freshly minted id. It goes to the hand of the permanent's **base** controller —
+    /// the same owner shim the other two seams use, so bouncing a creature you have
+    /// stolen hands it back to its own player (CR 400.7).
     ///
     /// A return to hand is **not** a death (CR 700.4): the card does not reach a graveyard,
     /// so the diff-based collector sees no "dies" event for it and no commander return is
@@ -452,9 +458,10 @@ impl GameState {
     /// what is still present and reports whether anything changed, so the
     /// state-based-actions loop reaches a fixed point.
     ///
-    /// Scoped to the currently modeled slice. Ownership is not tracked separately
-    /// from control yet (a permanent's owner mirrors its controller), so "objects
-    /// the player owns" is read as the objects they control: their battlefield
+    /// Scoped to the currently modeled slice. "Objects the player owns" is read off the
+    /// **base** controller ([`Permanent::controller`], the owner shim), so a permanent
+    /// they had merely gained control of stays on the battlefield and the effect giving
+    /// them that control ends — which is what CR 800.4a says. Their own battlefield
     /// permanents (including Auras they control attached to others' permanents) and
     /// their stack objects leave the game, and their private/graveyard/exile zones
     /// are emptied. A surviving player's Aura left dangling on a departed permanent
@@ -476,6 +483,16 @@ impl GameState {
             self.battlefield.retain(|perm| perm.controller != seat);
             self.static_effects
                 .retain(|effect| !departing.iter().any(|id| id.0 == effect.source));
+            changed = true;
+        }
+        // CR 800.4a: "any effects that give that player control of any objects end". A
+        // control change is not sourced from a permanent — its timestamp is a bare minted
+        // id — so the prune above cannot see it, and a permanent someone else owns would
+        // otherwise be left controlled by a seat that is no longer in the game.
+        let before = self.static_effects.len();
+        self.static_effects
+            .retain(|effect| effect.modification != super::Modification::GainControl(seat));
+        if self.static_effects.len() != before {
             changed = true;
         }
         // Take the departed player out of combat: any surviving attacker declared

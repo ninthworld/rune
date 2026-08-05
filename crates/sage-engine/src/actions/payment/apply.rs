@@ -163,7 +163,7 @@ fn sacrifices_pay_the_additional_cost(
         !sacrifices[..i].contains(&named)
             && state.battlefield.iter().any(|perm| {
                 perm.id == named
-                    && perm.controller == state.priority
+                    && crate::characteristics::controller_of(state, perm) == state.priority
                     && perm
                         .printed
                         .face(db)

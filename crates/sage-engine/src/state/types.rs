@@ -427,7 +427,25 @@ pub struct Permanent {
     /// "a token that leaves the battlefield ceases to exist" — a thing the compiler
     /// asks about rather than a rule to remember.
     pub printed: Printed,
-    /// The player who currently controls it.
+    /// The player this permanent is controlled by **before CR 613 layer 2** — its
+    /// *base* controller, and the one stored fact behind the question "who controls
+    /// this?".
+    ///
+    /// **Not the answer to that question.** A control-changing continuous effect
+    /// ([`Modification::GainControl`]) is applied at CR 613 **layer 2** and is never
+    /// written here; the current controller is computed fresh on every read by
+    /// [`characteristics::controller_of`](crate::characteristics::controller_of), the
+    /// single path every rule that asks — who may attack with it, who may activate it,
+    /// whose `creatures you control` counts it, who its combat damage comes from — goes
+    /// through. Storing the change instead would be the push model ADR 0005 rejects:
+    /// with two control changes in force, a stored value has no way to recompute itself
+    /// when the earlier one ends.
+    ///
+    /// Because nothing ever overwrites it, it doubles as the engine's **owner** shim
+    /// (CR 400.7): the four battlefield-departure seams in
+    /// [`zone`](crate::state) send the card to *this* player's graveyard, hand, library,
+    /// or exile, so a stolen creature that dies goes home rather than staying with the
+    /// thief. Ownership apart from the seat a permanent started under is still untracked.
     pub controller: PlayerId,
     /// Whether the permanent is tapped.
     pub tapped: bool,
@@ -445,6 +463,11 @@ pub struct Permanent {
     /// [`Self::damage`], they are stored rather than computed.
     /// Not a zone-change counter: a permanent re-entering the battlefield gets a
     /// fresh [`PermanentId`] and a fresh `entered_turn`; nothing counts entries.
+    ///
+    /// A **control change restamps it** (CR 302.6): a creature that has just come under
+    /// a new player's control has not been controlled by them since their turn began, so
+    /// it is summoning-sick for them — which is exactly why a card that steals a creature
+    /// to attack with also has to grant it haste.
     pub entered_turn: u32,
     /// **What** this permanent is attacking — the player or planeswalker it was
     /// declared to attack this combat (CR 508.1a), or `None` if it is not attacking.
@@ -652,6 +675,25 @@ pub enum Modification {
     /// [`characteristics`](crate::characteristics::characteristics), so a granted
     /// restriction binds exactly as a printed one does.
     GrantRestriction(CombatRestriction),
+    /// CR 613 **layer 2**: the affected permanent is controlled by this player — the
+    /// control-change effect (`Gain control of target creature until end of turn.`).
+    ///
+    /// The **earliest** layer the engine models, and the one read by far the most: who
+    /// may attack with the permanent, who may activate its abilities, whose "creatures
+    /// you control" counts it, who a [`PlayerRef::Controller`](crate::PlayerRef) of its
+    /// own ability resolves to, and who its combat damage comes from all read the
+    /// computed answer through
+    /// [`characteristics::controller_of`](crate::characteristics::controller_of) rather
+    /// than [`Permanent::controller`]. It is applied before layers 6 and 7c, so an
+    /// anthem's "creatures you control" sees the *new* controller — which is what makes
+    /// a stolen creature leave its old owner's lord behind.
+    ///
+    /// Ordered by timestamp like any other layer (CR 613.7): the latest control change
+    /// in force wins, and when it ends the one under it applies again with nothing to
+    /// recompute. A control change **re-triggers summoning sickness** (CR 302.6), which
+    /// is a fact about [`Permanent::entered_turn`] rather than about this modification —
+    /// the effect that creates one stamps the turn as it applies.
+    GainControl(PlayerId),
 }
 
 /// One running total of cumulative **combat** damage a commander has dealt a

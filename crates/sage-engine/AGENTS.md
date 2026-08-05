@@ -129,6 +129,16 @@ abilities (CR 605.3a) and nothing else. Whether it is *posed* is judged against 
 the board could still make (`potential_mana_pool`, shared with the idle-seat predicate);
 whether accepting is *legal* is judged against the pool as it stands.
 
+**Control is CR 613 layer 2, and it is computed** (ADR 0005 §1/§3). `Permanent::controller`
+is the *base* controller, not the answer: every rule that asks who controls a permanent —
+attacking, activating, `creatures you control`, combat damage, the untap step — goes through
+`characteristics::controller_of`, which folds `Modification::GainControl` over the stored
+field. Reading the field directly is right **only** for a question about *ownership*, which
+today means the four battlefield-departure seams: because nothing overwrites it, a creature
+that dies while stolen goes to its own graveyard (CR 400.7) with no ownership model needed.
+A control change restamps `entered_turn` (CR 302.6), which is why a card that steals a
+creature to attack with also grants it haste.
+
 The catalog was selected as cards this vocabulary can say, so the empty `scripted.rs` table
 is not evidence of expressiveness. Growing the vocabulary is the primary engine workstream;
 each new primitive is one enum variant plus every exhaustive match that consumes it, across

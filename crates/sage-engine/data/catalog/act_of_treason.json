@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "functional_id": "act_of_treason",
+  "name": "Act of Treason",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{2}{R}",
+  "colors": [
+    "red"
+  ],
+  "spell_effects": [
+    {
+      "kind": "gain_control",
+      "target": "any_creature",
+      "untap": true,
+      "keywords": [
+        "haste"
+      ]
+    }
+  ]
+}

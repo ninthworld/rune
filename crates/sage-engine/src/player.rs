@@ -182,7 +182,7 @@ pub fn maximum_hand_size(
     let from_battlefield = state
         .battlefield
         .iter()
-        .filter(|perm| perm.controller == player)
+        .filter(|perm| crate::characteristics::controller_of(state, perm) == player)
         .flat_map(|perm| crate::card::abilities_of_permanent(db, perm));
     let from_emblems = state
         .emblems

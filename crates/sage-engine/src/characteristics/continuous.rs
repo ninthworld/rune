@@ -38,7 +38,7 @@ pub(super) fn static_ability_effects(
             else {
                 continue;
             };
-            if !static_affects_match(&affects, source, perm, is_creature, db) {
+            if !static_affects_match(state, &affects, source, perm, is_creature, db) {
                 continue;
             }
             // The `as long as …` clause, re-asked on this read rather than remembered
@@ -59,7 +59,9 @@ pub(super) fn static_ability_effects(
         collect(
             StaticSource {
                 timestamp: source.id.0,
-                controller: source.controller,
+                // CR 613 layer 2 applies before this one, so the "you" of a lord that
+                // has changed hands is its *new* controller.
+                controller: controller_of(state, source),
                 permanent: Some(source.id),
             },
             abilities_of_permanent(db, source),
@@ -106,7 +108,13 @@ struct StaticSource {
 /// computed subtypes from inside the computation of `perm`'s characteristics would
 /// not terminate. When those layers land, this is the call site that must start
 /// reading a computed value — through a seam that cannot recurse.
+///
+/// Control is already read that way: [`controller_of`] is layer 2, applied before this
+/// layer, and it *is* a seam that cannot recurse (it reads stored effects only). So an
+/// anthem stops pumping a creature the moment someone else gains control of it, and
+/// starts pumping one it just stole.
 fn static_affects_match(
+    state: &GameState,
     affects: &StaticAffects,
     source: StaticSource,
     perm: &Permanent,
@@ -118,7 +126,7 @@ fn static_affects_match(
             subtype,
             except_this,
         } => {
-            if !is_creature || perm.controller != source.controller {
+            if !is_creature || controller_of(state, perm) != source.controller {
                 return false;
             }
             // "Other …" excludes the source itself. `PermanentId` is minted fresh on
@@ -194,9 +202,20 @@ pub(super) fn aura_pt_effect(aura: &Permanent, db: &CardDatabase) -> Option<Stat
 
 /// Whether `effect` applies to `perm`, given whether `perm` is currently a
 /// creature. Encodes the [`EffectAffects`] selector semantics in one place.
-pub(super) fn affects(effect: &StaticEffect, perm: &Permanent, is_creature: bool) -> bool {
+///
+/// The controller test is the **layer-2** answer ([`controller_of`]), which is applied
+/// before every layer this gate feeds — so a class-scoped modifier follows a permanent
+/// that changes hands rather than staying with the seat it was created against.
+pub(super) fn affects(
+    state: &GameState,
+    effect: &StaticEffect,
+    perm: &Permanent,
+    is_creature: bool,
+) -> bool {
     match effect.affects {
-        EffectAffects::CreaturesControlledBy(player) => is_creature && perm.controller == player,
+        EffectAffects::CreaturesControlledBy(player) => {
+            is_creature && controller_of(state, perm) == player
+        }
         // A pump targets one specific permanent by its battlefield identity
         // (CR 601.2c). Layer 7c only adjusts an existing power/toughness, so a
         // pump landed on a non-creature (which has none) is folded into `None`
