@@ -55,8 +55,8 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
 - **The arrangement is CSS.** There is no scene, no packer and no measured fitting module: the
   board is a grid of `fr` rows (`styles/board.css`, with `panel.css` and `dock.css` beside it
   as one stylesheet cut for size — the three must stay imported back to back and in that order,
-  because in CSS order is behavior), a card is sized from the region it is in,
-  and a row that runs out of width pans. `scene.ts`, `pack.ts`, `fit.ts` and `overlay.ts` were
+  because in CSS order is behavior), a card is sized from the region it is in, and a row that
+  runs out of width pans. `scene.ts`, `pack.ts`, `fit.ts` and `overlay.ts` were
   the arithmetic that did this before and are gone; what survived them is `board.ts`, which
   answers which rows a field draws and what share of its height each takes.
 - `src/board.ts` — a battlefield, as rows. Groups permanents into creatures, other permanents,
