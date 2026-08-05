@@ -24,11 +24,11 @@
 import { useState } from 'react'
 
 import { deckColors, formatOf, type Catalog, type DeckDraft } from './../../deck'
-import { STARTER_DECKS, type StarterDeck } from './../../decks'
+import { STARTER_DECKS } from './../../decks'
 import { roster, tableLabel } from './../../lobby'
 import type { LobbyCommand, LobbyRejection, LobbyView, RoomView } from './../../protocol'
 import { rejectionText } from './../../deck'
-import { AiPicker, DeckPicker } from './Pickers'
+import { AiPicker } from './Pickers'
 import { OpenSeat, Seat } from './Seat'
 import { SidePanel } from './SidePanel'
 
@@ -61,10 +61,10 @@ export function Room({
   onSide(open: boolean): void
   onSettings(): void
   onEditDeck(): void
-  onDeck(deck: StarterDeck): void
+  /** Opens the deck chooser, which is the same dialog the deck editor loads from. */
+  onDeck(): void
   send(command: LobbyCommand): void
 }) {
-  const [picking, setPicking] = useState(false)
   const [seating, setSeating] = useState<number | undefined>(undefined)
 
   const rows = roster(room, view.you, catalog.aiNames)
@@ -149,19 +149,27 @@ export function Room({
                 catalog={catalog}
                 {...(row.you
                   ? {
+                      // Your own seat is drawn from the draft on this device, which is ahead of
+                      // anything the server has been told.
                       deck: {
                         name:
                           deckName ?? (draft.entries.length > 0 ? 'Your deck' : 'No deck chosen'),
                         colors,
-                        ...(format?.requires_commander && draft.commander !== undefined
-                          ? { commander: draft.commander }
-                          : {}),
+                        ...(draft.commander === undefined ? {} : { commander: draft.commander }),
                       },
                     }
-                  : {})}
-                {...(row.you && canDeck
-                  ? { onDeck: () => setPicking(true), onEdit: onEditDeck }
-                  : {})}
+                  : row.decked
+                    ? {
+                        // Everybody else's is what the server said about theirs: the colours it
+                        // is in and the commander it named, and never a card of it.
+                        deck: {
+                          name: 'Deck submitted',
+                          colors: row.colors,
+                          ...(row.commander === undefined ? {} : { commander: row.commander }),
+                        },
+                      }
+                    : {})}
+                {...(row.you && canDeck ? { onDeck, onEdit: onEditDeck } : {})}
                 {...(canRemoveAi && row.ai !== undefined
                   ? { onRemove: () => send({ type: 'remove_ai', seat: row.seat }) }
                   : {})}
@@ -222,23 +230,20 @@ export function Room({
         </div>
       </div>
 
-      {picking && (
-        <DeckPicker
-          decks={STARTER_DECKS}
-          {...(deckName !== undefined
-            ? { current: STARTER_DECKS.find((deck) => deck.name === deckName)?.id }
-            : {})}
-          onClose={() => setPicking(false)}
-          onPick={onDeck}
-        />
-      )}
-
       {seating !== undefined && (
         <AiPicker
           kinds={catalog.ai}
           decks={STARTER_DECKS}
           onClose={() => setSeating(undefined)}
-          onSeat={(kind, cards) => send({ type: 'add_ai', seat: seating, kind, cards: [...cards] })}
+          onSeat={(kind, cards, commander) =>
+            send({
+              type: 'add_ai',
+              seat: seating,
+              kind,
+              cards: [...cards],
+              ...(commander === undefined ? {} : { commander }),
+            })
+          }
         />
       )}
     </div>

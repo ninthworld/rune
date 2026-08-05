@@ -102,6 +102,144 @@ test.describe('the lobby', () => {
     expect(messages(socket.sent, 'join_room')).toHaveLength(0)
   })
 
+  test('reaches the deck builder from the topbar, and comes back', async ({ page }) => {
+    await serveFrames(page, [fixture('lobbyview-open.json'), fixture('catalogview.json')])
+    await open(page, 'Ada')
+
+    await page.getByRole('button', { name: 'Deck Editor' }).click()
+    await expect(page.getByRole('main', { name: 'Deck builder' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Open tables' })).toHaveCount(0)
+
+    // The topbar is the screen's navigation, so it is at the top of it, and it still says who
+    // this device is and where it is connected.
+    const bar = page.locator('.builder-topbar')
+    expect((await bar.boundingBox())?.y).toBe(0)
+    await expect(bar).toContainText('Ada')
+
+    await page.getByRole('button', { name: '← Lobby' }).click()
+    await expect(page.getByRole('heading', { name: 'Open tables' })).toBeVisible()
+  })
+
+  test('puts a copy in the deck on a double click, and keeps it on the way out', async ({
+    page,
+  }) => {
+    await serveFrames(page, [fixture('lobbyview-open.json'), fixture('catalogview.json')])
+    await open(page, 'Ada')
+    await page.getByRole('button', { name: 'Deck Editor' }).click()
+
+    const deck = page.getByRole('region', { name: 'The deck' })
+    await expect(deck.locator('.deck-col')).toHaveCount(0)
+
+    const first = page.getByRole('region', { name: 'Cards' }).locator('.pool-card').first()
+    await first.dblclick()
+    await first.dblclick()
+    // Two copies, and they are in one column because the draft counts them as one entry.
+    await expect(deck.locator('.deck-col')).toHaveCount(1)
+    await expect(deck.locator('.deck-stacked')).toHaveCount(2)
+
+    // Titles draws the card's own bar, so every one of them is washed in a palette the
+    // stylesheet actually holds — a hand-composed class name resolves to none and draws black.
+    const pool = page.getByRole('region', { name: 'Cards' }).locator('.pool-card')
+    await pool.nth(1).dblclick()
+    await pool.nth(2).dblclick()
+    await page.getByRole('radio', { name: 'Titles' }).click()
+    const bands = deck.locator('.c-band')
+    await expect(bands).toHaveCount(4)
+    for (const held of await bands.all()) {
+      await expect(held).toHaveClass(/card-(w|u|b|r|g|gold|c)\b/)
+    }
+
+    // Double-clicking a card in the deck is the pool's gesture read backwards.
+    await page.getByRole('radio', { name: 'Stacked' }).click()
+    await deck.locator('.deck-stacked').last().dblclick()
+    await expect(deck.locator('.deck-stacked')).toHaveCount(3)
+
+    // The picked card moves into the pile the options bar put beside the deck, and out of the
+    // deck with it; the arrow says which way it is about to go.
+    await page.getByRole('radio', { name: 'Sideboard' }).click()
+    const piles = deck.getByRole('complementary', { name: 'Piles' })
+    // The last card in a stack is the one lying on top of it, and the one a pointer can reach.
+    await deck.locator('.deck-columns .deck-stacked').last().click()
+    await piles.getByRole('button', { name: 'Here →' }).click()
+    await expect(piles.locator('.deck-stacked')).toHaveCount(1)
+    await expect(deck.locator('.deck-columns .deck-stacked')).toHaveCount(2)
+
+    // Picking that copy in its new home points the same button the other way.
+    await piles.locator('.deck-stacked').last().click()
+    await piles.getByRole('button', { name: '← Deck' }).click()
+    await expect(piles).toContainText('Nothing beside the deck.')
+    await expect(deck.locator('.deck-columns .deck-stacked')).toHaveCount(3)
+
+    // The draft is the pre-game's, not this screen's, so walking out and back keeps it — the
+    // deck, and the card now beside it.
+    await page.getByRole('button', { name: '← Lobby' }).click()
+    await page.getByRole('button', { name: 'Deck Editor' }).click()
+    await expect(deck.locator('.deck-columns .deck-stacked')).toHaveCount(3)
+  })
+
+  test('keeps a deck on this device, loads it back, and asks before forgetting it', async ({
+    page,
+  }) => {
+    await serveFrames(page, [fixture('lobbyview-open.json'), fixture('catalogview.json')])
+    await open(page, 'Ada')
+    await page.getByRole('button', { name: 'Deck Editor' }).click()
+
+    const deck = page.getByRole('region', { name: 'The deck' })
+    await page.getByRole('region', { name: 'Cards' }).locator('.pool-card').first().dblclick()
+    await expect(deck.locator('.deck-stacked')).toHaveCount(1)
+
+    await page.getByRole('button', { name: 'Save…' }).click()
+    const saving = page.getByRole('dialog', { name: 'Save the deck' })
+    // Nothing is kept under no name.
+    await expect(saving.getByRole('button', { name: 'Keep on this device' })).toBeDisabled()
+    await saving.getByLabel('Deck name').fill('Elves')
+    await saving.getByRole('button', { name: 'Keep on this device' }).click()
+
+    // A fresh draft, then the kept one back off the device.
+    await page.getByRole('button', { name: 'Load…' }).click()
+    const loading = page.getByRole('dialog', { name: 'Load a deck' })
+    await expect(loading).toContainText('Elves')
+    await loading.getByRole('button', { name: 'Load' }).first().click()
+    await expect(deck.locator('.deck-stacked')).toHaveCount(1)
+
+    // Deleting is not reversible, so the row asks in place before it goes.
+    await page.getByRole('button', { name: 'Load…' }).click()
+    await loading.getByRole('button', { name: 'Delete' }).first().click()
+    await expect(loading).toContainText('Delete for good?')
+    await loading.getByRole('button', { name: 'Keep' }).click()
+    await expect(loading).toContainText('Elves')
+
+    await loading.getByRole('button', { name: 'Delete' }).first().click()
+    await loading.getByRole('button', { name: 'Delete' }).first().click()
+    await expect(loading).toContainText('This browser is keeping no decks yet.')
+  })
+
+  test('reads a .dck file, and says which cards this catalog does not hold', async ({ page }) => {
+    await serveFrames(page, [fixture('lobbyview-open.json'), fixture('catalogview.json')])
+    await open(page, 'Ada')
+    await page.getByRole('button', { name: 'Deck Editor' }).click()
+    await page.getByRole('button', { name: 'Load…' }).click()
+
+    await page.getByLabel('Deck file').setInputFiles({
+      name: 'burn.dck',
+      mimeType: 'text/plain',
+      buffer: Buffer.from(
+        '[Main]\n2 Llanowar Elves|LEA\n4 Black Lotus|LEA\n\n[Sideboard]\n1 Forest\n',
+      ),
+    })
+
+    const deck = page.getByRole('region', { name: 'The deck' })
+    // Two Elves in the deck; the Forest is beside it, in the pile the options bar puts there.
+    await expect(deck.locator('.deck-columns .deck-stacked')).toHaveCount(2)
+    await page.getByRole('radio', { name: 'Sideboard' }).click()
+    await expect(
+      deck.getByRole('complementary', { name: 'Piles' }).locator('.deck-stacked'),
+    ).toHaveCount(1)
+    // The file asked for a card this catalog has no identity for, and says so by name rather
+    // than handing back a deck that is quietly two cards short.
+    await expect(page.getByRole('status')).toContainText('Black Lotus')
+  })
+
   test('offers the two panels it has nothing to fill yet, saying so', async ({ page }) => {
     await serveFrames(page, [fixture('lobbyview-open.json'), fixture('catalogview.json')])
     await open(page, 'Ada')
@@ -167,14 +305,51 @@ test.describe('the table room', () => {
       .toEqual([{ type: 'ready', ready: false }])
   })
 
+  test('shows what every seat brought: its colours, and the commander it named', async ({
+    page,
+  }) => {
+    await serveFrames(page, [fixture('lobbyview.json'), fixture('catalogview.json')])
+    await open(page, 'Ada')
+
+    // Another seat's deck is the server's summary of it — the colours it is in and the card
+    // it is built around — drawn from `SeatView`, not from anything on this device.
+    const theirs = page.getByRole('region', { name: 'Table' }).locator('.seat').nth(1)
+    await expect(theirs.locator('.seat-cmdr .card')).toBeVisible()
+    await expect(theirs).toContainText('Serra Angel')
+    await expect(theirs.locator('.seat-colors .c-pip')).toHaveCount(1)
+  })
+
+  test('seats a bot with the deck it was given, commander and all', async ({ page }) => {
+    // The same table with a seat still open, so there is a hole to seat a bot in.
+    const view = fixture('lobbyview.json')
+    const room = view.room as { config: { seats: number } }
+    const socket = await serveFrames(page, [
+      { ...view, room: { ...room, config: { ...room.config, seats: 3 } } },
+      fixture('catalogview.json'),
+    ])
+    await open(page, 'Ada')
+
+    await page.getByRole('button', { name: 'Seat an AI opponent' }).click()
+    const picker = page.getByRole('dialog', { name: 'Seat an AI opponent' })
+    await picker.getByRole('button', { name: /Dragon Sovereign/ }).click()
+    await picker.getByRole('button', { name: 'Seat' }).click()
+
+    // A deck that names a commander is seated with it: dropping the designation would seat a
+    // commander deck as an ordinary one, and the table would show no commander for that seat.
+    await expect.poll(() => messages(socket.sent, 'add_ai')).toHaveLength(1)
+    expect(messages(socket.sent, 'add_ai')[0]?.commander).toBe('lathliss_dragon_queen')
+  })
+
   test('chooses a deck at the table, and submits it', async ({ page }) => {
     const socket = await serveFrames(page, [fixture('lobbyview.json'), fixture('catalogview.json')])
     await open(page, 'Ada')
 
+    // The seat opens the same chooser the deck editor loads from: this device's decks, the
+    // starters, and a file.
     await page.getByRole('button', { name: 'Change' }).click()
-    const picker = page.getByRole('dialog', { name: 'Choose a deck' })
-    await expect(picker.getByRole('button', { name: /cards$/ }).first()).toBeVisible()
-    await picker.getByRole('button', { name: 'Choose' }).click()
+    const picker = page.getByRole('dialog', { name: 'Load a deck' })
+    await expect(picker).toContainText('Starter decks')
+    await picker.getByRole('button', { name: 'Load' }).first().click()
 
     // Choosing is submitting: the server is what says a deck is legal, and there is nothing for
     // a second button to add.
@@ -183,17 +358,45 @@ test.describe('the table room', () => {
     expect(deck.length).toBeGreaterThan(0)
   })
 
-  test('builds a deck off the seat, from the catalog', async ({ page }) => {
-    await serveFrames(page, [fixture('lobbyview.json'), fixture('catalogview.json')])
+  test('moves a card across the sideboard line at the seat, and reaches the builder', async ({
+    page,
+  }) => {
+    const socket = await serveFrames(page, [fixture('lobbyview.json'), fixture('catalogview.json')])
     await open(page, 'Ada')
 
+    // The bigger changes are one button away, on the screen built for them.
     await page.getByRole('button', { name: 'Edit' }).click()
     const editor = page.getByRole('dialog', { name: 'Deck' })
-    await expect(editor).toBeVisible()
+    await editor.getByRole('button', { name: 'Deck editor…' }).click()
+    await expect(page.getByRole('main', { name: 'Deck builder' })).toBeVisible()
 
-    // One click moves one copy across, and the count says so.
-    const before = await editor.locator('.edit-count').first().textContent()
-    await editor.locator('.edit-row').last().click()
-    await expect(editor.locator('.edit-count').first()).not.toHaveText(before ?? '')
+    await page.getByRole('region', { name: 'Cards' }).locator('.pool-card').first().dblclick()
+
+    // Leaving returns to the table it was opened from, and the deck goes with it.
+    await page.getByRole('button', { name: '← Table' }).click()
+    await expect(page.getByRole('region', { name: 'Table' })).toBeVisible()
+    await expect.poll(() => messages(socket.sent, 'submit_deck')).toHaveLength(1)
+
+    await page.getByRole('button', { name: 'Edit' }).click()
+    // Rows are the cards' own title bars, as the builder's Titles view draws them.
+    await expect(editor.locator('.edit-row .c-band').first()).toBeVisible()
+
+    // One click sends a copy across the line, and both counts say so.
+    const deckCount = editor.locator('.edit-count').first()
+    await expect(deckCount).toHaveText('1')
+    await editor.locator('.edit-row').first().click()
+    await expect(deckCount).toHaveText('0')
+    await expect(editor.locator('.edit-count').last()).toHaveText('1')
+
+    // The pane beside the deck is either pile, one at a time.
+    await editor.getByRole('radio', { name: 'Commander' }).click()
+    await expect(editor).toContainText('No commander designated.')
+    await editor.getByRole('radio', { name: 'Sideboard' }).click()
+    await expect(editor.locator('.edit-row .c-band')).toHaveCount(1)
+
+    // Submitting sends the deck without the cards beside it — the wire has no sideboard.
+    await editor.getByRole('button', { name: 'Submit deck' }).click()
+    await expect.poll(() => messages(socket.sent, 'submit_deck')).toHaveLength(2)
+    expect(messages(socket.sent, 'submit_deck')[1]?.cards).toEqual([])
   })
 })

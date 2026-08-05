@@ -80,13 +80,14 @@ test.describe('the card', () => {
   })
 
   test('draws a printed card and a catalog card the same way', async ({ page }) => {
-    await serveFrames(page, [fixture('lobbyview.json'), fixture('catalogview.json')])
+    await serveFrames(page, [fixture('lobbyview-open.json'), fixture('catalogview.json')])
     await open(page, 'Ada')
-    await page.getByRole('button', { name: 'Edit' }).click()
+    await page.getByRole('button', { name: 'Deck Editor' }).click()
+    await page.getByRole('region', { name: 'Cards' }).locator('.pool-card').first().hover()
 
     // The builder's preview is the board's card: one drawing, from one `CardFace`, whether the
     // object came from a `CardView` in a game or a `CatalogCard` before one.
-    const preview = page.getByRole('dialog', { name: 'Deck' }).locator('.edit-preview .card')
+    const preview = page.locator('.preview-section .card')
     await expect(preview).toBeVisible()
     await expect(preview).toHaveAttribute('aria-label', /·/)
   })

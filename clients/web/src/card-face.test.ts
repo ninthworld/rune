@@ -17,6 +17,8 @@ import {
   catalogFace,
   emblemFace,
   faceSummary,
+  keywordLine,
+  loyaltyCost,
   permanentFace,
   stackFace,
 } from './card-face'
@@ -332,5 +334,60 @@ describe('what the board adds to a card', () => {
     const settled = permanentFace({ id: 'perm_2', controller: 'p1', owner: 'p1', card: bear })
     expect(settled.summoningSick).toBe(false)
     expect(faceSummary(settled)).not.toContain('summoning sick')
+  })
+})
+
+describe('a line of keywords', () => {
+  const KEYWORDS = ['flying', 'haste', 'first strike', 'trample']
+
+  it('is one whether the card printed one keyword or several', () => {
+    expect(keywordLine('Flying', KEYWORDS)).toBe(true)
+    expect(keywordLine('Flying, haste', KEYWORDS)).toBe(true)
+    expect(keywordLine('Flying, first strike, trample', KEYWORDS)).toBe(true)
+  })
+
+  it('is one when the keyword itself has a space in it', () => {
+    expect(keywordLine('First strike', KEYWORDS)).toBe(true)
+  })
+
+  it('is not one when anything on the line is not a keyword the server stated', () => {
+    expect(keywordLine('Flying, menace', KEYWORDS)).toBe(false)
+    expect(keywordLine('Whenever this creature attacks, draw a card.', KEYWORDS)).toBe(false)
+    expect(keywordLine('', KEYWORDS)).toBe(false)
+  })
+
+  it('reads past reminder text and mana symbols, which are printed beside a keyword', () => {
+    expect(keywordLine('Flying (This creature can only be blocked by fliers.)', KEYWORDS)).toBe(
+      true,
+    )
+  })
+
+  it('falls back to the older reading for a face the server stated no keywords for', () => {
+    expect(keywordLine('Flying', [])).toBe(true)
+    expect(keywordLine('Flying, haste', [])).toBe(false)
+  })
+})
+
+describe('a loyalty ability', () => {
+  it('splits the printed cost off the front of the line', () => {
+    expect(loyaltyCost('+1: You gain 2 life.')).toEqual({ cost: '+1', rest: 'You gain 2 life.' })
+    expect(loyaltyCost('0: Draw a card.')).toEqual({ cost: '0', rest: 'Draw a card.' })
+    expect(loyaltyCost('−2: Deal 2 damage.')).toEqual({
+      cost: '−2',
+      rest: 'Deal 2 damage.',
+    })
+  })
+
+  it('reads a hyphen as the minus the card prints, so the symbol still points down', () => {
+    expect(loyaltyCost('-7: Take an extra turn.')?.cost).toBe('−7')
+  })
+
+  it('is not one where the line does not lead with a cost', () => {
+    expect(
+      loyaltyCost('Whenever you tap a Forest for mana, add an additional {G}.'),
+    ).toBeUndefined()
+    expect(loyaltyCost('Flying')).toBeUndefined()
+    // A colon with no number in front of it is an activated ability, not a loyalty one.
+    expect(loyaltyCost('{T}: Add {G}.')).toBeUndefined()
   })
 })

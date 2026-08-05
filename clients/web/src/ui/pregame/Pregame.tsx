@@ -26,10 +26,23 @@ import { collect, EMPTY_DECK, expand, formatOf, readCatalog, type DeckDraft } fr
 import { list } from './../../normalize'
 import type { CatalogView, LobbyCommand, LobbyRejection, LobbyView } from './../../protocol'
 import type { StarterDeck } from './../../decks'
+import { deleteDeck, draftOf, savedDecks, type SavedDeck } from './../../deck-store'
+import { parseDck, resolveDeck } from './../../dck'
+import { DeckBuilder } from './../deck/DeckBuilder'
+import { LoadDeck } from './../deck/DeckFiles'
 import { DeckEditor } from './DeckEditor'
 import { CreateTable } from './CreateTable'
 import { Lobby } from './Lobby'
 import { Room } from './Room'
+
+/** Absent in a browser with storage disabled, which is a normal way to run. */
+const deviceStorage = (): Storage | undefined => {
+  try {
+    return globalThis.localStorage
+  } catch {
+    return undefined
+  }
+}
 
 export function Pregame({
   view,
@@ -58,6 +71,11 @@ export function Pregame({
   const [deckName, setDeckName] = useState<string | undefined>(undefined)
   const [editing, setEditing] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [building, setBuilding] = useState(false)
+  // Choosing a deck is the same dialog wherever it is opened from — the lobby, or a seat.
+  const [choosing, setChoosing] = useState(false)
+  const [saved, setSaved] = useState<readonly SavedDeck[]>(() => savedDecks(deviceStorage()))
+  const [missing, setMissing] = useState<readonly string[]>([])
   const [sideOpen, setSideOpen] = useState(() => window.innerWidth > 900)
 
   // Asked once per socket, and again after a reconnect — the answer is a one-shot frame, so a
@@ -89,12 +107,24 @@ export function Pregame({
       ...(deck.commander !== undefined ? { commander: deck.commander } : {}),
     })
 
-  const chooseDeck = (deck: StarterDeck) => {
-    const next = collect(deck.cards)
+  /**
+   * A deck arriving from anywhere — a starter, this device's storage, a file, the builder.
+   *
+   * **It is submitted only at a table**, because `submit_deck` is a command a room advertises and
+   * nowhere else. Choosing a deck in the lobby is choosing what you will sit down with.
+   */
+  const applyDeck = (next: DeckDraft, called: string, gone: readonly string[] = []) => {
     setDraft(next)
-    setDeckName(deck.name)
-    submit(next)
+    setDeckName(called)
+    setMissing(gone)
+    setChoosing(false)
+    if (room) submit(next)
   }
+
+  // A deck that names a commander is submitted with it; dropping the designation here would send
+  // a commander deck as an ordinary one and let the server reject it for our omission.
+  const chooseDeck = (deck: StarterDeck) =>
+    applyDeck(collect(deck.cards, deck.commander), deck.name)
 
   if (!view) {
     return (
@@ -114,7 +144,23 @@ export function Pregame({
 
   return (
     <>
-      {room ? (
+      {building ? (
+        <DeckBuilder
+          draft={draft}
+          catalog={catalog}
+          onDraft={setDraft}
+          name={name}
+          server={server}
+          // The way out is back to wherever the builder was opened from, and a deck changed at a
+          // table is submitted on the way — the table is holding a seat for whatever it is now.
+          back={room ? '← Table' : '← Lobby'}
+          onBack={() => {
+            if (room) submit(draft)
+            setBuilding(false)
+          }}
+          onSettings={onSettings}
+        />
+      ) : room ? (
         <Room
           view={view}
           room={room}
@@ -128,7 +174,7 @@ export function Pregame({
           onSide={setSideOpen}
           onSettings={onSettings}
           onEditDeck={() => setEditing(true)}
-          onDeck={chooseDeck}
+          onDeck={() => setChoosing(true)}
           send={send}
         />
       ) : (
@@ -142,6 +188,7 @@ export function Pregame({
           onSettings={onSettings}
           onDisconnect={onDisconnect}
           onCreate={() => setCreating(true)}
+          onDecks={() => setBuilding(true)}
           send={send}
         />
       )}
@@ -159,6 +206,20 @@ export function Pregame({
         />
       )}
 
+      {choosing && (
+        <LoadDeck
+          saved={saved}
+          onSaved={(deck) => applyDeck(draftOf(deck), deck.name)}
+          onStarter={chooseDeck}
+          onFile={(file, text) => {
+            const { draft: loaded, missing: gone } = resolveDeck(parseDck(text), catalog)
+            applyDeck(loaded, file, gone)
+          }}
+          onDelete={(gone) => setSaved(deleteDeck(deviceStorage(), gone))}
+          onClose={() => setChoosing(false)}
+        />
+      )}
+
       {editing && (
         <DeckEditor
           draft={draft}
@@ -170,8 +231,21 @@ export function Pregame({
             setDeckName((current) => current ?? 'Your deck')
           }}
           onSave={() => submit(draft)}
+          onOpenBuilder={() => {
+            setEditing(false)
+            setBuilding(true)
+          }}
           onClose={() => setEditing(false)}
         />
+      )}
+
+      {missing.length > 0 && (
+        <p role="status" className="notice">
+          Not in this catalog, so they were left out: {missing.join(', ')}.{' '}
+          <button className="view-btn" onClick={() => setMissing([])}>
+            Dismiss
+          </button>
+        </p>
       )}
     </>
   )

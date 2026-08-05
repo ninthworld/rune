@@ -18,11 +18,19 @@ export interface StarterDeck {
   summary: string
   /** Every card identity, one entry per copy, in the order the deck lists them. */
   cards: readonly string[]
+  /** The identity the deck is built around, where the deck names one (CR 903.3). */
+  commander?: string
 }
 
-export const STARTER_DECKS: readonly StarterDeck[] = starterDecks.decks.map((deck) => ({
-  id: deck.id,
-  name: deck.name,
-  summary: deck.summary,
-  cards: deck.entries.flatMap((entry) => Array.from({ length: entry.count }, () => entry.identity)),
-}))
+export const STARTER_DECKS: readonly StarterDeck[] = starterDecks.decks.map((deck) => {
+  const commander: unknown = (deck as { commander?: unknown }).commander
+  return {
+    id: deck.id,
+    name: deck.name,
+    summary: deck.summary,
+    cards: deck.entries.flatMap((entry) =>
+      Array.from({ length: entry.count }, () => entry.identity),
+    ),
+    ...(typeof commander === 'string' ? { commander } : {}),
+  }
+})

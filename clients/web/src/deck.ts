@@ -43,11 +43,26 @@ export interface DeckEntry {
  */
 export interface DeckDraft {
   entries: readonly DeckEntry[]
+  /**
+   * The cards kept beside the deck rather than in it.
+   *
+   * **Nothing on the wire carries these.** `submit_deck` is one flat list plus a commander, so a
+   * sideboard is this device's own note about a deck it is building, and `expand` leaves it out.
+   * It is held here rather than beside the draft because a deck file has one, and a deck that
+   * lost its sideboard on the way through the builder would be the file being read wrong.
+   */
+  side?: readonly DeckEntry[]
   /** The `CardIdentity` designated as commander (CR 903.3), if the player has chosen one. */
   commander?: string
 }
 
 export const EMPTY_DECK: DeckDraft = { entries: [] }
+
+/** Which of a draft's two lists an edit is about. */
+export type DeckList = 'main' | 'side'
+
+/** The cards beside the deck, as a list that is always there to read. */
+export const sideEntries = (draft: DeckDraft): readonly DeckEntry[] => draft.side ?? []
 
 /** Collapse a flat decklist into counted entries, first appearance ordering. */
 export function collect(cards: readonly string[], commander?: string): DeckDraft {
@@ -103,12 +118,48 @@ export function withoutCard(draft: DeckDraft, identity: string): DeckDraft {
     .map((entry) => (entry.identity === identity ? { ...entry, count: entry.count - 1 } : entry))
     .filter((entry) => entry.count > 0)
   const gone = !entries.some((entry) => entry.identity === identity)
-  return gone && draft.commander === identity ? { entries } : { ...draft, entries }
+  return gone && draft.commander === identity
+    ? withCommander({ ...draft, entries }, undefined)
+    : { ...draft, entries }
 }
 
+/** The same edits, against whichever of the two lists is named. */
+export function withCardIn(draft: DeckDraft, identity: string, where: DeckList): DeckDraft {
+  if (where === 'main') return withCard(draft, identity)
+  const side = sideEntries(draft)
+  const found = side.some((entry) => entry.identity === identity)
+  return {
+    ...draft,
+    side: found
+      ? side.map((entry) =>
+          entry.identity === identity ? { ...entry, count: entry.count + 1 } : entry,
+        )
+      : [...side, { identity, count: 1 }],
+  }
+}
+
+export function withoutCardIn(draft: DeckDraft, identity: string, where: DeckList): DeckDraft {
+  if (where === 'main') return withoutCard(draft, identity)
+  return {
+    ...draft,
+    side: sideEntries(draft)
+      .map((entry) => (entry.identity === identity ? { ...entry, count: entry.count - 1 } : entry))
+      .filter((entry) => entry.count > 0),
+  }
+}
+
+/** One copy across to the other list, which is the pair of edits a player means by "move". */
+export const moved = (draft: DeckDraft, identity: string, from: DeckList): DeckDraft =>
+  withCardIn(withoutCardIn(draft, identity, from), identity, from === 'main' ? 'side' : 'main')
+
 /** Designate a commander, or clear the designation with `undefined`. */
-export const withCommander = (draft: DeckDraft, identity: string | undefined): DeckDraft =>
-  identity === undefined ? { entries: draft.entries } : { ...draft, commander: identity }
+export function withCommander(draft: DeckDraft, identity: string | undefined): DeckDraft {
+  if (identity !== undefined) return { ...draft, commander: identity }
+  // Dropped rather than set to nothing, so a cleared designation does not travel as a key.
+  const cleared = { ...draft }
+  delete cleared.commander
+  return cleared
+}
 
 // ---------------------------------------------------------------------------
 // The catalog

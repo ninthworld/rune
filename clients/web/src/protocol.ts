@@ -715,6 +715,16 @@ export const SeatView = z.object({
   occupied_by: PlayerId.optional(),
   name: z.string().optional(),
   decked: z.boolean().optional(),
+  /**
+   * The colours of the deck this seat submitted (CR 903.4), WUBRG order — a summary the
+   * server computed, never the list it summarises.
+   */
+  colors: z.array(Color).optional(),
+  /**
+   * The commander this seat designated (CR 903.3), by `functional_id`. Public for the same
+   * reason the card is: it begins the game face up in the command zone.
+   */
+  commander: CardIdentity.optional(),
   ready: z.boolean().optional(),
   ai: z.string().optional(),
 })

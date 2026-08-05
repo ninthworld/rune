@@ -125,6 +125,13 @@ export interface SeatRow {
   /** The AI kind occupying this seat (`SeatView::ai`), if one does. */
   ai?: string
   decked: boolean
+  /**
+   * What this seat shows the table about its deck: the colours the server said it is in, and
+   * the commander it designated. Both are the server's summary of a decklist nobody else can
+   * read, so a seat that has submitted nothing carries neither.
+   */
+  colors: readonly string[]
+  commander?: string
   ready: boolean
   /** What this seat still owes, as marks. Empty for a seat nobody is in: it owes nothing yet. */
   marks: readonly SeatMark[]
@@ -175,6 +182,8 @@ function seatRow(
     you: you !== undefined && seat.occupied_by === you,
     ai: seat.ai,
     decked,
+    colors: list(seat.colors),
+    commander: seat.commander,
     ready,
     marks,
     awaiting: !occupied

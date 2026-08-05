@@ -34,27 +34,33 @@ import {
 } from 'react'
 
 import type { CardFace, CardFaceLink, CardFaceState } from './../../card-face'
-import { faceSummary } from './../../card-face'
-import { frameTint, inlineSymbols, manaSymbols, spokenSymbol } from './../../mana'
+import { faceSummary, keywordLine, loyaltyCost } from './../../card-face'
+import { inlineSymbols, spokenSymbol } from './../../mana'
 import { useCardArt } from './../art'
 import { fit, tooBig, tooWide } from './../fit'
+import { barPath, TITLE } from './bars'
+import { Loyalty } from './Loyalty'
 import { Pip } from './Pips'
+import { tintClass } from './tint'
+import { TitleBand } from './TitleBand'
 import { PEEK_MS, PEEK_SLOP, usePeek } from './peek'
 
 /**
- * Rules text: paragraphs split on newlines, `{X}` tokens drawn as the pips they name, and a lone
- * keyword line set bold — the wording is the server's, byte for byte, and only the parts between
- * braces change (`mana.ts`).
+ * Rules text: paragraphs split on newlines, `{X}` tokens drawn as the pips they name, a line of
+ * keywords set bold, and a loyalty ability led by the symbol its cost is printed in — the wording
+ * is the server's, byte for byte, and only the parts it writes as symbols change (`mana.ts`,
+ * `card-face.ts`).
  */
-function RulesText({ text }: { text: string }) {
+function RulesText({ text, keywords }: { text: string; keywords: readonly string[] }) {
   return (
     <>
       {text.split('\n').map((para, index) => {
-        const bare = para.replace(/\{[^}]+\}/g, '').trim()
-        const keyword = !bare.includes(' ')
+        const loyalty = loyaltyCost(para)
+        const body = loyalty?.rest ?? para
         return (
-          <p key={index} className={keyword ? 'c-kw' : undefined}>
-            {inlineSymbols(para).map((token, i) =>
+          <p key={index} className={keywordLine(body, keywords) ? 'c-kw' : undefined}>
+            {loyalty && <Loyalty cost={loyalty.cost} />}
+            {inlineSymbols(body).map((token, i) =>
               token.kind === 'symbol' ? (
                 <Pip
                   key={i}
@@ -82,21 +88,6 @@ const RULES_MAX = 22
 const PT_SIZE = 20
 
 /**
- * A bar is a sharp-edged rectangle whose short ends are circular arcs bulging outward by `b`;
- * the arc meets the straight edges at hard corners — this is not a `border-radius`.
- */
-function barPath(w: number, h: number, b: number): string {
-  const x0 = b
-  const x1 = w - b
-  const chord = h - 1
-  const r = (chord * chord) / (8 * b) + b / 2
-  return (
-    `M ${x0} 0.5 L ${x1} 0.5 A ${r} ${r} 0 0 1 ${x1} ${h - 0.5} ` +
-    `L ${x0} ${h - 0.5} A ${r} ${r} 0 0 1 ${x0} 0.5 Z`
-  )
-}
-
-/**
  * The ivory slab: gently rounded on top, rounded bottom corners ending high above the card
  * bottom; the text box overhangs it into the dark.
  */
@@ -104,21 +95,9 @@ const SLAB =
   'M 9 7 H 197 A 2 2 0 0 1 199 9 V 250 A 8 8 0 0 1 191 258 ' +
   'H 15 A 8 8 0 0 1 7 250 V 9 A 2 2 0 0 1 9 7 Z'
 
-const TITLE = barPath(183, 16.5, 2.5)
 const TYPE = barPath(183, 17, 2.5)
 const PT_OUTER = barPath(63, 30, 3)
 const PT_INNER = barPath(58, 25, 2.5)
-
-/** The tint class the frame is washed in — the colours of the pips that were printed. */
-const TINT: Record<string, string> = {
-  w: 'card-w',
-  u: 'card-u',
-  b: 'card-b',
-  r: 'card-r',
-  g: 'card-g',
-  multicolor: 'card-gold',
-  colorless: 'card-c',
-}
 
 export function Card({
   face,
@@ -154,7 +133,6 @@ export function Card({
   const uid = useId()
   const peek = usePeek()
   const art = useCardArt(face)
-  const cost = manaSymbols(face.manaCost)
   const held = useRef<{ timer: number; x: number; y: number } | null>(null)
 
   // Holding a card opens it big enough to read. The pointer's hover answers this on a desktop,
@@ -177,12 +155,11 @@ export function Card({
     if (Math.hypot(event.clientX - at.x, event.clientY - at.y) > PEEK_SLOP) endHold()
   }
 
-  const nameRef = useRef<HTMLSpanElement>(null)
+  // The name is fitted by the band that owns its box; these are the rest of the card's runs.
   const typeRef = useRef<HTMLSpanElement>(null)
   const textRef = useRef<HTMLDivElement>(null)
   const ptRef = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
-    fit(nameRef, 10, 6, tooWide)
     fit(typeRef, 8.5, 5.5, tooWide)
     fit(textRef, RULES_MAX, 4.5, tooBig)
     fit(ptRef, PT_SIZE, 7, tooWide)
@@ -192,7 +169,7 @@ export function Card({
   const shell = {
     className: [
       'card',
-      TINT[frameTint(face.manaCost, face.colorIdentity)] ?? 'card-c',
+      tintClass(face),
       state && state !== 'idle' ? `card-${state}` : '',
       link ? `card-${link}` : '',
       interactive ? 'card-live' : '',
@@ -351,24 +328,8 @@ export function Card({
           clipPath={`url(#${uid}-round)`}
         />
         {art.band && (
-          <g transform="translate(12 9.5)" filter={`url(#${uid}-sh)`}>
-            <path d={TITLE} fill={`url(#${uid}-bar)`} />
-            <g clipPath={`url(#${uid}-tb)`}>
-              <rect x="0" y="15.5" width="183" height="1" style={{ fill: 'var(--key-soft)' }} />
-            </g>
-            <path d={TITLE} fill="none" strokeWidth="1" style={{ stroke: 'var(--key)' }} />
-            <foreignObject x="5" y="1.5" width="173" height="13.5">
-              <div className="c-title-row">
-                <span className="c-name" ref={nameRef}>
-                  {face.name}
-                </span>
-                <span className="c-cost">
-                  {cost.map((symbol, i) => (
-                    <Pip key={i} symbol={symbol.glyph} label={spokenSymbol(symbol)} />
-                  ))}
-                </span>
-              </div>
-            </foreignObject>
+          <g filter={`url(#${uid}-sh)`}>
+            <TitleBand face={face} />
           </g>
         )}
         {overlay && statPlaque}
@@ -486,7 +447,9 @@ export function Card({
       />
       <foreignObject x="15" y="182" width="177" height={face.stat ? 72 : 86}>
         <div className="c-text" ref={textRef}>
-          {face.rulesText !== undefined && <RulesText text={face.rulesText} />}
+          {face.rulesText !== undefined && (
+            <RulesText text={face.rulesText} keywords={face.keywords} />
+          )}
           {/* What this object has that its card never printed — the trample a pump gave it for
               the turn, an Aura's flying (`docs/protocol.md`). It goes in the text field because
               that is where a player reads what a creature can do, and it is marked as added
@@ -523,30 +486,7 @@ export function Card({
       {/* title bar: sits on the slab with a sliver of it showing above. The cost keeps its
           constant width and the name is fitted into what is left, because a name that pushed the
           pips off the bar would drop the one thing on the card that is not text. */}
-      <g transform="translate(12 9.5)">
-        <path
-          d={TITLE}
-          strokeWidth="3.5"
-          style={{ fill: 'var(--accent)', stroke: 'var(--accent)' }}
-        />
-        <path d={TITLE} fill={`url(#${uid}-bar)`} />
-        <g clipPath={`url(#${uid}-tb)`}>
-          <rect x="0" y="15.5" width="183" height="1" style={{ fill: 'var(--key-soft)' }} />
-        </g>
-        <path d={TITLE} fill="none" strokeWidth="1" style={{ stroke: 'var(--key)' }} />
-        <foreignObject x="5" y="1.5" width="173" height="13.5">
-          <div className="c-title-row">
-            <span className="c-name" ref={nameRef}>
-              {face.name}
-            </span>
-            <span className="c-cost">
-              {cost.map((symbol, i) => (
-                <Pip key={i} symbol={symbol.glyph} label={spokenSymbol(symbol)} />
-              ))}
-            </span>
-          </div>
-        </foreignObject>
-      </g>
+      <TitleBand face={face} edged />
 
       {/* the stat plaque: same bulged-end construction — white outer bar, dark keyline, ivory
           fill. Power and toughness, or a planeswalker's loyalty; both are the server's number,

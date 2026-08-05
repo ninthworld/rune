@@ -158,6 +158,11 @@ fn build_room_view(registry: &Registry, room_id: &RoomId) -> Option<RoomView> {
                 occupied_by,
                 name,
                 decked: gate.is_some_and(|g| g.deck.is_some()),
+                // What the seat shows the table about its deck, worked out when the deck
+                // was accepted: the colours it is in, and the commander it named. Never
+                // its cards.
+                colors: gate.map(|g| g.shown.colors.clone()).unwrap_or_default(),
+                commander: gate.and_then(|g| g.shown.commander.clone()),
                 ready: gate.is_some_and(|g| g.ready),
                 // The AI kind occupying this seat, if any (a human/empty seat omits it).
                 ai: ai.map(|ai| ai.kind.id().to_string()),
@@ -405,6 +410,49 @@ mod tests {
         let alice_after = alice.view().await.room.expect("alice still holds the room");
         assert!(alice_after.seats[0].occupied_by.is_some());
         assert!(alice_after.seats[1].occupied_by.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_seat_shows_the_table_its_colours_and_its_commander_but_never_its_cards() {
+        // Issue #705: what a player shows the table before a game — the colours of the
+        // deck and the commander it is built around — is public, and the decklist is not.
+        let lobby = lobby(4);
+        let (alice, bob, _room) = seated_pair(&lobby).await;
+
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::SubmitDeck(SubmitDeck {
+                    cards: decklist(),
+                    commander: Some(wire_id("onakke_ogre")),
+                }),
+            )
+            .await
+            .expect("valid deck accepted");
+
+        // Bob reads it off his own view of the room, not off Alice's device.
+        let seat = &bob.current().room.expect("bob in room").seats[0];
+        assert_eq!(seat.commander.as_deref(), Some("onakke_ogre"));
+        // Every colour the deck's cards are between them, in WUBRG order, and nothing more.
+        assert_eq!(
+            seat.colors,
+            vec![
+                sage_protocol::Color::Blue,
+                sage_protocol::Color::Black,
+                sage_protocol::Color::Red,
+                sage_protocol::Color::Green
+            ]
+        );
+        let json = serde_json::to_string(&seat).expect("a seat serialises");
+        assert!(!json.contains("forest"), "{json}");
+
+        // A seat with no deck shows neither, and both elide from the wire entirely.
+        let empty = &bob.current().room.expect("bob in room").seats[1];
+        assert!(empty.colors.is_empty());
+        assert!(empty.commander.is_none());
+        let json = serde_json::to_string(&empty).expect("an undecked seat serialises");
+        assert!(!json.contains("colors"), "{json}");
+        assert!(!json.contains("commander"), "{json}");
     }
 
     #[tokio::test]

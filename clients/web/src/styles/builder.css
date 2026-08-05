@@ -1,0 +1,641 @@
+/* ---- deck builder ---- */
+/* Named, because `.topbar` places itself by area and an unnamed one lands in an implicit row
+   under everything else. */
+.builder {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-rows: 32px minmax(0, 1fr);
+  grid-template-areas:
+    'topbar topbar'
+    'main   side';
+}
+
+.builder-topbar {
+  justify-content: flex-start;
+}
+
+.builder-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #cfe0f4;
+}
+
+/* Every track is stated as `minmax(0, …)`, and every row inside them says `min-width: 0`.
+   A grid track left to size itself takes the width of its widest content — a row of title
+   columns, a pool of cards — and a region that wide does not scroll, it spills over the
+   sidebar and out of the window. The scrollbars below only exist because nothing above them
+   is allowed to grow. */
+.builder-main {
+  grid-area: main;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+.builder-top {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+/* the pool: as many cards per row as the width takes, and the one region that scrolls */
+.builder-pool {
+  --pc: 176px;
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--pc) * 0.72), 1fr));
+  align-content: start;
+  gap: 8px;
+  padding: 10px;
+  overflow-y: auto;
+}
+
+.pool-card {
+  display: grid;
+  place-items: start center;
+  cursor: pointer;
+}
+
+/* picked: the one card the pointer chose, wherever it is drawn. It is by identity, so every
+   copy in the deck lights with the one in the pool, and a picked card in a stack comes to the
+   front rather than staying under whatever is drawn over it. */
+.is-picked {
+  position: relative;
+  z-index: 1;
+}
+
+.is-picked .card,
+.is-picked .c-band {
+  outline: 2px solid #6aa6e8;
+  outline-offset: 1px;
+  border-radius: 3px;
+}
+
+.is-picked .card {
+  border-radius: calc(7 * var(--u));
+  box-shadow:
+    0 0 0 1px rgba(106, 166, 232, 0.35),
+    0 4px 16px rgba(0, 0, 0, 0.55);
+}
+
+.builder-pool .card {
+  --s: calc(var(--pc) / 600);
+}
+
+/* the card search: the sets menu, a name, the colours, and the way to more */
+.search-bar {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.search-sets {
+  position: relative;
+}
+
+.search-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  width: 200px;
+  padding: 8px;
+  background: var(--pane);
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  box-shadow: var(--cast-down);
+}
+
+.search-menu-acts {
+  display: flex;
+  gap: 6px;
+}
+
+.search-menu-acts .view-btn {
+  flex: 1;
+}
+
+.search-note {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: #6b6f78;
+}
+
+.search-name {
+  width: min(280px, 40%);
+}
+
+.search-colors {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.color-btn {
+  display: grid;
+  place-items: center;
+  padding: 3px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0.45;
+}
+
+.color-btn:hover {
+  opacity: 0.8;
+}
+
+.color-on {
+  opacity: 1;
+  border-color: #3a4351;
+  background: rgba(207, 224, 244, 0.08);
+}
+
+.color-btn .c-pip {
+  width: 17px;
+  height: 17px;
+}
+
+/* the options bar: how the deck under it is read, in the same segmented control the
+   lobby filters with */
+.builder-bar {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  padding: 7px 10px;
+  background: var(--pane-deep);
+  border-bottom: 1px solid var(--line-soft);
+  box-shadow: var(--lit);
+}
+
+.builder-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.builder-opt-label {
+  font-size: 11px;
+  color: #6b6f78;
+}
+
+/* the deck: columns across, cards down, scrolling whichever way it has outgrown — and the
+   piles beside it in a column of their own */
+.builder-deck {
+  --dc: 150px;
+  --peek: 34px;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.deck-columns {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  overflow: auto;
+}
+
+/* The three regions that scroll say so: a thin bar in the chrome's own colours, rather than
+   an overlay bar a player only finds by dragging at content they thought was cut off. */
+.deck-columns,
+.deck-aside-body,
+.builder-pool {
+  scrollbar-width: thin;
+  scrollbar-color: #3a4351 transparent;
+}
+
+/* the pile beside the deck. It takes a fixed slice of the width so the deck's own columns
+   keep the rest of it, and it scrolls inside that slice rather than pushing them out. */
+.deck-aside {
+  flex: none;
+  width: 220px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 8px;
+  background: var(--pane-deep);
+  border-left: 1px solid var(--line-soft);
+  box-shadow: var(--lit), var(--cast-left);
+}
+
+.deck-aside-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+}
+
+.deck-aside-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #cfe0f4;
+}
+
+.deck-aside-move {
+  flex: none;
+  padding: 3px 9px;
+  font-size: 11px;
+}
+
+.deck-aside-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  overflow: auto;
+}
+
+/* a pile has the aside's width, whatever a column is out on the deck */
+.deck-aside .deck-col {
+  max-width: 100%;
+}
+
+.deck-col {
+  flex: none;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.deck-col-head {
+  font-size: 11px;
+  font-weight: 600;
+  color: #cfe0f4;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.deck-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.builder-deck .card {
+  --s: calc(var(--dc) / 600);
+}
+
+/* the three readings: whole cards apart, cards overlapping to their title bars, and the
+   title bars alone */
+.deck-stacked + .deck-stacked {
+  margin-top: calc(var(--peek) - var(--dc));
+}
+
+.deck-full .deck-stacked + .deck-stacked {
+  margin-top: 5px;
+}
+
+/* titles: what the card's title bar holds — the name, and the cost as pips — set on the same
+   bar colour the printed cost gives it, and nothing else of the frame */
+.deck-titles .deck-col {
+  width: 190px;
+}
+
+.deck-line {
+  display: block;
+}
+
+.deck-line + .deck-line {
+  margin-top: 2px;
+}
+
+.builder-side {
+  grid-area: side;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--pane-deep);
+  border-left: 1px solid var(--line-soft);
+  box-shadow: var(--lit), var(--cast-left);
+}
+
+/* the sidebar folds away; the main region takes the whole width when it does */
+.builder.side-hidden {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'topbar'
+    'main';
+}
+
+.builder.side-hidden .builder-side {
+  display: none;
+}
+
+/* what the click picked, and what can be done to it */
+.builder-held {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+/* what the deck is made of. The one part of the sidebar that grows, so it is the part that
+   scrolls when the window is short. */
+.builder-stats {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px 10px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #3a4351 transparent;
+}
+
+.builder-stats-empty {
+  display: block;
+  font-size: 11px;
+  color: #6b6f78;
+}
+
+.stat-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+/* curve: one bar per mana value, each as tall as its share of the tallest */
+.stat-curve {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 84px;
+}
+
+.stat-bar {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 11px;
+  justify-items: center;
+  gap: 2px;
+}
+
+/* the count rides on top of its own bar rather than on a line above all of them */
+.stat-plot {
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 1px;
+}
+
+.stat-fill {
+  width: 100%;
+  min-height: 1px;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(180deg, #5f88b8, #3f5f88);
+}
+
+.stat-tick,
+.stat-n {
+  font-size: 9px;
+  color: #6b6f78;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.stat-n {
+  color: #a8adb6;
+}
+
+/* colours: a ring, and the same numbers spelled out beside it */
+.stat-colors {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stat-ring {
+  flex: none;
+  width: 74px;
+  height: 74px;
+}
+
+.stat-ring-track {
+  stroke: #21252c;
+}
+
+.stat-legend,
+.stat-rows {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.stat-legend li,
+.stat-rows li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: #a8adb6;
+}
+
+.stat-legend .c-pip {
+  flex: none;
+  width: 11px;
+  height: 11px;
+}
+
+.stat-legend-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* types: a row each, longest first */
+.stat-row-name {
+  width: 62px;
+  flex: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stat-track {
+  flex: 1;
+  min-width: 0;
+  height: 7px;
+  border-radius: 3px;
+  background: #21252c;
+}
+
+.stat-row-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #4f7aa8, #6f9cc8);
+}
+
+.builder-missing {
+  padding: 10px;
+  font-size: 11px;
+  color: #d6d8dc;
+  border-top: 1px solid var(--line-soft);
+}
+
+.builder-missing p {
+  margin: 4px 0 8px;
+  color: #c8926a;
+}
+
+.builder-tally {
+  font-size: 11px;
+  color: #6b6f78;
+  font-variant-numeric: tabular-nums;
+}
+
+/* the two deck dialogs */
+.zone-panel.deck-files {
+  width: min(560px, 100%);
+}
+
+.files-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 14px 16px;
+  max-height: 52vh;
+  overflow-y: auto;
+}
+
+.files-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.files-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.files-label {
+  font-size: 11px;
+  color: #6b6f78;
+}
+
+.files-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--pane);
+}
+
+.files-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #d6d8dc;
+}
+
+.files-note {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: #6b6f78;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.files-ask {
+  font-size: 11px;
+  color: #c8926a;
+}
+
+.files-danger {
+  color: #d98b7a;
+}
+
+.files-empty {
+  padding: 8px;
+  font-size: 11px;
+  color: #6b6f78;
+}
+
+/* the picker is opened by the button beside it, which is the one that can be styled */
+.files-picker {
+  display: none;
+}
+
+.builder-file {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.builder-name {
+  width: 100%;
+}
+
+.builder-acts {
+  display: flex;
+  gap: 8px;
+}
+
+.builder-acts .view-btn {
+  flex: 1;
+}
+
+@media (max-width: 900px) {
+  .builder {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'topbar'
+      'side'
+      'main';
+    grid-template-rows: 32px auto minmax(0, 1fr);
+  }
+
+  .builder.side-hidden {
+    grid-template-rows: 32px minmax(0, 1fr);
+  }
+
+  .builder-side {
+    border-left: none;
+    border-bottom: 1px solid var(--line-soft);
+    box-shadow: var(--lit), var(--cast-down);
+  }
+}

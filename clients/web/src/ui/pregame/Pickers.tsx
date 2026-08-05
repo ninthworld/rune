@@ -124,7 +124,12 @@ export function AiPicker({
   kinds: readonly AiOption[]
   decks: readonly StarterDeck[]
   onClose(): void
-  onSeat(kind: string, cards: readonly string[]): void
+  /**
+   * The AI's deck as the wire wants it: the flat list, and the commander the deck names.
+   * A deck that names one is seated with it — dropping the designation here would seat a
+   * commander deck as an ordinary one and leave the table wondering where its commander went.
+   */
+  onSeat(kind: string, cards: readonly string[], commander?: string): void
 }) {
   const [kind, setKind] = useState(kinds[0]?.id)
   const [deckId, setDeckId] = useState(decks[0]?.id)
@@ -140,7 +145,7 @@ export function AiPicker({
       disabled={kind === undefined || deck === undefined}
       onClose={onClose}
       onCommit={() => {
-        if (kind !== undefined && deck) onSeat(kind, deck.cards)
+        if (kind !== undefined && deck) onSeat(kind, deck.cards, deck.commander)
         onClose()
       }}
     >

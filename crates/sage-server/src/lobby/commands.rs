@@ -68,6 +68,7 @@ impl Lobby {
                 .map_err(LobbyError::IllegalDeck)?;
         }
         if let Some(gate) = room.gate.get_mut(seat) {
+            gate.shown = shown_deck(&self.inner.db, &deck, commander);
             gate.deck = Some(deck);
             gate.commander = commander;
             gate.ready = false;
@@ -150,6 +151,7 @@ impl Lobby {
         // Store the AI's deck in the gate, decked + ready, so the ready gate and game
         // construction read it uniformly with human seats.
         if let Some(gate) = room.gate.get_mut(index) {
+            gate.shown = shown_deck(&self.inner.db, &deck, commander);
             gate.deck = Some(deck);
             gate.commander = commander;
             gate.ready = true;
@@ -371,6 +373,29 @@ impl Lobby {
         // skipped by `push_view`, so their terminal `Start` hand-off is preserved).
         broadcast_views(registry);
         info!(%room_id, seats = occupants.len(), "ready gate passed; game constructed");
+    }
+}
+
+/// What a seat shows the table about the deck it just submitted: the colours it is in,
+/// and the commander it designated by name.
+///
+/// **A summary, computed once, from a deck that has already been validated.** The colours
+/// are the union of the cards' colour identities — the same reading
+/// [`color_identity_of`](crate::format::color_identity_of) gives one card and the same
+/// WUBRG order a `CardView` carries — and the commander is its stable `functional_id`,
+/// which is what a client addresses a card by. Neither says which cards are in the deck.
+fn shown_deck(db: &CardDatabase, deck: &[CardId], commander: Option<CardId>) -> SeatShown {
+    let mut colors = std::collections::HashSet::new();
+    for card in deck {
+        if let Some(data) = db.card(*card) {
+            colors.extend(crate::format::color_identity_of(db, data));
+        }
+    }
+    SeatShown {
+        colors: crate::view::colors_in_wubrg(&colors),
+        commander: commander
+            .and_then(|card| db.card(card))
+            .map(|data| data.functional_id.to_string()),
     }
 }
 

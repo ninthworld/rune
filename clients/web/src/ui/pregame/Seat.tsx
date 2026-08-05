@@ -26,11 +26,17 @@ import type { ManaColor } from './../../mana'
 import { Card } from './../card/Card'
 import { Pip } from './../card/Pips'
 
-/** What this client knows about the deck in a seat. */
+/**
+ * What this client knows about the deck in a seat.
+ *
+ * For your own seat that is the draft on this device; for every other it is what the server
+ * stated on the seat — the colours the deck is in and the commander it designated, never its
+ * cards. The two arrive in the same shape because a seat is drawn one way whoever is in it.
+ */
 export interface SeatDeck {
   name: string
-  colors: readonly ManaColor[]
-  /** The card the deck is built around, in a format that asks for one. */
+  colors: readonly (ManaColor | string)[]
+  /** The card the deck is built around, where the seat designated one. */
   commander?: string
 }
 
