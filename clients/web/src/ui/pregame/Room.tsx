@@ -11,6 +11,15 @@
  * drawn as what every table currently does, unpressable, rather than left out and having to be
  * designed back in the day the server carries them.
  *
+ * **A seat shows what its player brought, and both seats are drawn the same way** (§9.7): the deck's
+ * colours, and the commander it was built around. Your own comes from the draft on this device;
+ * everybody else's is the summary the server put on their `SeatView`. Neither is this screen
+ * reading a decklist — nothing here can, and nothing here tries.
+ *
+ * **The two deck controls on your seat are the deck editor's, made small.** `Change` opens the same
+ * loader the editor loads from, and `Edit` opens the sideboard line with a way through to the
+ * editor itself; both are gated on `submit_deck` being advertised.
+ *
  * **The footer is the board's action bar doing the same job before the game starts** (§6.5):
  * blue while the table is still waiting, green once every seat is ready, carrying the tally in
  * words and your `Ready`. It has no `Start game`, because the protocol has none: the room starts

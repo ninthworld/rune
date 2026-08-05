@@ -27,6 +27,7 @@ them in order never requires a forward reference.
 | [0015](0015-tokens.md) | What a permanent is, when it is not a card |
 | [0016](0016-planeswalkers-and-attack-targets.md) | Loyalty as counters, and what an attack names |
 | [0017](0017-emblems-and-variable-target-arity.md) | An object in no zone, and an effect that may name fewer targets than it allows |
+| [0018](0018-decks-live-on-the-device.md) | Decks live on the device, and travel as files |
 
 New ADRs copy [`0000-template.md`](0000-template.md) and take the next free number.
 

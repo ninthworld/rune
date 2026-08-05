@@ -1,6 +1,18 @@
-/* ---- deck builder ---- */
-/* Named, because `.topbar` places itself by area and an unnamed one lands in an implicit row
-   under everything else. */
+/* ---- deck editor ---- */
+/* The screen decks are built on (`docs/client-design.md` §9.7): a pool above, the deck below,
+   an options bar between them, and a sidebar that is the card you are looking at and the deck
+   as a thing that is kept.
+
+   Two rules run through the whole file. **Every grid track is `minmax(0, …)` and every region
+   inside one says `min-width: 0`**: a track left to size itself takes the width of its widest
+   content, and a region that wide does not scroll — it spills over the sidebar and out of the
+   window, which `body { overflow: hidden }` then makes unreachable rather than visible. And
+   **this is the one screen where a region scrolls**: a catalog is unbounded and so is a deck, so
+   the pool scrolls down and the deck's columns scroll both ways, each with a visible thin bar
+   rather than an overlay one a player has to discover by dragging. Nothing else here does. */
+
+/* Named areas, because `.topbar` places itself by area and an unnamed one lands in an implicit
+   row under everything else. */
 .builder {
   height: 100%;
   display: grid;

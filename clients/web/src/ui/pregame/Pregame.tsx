@@ -1,14 +1,26 @@
 /**
- * Everything before a game: the lobby, the table room, and the state they share.
+ * Everything before a game: the lobby, the table room, the deck editor, and the state they share.
  *
- * This file composes and derives; the surfaces beside it draw. What lives here is what both
- * screens need — the catalog, and the deck this device has chosen — because the room submits the
- * deck the editor builds and a draft held in either of them would be lost the moment the player
- * walked to the other one.
+ * This file composes and derives; the surfaces beside it draw. What lives here is what they all
+ * need — the catalog, the deck this device has chosen, and the one dialog that loads a deck —
+ * because the room submits the deck the editor builds and a draft held in any one of them would be
+ * lost the moment the player walked to another.
  *
- * **Which of the two screens is on is the server's answer, not a client-held phase.** A
+ * **Which of the two *server* screens is on is the server's answer, not a client-held phase.** A
  * `LobbyView` carrying a `room` is a table you are at; one without it is the directory. Nothing
  * here remembers which it was.
+ *
+ * **The deck editor is the one screen this client chooses to be on**, and it is deliberately not a
+ * third answer to that question: it draws over whichever of the two you were on and leaves you back
+ * there, so the server's answer is what is underneath it the whole time. Opened from a table, it
+ * submits the deck on the way out — the seat is being held for whatever the deck is now — and
+ * opened from the lobby it submits nothing, because `submit_deck` is a command only a room
+ * advertises.
+ *
+ * **A deck arrives from one of four places and is applied one way** (`applyDeck`): a bundled
+ * starter, this device's storage, a `.dck` file, or the editor. What a file named and the catalog
+ * does not hold is raised as a notice over whichever screen is on, rather than a deck coming back
+ * short in silence.
  *
  * The catalog is the one thing not carried on the view. It is reference data, requested per
  * socket (`docs/protocol.md`) and re-requested after a reconnect, and everything the pre-game UI

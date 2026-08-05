@@ -162,10 +162,21 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   false — the gate that starts a game is the server's.
 - `src/deck.ts` — a deck under construction, and the catalog it is built from. The wire wants a
   flat list with duplicates repeated; a person wants counted entries, so the draft holds counts
-  and expands at submission. **It computes no legality**: the rules strip quotes the numbers the
+  and expands at submission. A draft also holds the cards *beside* the deck and `expand` leaves them
+  out — **the wire has no sideboard**, so one is this device's own note (ADR 0018) — and a commander
+  is a designation over the deck list rather than a list of its own, so its last copy leaving clears
+  it. **It computes no legality**: the rules strip quotes the numbers the
   format published, the size note is arithmetic on a count, and nothing reads a `type_line` to
   decide what a card *is* — which is why the copy limit is displayed and never enforced and the
   commander picker offers the deck's own cards. The verdict is the server's `LobbyRejection`.
+- `src/builder.ts` — the deck editor's reading of its draft: the pool narrowed to the search, the
+  deck cut into columns, and the curve/colour/type summaries. Every number counts what the server
+  described, and none is a verdict. A land is off the curve and in its own column rather than at
+  zero: counting it as zero puts a deck's land base in the column read as "free spells".
+- `src/dck.ts`, `src/deck-store.ts` — decks as files, and decks on this device (ADR 0018). Parsing
+  is pure and **reports every name the catalog does not hold** instead of dropping it. The store is
+  device storage in the manner of `connect.ts`: injectable, and absent or unreadable is a working
+  answer — storage off means decks are lost on reload, never a screen that will not open.
 - `src/submission.ts` — composes one `choose_action`. Bookkeeping over slots the server
   advertised, never rules reasoning.
 - `src/interaction.ts` — what one click *means*: which objects own an action, which slot a click
@@ -217,11 +228,22 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   Every surface tags what it draws with `data-anchor`, which is how a line finds its two ends,
   where `ObjectMenu` opens, and what `Motion` moves — so a surface gets all three by tagging.
   Public piles open as a dialog over the table and may scroll, because a pile is not the board.
-- `src/ui/pregame/` — the three screens in front of a game (§9), and `Pregame.tsx` holds the two
-  things they share: the catalog, and the deck this device has chosen. **Which screen is on is the
-  server's answer** — a `LobbyView` with a `room` is a table you are at, one without it is the
-  directory — and there is no shell, no rail and no Decks destination: the topbar of each screen
-  is its navigation, and `ui/Settings.tsx` is a dialog over whatever you were already on.
+- `src/ui/pregame/` — the screens in front of a game (§9), and `Pregame.tsx` holds what they share:
+  the catalog, the deck this device has chosen, and the one dialog that loads a deck wherever it is
+  opened from. **Which screen is on is the server's answer** — a `LobbyView` with a `room` is a
+  table you are at, one without it is the directory — with the deck editor the one exception: a
+  device-local screen over whichever of the two you were on, which puts you back there on the way
+  out. The topbar of each screen is its navigation, and `ui/Settings.tsx` is a dialog over whatever
+  you were already on. `DeckEditor.tsx` is the *small* edit at a seat — the sideboard line, with a
+  way through to the full editor — and a deck changed there is submitted, because the table is
+  holding a seat for whatever it is now.
+- `src/ui/deck/` — the deck editor as its own screen (§9.7): pool and search above, options bar
+  between, `DeckArea.tsx`'s columns below, sidebar carrying the board's card viewer, the file
+  controls and `DeckStats.tsx`. **Everything the options bar changes is a reading**, never the
+  draft. `TitleBand.tsx` is why `Titles` is honest — the printed title bar is one drawing with three
+  callers, so a decklist and a card cannot disagree. Take a palette class from `tint.ts`, never by
+  composing `card-${tint}`: two names do not match their tint, and a hand-built one resolves to no
+  palette and draws a black box.
   `ui/Connect.tsx` asks who you are and where, with the gear, so card art can be chosen before
   ever joining. Nothing here is a native form control: a `<select>` clips its own arrow at 120%
   zoom, so every choice is a segmented control, a radio list, or a picker dialog. **Two panels

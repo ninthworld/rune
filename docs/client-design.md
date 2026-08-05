@@ -1178,11 +1178,18 @@ region, and no Decks destination; settings is a dialog rather than a place.
 
 The argument that produced the rail was right about what it was actually arguing. A spatial lobby —
 a pre-game *table*, a *room* you walk into — has to hand off to a conventional surface the moment a
-player builds a deck, and the deck builder is the densest surface in the product. All of that
-stands. What it does not establish is that the other screens need a rail beside them: three
-destinations, one of which is a dialog and one of which is reached from the table, is not a rail's
-worth of navigation. A rail is what a product with a dozen places needs. This one has a front door,
-a list, a room, and a settings sheet.
+player builds a deck, and the deck editor is the densest surface in the product. All of that
+stands. What it does not establish is that the other screens need a rail beside them: four
+destinations, one of which is a dialog, is not a rail's worth of navigation. A rail is what a
+product with a dozen places needs. This one has a front door, a list, a room, a deck editor, and a
+settings sheet.
+
+**The deck editor is a destination, and it is still not a rail** (§9.7). Building a deck needed the
+conventional surface that argument predicted, so it got a screen; a button on the lobby's topbar and
+one in the seat's editor is the whole of how you reach it. It differs from the two server screens in
+the way that matters here: it is a place *this client* chose to be, drawn over whichever screen you
+were on, and leaving it puts you back on that screen rather than deciding which one you get. The
+guarantee below is untouched — the screen underneath it is still the server's answer.
 
 **What the shell was protecting is kept in full**: *which destination you are on is the client's
 answer; which contract you are on is the server's.* A `GameView` arriving replaces the screen,
@@ -1261,6 +1268,11 @@ decides — no new rule.
 **The side column is the tabbed panel the table uses** (§9.5), here carrying **Chat** and
 **Players**, the latter with a count. Same vocabulary, same place, both before and during a game.
 
+**The topbar carries the way out and the way to your decks**: `← Disconnect` at its leading edge and
+`Deck Editor` beside it, then who you are, the gear, and the panel toggle at the trailing edge. Deck
+building is the one thing here that is not about a table, which is why it is on the bar rather than
+in the list (§9.0, §9.7).
+
 **Creating a table is a dialog** over the list, in the glass of §5.5: name, format, seats, access,
 and **undo**. Its footer restates what will be made in one line, so the summary is read where the
 commit is, and the create button is the only raised thing in it.
@@ -1333,28 +1345,75 @@ disabled** — freeing space must not depend on a setting.
 
 ### 9.7 Decks
 
-**A deck is chosen and adjusted at the table**, in dialogs off your own seat: a picker listing the
-decks with their colours and sizes, and an editor for the ordinary pre-game adjustment — main deck
-and sideboard as two lists, a click moving one copy across, and the card under the pointer drawn
-whole beside them. On a phone the preview is what gives way; the lists are the tool.
+**Building a deck is a screen; adjusting one is a dialog at the table.** Those are two different
+sizes of question and they get two different surfaces, in the same vocabulary.
 
-That is what the prototype settles, and it reverses the placement rather than the substance: an
-earlier draft made **Decks a destination in the shell, reachable without being at a table**. Deck
-questions arise at the table, and answering them there is one screen fewer to leave and come back
-from.
+> This section is the exception to the document's own provenance. Everything above it records what
+> `clients/prototype` settled; the deck editor was never prototyped, and what follows was designed
+> in the shipping client instead. It is binding on `clients/web` like the rest, but it is evidence
+> from one build rather than from the sandbox — read it as less settled than §6.
 
-**The editor's second list is the catalog, not a sideboard.** The prototype drew main deck and
-sideboard; `submit_deck` carries one flat list of identities and the wire has no sideboard at all,
-so the client's two lists are what is in the deck and what it can be built from — the same gesture
-over the pair of lists that really exist.
+#### The deck editor, as its own screen
 
-**The builder itself still awaits its own design pass** — it is the densest surface in the product,
-a list of hundreds of cards with filters over it, and the prototype has not tried it. Nothing here
-is evidence about that surface; what is settled is only where the *ordinary* deck adjustment lives.
+Reached from the lobby's topbar, and from a seat by way of the small editor. Four regions, and the
+topbar is its navigation like every other screen's (§9.0):
 
-Unchanged: a saved deck is **device-local**, in the manner of ADR 0012's art preference, and is an
-*input* to `submit_deck` rather than a substitute for it; and `deck.ts` still computes no legality —
-the verdict stays the server's `LobbyRejection`.
+- **The pool**, filling the top half: every card the catalog holds, drawn as whole cards in a grid
+  that fits as many per row as the width takes. Double-click puts a copy in the deck.
+- **The search**, across the top of the pool: a sets menu, a name box, and the five colours plus
+  colourless and lands as toggles. **Every toggle starts on** — switching one off is the player
+  saying they do not want to see that kind, so an untouched search hides nothing. The sets menu is
+  drawn and says it has nothing behind it, because `CatalogCard` carries no printings.
+- **The options bar**, between the halves: how the deck below is read (`Full cards`, `Stacked`,
+  `Titles`), what its columns are cut by (`Mana cost`, `Color`, `Card type`), and which pile sits
+  beside it (`Commander`, `Sideboard`, or neither). All three are device state and none of them
+  changes the deck.
+- **The deck**, filling the bottom half: columns of cards, each headed by what it holds and how
+  many — `3 Mana (7 cards)`. Double-click takes a copy out. A pile beside it holds the commander or
+  the sideboard, with one button whose arrow points where the picked card would go.
+
+The right sidebar carries the card viewer the board uses (§6.6, the same component), the deck's
+name and its Load/Save, and the deck summarised three ways: curve, colours, types.
+
+**Three readings of one deck, because a card is worth different amounts of space at different
+moments.** `Full cards` is for looking at what you have; `Stacked` overlaps each card to its title
+bar, which is how a decklist is read; `Titles` is the printed title bar alone, and it is the
+*card's own bar* rather than a list styled to look like one — the same SVG, cropped, so the list
+and the card can never drift apart. A land is not on the mana curve and not in the `0` column: it
+has no cost, rather than a cost of nothing.
+
+**Selection is one copy, not one card.** A deck holding four of a land holds four cards on the
+table, and clicking the third lights the third.
+
+#### At the table
+
+The seat's chooser **is** the editor's loader — the same dialog, listing this device's decks, the
+bundled starters, and a file. The seat's editor is the small edit: the deck and the cards beside it
+as two lists of equal width, one click sending a copy across, the card under the pointer drawn
+whole between them, and the pane beside the deck toggling between sideboard and commander. Rows are
+the cards' own title bars, as `Titles` draws them. On a phone the preview is what gives way; the
+lists are the tool.
+
+`Deck editor…` opens the screen over the table and the way back submits what you built, so the
+larger question is one button away and answering it does not cost the seat.
+
+#### What is device-local, and what is not
+
+A deck is **kept on the device** and interchanged as a file (ADR 0018): `submit_deck` is what
+reaches the server, and it carries a flat list plus a commander. A **sideboard is therefore a
+device-local note** — it round-trips through storage and files, and the footer of the seat editor
+says plainly that it is not sent, rather than letting a player discover it when it does not arrive.
+
+**No client here decides legality.** The counts are arithmetic on counts, the copy limit the format
+published is quoted and never enforced, the summaries state what the server described, and the
+verdict stays the server's `LobbyRejection`. What a seat *shows* the table — its colours and its
+commander — is the server's own summary of a deck nobody else may read (`docs/protocol.md`,
+`SeatView`), not something this client works out about somebody else's cards.
+
+**Both scrollbars in the deck editor are deliberate**, and they are the one place §5's "no region
+scrolls" rule is relaxed: a catalog is unbounded and a deck is unbounded, so the pool scrolls down
+and the deck's columns scroll both ways. Nothing else on the screen does, and the regions around
+them are sized so they cannot push the page wider than the window.
 
 ---
 
@@ -1367,7 +1426,10 @@ because they are undecided in principle — and each names what would settle it.
    that asked whether a card had become unreadable. A row is sized by the viewport and the card
    takes what it is given, at any size. Settled by: a sweep across the supported range that reports
    the smallest permanent each shape produces, checked against §5's table by the maintainer.
-2. **The deck builder** (§9.7). Untried, and the densest surface in the product.
+2. **The deck editor at catalog scale** (§9.7). The screen exists and is playable, but it has only
+   ever been built against a catalog of ~134 cards, where every filter is instant and no list is
+   long enough to need virtualising. Settled by: driving it with a catalog large enough to make the
+   pool grid and the search expensive, and reporting where it stops feeling immediate.
 3. **A game with three or more seats, played.** The prototype tiles up to eight and focus works, but
    nobody has played a four-player game on it. Whether a seat at one quarter of the table is enough
    to play from is a judgment only playing can make.

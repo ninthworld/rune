@@ -7,6 +7,14 @@
  * submission — so the shape a player edits and the shape the server validates are the same deck,
  * derived one from the other rather than kept in step by hand.
  *
+ * **A draft holds two lists and one designation, and only part of that reaches the server.** The
+ * deck is submitted; the cards *beside* it are not, because the wire has no sideboard at all
+ * (ADR 0018) — so `expand` leaves them out and every surface that shows them says they are not
+ * sent. The commander is neither list but a pointer into the first: designating a card does not
+ * move it, and the one state this model must never reach is a designation naming a card the deck
+ * no longer holds, which is why the last copy leaving takes the designation with it. That is
+ * bookkeeping over this module's own model, not a claim about whether a designation is *legal*.
+ *
  * **This module computes no legality.** It counts, it searches, and it repeats the deck rules the
  * catalog advertised — nothing more. A format's rules arrive as numbers the server published
  * (`CatalogFormat`), so restating them is quoting, not deciding; and the arithmetic of "this

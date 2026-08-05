@@ -16,6 +16,9 @@
  * - **A seat's status is the flags the server sent.** `decked` and `ready` are stated per seat,
  *   including for an AI seat, and are rendered as stated. What a room needs before it starts is
  *   the server's gate; this module only says which stated flag is still false.
+ * - **What a seat shows about its deck is the server's summary of it**, not a reading of a
+ *   decklist this client cannot see: `colors` and `commander` are carried across as stated, and a
+ *   seat the server said nothing about shows nothing rather than an empty deck.
  *
  * The one piece of prose the client owns is a fallback label. The server never invents a name
  * for an unnamed table or an unnamed occupant (a deliberate protocol decision — no prose rides
