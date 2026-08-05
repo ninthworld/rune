@@ -259,15 +259,21 @@ pub(super) fn restriction_predicate(restriction: CombatRestriction) -> String {
 /// A token as the noun phrase a card prints it as: `"a 1/1 red Goblin creature
 /// token"`, `"two 1/1 white Soldier creature tokens with lifelink"`.
 ///
-/// Assembled in the order a real card states it — count, power/toughness, colors,
-/// subtypes, card types, the word "token", then any keywords — from the same
+/// Assembled in the order a real card states it — count, "tapped", power/toughness,
+/// colors, subtypes, card types, the word "token", then any keywords — from the same
 /// [`TokenData`] the engine builds the object from. A token with abilities beyond
 /// keywords says so without reciting them: the object's own rules text
 /// ([`token_rules_text`]) is what a player reads once it is on the battlefield, and
 /// repeating it inside the creating card's sentence would be a second place for the
 /// same words to drift.
-pub(super) fn token_noun(token: &TokenData, count: u32) -> String {
+///
+/// `tapped` is an adjective inside the phrase rather than a word before it, because
+/// that is where a card puts it: *create two **tapped** 1/1 white Cat creature tokens*.
+pub(super) fn token_noun(token: &TokenData, count: u32, tapped: bool) -> String {
     let mut parts: Vec<String> = Vec::new();
+    if tapped {
+        parts.push("tapped".to_string());
+    }
     if let (Some(power), Some(toughness)) = (token.power, token.toughness) {
         parts.push(format!("{power}/{toughness}"));
     }

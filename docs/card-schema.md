@@ -798,18 +798,35 @@ whole printed face is authored inline, because the effect that creates it *is* i
   "token": { "name": "Thopter", "types": ["artifact", "creature"],
              "subtypes": ["Thopter"], "colors": [], "power": 1, "toughness": 1,
              "keywords": ["flying"] } }
-{ "kind": "create_token", "count": 2, "tapped": true,
-  "token": { "name": "Zombie", "types": ["creature"], "subtypes": ["Zombie"],
-             "colors": ["black"], "power": 2, "toughness": 2 } }
+{ "kind": "create_token", "count": 2, "tapped": true, "attacking": true,
+  "token": { "name": "Cat", "types": ["creature"], "subtypes": ["Cat"],
+             "colors": ["white"], "power": 1, "toughness": 1,
+             "keywords": ["lifelink"] } }
 ```
 
 - `count` is how many are created (default `1`). Each is a **separate object** with its
   own battlefield identity, so an "enters the battlefield" watcher sees two entries for
   two tokens.
 - `tapped` (default `false`) is the entry state the creating effect dictates.
+- `attacking` (default `false`) puts each token into the combat already in progress
+  (CR 506.3c), and is a **sibling** of `tapped` rather than a mode of it — Leonin
+  Warleader says both.
 - `player_ref` names **who creates them**, and therefore who controls them, exactly as it
   names whose library a `mill` empties: `controller` (the default), `each_opponent`, or a
   targeting `target_player` / `target_opponent`.
+
+**An attacking token is never told what to attack**, because no card says: it attacks the
+same player or planeswalker the effect's own source is attacking. Every way that can fail
+to name an attack is the same answer — the effect resolving outside combat, its source
+removed from combat before it resolved, a source that is a spell rather than a permanent,
+or a token created under some other seat's control — and in each the tokens are created
+and simply are not attacking. The effect never invents a defender.
+
+It was never **declared** as an attacker (CR 506.3c), which is the rest of the rule:
+attacking does not tap it (only `tapped` does), summoning sickness does not restrict it,
+and no "whenever this creature attacks" ability triggers for it. Everything else about it
+is an ordinary attacker — a defender may block it, and it deals combat damage in that
+combat.
 
 A `token` block takes `name`, `types`, and optionally `subtypes`, `colors`, `power`,
 `toughness`, `keywords`, `restrictions`, and `abilities` — the same vocabulary a card
@@ -827,8 +844,9 @@ no graveyard (though the death is real and a dies trigger still sees it, CR 603.
 bounced token never arrives in a hand, and an exiled token is not in exile. See
 `docs/decisions/0015-tokens.md`.
 
-Creating a token **already attacking**, and creating one as a *copy* of another
-permanent, are out of scope and listed in the exclusions.
+Creating a token as a *copy* of another permanent is out of scope and listed in the
+exclusions: copiable values are decided at CR 613 layer 1, ahead of every layer the
+engine applies.
 
 ### Effects a player may decline
 

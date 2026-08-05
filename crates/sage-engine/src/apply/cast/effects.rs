@@ -148,10 +148,15 @@ pub(crate) fn apply_effect(
             count,
             player_ref,
             tapped,
+            attacking,
         } => {
             for seat in non_targeting_subjects(state, *player_ref, controller) {
+                // Every token this seat creates joins the same attack, answered once:
+                // the tokens are created simultaneously and there is one declaration
+                // for them to join.
+                let joins = attack_a_created_token_joins(state, *attacking, source, seat);
                 for _ in 0..*count {
-                    state.create_token(token.clone(), seat, *tapped, db);
+                    state.create_token(token.clone(), seat, *tapped, joins, db);
                 }
             }
         }
@@ -377,6 +382,40 @@ pub(super) fn tap_creatures_of(
             perm.skips_untap = true;
         }
     }
+}
+
+/// What a token created **attacking** attacks (CR 506.3c), or `None` when it is not
+/// created attacking at all.
+///
+/// A card that creates a token "that's attacking" never says *what* it attacks, because
+/// there is only one sensible answer: the token joins the attack its own source is
+/// already making, against that same player or planeswalker. So the question is asked of
+/// the effect's source permanent, and every way that can fail to name an attack is the
+/// same `None` — the effect is resolving outside combat, its source was removed from
+/// combat before it resolved, or the source is not a permanent at all (a spell, an
+/// emblem). Nothing here invents a defender: an attacking token with nothing to join is
+/// simply an ordinary token.
+///
+/// `creator` guards the one case the source cannot answer for: a token created under
+/// *another* seat's control is not part of that source's attack, and a creature never
+/// attacks the player who controls it.
+///
+/// One function so the targeting and non-targeting spellings of
+/// [`Effect::CreateToken`] cannot disagree about which attack is joined.
+pub(super) fn attack_a_created_token_joins(
+    state: &GameState,
+    attacking: bool,
+    source: Option<PermanentId>,
+    creator: PlayerId,
+) -> Option<crate::combat::AttackTarget> {
+    if !attacking {
+        return None;
+    }
+    let source = state.battlefield.iter().find(|p| Some(p.id) == source)?;
+    if source.controller != creator {
+        return None;
+    }
+    source.attacking
 }
 
 /// The permanents a [`MassAffects`] class names, in battlefield order, for an object
