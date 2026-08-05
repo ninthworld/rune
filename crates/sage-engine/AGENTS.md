@@ -25,7 +25,7 @@
   `functional_id` and resolve the handle (`CardDatabase::card_id`) — in decklists, in
   `scripted.rs`, and in tests (`crate::fixtures::fixture`).
 - `build.rs` may read catalog files at compile time. The running engine performs no I/O.
-  Shared validators live in `src/catalog.rs` so build-time and load-time checks agree.
+  Shared validators live in `src/catalog/` so build-time and load-time checks agree.
 - **Automation policy belongs to the server, not here.** The engine may expose pure rules
   *predicates* (`automation.rs`); the loop, the per-seat preferences, and the pacing
   decisions live in the room layer (ADR 0010). This seam is the reason the engine stays
