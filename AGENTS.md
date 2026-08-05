@@ -10,11 +10,17 @@ chrome at the edges, each seat's permanents in creature and land rows the *serve
 decide, and one gear for everything about the device rather than the game. The directness goes
 with it: one click takes an action the server offered exactly one of, the pointer previews a card,
 and the keyboard carries priority. **How it occupies space is
-[`docs/client-design.md`](docs/client-design.md)**, which is binding: zoom, resolution, and aspect
-are the same problem; no region of the board scrolls vertically or ever grows a scrollbar, and a
-full row pans sideways instead; text is fitted, never truncated. That document now describes
-`clients/prototype`, which is the authority above it. Playing is still the merge criterion: make it
-good before making it pretty, and nothing visual is worth a rule in `interaction.ts` bending for it.
+[`docs/client-design.md`](docs/client-design.md)**, which is binding on `clients/web`: zoom,
+resolution, and aspect are the same problem; no region of the board scrolls vertically or ever
+grows a scrollbar, and a full row pans sideways instead; text is fitted, never truncated.
+
+**For appearance, the order is prototype → `client-design.md` → `clients/web`.** The document
+records what `clients/prototype` settled, and where the two disagree the prototype wins; the
+shipping client is built to the document. That ordering covers appearance only — it never
+overrides a hard rule below or an accepted ADR. Stated in full in
+[`docs/brief.md`](docs/brief.md#which-document-wins). Playing is still the merge criterion: make
+it good before making it pretty, and nothing visual is worth a rule in `interaction.ts` bending
+for it.
 
 ## Hard rules
 
@@ -64,13 +70,15 @@ good before making it pretty, and nothing visual is worth a rule in `interaction
 - `crates/sage-engine/` — pure rules engine; has its own `AGENTS.md`.
 - `crates/sage-protocol/` — shared wire types.
 - `crates/sage-server/` — WebSocket lobby and game rooms.
-- `crates/sage-cli/` — terminal and deterministic-agent client; the playtest surface until the
-  web client is playable.
-- `clients/web/` — the browser client; has its own `AGENTS.md`.
+- `crates/sage-cli/` — terminal and deterministic-agent client. It proves the protocol is
+  independent of the web UI and is the playtest surface whenever the browser is unavailable.
+- `clients/web/` — the browser client, and the playable one; has its own `AGENTS.md`.
 - `clients/prototype/` — a throwaway sandbox for trying screens before building them for real.
   Nothing ships from it and `docs/client-design.md` does not govern it.
 - `docs/` — brief, protocol, card schema, coding standards, and ADRs. Everything in `docs/` is
-  current and binding; there is no superseded material to sift.
+  current and binding; there is no superseded material to sift. The one precedence question —
+  prototype vs. `client-design.md` vs. `clients/web` — is answered above and in the brief.
+- `docs/generated/` — generated artifacts. Never hand-edit one; regenerate it (`make compat`).
 
 ## Commands
 
