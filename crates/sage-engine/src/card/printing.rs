@@ -183,15 +183,18 @@ mod tests {
 
     use super::*;
 
+    /// The number of printing records across `data/sets/`.
+    const PRINTING_COUNT: usize = 167;
+
     #[test]
     fn bundled_printings_load_from_the_set_manifest() {
         let cards = CardDatabase::bundled().unwrap();
         let printings = PrintingDatabase::bundled(&cards).unwrap();
-        // M19 prints one hundred and eighteen of the catalog's cards at their real
-        // collector numbers; PM19 reprints one — 119 printings total. Every definition
-        // in the catalog is an M19 card; the ones without a printing here are simply
-        // not in the set manifest yet.
-        assert_eq!(printings.len(), 119);
+        // Every printing in the two set files, at its real collector number. M19 is
+        // the base set (1–280, with the basic lands printed four times each) and PM19
+        // is the planeswalker decks (281–314). Every definition in the catalog is
+        // printed in one of the two.
+        assert_eq!(printings.len(), PRINTING_COUNT);
         assert!(!printings.is_empty());
         let ogre = printings.printing("M19", "153").unwrap();
         // The record names onakke_ogre; the loader resolved that to its handle.
@@ -208,20 +211,20 @@ mod tests {
 
     #[test]
     fn adding_a_reprint_changes_no_logic() {
-        // Skyscanner is printed in M19 (#245) and reprinted in PM19 (#1). The
-        // two printings differ only bibliographically; everything the engine
-        // reasons about is read through the shared OracleId, so it is identical.
+        // M19 prints Plains four times, at #261–#264. The four printings differ only
+        // bibliographically; everything the engine reasons about is read through the
+        // shared OracleId, so it is identical.
         let cards = CardDatabase::bundled().unwrap();
         let printings = PrintingDatabase::bundled(&cards).unwrap();
 
-        let first = printings.printing("M19", "245").unwrap();
-        let reprint = printings.printing("PM19", "1").unwrap();
+        let first = printings.printing("M19", "261").unwrap();
+        let reprint = printings.printing("M19", "264").unwrap();
 
         // The printings are distinct bibliographic records...
         assert_ne!(first.collector_number, reprint.collector_number);
-        assert_ne!(first.rarity, reprint.rarity);
         // ...but they reference the same oracle identity.
         assert_eq!(first.oracle, reprint.oracle);
+        assert_eq!(first.oracle, crate::card::tests::id_of(&cards, "plains"));
 
         // The oracle record is byte-identical between printings.
         let oracle_a = cards.card(first.oracle).unwrap();
@@ -233,13 +236,16 @@ mod tests {
             crate::card::abilities_of(&cards, first.oracle),
             crate::card::abilities_of(&cards, reprint.oracle),
         );
-        // ...and it is the real ETB-draw behavior, not an empty coincidence.
-        use crate::ability::{Ability, Effect, TriggerCondition};
+        // ...and it is the real mana ability, not an empty coincidence.
+        use crate::ability::{Ability, Cost, Effect};
         assert_eq!(
             crate::card::abilities_of(&cards, first.oracle),
-            vec![Ability::Triggered {
-                event: TriggerCondition::SelfEntersBattlefield,
-                effects: vec![Effect::DrawCard { count: 1 }],
+            vec![Ability::Activated {
+                cost: vec![Cost::Tap],
+                effects: vec![Effect::AddMana {
+                    color: crate::mana::Color::White,
+                    amount: 1,
+                }],
             }],
         );
     }

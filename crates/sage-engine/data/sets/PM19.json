@@ -1,7 +1,52 @@
 [
   {
-    "functional_id": "skyscanner",
-    "collector_number": "1",
+    "functional_id": "serra_s_guardian",
+    "collector_number": "284",
     "rarity": "rare"
+  },
+  {
+    "functional_id": "silverbeak_griffin",
+    "collector_number": "285",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "tattered_mummy",
+    "collector_number": "295",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "shivan_dragon",
+    "collector_number": "300",
+    "rarity": "rare"
+  },
+  {
+    "functional_id": "aggressive_mammoth",
+    "collector_number": "302",
+    "rarity": "rare"
+  },
+  {
+    "functional_id": "sun_sentinel",
+    "collector_number": "307",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "air_elemental",
+    "collector_number": "308",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "befuddle",
+    "collector_number": "309",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "mist_cloaked_herald",
+    "collector_number": "310",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "llanowar_elves",
+    "collector_number": "314",
+    "rarity": "common"
   }
 ]

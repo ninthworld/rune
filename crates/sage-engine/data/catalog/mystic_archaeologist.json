@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "functional_id": "mystic_archaeologist",
+  "name": "Mystic Archaeologist",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Wizard"
+  ],
+  "mana_cost": "{1}{U}",
+  "colors": [
+    "blue"
+  ],
+  "power": 2,
+  "toughness": 1,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{3}{U}{U}"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "draw_card",
+          "count": 2
+        }
+      ]
+    }
+  ]
+}

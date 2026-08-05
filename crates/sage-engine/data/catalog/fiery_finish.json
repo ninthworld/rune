@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "functional_id": "fiery_finish",
+  "name": "Fiery Finish",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{4}{R}{R}",
+  "colors": [
+    "red"
+  ],
+  "spell_effects": [
+    {
+      "kind": "deal_damage",
+      "target": "any_creature",
+      "amount": 7
+    }
+  ]
+}

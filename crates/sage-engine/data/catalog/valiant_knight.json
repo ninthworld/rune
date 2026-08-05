@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "functional_id": "valiant_knight",
+  "name": "Valiant Knight",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Knight"
+  ],
+  "mana_cost": "{3}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 3,
+  "toughness": 4,
+  "abilities": [
+    {
+      "type": "static",
+      "affects": {
+        "scope": "creatures_you_control",
+        "subtype": "Knight",
+        "except_this": true
+      },
+      "modification": {
+        "kind": "power_toughness",
+        "power": 1,
+        "toughness": 1
+      }
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{3}{W}{W}"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "grant_keyword_all",
+          "affects": {
+            "scope": "creatures_you_control",
+            "subtype": "Knight"
+          },
+          "keyword": "double_strike"
+        }
+      ]
+    }
+  ]
+}

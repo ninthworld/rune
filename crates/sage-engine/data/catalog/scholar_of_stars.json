@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "functional_id": "scholar_of_stars",
+  "name": "Scholar of Stars",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Artificer"
+  ],
+  "mana_cost": "{3}{U}",
+  "colors": [
+    "blue"
+  ],
+  "power": 3,
+  "toughness": 2,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "conditional",
+          "condition": {
+            "kind": "controls_at_least",
+            "permanents": {
+              "card_type": "artifact"
+            },
+            "count": 1
+          },
+          "then": [
+            {
+              "kind": "draw_card",
+              "count": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

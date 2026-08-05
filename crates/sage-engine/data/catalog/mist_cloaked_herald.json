@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "functional_id": "mist_cloaked_herald",
+  "name": "Mist-Cloaked Herald",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Merfolk",
+    "Warrior"
+  ],
+  "mana_cost": "{U}",
+  "colors": [
+    "blue"
+  ],
+  "power": 1,
+  "toughness": 1,
+  "restrictions": [
+    "cant_be_blocked"
+  ]
+}

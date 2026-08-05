@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "functional_id": "cavalry_drillmaster",
+  "name": "Cavalry Drillmaster",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Knight"
+  ],
+  "mana_cost": "{1}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 2,
+  "toughness": 1,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "pump",
+          "target": "any_creature",
+          "power": 2,
+          "toughness": 0,
+          "keywords": [
+            "first_strike"
+          ]
+        }
+      ]
+    }
+  ]
+}

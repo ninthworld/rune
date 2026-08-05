@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "functional_id": "make_a_stand",
+  "name": "Make a Stand",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{2}{W}",
+  "colors": [
+    "white"
+  ],
+  "spell_effects": [
+    {
+      "kind": "pump_all",
+      "affects": {
+        "scope": "creatures_you_control"
+      },
+      "power": 1,
+      "toughness": 0
+    },
+    {
+      "kind": "grant_keyword_all",
+      "affects": {
+        "scope": "creatures_you_control"
+      },
+      "keyword": "indestructible"
+    }
+  ]
+}

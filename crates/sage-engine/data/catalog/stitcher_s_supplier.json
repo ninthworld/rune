@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "functional_id": "stitcher_s_supplier",
+  "name": "Stitcher's Supplier",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Zombie"
+  ],
+  "mana_cost": "{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 1,
+  "toughness": 1,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "mill",
+          "player_ref": "controller",
+          "count": 3
+        }
+      ]
+    },
+    {
+      "type": "triggered",
+      "event": "self_dies",
+      "effects": [
+        {
+          "kind": "mill",
+          "player_ref": "controller",
+          "count": 3
+        }
+      ]
+    }
+  ]
+}

@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (134)
+## Supported cards (152)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -24,11 +24,13 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `arcane_encyclopedia` | Arcane Encyclopedia | functional definition |
 | `aven_wind_mage` | Aven Wind Mage | functional definition |
 | `aviation_pioneer` | Aviation Pioneer | functional definition |
+| `befuddle` | Befuddle | functional definition |
 | `boggart_brute` | Boggart Brute | functional definition |
 | `bogstomper` | Bogstomper | functional definition |
 | `bone_to_ash` | Bone to Ash | functional definition |
 | `bristling_boar` | Bristling Boar | functional definition |
 | `cancel` | Cancel | functional definition |
+| `cavalry_drillmaster` | Cavalry Drillmaster | functional definition |
 | `centaur_courser` | Centaur Courser | functional definition |
 | `child_of_night` | Child of Night | functional definition |
 | `cinder_barrens` | Cinder Barrens | functional definition |
@@ -36,11 +38,14 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `crash_through` | Crash Through | functional definition |
 | `daggerback_basilisk` | Daggerback Basilisk | functional definition |
 | `daybreak_chaplain` | Daybreak Chaplain | functional definition |
+| `death_baron` | Death Baron | functional definition |
 | `diregraf_ghoul` | Diregraf Ghoul | functional definition |
 | `disperse` | Disperse | functional definition |
 | `divination` | Divination | functional definition |
 | `doomed_dissenter` | Doomed Dissenter | functional definition |
+| `dragon_egg` | Dragon Egg | functional definition |
 | `druid_of_the_cowl` | Druid of the Cowl | functional definition |
+| `dryad_greenseeker` | Dryad Greenseeker | functional definition |
 | `duress` | Duress | functional definition |
 | `electrify` | Electrify | functional definition |
 | `elvish_clancaller` | Elvish Clancaller | functional definition |
@@ -49,6 +54,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `essence_scatter` | Essence Scatter | functional definition |
 | `exclusion_mage` | Exclusion Mage | functional definition |
 | `field_creeper` | Field Creeper | functional definition |
+| `fiery_finish` | Fiery Finish | functional definition |
 | `fire_elemental` | Fire Elemental | functional definition |
 | `forest` | Forest | functional definition |
 | `forsaken_sanctuary` | Forsaken Sanctuary | functional definition |
@@ -77,23 +83,29 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `knightly_valor` | Knightly Valor | functional definition |
 | `lathliss_dragon_queen` | Lathliss, Dragon Queen | functional definition |
 | `lava_axe` | Lava Axe | functional definition |
+| `leonin_vanguard` | Leonin Vanguard | functional definition |
 | `lich_s_caress` | Lich's Caress | functional definition |
 | `lightning_strike` | Lightning Strike | functional definition |
 | `liliana_untouched_by_death` | Liliana, Untouched by Death | functional definition |
 | `llanowar_elves` | Llanowar Elves | functional definition |
 | `loxodon_line_breaker` | Loxodon Line Breaker | functional definition |
 | `luminous_bonds` | Luminous Bonds | functional definition |
+| `make_a_stand` | Make a Stand | functional definition |
+| `manalith` | Manalith | functional definition |
 | `meandering_river` | Meandering River | functional definition |
 | `mighty_leap` | Mighty Leap | functional definition |
 | `militia_bugler` | Militia Bugler | functional definition |
 | `millstone` | Millstone | functional definition |
 | `mind_rot` | Mind Rot | functional definition |
+| `mist_cloaked_herald` | Mist-Cloaked Herald | functional definition |
 | `mountain` | Mountain | functional definition |
 | `murder` | Murder | functional definition |
+| `mystic_archaeologist` | Mystic Archaeologist | functional definition |
 | `naturalize` | Naturalize | functional definition |
 | `oakenform` | Oakenform | functional definition |
 | `omenspeaker` | Omenspeaker | functional definition |
 | `onakke_ogre` | Onakke Ogre | functional definition |
+| `open_the_graves` | Open the Graves | functional definition |
 | `oreskos_swiftclaw` | Oreskos Swiftclaw | functional definition |
 | `pelakka_wurm` | Pelakka Wurm | functional definition |
 | `plague_mare` | Plague Mare | functional definition |
@@ -107,7 +119,9 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `rustwing_falcon` | Rustwing Falcon | functional definition |
 | `sarkhan_fireblood` | Sarkhan, Fireblood | functional definition |
 | `satyr_enchanter` | Satyr Enchanter | functional definition |
+| `scholar_of_stars` | Scholar of Stars | functional definition |
 | `serra_s_guardian` | Serra's Guardian | functional definition |
+| `shivan_dragon` | Shivan Dragon | functional definition |
 | `shock` | Shock | functional definition |
 | `siegebreaker_giant` | Siegebreaker Giant | functional definition |
 | `sift` | Sift | functional definition |
@@ -118,10 +132,12 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `smelt` | Smelt | functional definition |
 | `snapping_drake` | Snapping Drake | functional definition |
 | `sovereign_s_bite` | Sovereign's Bite | functional definition |
+| `stitcher_s_supplier` | Stitcher's Supplier | functional definition |
 | `stone_quarry` | Stone Quarry | functional definition |
 | `strangling_spores` | Strangling Spores | functional definition |
 | `submerged_boneyard` | Submerged Boneyard | functional definition |
 | `sun_sentinel` | Sun Sentinel | functional definition |
+| `supreme_phantom` | Supreme Phantom | functional definition |
 | `sure_strike` | Sure Strike | functional definition |
 | `suspicious_bookcase` | Suspicious Bookcase | functional definition |
 | `swamp` | Swamp | functional definition |
@@ -136,6 +152,8 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `tormenting_voice` | Tormenting Voice | functional definition |
 | `tranquil_expanse` | Tranquil Expanse | functional definition |
 | `two_headed_zombie` | Two-Headed Zombie | functional definition |
+| `uncomfortable_chill` | Uncomfortable Chill | functional definition |
+| `valiant_knight` | Valiant Knight | functional definition |
 | `vampire_neonate` | Vampire Neonate | functional definition |
 | `vampire_sovereign` | Vampire Sovereign | functional definition |
 | `viashino_pyromancer` | Viashino Pyromancer | functional definition |

@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "functional_id": "death_baron",
+  "name": "Death Baron",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Zombie",
+    "Wizard"
+  ],
+  "mana_cost": "{1}{B}{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 2,
+  "toughness": 2,
+  "abilities": [
+    {
+      "type": "static",
+      "affects": {
+        "scope": "creatures_you_control",
+        "subtype": "Skeleton"
+      },
+      "modification": {
+        "kind": "power_toughness",
+        "power": 1,
+        "toughness": 1
+      }
+    },
+    {
+      "type": "static",
+      "affects": {
+        "scope": "creatures_you_control",
+        "subtype": "Skeleton"
+      },
+      "modification": {
+        "kind": "grant_keyword",
+        "keyword": "deathtouch"
+      }
+    },
+    {
+      "type": "static",
+      "affects": {
+        "scope": "creatures_you_control",
+        "subtype": "Zombie",
+        "except_this": true
+      },
+      "modification": {
+        "kind": "power_toughness",
+        "power": 1,
+        "toughness": 1
+      }
+    },
+    {
+      "type": "static",
+      "affects": {
+        "scope": "creatures_you_control",
+        "subtype": "Zombie",
+        "except_this": true
+      },
+      "modification": {
+        "kind": "grant_keyword",
+        "keyword": "deathtouch"
+      }
+    }
+  ]
+}
