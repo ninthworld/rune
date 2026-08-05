@@ -284,6 +284,7 @@ pub(crate) fn apply_effect(
         | Effect::ReturnCardToBattlefield { .. }
         | Effect::ReturnCardToHand { .. }
         | Effect::PutOnTopOfLibrary { .. }
+        | Effect::GainControl { .. }
         | Effect::Restrict { .. } => {}
         // X is taken **once, on resolution** (CR 608.2), from the board as it stands
         // then — a creature that dies afterwards does not take the life back. The count
@@ -366,8 +367,17 @@ pub(super) fn tap_creatures_of(
     skip_next_untap: bool,
     db: &CardDatabase,
 ) {
+    // CR 613 layer 2, taken before the mutable walk (the control answer is a read of the
+    // whole state, which the loop below holds mutably): a stolen creature is tapped as
+    // one of its *new* controller's creatures.
+    let theirs: Vec<PermanentId> = state
+        .battlefield
+        .iter()
+        .filter(|perm| crate::characteristics::controller_of(state, perm) == seat)
+        .map(|perm| perm.id)
+        .collect();
     for perm in &mut state.battlefield {
-        if perm.controller != seat {
+        if !theirs.contains(&perm.id) {
             continue;
         }
         if !perm
@@ -448,7 +458,7 @@ fn permanents_in(
                     // control"), read off the printed face — the same place every other
                     // subtype question is answered.
                     MassAffects::CreaturesYouControl { subtype } => {
-                        p.controller == controller
+                        crate::characteristics::controller_of(state, p) == controller
                             && subtype.as_deref().is_none_or(|wanted| {
                                 p.printed
                                     .face(db)
@@ -464,10 +474,11 @@ fn permanents_in(
                     // permanents are on their way off the battlefield in the same SBA
                     // loop, and this is the same exclusion `non_targeting_subjects` makes.
                     MassAffects::CreaturesYourOpponentsControl => {
-                        p.controller != controller
+                        let seat = crate::characteristics::controller_of(state, p);
+                        seat != controller
                             && state
                                 .players
-                                .get(p.controller.0)
+                                .get(seat.0)
                                 .is_some_and(|player| !player.has_lost)
                     }
                     // Flying is read through the computed keywords (CR 613.1f), so a

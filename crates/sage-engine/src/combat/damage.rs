@@ -220,7 +220,7 @@ pub(crate) fn combat_damage(
             let power = combat_power(state, attacker.id, db);
             let deathtouch = has_keyword(state, attacker, Keyword::Deathtouch, db);
             let lifelink = has_keyword(state, attacker, Keyword::Lifelink, db);
-            let controller = attacker.controller;
+            let controller = crate::characteristics::controller_of(state, attacker);
             // CR 903.10a: whether this attacker is a commander (identified by its
             // stable instance → designation), so its damage to a player counts
             // toward the 21-combat-damage loss. `None` for an ordinary creature.
@@ -294,7 +294,7 @@ pub(crate) fn combat_damage(
                     attacker.id,
                     bp,
                     has_keyword(state, bperm, Keyword::Deathtouch, db),
-                    bperm.controller,
+                    crate::characteristics::controller_of(state, bperm),
                     has_keyword(state, bperm, Keyword::Lifelink, db),
                 );
             }

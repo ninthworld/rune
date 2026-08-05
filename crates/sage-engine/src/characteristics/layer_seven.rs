@@ -72,7 +72,7 @@ pub(super) fn ordered_pt_modifiers(
     let mut effects: Vec<StaticEffect> = state
         .static_effects
         .iter()
-        .filter(|effect| affects(effect, perm, is_creature))
+        .filter(|effect| affects(state, effect, perm, is_creature))
         .copied()
         .collect();
     // CR 303.4 / 613.7c: each Aura attached to `perm` contributes its static P/T
@@ -80,7 +80,7 @@ pub(super) fn ordered_pt_modifiers(
     for aura in &state.battlefield {
         if aura.attached_to == Some(perm.id) {
             if let Some(effect) = aura_pt_effect(aura, db) {
-                if affects(&effect, perm, is_creature) {
+                if affects(state, &effect, perm, is_creature) {
                     effects.push(effect);
                 }
             }

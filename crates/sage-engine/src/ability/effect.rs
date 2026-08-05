@@ -250,6 +250,45 @@ pub enum Effect {
         /// The keyword ability granted until end of turn.
         keyword: Keyword,
     },
+    /// **Gain control** of the single creature this effect targets until end of turn
+    /// (CR 613 layer 2) — the theft verb, optionally untapping it and granting it
+    /// keywords in the same breath.
+    ///
+    /// On resolution it adds a timestamped [`Modification::GainControl`](crate::Modification::GainControl)
+    /// keyed to that one permanent with an `UntilEndOfTurn` duration, which the cleanup
+    /// step removes (CR 514.2) — at which point control simply reverts, because nothing
+    /// was ever written onto the permanent (ADR 0005). Layer 2 is applied before every
+    /// other layer the engine models, so the change is visible to *everything* at once:
+    /// who may attack with it, who may activate it, whose "creatures you control" counts
+    /// it, and who its combat damage comes from.
+    ///
+    /// A control change **re-triggers summoning sickness** (CR 302.6) — the creature has
+    /// not been under its new controller's control since their turn began — which is
+    /// exactly why the printed cards that do this also grant haste.
+    ///
+    /// The untap and the keywords ride on this effect rather than beside it as separate
+    /// ones, for the reason [`Effect::Pump`]'s keywords do: one effect declares one
+    /// target group, so three effects would advertise three slots and let a player steal
+    /// one creature, untap a second, and haste a third. That is also why there is no
+    /// standalone untap verb — the only card in the catalog that untaps is untapping the
+    /// creature it just took.
+    ///
+    /// The permanent is **not** removed from combat here (CR 506.4). It cannot be in
+    /// combat: a control change is only ever gained at sorcery speed today, and no combat
+    /// declaration survives a main phase.
+    GainControl {
+        /// What this effect is allowed to target (a creature).
+        target: TargetSpec,
+        /// Whether the stolen permanent is also untapped (CR 701.20). `false` leaves it
+        /// exactly as tapped as it was.
+        #[serde(default)]
+        untap: bool,
+        /// Keyword abilities granted to the same permanent until end of turn, applied at
+        /// CR 613 layer 6 exactly as [`Effect::Pump`]'s are. In practice haste, without
+        /// which a freshly stolen creature could not attack this turn.
+        #[serde(default)]
+        keywords: Vec<Keyword>,
+    },
     /// Return the single permanent this effect targets to its owner's **hand**
     /// (CR 400.7 — the bounce verb, e.g. `Return target creature to its owner's
     /// hand.`). It leaves the battlefield through the one battlefield→hand seam
@@ -799,6 +838,7 @@ impl Effect {
             | Effect::PumpByCount { target, .. }
             | Effect::GrantKeyword { target, .. }
             | Effect::Restrict { target, .. }
+            | Effect::GainControl { target, .. }
             | Effect::ReturnCardToBattlefield { target, .. }
             | Effect::PutOnTopOfLibrary { target }
             | Effect::ReturnToHand { target } => Some(TargetGroup::single(*target)),

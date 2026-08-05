@@ -58,7 +58,7 @@ pub(crate) fn apply_activate_ability(
     let Some(perm) = state.battlefield.iter().find(|p| p.id == permanent) else {
         return;
     };
-    let controller = perm.controller;
+    let controller = crate::characteristics::controller_of(state, perm);
     let Some(ability) = abilities_of_permanent(db, perm).get(index).cloned() else {
         return;
     };

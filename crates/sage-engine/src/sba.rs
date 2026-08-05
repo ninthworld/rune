@@ -354,7 +354,14 @@ fn legend_rule_losers(state: &GameState, db: &CardDatabase) -> Vec<PermanentId> 
             let face = perm.printed.face(db)?;
             face.supertypes()
                 .contains(&crate::card_type::Supertype::Legendary)
-                .then_some((perm.controller, face.name(), perm.id))
+                // CR 704.5j groups by *controller*, which is the CR 613 layer-2 answer:
+                // gaining control of a copy of your own legend is what makes the rule
+                // apply at all.
+                .then_some((
+                    crate::characteristics::controller_of(state, perm),
+                    face.name(),
+                    perm.id,
+                ))
         })
         .collect();
     legendary
@@ -392,7 +399,7 @@ fn aura_is_illegally_attached(perm: &Permanent, state: &GameState, db: &CardData
             grant.enchant,
             Target::Permanent(host),
             state,
-            perm.controller,
+            crate::characteristics::controller_of(state, perm),
             db,
         ),
     }

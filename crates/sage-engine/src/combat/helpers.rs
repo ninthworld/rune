@@ -22,7 +22,7 @@ use crate::CardDatabase;
 /// observable, not academic.
 #[must_use]
 pub(crate) fn has_summoning_sickness(perm: &Permanent, state: &GameState) -> bool {
-    perm.entered_turn >= turn_began_for(state, perm.controller)
+    perm.entered_turn >= turn_began_for(state, crate::characteristics::controller_of(state, perm))
 }
 
 /// The turn number on which `player`'s most recent turn began — the reference

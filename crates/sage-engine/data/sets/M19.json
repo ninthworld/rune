@@ -425,6 +425,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "act_of_treason",
+    "collector_number": "127",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "boggart_brute",
     "collector_number": "131",
     "rarity": "common"

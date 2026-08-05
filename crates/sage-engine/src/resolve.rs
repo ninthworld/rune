@@ -83,10 +83,9 @@ pub(crate) fn target_is_legal(
     // spec inherits it.
     if let Target::Permanent(id) = target {
         if permanent_has_keyword(state, id, Keyword::Hexproof, db)
-            && state
-                .battlefield
-                .iter()
-                .any(|p| p.id == id && p.controller != controller)
+            && state.battlefield.iter().any(|p| {
+                p.id == id && crate::characteristics::controller_of(state, p) != controller
+            })
         {
             return false;
         }
@@ -119,8 +118,9 @@ pub(crate) fn target_is_legal(
         // out for the same reason a targeted opponent does.
         (TargetSpec::AnyNonlandPermanentAnOpponentControls, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| {
-                p.controller != controller
-                    && player_in_game(state, p.controller)
+                let owner = crate::characteristics::controller_of(state, p);
+                owner != controller
+                    && player_in_game(state, owner)
                     && !has_type(p, CardType::Land, db)
             })
         }
@@ -132,13 +132,15 @@ pub(crate) fn target_is_legal(
         }
         (TargetSpec::AnyCreatureYouControl, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| {
-                p.controller == controller && has_type(p, CardType::Creature, db)
+                crate::characteristics::controller_of(state, p) == controller
+                    && has_type(p, CardType::Creature, db)
             })
         }
         (TargetSpec::AnyCreatureAnOpponentControls, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| {
-                p.controller != controller
-                    && player_in_game(state, p.controller)
+                let owner = crate::characteristics::controller_of(state, p);
+                owner != controller
+                    && player_in_game(state, owner)
                     && has_type(p, CardType::Creature, db)
             })
         }
@@ -153,7 +155,7 @@ pub(crate) fn target_is_legal(
         // permanent that is both, not two slots.
         (TargetSpec::AnyArtifactCreatureYouControl, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| {
-                p.controller == controller
+                crate::characteristics::controller_of(state, p) == controller
                     && has_type(p, CardType::Artifact, db)
                     && has_type(p, CardType::Creature, db)
             })

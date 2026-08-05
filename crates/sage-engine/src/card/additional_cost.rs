@@ -106,7 +106,7 @@ impl GameState {
             // in hand, on its way to the stack — so unlike the discard above there is
             // nothing to exclude here.
             AdditionalCost::Sacrifice { card_type } => self.battlefield.iter().any(|perm| {
-                perm.controller == player
+                crate::characteristics::controller_of(self, perm) == player
                     && perm
                         .printed
                         .face(db)

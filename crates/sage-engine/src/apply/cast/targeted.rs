@@ -218,6 +218,54 @@ pub(crate) fn apply_targeted_effect(
                 }
             }
         }
+        // Gain control of the targeted creature until end of turn (CR 613 layer 2):
+        // a timestamped control change keyed to that one permanent, with an
+        // `UntilEndOfTurn` duration the cleanup step removes. Nothing is written onto
+        // the permanent's stored controller, so cleanup reverts control with nothing to
+        // invalidate (ADR 0005) — and the stored field goes on standing in for the
+        // owner, which is what sends the creature to *its own* graveyard if it dies
+        // while stolen (CR 400.7).
+        //
+        // Three things happen to one creature because one effect chose one target: the
+        // control change, the untap, and any keywords (haste, in practice). The untap
+        // and the keywords are applied *after* the control change so a reader of the
+        // resulting state sees a coherent object, and `entered_turn` is restamped
+        // because a creature that has just changed hands has not been controlled by its
+        // new controller since their turn began (CR 302.6).
+        Effect::GainControl {
+            untap, keywords, ..
+        } => {
+            if let Target::Permanent(id) = target {
+                if state.battlefield.iter().any(|p| p.id == id) {
+                    let source = state.mint_id();
+                    state.static_effects.push(StaticEffect {
+                        source,
+                        affects: EffectAffects::SpecificPermanent(id),
+                        modification: Modification::GainControl(controller),
+                        duration: Duration::UntilEndOfTurn,
+                    });
+                    for keyword in keywords {
+                        let source = state.mint_id();
+                        state.static_effects.push(StaticEffect {
+                            source,
+                            affects: EffectAffects::SpecificPermanent(id),
+                            modification: Modification::GrantKeyword(*keyword),
+                            duration: Duration::UntilEndOfTurn,
+                        });
+                    }
+                    let turn = state.turn;
+                    if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
+                        // CR 302.6: summoning sickness is measured from when the
+                        // permanent came under its controller's control, and that is
+                        // now.
+                        perm.entered_turn = turn;
+                        if *untap {
+                            perm.tapped = false;
+                        }
+                    }
+                }
+            }
+        }
         // Return the targeted permanent to its owner's hand (CR 400.7): the bounce
         // verb, moving it through the one battlefield→hand seam
         // ([`GameState::return_permanent_to_hand`]) — the hand counterpart of the

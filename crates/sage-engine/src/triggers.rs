@@ -105,7 +105,9 @@ pub fn collect_triggers(before: &GameState, after: &GameState, db: &CardDatabase
         collect_from(
             Watcher {
                 permanent: Some(perm),
-                controller: perm.controller,
+                // CR 613 layer 2: an ability triggers for whoever controls its source
+                // *now*, so a stolen permanent's triggers belong to the thief.
+                controller: crate::characteristics::controller_of(after, perm),
             },
             None,
             abilities_of_permanent(db, perm),
@@ -125,7 +127,10 @@ pub fn collect_triggers(before: &GameState, after: &GameState, db: &CardDatabase
         collect_from(
             Watcher {
                 permanent: Some(perm),
-                controller: perm.controller,
+                // Read against `before`, the snapshot the permanent still exists in —
+                // and therefore the one whose control-changing effects still apply to
+                // it. A creature that dies while stolen dies under the thief's control.
+                controller: crate::characteristics::controller_of(before, perm),
             },
             None,
             abilities_of_permanent(db, perm),
@@ -442,7 +447,11 @@ fn observed_matches(
         }
     }
     match observes {
-        ObservedPermanent::CreaturesYouControl { .. } => candidate.controller == source.controller,
+        // CR 613 layer 2, read in the same snapshot the event was seen in — the state
+        // the observed permanent is still on the battlefield of.
+        ObservedPermanent::CreaturesYouControl { .. } => {
+            crate::characteristics::controller_of(seen_in, candidate) == source.controller
+        }
         ObservedPermanent::AnyCreature { .. } => true,
     }
 }

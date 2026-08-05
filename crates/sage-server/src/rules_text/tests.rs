@@ -1031,6 +1031,19 @@ fn a_mass_tap_names_whose_creatures_and_the_step_they_sit_out() {
 }
 
 #[test]
+fn a_control_change_says_the_theft_the_untap_and_the_keyword_it_grants() {
+    // Three sentences from one effect, because the card does three things to one
+    // creature. Each is stated only when the effect actually does it, so the sentence and
+    // the single target group stay the same shape.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "act_of_treason"),
+        "Gain control of target creature until end of turn. Untap it. \
+         It gains haste until end of turn."
+    );
+}
+
+#[test]
 fn a_player_subject_static_says_what_is_true_of_you() {
     // The only ability the formatter composes whose subject is a person rather than an
     // object, so it is the only one with no source name in it at all.
