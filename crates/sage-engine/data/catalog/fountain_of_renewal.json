@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "functional_id": "fountain_of_renewal",
+  "name": "Fountain of Renewal",
+  "types": [
+    "artifact"
+  ],
+  "mana_cost": "{1}",
+  "colors": [],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "beginning_of_step": {
+          "step": "upkeep",
+          "whose_turn": "yours"
+        }
+      },
+      "effects": [
+        {
+          "kind": "gain_life",
+          "player_ref": "controller",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{3}"
+        },
+        {
+          "kind": "sacrifice_this"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "draw_card",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

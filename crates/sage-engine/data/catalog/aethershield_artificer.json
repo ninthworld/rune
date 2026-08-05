@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "functional_id": "aethershield_artificer",
+  "name": "Aethershield Artificer",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Dwarf",
+    "Artificer"
+  ],
+  "mana_cost": "{3}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 3,
+  "toughness": 3,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "beginning_of_step": {
+          "step": "begin_combat",
+          "whose_turn": "yours"
+        }
+      },
+      "effects": [
+        {
+          "kind": "pump",
+          "target": "any_artifact_creature_you_control",
+          "power": 2,
+          "toughness": 2,
+          "keywords": [
+            "indestructible"
+          ]
+        }
+      ]
+    }
+  ]
+}

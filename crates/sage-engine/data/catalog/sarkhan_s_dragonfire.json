@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "functional_id": "sarkhan_s_dragonfire",
+  "name": "Sarkhan's Dragonfire",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{3}{R}{R}",
+  "colors": [
+    "red"
+  ],
+  "spell_effects": [
+    {
+      "kind": "deal_damage",
+      "target": "any_target",
+      "amount": 3
+    },
+    {
+      "kind": "look_at_top",
+      "count": 5,
+      "take": 1,
+      "filter": {
+        "kind": "color",
+        "color": "red"
+      },
+      "destination": "hand"
+    }
+  ]
+}

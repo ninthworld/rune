@@ -177,6 +177,23 @@ pub enum CardFilter {
     /// *this card*". Matched on the functional card, so two copies of one printing do
     /// find each other and a differently-named card never does.
     SameNameAsSource,
+    /// A card of a printed **colour** (CR 105.2) — "a **white** card", the class the
+    /// planeswalker-deck look-and-take spells name.
+    ///
+    /// Matched against [`CardData::colors`](crate::CardData::colors), which is the
+    /// card's printed colour indicator and not its mana cost: a colourless artifact
+    /// matches no colour, and a gold card matches each of its own. Colour-changing
+    /// effects are not modelled, so printed colour is current colour here exactly as it
+    /// is in the blocking restriction that names one.
+    Color {
+        /// The colour a matching card must be.
+        color: Color,
+    },
+    /// An **instant or sorcery** card — one class as a card writes it, in the same
+    /// sense [`ObservedSpell::InstantOrSorcery`] is one class rather than two types.
+    InstantOrSorcery,
+    /// An **artifact** card.
+    Artifact,
 }
 
 /// The class of permanents a **mass, non-targeting** effect ([`Effect::PumpAll`],
@@ -215,6 +232,16 @@ pub enum MassAffects {
     /// still evaluated once, on resolution (CR 611.2c), like every other mass effect: a
     /// creature that loses flying later in the turn does not retroactively join it.
     CreaturesWithoutFlying,
+    /// Every creature currently **attacking**, whoever controls it — the class a combat
+    /// pump names (`Attacking creatures get +2/+0 until end of turn.`).
+    ///
+    /// Read off [`Permanent::attacking`](crate::Permanent), so it is exactly the set the
+    /// declare-attackers step produced, and it is locked in on resolution like every
+    /// other mass class (CR 611.2c): a creature removed from combat afterwards keeps the
+    /// pump, and one that was never in it never had one. The class is empty outside
+    /// combat, which makes such a spell a legal but pointless main-phase cast rather
+    /// than an uncastable one.
+    AttackingCreatures,
 }
 
 /// **Who or what** an [`Effect::DealDamage`] deals its damage to (CR 120.3).

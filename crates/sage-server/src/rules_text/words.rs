@@ -32,6 +32,12 @@ pub(super) fn cost_symbol(cost: &Cost) -> String {
             n if *n > 0 => format!("+{n}"),
             n => format!("\u{2212}{}", n.unsigned_abs()),
         },
+        // A sacrifice and a counter removal are words rather than symbols, and are
+        // written as the card writes them — in the cost line, beside the symbols.
+        Cost::SacrificeThis => "Sacrifice this permanent".to_string(),
+        Cost::RemoveCounters { counter, count } => {
+            format!("Remove {} from this permanent", counters(*counter, *count))
+        }
     }
 }
 
@@ -53,6 +59,10 @@ pub(super) fn counters(kind: CounterKind, count: u32) -> String {
         CounterKind::PlusOnePlusOne => "+1/+1",
         CounterKind::MinusOneMinusOne => "-1/-1",
         CounterKind::Loyalty => "loyalty",
+        CounterKind::Charge => "charge",
+        CounterKind::Gold => "gold",
+        CounterKind::Wish => "wish",
+        CounterKind::Corpse => "corpse",
     };
     match count {
         1 => format!("a {symbol} counter"),
@@ -68,6 +78,10 @@ pub(super) fn target_noun(spec: TargetSpec) -> &'static str {
         TargetSpec::AnyOpponent => "target opponent",
         TargetSpec::AnyPermanent => "target permanent",
         TargetSpec::AnyNonlandPermanent => "target nonland permanent",
+        TargetSpec::AnyNonlandPermanentAnOpponentControls => {
+            "target nonland permanent an opponent controls"
+        }
+        TargetSpec::AnyArtifactCreatureYouControl => "target artifact creature you control",
         TargetSpec::AnyCreature => "target creature",
         TargetSpec::AnyCreatureYouControl => "target creature you control",
         TargetSpec::AnyCreatureAnOpponentControls => "target creature an opponent controls",
@@ -107,6 +121,10 @@ pub(super) fn object_noun(spec: TargetSpec) -> &'static str {
         TargetSpec::AnyOpponent => "opponent",
         TargetSpec::AnyPermanent => "permanent",
         TargetSpec::AnyNonlandPermanent => "nonland permanent",
+        TargetSpec::AnyNonlandPermanentAnOpponentControls => {
+            "nonland permanent an opponent controls"
+        }
+        TargetSpec::AnyArtifactCreatureYouControl => "artifact creature you control",
         TargetSpec::AnyCreature => "creature",
         TargetSpec::AnyCreatureYouControl => "creature you control",
         TargetSpec::AnyCreatureAnOpponentControls => "creature an opponent controls",

@@ -344,6 +344,10 @@ fn permanents_in(
                             })
                     }
                     MassAffects::EachCreature => true,
+                    // Exactly the set declare-attackers produced (CR 508.1a); empty
+                    // outside combat, which is what a combat pump cast in a main phase
+                    // means.
+                    MassAffects::AttackingCreatures => p.attacking.is_some(),
                     // A seat that has lost is no longer an opponent (CR 102.1); its
                     // permanents are on their way off the battlefield in the same SBA
                     // loop, and this is the same exclusion `non_targeting_subjects` makes.

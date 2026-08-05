@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "functional_id": "pendulum_of_patterns",
+  "name": "Pendulum of Patterns",
+  "types": [
+    "artifact"
+  ],
+  "mana_cost": "{2}",
+  "colors": [],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "gain_life",
+          "player_ref": "controller",
+          "amount": 3
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{5}"
+        },
+        {
+          "kind": "tap"
+        },
+        {
+          "kind": "sacrifice_this"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "draw_card",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

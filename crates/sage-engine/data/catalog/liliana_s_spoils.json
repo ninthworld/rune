@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "functional_id": "liliana_s_spoils",
+  "name": "Liliana's Spoils",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{3}{B}",
+  "colors": [
+    "black"
+  ],
+  "spell_effects": [
+    {
+      "kind": "discard",
+      "player_ref": "target_opponent",
+      "count": 1
+    },
+    {
+      "kind": "look_at_top",
+      "count": 5,
+      "take": 1,
+      "filter": {
+        "kind": "color",
+        "color": "black"
+      },
+      "destination": "hand"
+    }
+  ]
+}

@@ -39,6 +39,10 @@ pub(crate) fn counter_kind_str(kind: CounterKind) -> &'static str {
         CounterKind::PlusOnePlusOne => "+1/+1",
         CounterKind::MinusOneMinusOne => "-1/-1",
         CounterKind::Loyalty => "loyalty",
+        CounterKind::Charge => "charge",
+        CounterKind::Gold => "gold",
+        CounterKind::Wish => "wish",
+        CounterKind::Corpse => "corpse",
     }
 }
 

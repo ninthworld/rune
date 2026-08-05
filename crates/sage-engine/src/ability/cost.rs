@@ -45,4 +45,47 @@ pub enum Cost {
         /// activation for the once-per-turn rule.
         amount: i32,
     },
+    /// **Sacrifice the source** (CR 701.17) — the `Sacrifice this creature:` of a
+    /// permanent that spends itself, authored as `{"kind":"sacrifice_this"}`.
+    ///
+    /// The source is not a *target* and is not chosen: the cost names one permanent and
+    /// the ability is only ever activated from it, so there is nothing to pick. That is
+    /// why this is a distinct variant rather than a selector with a "this" arm — a cost
+    /// that requires a choice needs the choice to ride on the action, and this one never
+    /// does.
+    ///
+    /// Always payable: an ability is only offered from a permanent on the battlefield,
+    /// and a permanent on the battlefield can always be sacrificed. It is applied
+    /// **last** among the costs, whatever order they are written in, so a `{T}` beside
+    /// it still taps a permanent that is still there (CR 601.2h — costs are paid
+    /// simultaneously, and the engine has to pick some order to write them down in).
+    ///
+    /// Sacrificing is a real death (CR 701.17b): the permanent goes to its owner's
+    /// graveyard through the one leaves-battlefield seam, so a dies trigger — including
+    /// the source's own — sees it exactly as it sees a creature destroyed in combat. The
+    /// ability itself is unaffected: it is on the stack independently of its source
+    /// (CR 113.7a), so it still resolves.
+    SacrificeThis,
+    /// **Remove `count` counters of `counter` from the source** (CR 118.3) — the
+    /// `Remove a wish counter from this creature:` of a permanent that enters with a
+    /// charge and spends it down, authored as
+    /// `{"kind":"remove_counters","counter":"charge","count":1}`.
+    ///
+    /// Payable only while the source actually has that many, which is the whole content
+    /// of a charge-counter card: the ability is offered three times and then stops being
+    /// offered. Like [`Self::Loyalty`] it is checked twice — once when the action is
+    /// offered and again, independently, when it is applied — so a forged activation
+    /// cannot spend counters that are not there.
+    ///
+    /// Deliberately **not** the same variant as [`Self::Loyalty`], despite both moving
+    /// counters. A loyalty cost is signed, may *add*, and carries CR 606.3's two timing
+    /// rules; this one only ever removes and carries none of them. Collapsing the two
+    /// would make a charge counter a loyalty ability.
+    RemoveCounters {
+        /// The kind of counter removed. Named `counter` on the wire because the enum
+        /// already reserves the `kind` tag for its own discriminant.
+        counter: CounterKind,
+        /// How many of them are removed. At least one on every printed card.
+        count: u32,
+    },
 }

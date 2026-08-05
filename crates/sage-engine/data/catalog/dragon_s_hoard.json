@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "functional_id": "dragon_s_hoard",
+  "name": "Dragon's Hoard",
+  "types": [
+    "artifact"
+  ],
+  "mana_cost": "{3}",
+  "colors": [],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "permanent_enters": {
+          "scope": "creatures_you_control",
+          "subtype": "Dragon"
+        }
+      },
+      "effects": [
+        {
+          "kind": "put_counters_on_self",
+          "counter": "gold",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "tap"
+        },
+        {
+          "kind": "remove_counters",
+          "counter": "gold",
+          "count": 1
+        }
+      ],
+      "effects": [
+        {
+          "kind": "draw_card",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "tap"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "add_mana_any_color",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

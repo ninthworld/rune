@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "functional_id": "ajani_s_influence",
+  "name": "Ajani's Influence",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{2}{W}{W}",
+  "colors": [
+    "white"
+  ],
+  "spell_effects": [
+    {
+      "kind": "put_counters",
+      "target": "any_creature",
+      "counter": "plus_one_plus_one",
+      "count": 2
+    },
+    {
+      "kind": "look_at_top",
+      "count": 5,
+      "take": 1,
+      "filter": {
+        "kind": "color",
+        "color": "white"
+      },
+      "destination": "hand"
+    }
+  ]
+}

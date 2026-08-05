@@ -1,5 +1,10 @@
 [
   {
+    "functional_id": "ajani_s_influence",
+    "collector_number": "282",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "serra_s_guardian",
     "collector_number": "284",
     "rarity": "rare"
@@ -10,9 +15,24 @@
     "rarity": "common"
   },
   {
+    "functional_id": "pendulum_of_patterns",
+    "collector_number": "288",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "liliana_s_spoils",
+    "collector_number": "294",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "tattered_mummy",
     "collector_number": "295",
     "rarity": "common"
+  },
+  {
+    "functional_id": "sarkhan_s_dragonfire",
+    "collector_number": "298",
+    "rarity": "rare"
   },
   {
     "functional_id": "shivan_dragon",
@@ -22,6 +42,11 @@
   {
     "functional_id": "aggressive_mammoth",
     "collector_number": "302",
+    "rarity": "rare"
+  },
+  {
+    "functional_id": "skalla_wolf",
+    "collector_number": "303",
     "rarity": "rare"
   },
   {

@@ -320,6 +320,25 @@ pub enum CounterKind {
     /// characteristic — a planeswalker has no power or toughness — which is why the
     /// layer-7c delta ignores it.
     Loyalty,
+    /// A **charge** counter: the generic "this artifact holds N uses" counter, put on
+    /// by one activated ability and spent by another ([`Cost::RemoveCounters`]).
+    ///
+    /// It folds into no characteristic and no state-based action — it is a quantity the
+    /// card's own abilities read, and nothing else in the rules knows it exists. That is
+    /// what makes it, and the three below, cheap: a counter kind with no rules attached
+    /// is a name and a count.
+    Charge,
+    /// A **gold** counter: charge by another name, on a card that says gold.
+    ///
+    /// Kept distinct from [`Self::Charge`] rather than aliased because two cards on one
+    /// battlefield may name different counters, and a permanent's counters are keyed by
+    /// kind: collapsing them would let one card's ability spend the other's.
+    Gold,
+    /// A **wish** counter: the same shape again, on a permanent that enters with three.
+    Wish,
+    /// A **corpse** counter: a marker on a creature returned from a graveyard, whose
+    /// only reader is the ability that put it there.
+    Corpse,
 }
 
 /// An **emblem** (CR 114): a marker a player owns, whose only characteristics are its

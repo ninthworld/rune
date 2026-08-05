@@ -114,6 +114,16 @@ pub(crate) fn target_is_legal(
         (TargetSpec::AnyNonlandPermanent, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| !has_type(p, CardType::Land, db))
         }
+        // The one-sided form: the same class, minus the controller's own board. An
+        // eliminated seat controls nothing that can be targeted, so its permanents drop
+        // out for the same reason a targeted opponent does.
+        (TargetSpec::AnyNonlandPermanentAnOpponentControls, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| {
+                p.controller != controller
+                    && player_in_game(state, p.controller)
+                    && !has_type(p, CardType::Land, db)
+            })
+        }
         // A creature target additionally requires the permanent's printed types
         // to include Creature (the layer system's type-changing effects are
         // future work, so printed types are authoritative here).
@@ -138,6 +148,15 @@ pub(crate) fn target_is_legal(
         (TargetSpec::AnyCreatureWithFlying, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| has_type(p, CardType::Creature, db))
                 && permanent_has_keyword(state, id, Keyword::Flying, db)
+        }
+        // Both types together, both printed: an "artifact creature you control" is one
+        // permanent that is both, not two slots.
+        (TargetSpec::AnyArtifactCreatureYouControl, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| {
+                p.controller == controller
+                    && has_type(p, CardType::Artifact, db)
+                    && has_type(p, CardType::Creature, db)
+            })
         }
         (TargetSpec::AnyTappedCreature, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| {

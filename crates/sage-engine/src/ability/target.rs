@@ -188,6 +188,14 @@ pub enum TargetSpec {
     /// Any permanent that is not a land — "target nonland permanent". **Includes a
     /// planeswalker**, which is a permanent and is not a land.
     AnyNonlandPermanent,
+    /// Any nonland permanent controlled by an opponent of the object's controller —
+    /// "target nonland permanent an opponent controls", the one-sided removal a colorless
+    /// creature's enters-the-battlefield trigger names.
+    ///
+    /// **Includes a planeswalker**, for [`Self::AnyNonlandPermanent`]'s reason: it is a
+    /// permanent and it is not a land. The controller's own permanents are never
+    /// candidates, which is the whole difference between this spec and that one.
+    AnyNonlandPermanentAnOpponentControls,
     /// Any creature on the battlefield (a permanent whose printed types include
     /// [`crate::CardType::Creature`]). Never a planeswalker: the two types are
     /// disjoint on every card the schema can express, and a spell that wants both says
@@ -203,6 +211,11 @@ pub enum TargetSpec {
     /// exactly as a printed one) — the "target creature with flying" of an anti-air
     /// removal spell. Never a planeswalker (see [`Self::AnyCreature`]).
     AnyCreatureWithFlying,
+    /// Any **artifact creature** the object's controller controls — "target artifact
+    /// creature you control". Both types are read off the printed card, the way every
+    /// other type test in the engine is. Never a planeswalker (see
+    /// [`Self::AnyCreature`]).
+    AnyArtifactCreatureYouControl,
     /// Any creature that is currently tapped — "target tapped creature". Never a
     /// planeswalker: a planeswalker can be tapped in principle, but this spec is a
     /// creature spec first and the tapped-ness is a filter on it.

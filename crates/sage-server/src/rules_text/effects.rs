@@ -463,6 +463,10 @@ fn filter_noun(filter: &CardFilter, plural: bool) -> String {
         // Deliberately not the card's name: the formatter composes one sentence for a
         // *definition*, and the definition is the one that is searching.
         CardFilter::SameNameAsSource => format!("{card} with this card's name"),
+        // Printed colour, as a card writes it: 'a white card'.
+        CardFilter::Color { color } => format!("{} {card}", color.word()),
+        CardFilter::InstantOrSorcery => format!("instant or sorcery {card}"),
+        CardFilter::Artifact => format!("artifact {card}"),
     }
 }
 
@@ -501,6 +505,7 @@ fn mass_subject(affects: &MassAffects) -> String {
             "creatures your opponents control".to_string()
         }
         MassAffects::CreaturesWithoutFlying => "creatures without flying".to_string(),
+        MassAffects::AttackingCreatures => "attacking creatures".to_string(),
     }
 }
 
@@ -523,6 +528,7 @@ fn mass_recipient(affects: &MassAffects) -> String {
             "each creature your opponents control".to_string()
         }
         MassAffects::CreaturesWithoutFlying => "each creature without flying".to_string(),
+        MassAffects::AttackingCreatures => "each attacking creature".to_string(),
     }
 }
 

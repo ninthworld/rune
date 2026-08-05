@@ -464,6 +464,15 @@ pub(crate) fn card_matches_filter(
         // Same printed identity, not same name string: two copies of one printing share
         // a `CardId`, and nothing else does.
         CardFilter::SameNameAsSource => source_card == Some(card),
+        // Printed colour (CR 105.2), read off the colour indicator rather than the mana
+        // cost: a colourless card matches no colour and a gold card matches each of
+        // its own.
+        CardFilter::Color { color } => data.colors.contains(color),
+        // One class as a card writes it, not two types.
+        CardFilter::InstantOrSorcery => {
+            data.has_type(CardType::Instant) || data.has_type(CardType::Sorcery)
+        }
+        CardFilter::Artifact => data.has_type(CardType::Artifact),
     }
 }
 

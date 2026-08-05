@@ -36,8 +36,8 @@
     "blocker": "no cost-modification layer"
   },
   {
-    "name": "Costs paid by sacrificing or discarding",
-    "blocker": "an activation cost models only tapping, mana, and loyalty, and the one additional cast cost is a discard"
+    "name": "Costs paid by sacrificing a permanent the player chooses, or by discarding",
+    "blocker": "an activation cost may sacrifice its own source and remove its own counters, but a cost that requires picking another permanent or a card has no way to carry the choice"
   },
   {
     "name": "Damage prevention",

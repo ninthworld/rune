@@ -150,11 +150,13 @@ pub(crate) fn legal_targets_for_spec(
         TargetSpec::AnyPlayerOrPlaneswalker => players.into_iter().chain(permanents).collect(),
         TargetSpec::AnyPermanent
         | TargetSpec::AnyNonlandPermanent
+        | TargetSpec::AnyNonlandPermanentAnOpponentControls
         | TargetSpec::AnyCreature
         | TargetSpec::AnyCreatureYouControl
         | TargetSpec::AnyCreatureAnOpponentControls
         | TargetSpec::AnyCreatureWithFlying
         | TargetSpec::AnyTappedCreature
+        | TargetSpec::AnyArtifactCreatureYouControl
         | TargetSpec::AnyArtifact
         | TargetSpec::AnyEnchantment
         | TargetSpec::AnyArtifactOrEnchantment

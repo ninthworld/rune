@@ -5,6 +5,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "aethershield_artificer",
+    "collector_number": "2",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "ajani_adversary_of_tyrants",
     "collector_number": "3",
     "rarity": "mythic"
@@ -350,6 +355,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "catalyst_elemental",
+    "collector_number": "132",
+    "rarity": "common"
+  },
+  {
     "functional_id": "crash_through",
     "collector_number": "133",
     "rarity": "common"
@@ -452,6 +462,11 @@
   {
     "functional_id": "tormenting_voice",
     "collector_number": "164",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "trumpet_blast",
+    "collector_number": "165",
     "rarity": "common"
   },
   {
@@ -585,6 +600,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "draconic_disciple",
+    "collector_number": "215",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "heroic_reinforcements",
     "collector_number": "217",
     "rarity": "uncommon"
@@ -610,14 +630,34 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "dragon_s_hoard",
+    "collector_number": "232",
+    "rarity": "rare"
+  },
+  {
+    "functional_id": "explosive_apparatus",
+    "collector_number": "233",
+    "rarity": "common"
+  },
+  {
     "functional_id": "field_creeper",
     "collector_number": "234",
     "rarity": "common"
   },
   {
+    "functional_id": "fountain_of_renewal",
+    "collector_number": "235",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "manalith",
     "collector_number": "239",
     "rarity": "common"
+  },
+  {
+    "functional_id": "meteor_golem",
+    "collector_number": "241",
+    "rarity": "uncommon"
   },
   {
     "functional_id": "millstone",
