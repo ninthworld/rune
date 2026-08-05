@@ -127,11 +127,34 @@ A cost is **not** an effect, and authoring one as the other changes what the car
 A cost gates the cast: a spell whose additional cost cannot be paid is never offered,
 and it is paid as the spell goes on the stack (CR 601.2h) rather than on resolution — so
 it cannot be countered away, cannot be responded to, and cannot be skipped by a player
-with an empty hand. The discarded cards are chosen through the ordinary mid-resolution
-choice prompt, from a hand that no longer contains the spell itself.
+with an empty hand. What pays it is chosen from a hand, or a battlefield, that no longer
+offers the spell itself.
 
-`discard` is the only kind today. A `count` of zero, or an `additional_cost` on a land
-(which is played, not cast — CR 116.2a), fails the catalog validator.
+The kinds today are `discard` and `sacrifice`:
+
+```json
+"additional_cost": { "kind": "sacrifice", "card_type": "creature" }
+```
+
+A sacrifice takes exactly one permanent of the named type. **Whose permanent stays a rule
+rather than a field** — CR 701.17b lets a player sacrifice only what they control, so
+there is no scope to author and none to get wrong. There is no count either: no card in
+this set sacrifices two, and a number every reader had to carry for no card is a number
+that will be wrong the first time one prints.
+
+Both kinds carry their choice on the **action**, in its `payment` list, beside the mana
+sources. A cost paid at announcement has no resolution to ask during, and once the spell
+is on the stack there is nothing left to take back — so the choice arrives with the cast
+or the cast does not happen. The server poses each as a slot over a server-enumerated
+candidate list (`docs/protocol.md`), and anything a client leaves unanswered the server
+pays for it.
+
+A sacrifice is a **real death**: it goes down the one leaves-battlefield seam, so a dies
+trigger — including the sacrificed permanent's own — sees it, exactly as `sacrifice_this`
+already does for an activation cost.
+
+A `count` of zero, or an `additional_cost` on a land (which is played, not cast —
+CR 116.2a), fails the catalog validator.
 
 ### Combat restrictions (CR 506.3, CR 509.1b)
 

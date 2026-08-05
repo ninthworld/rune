@@ -329,4 +329,12 @@ fn pay_additional_cost(
     // action, so paying the cost here needs no trigger pass of its own.
     let _ = db;
     crate::choice::discard_to_cost(state, controller, &crate::actions::discards_of(payment));
+    // CR 701.17: the same move any other sacrifice makes, down the one
+    // leaves-battlefield seam — so a permanent sacrificed to a cost is a real death that
+    // its own dies trigger, and every other watcher, sees in the diff `apply_action`
+    // takes of the whole action. Nothing here re-decides what may be sacrificed;
+    // `action_is_legal` has already established that.
+    for permanent in crate::actions::sacrifices_of(payment) {
+        state.move_permanent_to_graveyard(permanent);
+    }
 }

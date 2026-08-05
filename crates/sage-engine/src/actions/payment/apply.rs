@@ -9,7 +9,7 @@ use crate::card::CardDatabase;
 use crate::id::CardInstance;
 use crate::state::GameState;
 
-use super::super::definition::{discards_of, mana_of, Action, CostPayment};
+use super::super::definition::{discards_of, mana_of, sacrifices_of, Action, CostPayment};
 use super::super::generation::valid_actions;
 use super::super::utilities::cast_cost;
 use super::sources::is_plain_mana_source;
@@ -82,6 +82,9 @@ pub(crate) fn payment_covers_cast(
     if !discards_pay_the_additional_cost(state, db, card, &discards_of(payment)) {
         return false;
     }
+    if !sacrifices_pay_the_additional_cost(state, db, card, &sacrifices_of(payment)) {
+        return false;
+    }
     let mut scratch = state.clone();
     if !apply_payment(&mut scratch, db, payment) {
         return false;
@@ -126,6 +129,46 @@ fn discards_pay_the_additional_cost(
         named != card.id
             && !discards[..i].contains(&named)
             && player.hand.iter().any(|held| held.id == named)
+    })
+}
+
+/// Whether `sacrifices` is exactly what `card`'s additional cost demands (CR 601.2b).
+///
+/// The permanent counterpart of [`discards_pay_the_additional_cost`], exact in the same
+/// two directions: a card with no sacrifice cost accepts no sacrifices at all, and one
+/// with a sacrifice cost is paid by exactly one permanent — never fewer, and never more,
+/// since over-paying a cost is not something a player may choose to do.
+///
+/// Each named permanent must be **on the battlefield, controlled by the caster**
+/// (CR 701.17b), of the type the cost names, and named only once. Unlike the discard
+/// check there is no card to exclude: the spell being cast is in hand, on its way to the
+/// stack, and was never a permanent anyone could sacrifice.
+fn sacrifices_pay_the_additional_cost(
+    state: &GameState,
+    db: &CardDatabase,
+    card: CardInstance,
+    sacrifices: &[crate::id::PermanentId],
+) -> bool {
+    let owed = db
+        .card(card.card)
+        .and_then(|data| data.additional_cost)
+        .and_then(crate::AdditionalCost::sacrifice_type);
+    let Some(card_type) = owed else {
+        return sacrifices.is_empty();
+    };
+    if sacrifices.len() != 1 {
+        return false;
+    }
+    sacrifices.iter().enumerate().all(|(i, &named)| {
+        !sacrifices[..i].contains(&named)
+            && state.battlefield.iter().any(|perm| {
+                perm.id == named
+                    && perm.controller == state.priority
+                    && perm
+                        .printed
+                        .face(db)
+                        .is_some_and(|face| face.has_type(card_type))
+            })
     })
 }
 

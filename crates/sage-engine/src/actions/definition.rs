@@ -43,6 +43,13 @@ pub enum CostPayment {
     /// The card being cast is already on the stack when costs are paid, so it can never
     /// be discarded to its own cost — a rule the ordering enforces rather than a check.
     Discard(CardInstanceId),
+    /// One permanent sacrificed to pay an additional cost (CR 601.2b / 701.17).
+    ///
+    /// Named on the action for the reason a discard is: a cost paid at announcement has
+    /// no resolution to ask during, and once the spell is on the stack there is nothing
+    /// left to take back. The permanent must be one the caster controls (CR 701.17b) and
+    /// of the type the cost names.
+    Sacrifice(PermanentId),
 }
 
 impl CostPayment {
@@ -51,7 +58,7 @@ impl CostPayment {
     pub fn mana(self) -> Option<ManaSource> {
         match self {
             CostPayment::Mana(source) => Some(source),
-            CostPayment::Discard(_) => None,
+            CostPayment::Discard(_) | CostPayment::Sacrifice(_) => None,
         }
     }
 
@@ -60,7 +67,16 @@ impl CostPayment {
     pub fn discard(self) -> Option<CardInstanceId> {
         match self {
             CostPayment::Discard(card) => Some(card),
-            CostPayment::Mana(_) => None,
+            CostPayment::Mana(_) | CostPayment::Sacrifice(_) => None,
+        }
+    }
+
+    /// The sacrificed permanent this entry names, if it names one.
+    #[must_use]
+    pub fn sacrifice(self) -> Option<PermanentId> {
+        match self {
+            CostPayment::Sacrifice(permanent) => Some(permanent),
+            CostPayment::Mana(_) | CostPayment::Discard(_) => None,
         }
     }
 }
@@ -75,6 +91,15 @@ pub(crate) fn mana_of(payment: &[CostPayment]) -> Vec<ManaSource> {
 #[must_use]
 pub(crate) fn discards_of(payment: &[CostPayment]) -> Vec<CardInstanceId> {
     payment.iter().filter_map(|entry| entry.discard()).collect()
+}
+
+/// The permanents a payment sacrifices, in the order the player chose them.
+#[must_use]
+pub(crate) fn sacrifices_of(payment: &[CostPayment]) -> Vec<PermanentId> {
+    payment
+        .iter()
+        .filter_map(|entry| entry.sacrifice())
+        .collect()
 }
 
 /// An action a player may take. The engine generates the legal set with

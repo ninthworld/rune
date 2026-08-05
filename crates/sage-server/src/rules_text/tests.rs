@@ -980,3 +980,20 @@ fn a_player_subject_static_says_what_is_true_of_you() {
         "You have no maximum hand size.\n{T}: Add {C}."
     );
 }
+
+#[test]
+fn an_additional_cost_states_what_it_takes_before_what_the_spell_does() {
+    // A cost is stated first because that is the order it happens in: it is paid while
+    // the spell is cast (CR 601.2b), and a player who cannot pay never reaches the rest.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "blood_divination"),
+        "As an additional cost to cast this spell, sacrifice a creature.\nDraw three cards."
+    );
+    // On a creature spell the keyword line still leads, and the cost follows it — the
+    // clause order is the card's, not the effect list's.
+    assert_eq!(
+        text_of(&db, "demon_of_catastrophes"),
+        "Flying, trample\nAs an additional cost to cast this spell, sacrifice a creature."
+    );
+}

@@ -58,6 +58,18 @@ pub struct DiscardCost {
     pub candidates: Vec<CardInstanceId>,
 }
 
+/// The sacrifice an additional cost demands, and the permanents that could pay it
+/// (CR 601.2b / 701.17).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SacrificeCost {
+    /// The card type the sacrificed permanent must have.
+    pub card_type: crate::card_type::CardType,
+    /// The permanents the caster controls that could pay it. May be empty in a state the
+    /// cast was never offered from; the offer gate refuses such a cast, so nothing
+    /// downstream has to treat an empty list as payable.
+    pub candidates: Vec<crate::id::PermanentId>,
+}
+
 /// The discard `card`'s additional cost demands, or `None` when it has none — which is
 /// almost every card.
 #[must_use]
@@ -79,6 +91,39 @@ pub fn discard_cost(
             .iter()
             .filter(|held| held.id != card.id)
             .map(|held| held.id)
+            .collect(),
+    })
+}
+
+/// The permanents the caster may sacrifice to pay `card`'s additional cost, and how many
+/// of them the cost takes (CR 601.2b / 701.17).
+///
+/// The permanent counterpart of [`discard_cost`], and stated for the same reason: the
+/// server poses the choice as a slot over an enumerated candidate set, so the client
+/// picks from a list it was handed rather than working out what may be sacrificed.
+///
+/// `None` for a card with no sacrifice cost. The candidate list is every permanent of the
+/// named type the caster controls (CR 701.17b — you may sacrifice only your own), which
+/// can never include the card being cast: that one is in hand, on its way to the stack.
+#[must_use]
+pub fn sacrifice_cost(
+    state: &GameState,
+    db: &CardDatabase,
+    card: CardInstance,
+) -> Option<SacrificeCost> {
+    let card_type = db.card(card.card)?.additional_cost?.sacrifice_type()?;
+    Some(SacrificeCost {
+        card_type,
+        candidates: state
+            .battlefield
+            .iter()
+            .filter(|perm| perm.controller == state.priority)
+            .filter(|perm| {
+                perm.printed
+                    .face(db)
+                    .is_some_and(|face| face.has_type(card_type))
+            })
+            .map(|perm| perm.id)
             .collect(),
     })
 }

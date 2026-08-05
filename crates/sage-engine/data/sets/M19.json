@@ -275,6 +275,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "blood_divination",
+    "collector_number": "86",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "bogstomper",
     "collector_number": "87",
     "rarity": "common"
@@ -287,6 +292,11 @@
   {
     "functional_id": "death_baron",
     "collector_number": "90",
+    "rarity": "rare"
+  },
+  {
+    "functional_id": "demon_of_catastrophes",
+    "collector_number": "91",
     "rarity": "rare"
   },
   {
