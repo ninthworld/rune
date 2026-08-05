@@ -82,6 +82,58 @@ pub enum TriggerCondition {
     /// was not before — so it fires once per declaration, from the one place
     /// attackers are declared, and never from a creature that merely became tapped.
     SelfAttacks,
+    /// A permanent matching `observes` was **declared as an attacker** this transition
+    /// (CR 508.1), e.g. `Whenever a creature with flying attacks, …` — the counterpart
+    /// of [`Self::SelfAttacks`] for an ability watching the rest of the board, and the
+    /// same shape [`Self::PermanentEnters`] and [`Self::PermanentDies`] take.
+    ///
+    /// Observed on the one field the declaration writes, exactly as the self form is:
+    /// `attacking` is set after and was not before. It fires **once per matching
+    /// attacker**, so a five-creature alpha strike triggers a watcher of them five
+    /// times, and the selector is judged in the state the declaration produced — a
+    /// creature granted flying before attackers were declared really is one this
+    /// condition notices.
+    ///
+    /// The source must still be on the battlefield after the transition.
+    PermanentAttacks(
+        /// Which permanents attacking satisfy this condition.
+        ObservedPermanent,
+    ),
+    /// The source's controller **drew a card** this transition (CR 121.1), e.g.
+    /// `Whenever you draw a card, …`.
+    ///
+    /// Read from the [`crate::GameEvent::CardsDrawn`] entries this transition recorded
+    /// rather than from hand size, and the difference is the whole condition: a draw
+    /// followed by a discard leaves the hand exactly as it was and has still drawn a
+    /// card, while a hand that grew by one may have grown from a search or a return.
+    /// Only cards that actually moved are recorded, so a draw from an empty library —
+    /// which draws nothing and loses the game instead (CR 704.5c) — fires nothing.
+    ///
+    /// Fires **once per card**, not once per draw effect: a two-card draw is two draw
+    /// events as far as any card that watches them is concerned (CR 121.2), so the
+    /// recorded count is the fire count rather than a single tick.
+    YouDrawCard,
+    /// A player **activated an ability** this transition (CR 602.2) matching
+    /// `observes`, e.g. `Whenever an opponent activates a nonmana ability of a creature
+    /// or land, …`.
+    ///
+    /// Observed by diffing the **stack**: an activation is a player putting an object
+    /// there and paying for it, and [`crate::stack::AbilityOrigin::Activated`] recorded
+    /// at that push is what tells it apart from a trigger the game put there or a spell
+    /// a player cast. Fires once per new such object.
+    ///
+    /// **A mana ability never fires this** (CR 605.3a), and that exclusion is part of
+    /// the condition rather than something a card has to say: a mana ability resolves
+    /// immediately without ever using the stack, so there is no object for this diff to
+    /// find. Tapping a land for mana is therefore silent here by construction, which is
+    /// the only way it could be reliable — a card-authored filter would have to be
+    /// repeated correctly on every card that watches an activation.
+    ///
+    /// The source must still be on the battlefield after the transition.
+    AbilityActivated(
+        /// Whose activations, and of what, satisfy this condition.
+        ObservedActivation,
+    ),
     /// The turn structure **began a step** this transition (CR 603.6a) — the
     /// "at the beginning of your upkeep" / "at the beginning of each end step" shape.
     /// The first condition here that is about the turn rather than about an object.
@@ -192,6 +244,15 @@ pub enum ObservedPermanent {
         /// was then, not by its printed face.
         #[serde(default)]
         max_power: Option<i32>,
+        /// Notice only creatures that have this keyword — the "with **flying**" of an
+        /// attack watcher. Absent notices every creature.
+        ///
+        /// Read through the **computed** keywords (CR 613 layer 6), like the power
+        /// bound beside it and unlike the printed subtype above: the layer that grants
+        /// a keyword is implemented, so a creature that was given flying really is one
+        /// a flying watcher notices, and really stops being one when the grant ends.
+        #[serde(default)]
+        keyword: Option<Keyword>,
     },
     /// Any creature on the battlefield, whoever controls it — "a creature", and with
     /// `except_this`, "another creature".
@@ -209,6 +270,10 @@ pub enum ObservedPermanent {
         /// characteristics exactly as the sibling variant's is.
         #[serde(default)]
         max_power: Option<i32>,
+        /// Notice only creatures with this keyword, read through the computed keywords
+        /// exactly as the sibling variant's is.
+        #[serde(default)]
+        keyword: Option<Keyword>,
     },
 }
 
@@ -249,6 +314,61 @@ impl ObservedPermanent {
             | ObservedPermanent::AnyCreature { max_power, .. } => *max_power,
         }
     }
+
+    /// The keyword this selector restricts to, if any (CR 702) — read through the
+    /// computed keywords wherever it is evaluated, never off the printed face.
+    #[must_use]
+    pub fn keyword(&self) -> Option<Keyword> {
+        match self {
+            ObservedPermanent::CreaturesYouControl { keyword, .. }
+            | ObservedPermanent::AnyCreature { keyword, .. } => *keyword,
+        }
+    }
+}
+
+/// Which activations a [`TriggerCondition::AbilityActivated`] notices.
+///
+/// A small product of two independent filters rather than a closed list of named
+/// classes, for the reason [`crate::PermanentCount`] is one: the two questions a card
+/// asks about an activation — *whose* it was, and what kind of permanent it was an
+/// ability *of* — vary independently, and a variant per pairing would grow the
+/// vocabulary once per card.
+///
+/// Nothing here says "that isn't a mana ability": a mana ability never uses the stack
+/// (CR 605.3a), and the stack is where this condition looks, so the exclusion is
+/// structural. See [`TriggerCondition::AbilityActivated`].
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+pub struct ObservedActivation {
+    /// Whose activations are noticed, relative to the watching ability's controller.
+    /// Defaults to every player's.
+    #[serde(default)]
+    pub activator: ActivatorScope,
+    /// The permanent types whose abilities are noticed — `["creature", "land"]` for the
+    /// "of a creature or land" of a printed watcher, satisfied by a permanent with
+    /// **any** of them. Empty (the default) notices every permanent's.
+    ///
+    /// Read off the printed face, like every other type question the selectors ask: the
+    /// layer that would change a permanent's types is not implemented.
+    #[serde(default)]
+    pub source_types: Vec<CardType>,
+}
+
+/// Whose activation an [`ObservedActivation`] notices, relative to the watching
+/// ability's controller.
+///
+/// Scoped exactly as [`ObservedPermanent`] and [`TurnScope`] are — the watcher's own
+/// controller is the "you" every scope here is written from. The activator is the
+/// activated permanent's controller, since only a permanent's controller may activate
+/// its abilities (CR 602.1a).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivatorScope {
+    /// Any player's activation, the watcher's own controller included.
+    #[default]
+    Any,
+    /// Only an opponent of the watcher's controller — the "whenever an opponent
+    /// activates" of a punisher.
+    Opponents,
 }
 
 /// Which spells a [`TriggerCondition::YouCastSpell`] notices.

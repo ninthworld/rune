@@ -35,10 +35,11 @@
 
 Catalog coverage is limited by what the ability IR can *express*, not by authoring
 throughput. Today `Cost` says tapping, mana, and loyalty, so an activation cost paid by
-sacrificing or discarding is unwritable. `TriggerCondition` observes zone changes (its own
-source's and, through `ObservedPermanent`, another permanent's), attack declaration, life
-gain, casting, and step boundaries — but not an activation, and its selectors filter by
-subtype, controller, and token-ness only. A condition *is* attachable now, as
+sacrificing or discarding is unwritable. `TriggerCondition` observes zone changes and attack
+declarations (its own source's and, through `ObservedPermanent`, another permanent's), a
+draw by its controller, an activation that uses the stack — never a mana ability, which
+uses none — life gain, casting, and step boundaries; its observed-permanent selectors filter
+by subtype, controller, token-ness, power, and keyword. A condition *is* attachable now, as
 `Effect::Conditional`, and `Condition` names four questions: a permanent count, a mill by
 this resolution, a discard by this resolution, and life gained this turn. It is judged as
 the effect is reached (CR 608.2), which is an if-clause on an effect rather than the

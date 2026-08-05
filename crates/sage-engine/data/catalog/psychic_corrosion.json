@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "functional_id": "psychic_corrosion",
+  "name": "Psychic Corrosion",
+  "types": [
+    "enchantment"
+  ],
+  "mana_cost": "{2}{U}",
+  "colors": [
+    "blue"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "you_draw_card",
+      "effects": [
+        {
+          "kind": "mill",
+          "player_ref": "each_opponent",
+          "count": 2
+        }
+      ]
+    }
+  ]
+}

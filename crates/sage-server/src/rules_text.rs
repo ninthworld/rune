@@ -22,8 +22,8 @@
 //! Legal Considerations).
 
 use sage_engine::{
-    Ability, AdditionalCost, AuraGrant, CardData, CardFilter, CardType, Chooser, Color,
-    CombatRestriction, Condition, Cost, CountScope, CounterKind, DamageSubject, Effect,
+    Ability, ActivatorScope, AdditionalCost, AuraGrant, CardData, CardFilter, CardType, Chooser,
+    Color, CombatRestriction, Condition, Cost, CountScope, CounterKind, DamageSubject, Effect,
     FoundDestination, GraveyardCardClass, GraveyardScope, Keyword, ManaRestriction, MassAffects,
     ObservedPermanent, ObservedSpell, PermanentCount, PlayerModification, PlayerRef, StaticAffects,
     StaticCondition, StaticModification, TargetCount, TargetSpec, TokenData, TriggerCondition,
@@ -156,7 +156,18 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                 TriggerCondition::PermanentDies(observes) => {
                     format!("Whenever {} dies", observed_subject(observes))
                 }
+                TriggerCondition::PermanentAttacks(observes) => {
+                    format!("Whenever {} attacks", observed_subject(observes))
+                }
                 TriggerCondition::YouGainLife => "Whenever you gain life".to_string(),
+                TriggerCondition::YouDrawCard => "Whenever you draw a card".to_string(),
+                // "Nonmana" is the engine's own word for the CR 605.3a exclusion the
+                // condition enforces structurally: an ability that uses the stack.
+                TriggerCondition::AbilityActivated(observes) => format!(
+                    "Whenever {} activates a nonmana ability{}",
+                    activator_subject(observes.activator),
+                    activated_source_clause(&observes.source_types)
+                ),
                 TriggerCondition::YouCastSpell(spell) => {
                     format!("Whenever you cast {}", observed_spell_noun(*spell))
                 }
@@ -232,12 +243,51 @@ fn observed_subject(observes: &ObservedPermanent) -> String {
         }
         ObservedPermanent::AnyCreature { .. } => format!("{article} {noun}"),
     };
-    // A power bound trails the whole class, where a card prints it: "another creature
-    // you control with power 2 or less".
-    match observes.max_power() {
-        None => class,
-        Some(max) => format!("{class} with power {max} or less"),
+    // The qualifiers trail the whole class, where a card prints them: "another creature
+    // you control with power 2 or less", "a creature with flying". Both at once join
+    // with "and" rather than repeating the preposition, which is how a card would say
+    // it if one ever asked for both.
+    let mut qualifiers: Vec<String> = Vec::new();
+    if let Some(keyword) = observes.keyword() {
+        qualifiers.push(keyword_word(keyword).to_string());
     }
+    if let Some(max) = observes.max_power() {
+        qualifiers.push(format!("power {max} or less"));
+    }
+    if qualifiers.is_empty() {
+        class
+    } else {
+        format!("{class} with {}", qualifiers.join(" and "))
+    }
+}
+
+/// The subject of an activation-watching trigger's sentence: the player whose
+/// activations it notices.
+fn activator_subject(activator: ActivatorScope) -> &'static str {
+    match activator {
+        ActivatorScope::Any => "a player",
+        ActivatorScope::Opponents => "an opponent",
+    }
+}
+
+/// The "of a creature or land" that follows "activates a nonmana ability", or nothing
+/// at all when the selector names no types and every permanent's abilities count.
+fn activated_source_clause(source_types: &[CardType]) -> String {
+    if source_types.is_empty() {
+        return String::new();
+    }
+    // "A creature or land": the article rides on the first noun only, exactly as a card
+    // prints it, and agrees with that noun alone.
+    let nouns: Vec<&str> = source_types
+        .iter()
+        .map(|&kind| card_type_word(kind))
+        .collect();
+    let article = if nouns[0].starts_with(['a', 'e', 'i', 'o', 'u']) {
+        "an"
+    } else {
+        "a"
+    };
+    format!(" of {article} {}", nouns.join(" or "))
 }
 
 /// The step a step trigger watches, as the noun phrase that follows "at the beginning

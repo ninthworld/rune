@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "functional_id": "runic_armasaur",
+  "name": "Runic Armasaur",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Dinosaur"
+  ],
+  "mana_cost": "{2}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 1,
+  "toughness": 5,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "ability_activated": {
+          "activator": "opponents",
+          "source_types": [
+            "creature",
+            "land"
+          ]
+        }
+      },
+      "effects": [
+        {
+          "kind": "may",
+          "effects": [
+            {
+              "kind": "draw_card",
+              "count": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
