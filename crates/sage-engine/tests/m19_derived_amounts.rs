@@ -235,6 +235,7 @@ fn remorseful_cleric_exiles_a_whole_graveyard() {
             permanent: cleric,
             index: 0,
             targets: vec![Target::Player(PlayerId(1))],
+            payment: Vec::new(),
         },
         &db,
     );

@@ -220,6 +220,7 @@ fn activation(permanent: PermanentId, index: usize) -> Action {
         permanent,
         index,
         targets: Vec::new(),
+        payment: Vec::new(),
     }
 }
 
@@ -494,6 +495,7 @@ fn issue_608_apply_rejects_a_forged_loyalty_activation() {
         permanent: warden,
         index: 1,
         targets: vec![Target::Player(PlayerId(1))],
+        payment: Vec::new(),
     };
     let once = apply_action(&state, &activation(warden, 0), &db);
     assert_eq!(loyalty(&once, warden), 5);

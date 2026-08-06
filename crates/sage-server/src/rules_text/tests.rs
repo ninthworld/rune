@@ -1397,3 +1397,30 @@ fn issue_737_a_two_target_effect_names_both_of_its_targets() {
         "Target creature you control fights target creature an opponent controls."
     );
 }
+
+/// An activation cost the player picks the payment for is written in the cost line, as
+/// the card writes it — `Sacrifice another creature`, `Sacrifice a Goblin`, `Discard a
+/// card` — and the same words label the slot the choice is answered on, so a player is
+/// asked the question the card poses rather than a paraphrase of it.
+#[test]
+fn issue_721_an_activation_cost_states_what_the_player_must_spend() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "ravenous_harpy"),
+        "Flying\n{B}, Sacrifice another creature: Put a +1/+1 counter on Ravenous Harpy \
+         and you gain 1 life."
+    );
+    // A subtype names the class on its own: a Goblin is a Goblin whatever else it is, and
+    // the Trashmaster is one, so with no *another* it is a legal payment for its own cost.
+    assert_eq!(
+        text_of(&db, "goblin_trashmaster"),
+        "Other Goblins you control get +1/+1.\n\
+         {1}{R}, Sacrifice a Goblin: Destroy target artifact."
+    );
+    assert_eq!(
+        text_of(&db, "dismissive_pyromancer"),
+        "{T}, Discard a card: Draw a card.\n\
+         {2}{R}, Sacrifice this permanent: Dismissive Pyromancer deals 4 damage to \
+         target creature."
+    );
+}

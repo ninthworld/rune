@@ -98,6 +98,7 @@ fn activate(
             permanent,
             index,
             targets,
+            payment: Vec::new(),
         },
         db,
     );
@@ -111,6 +112,7 @@ fn offers(state: &GameState, db: &CardDatabase, permanent: PermanentId, index: u
         permanent,
         index,
         targets: Vec::new(),
+        payment: Vec::new(),
     })
 }
 
@@ -142,6 +144,7 @@ fn explosive_apparatus_sacrifices_itself_and_the_ability_still_resolves() {
             permanent: apparatus,
             index: 0,
             targets: vec![Target::Permanent(target)],
+            payment: Vec::new(),
         },
         &db,
     );
@@ -176,6 +179,7 @@ fn catalyst_elemental_is_a_mana_ability_that_eats_itself() {
             permanent: elemental,
             index: 0,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );
@@ -202,6 +206,7 @@ fn a_creature_sacrificed_to_a_cost_triggers_a_death_watcher() {
             permanent: elemental,
             index: 0,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );

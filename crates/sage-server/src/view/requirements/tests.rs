@@ -244,6 +244,7 @@ fn issue_140_ability_target_requirements_project_and_a_selection_resolves() {
             permanent: tapper,
             index: 0,
             targets: vec![Target::Permanent(bear)],
+            payment: Vec::new(),
         },
     );
 

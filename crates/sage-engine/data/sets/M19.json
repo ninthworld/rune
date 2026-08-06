@@ -395,6 +395,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "ravenous_harpy",
+    "collector_number": "115",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "reassembling_skeleton",
     "collector_number": "116",
     "rarity": "uncommon"
@@ -465,6 +470,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "dismissive_pyromancer",
+    "collector_number": "136",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "dragon_egg",
     "collector_number": "138",
     "rarity": "uncommon"
@@ -493,6 +503,11 @@
     "functional_id": "goblin_motivator",
     "collector_number": "143",
     "rarity": "common"
+  },
+  {
+    "functional_id": "goblin_trashmaster",
+    "collector_number": "144",
+    "rarity": "rare"
   },
   {
     "functional_id": "guttersnipe",

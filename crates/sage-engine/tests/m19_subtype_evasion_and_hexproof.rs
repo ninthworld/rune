@@ -265,6 +265,7 @@ fn tower_offer(tower: PermanentId) -> Action {
         permanent: tower,
         index: 1,
         targets: Vec::new(),
+        payment: Vec::new(),
     }
 }
 
@@ -417,6 +418,7 @@ fn issue_742_detection_tower_still_taps_for_colorless() {
         permanent: tower,
         index: 0,
         targets: Vec::new(),
+        payment: Vec::new(),
     };
     assert!(valid_actions(&state, &db).contains(&mana));
     assert!(

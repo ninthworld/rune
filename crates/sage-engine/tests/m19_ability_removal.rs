@@ -90,6 +90,7 @@ fn activation(permanent: PermanentId, index: usize) -> Action {
         permanent,
         index,
         targets: Vec::new(),
+        payment: Vec::new(),
     }
 }
 

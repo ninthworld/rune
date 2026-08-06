@@ -127,6 +127,7 @@ fn activate(
         permanent,
         index,
         targets,
+        payment: Vec::new(),
     };
     let after = apply_action(state, &action, db);
     assert_ne!(
@@ -220,6 +221,7 @@ fn every_dual_land_enters_tapped_and_taps_for_its_two_colours() {
                     permanent: id,
                     index,
                     targets: Vec::new(),
+                    payment: Vec::new(),
                 },
                 &db,
             );
@@ -1527,6 +1529,7 @@ fn vampire_neonate_is_not_offered_without_the_mana_to_pay_for_it() {
         permanent: neonate,
         index: 0,
         targets: Vec::new(),
+        payment: Vec::new(),
     };
     assert!(!valid_actions(&state, &db).contains(&action));
     assert_eq!(apply_action(&state, &action, &db), state);

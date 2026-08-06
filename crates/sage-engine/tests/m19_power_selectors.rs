@@ -149,6 +149,7 @@ fn activate(
         permanent,
         index,
         targets,
+        payment: Vec::new(),
     };
     let state = apply_action(state, &action, db);
     let state = apply_action(&state, &Action::PassPriority, db);

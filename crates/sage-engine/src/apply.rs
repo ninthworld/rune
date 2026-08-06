@@ -62,8 +62,9 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
             permanent,
             index,
             targets,
+            payment,
         } => {
-            apply_activate_ability(&mut next, *permanent, *index, targets, db);
+            apply_activate_ability(&mut next, *permanent, *index, targets, payment, db);
         }
         // CR 113.6: the same announcement over a card in a graveyard. Only the source
         // differs — it is a card in a zone, not a permanent — so this is its own helper

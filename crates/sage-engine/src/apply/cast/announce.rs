@@ -65,6 +65,7 @@ pub(crate) fn apply_activate_ability(
     permanent: PermanentId,
     index: usize,
     targets: &[Target],
+    payment: &[crate::CostPayment],
     db: &CardDatabase,
 ) {
     let Some(perm) = state.battlefield.iter().find(|p| p.id == permanent) else {
@@ -89,7 +90,9 @@ pub(crate) fn apply_activate_ability(
             Cost::Tap
             | Cost::Loyalty { .. }
             | Cost::SacrificeThis
-            | Cost::RemoveCounters { .. } => None,
+            | Cost::RemoveCounters { .. }
+            | Cost::Sacrifice { .. }
+            | Cost::Discard { .. } => None,
         })
         .collect();
     if !mana_due.is_empty() {
@@ -149,12 +152,26 @@ pub(crate) fn apply_activate_ability(
             // Applied after this loop: sacrificing the source first would leave a `{T}`
             // beside it with nothing to tap.
             Cost::SacrificeThis => {}
+            // Paid from what the action named, below — for the same ordering reason, and
+            // because nothing here re-decides what may pay a cost: `action_is_legal` has
+            // already established that the payment is exactly what this demands.
+            Cost::Sacrifice { .. } | Cost::Discard { .. } => {}
         }
     }
 
-    // CR 701.17: the sacrifice, last, so every other component of the cost was charged
-    // against a permanent that was still on the battlefield. This is a real death — it
-    // goes through the one leaves-battlefield seam, so a dies trigger (including the
+    // CR 601.2b: the components of the cost the *player* chose, charged from what the
+    // action carried. A discard is the same move a discard made any other way performs
+    // (CR 701.8) and a sacrifice the same move any other sacrifice makes (CR 701.17) —
+    // down one path each, so what they trigger is collected by `apply_action` diffing the
+    // whole action and needs no trigger pass of its own.
+    crate::choice::discard_to_cost(state, controller, &crate::actions::discards_of(payment));
+    for sacrificed in crate::actions::sacrifices_of(payment) {
+        state.move_permanent_to_graveyard(sacrificed);
+    }
+
+    // CR 701.17: the source's own sacrifice, last, so every other component of the cost was
+    // charged against a permanent that was still on the battlefield. This is a real death —
+    // it goes through the one leaves-battlefield seam, so a dies trigger (including the
     // source's own) observes it in the diff `apply_action` takes of the whole action.
     if cost.contains(&Cost::SacrificeThis) {
         state.move_permanent_to_graveyard(permanent);
@@ -250,9 +267,12 @@ pub(crate) fn apply_activate_ability_from_graveyard(
     // settlement against the pool.
     for due in cost.iter().filter_map(|c| match c {
         Cost::Mana { mana } => Some(parse_mana_cost(mana)),
-        Cost::Tap | Cost::Loyalty { .. } | Cost::SacrificeThis | Cost::RemoveCounters { .. } => {
-            None
-        }
+        Cost::Tap
+        | Cost::Loyalty { .. }
+        | Cost::SacrificeThis
+        | Cost::RemoveCounters { .. }
+        | Cost::Sacrifice { .. }
+        | Cost::Discard { .. } => None,
     }) {
         let Some(player) = state.players.get_mut(controller.0) else {
             return;

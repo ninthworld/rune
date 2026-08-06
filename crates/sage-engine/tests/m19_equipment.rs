@@ -90,6 +90,7 @@ fn equip_offer(equipment: PermanentId) -> Action {
         permanent: equipment,
         index: 0,
         targets: Vec::new(),
+        payment: Vec::new(),
     }
 }
 
@@ -104,6 +105,7 @@ fn equip(
         permanent: equipment,
         index: 0,
         targets: vec![Target::Permanent(host)],
+        payment: Vec::new(),
     };
     let state = apply_action(state, &action, db);
     let state = apply_action(&state, &Action::PassPriority, db);
@@ -351,6 +353,7 @@ fn issue_728_equip_can_only_be_aimed_at_a_creature_its_controller_controls() {
             permanent: axe,
             index: 0,
             targets: vec![Target::Permanent(bad)],
+            payment: Vec::new(),
         };
         let after = apply_action(&state, &action, &db);
         assert_eq!(after, state, "an illegal equip target changes nothing");
@@ -394,6 +397,7 @@ fn issue_728_an_equip_whose_target_died_first_leaves_the_axe_where_it_was() {
             permanent: axe,
             index: 0,
             targets: vec![Target::Permanent(doomed)],
+            payment: Vec::new(),
         },
         &db,
     );
@@ -426,6 +430,7 @@ fn issue_728_equip_is_sorcery_speed_at_the_offer_and_at_the_apply() {
         permanent: axe,
         index: 0,
         targets: vec![Target::Permanent(mine)],
+        payment: Vec::new(),
     };
     assert!(valid_actions(&state, &db).contains(&equip_offer(axe)));
 

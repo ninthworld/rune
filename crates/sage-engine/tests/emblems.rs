@@ -95,6 +95,7 @@ fn activate(state: &GameState, db: &CardDatabase, permanent: PermanentId) -> Gam
             permanent,
             index: 0,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         db,
     );

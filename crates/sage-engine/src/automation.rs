@@ -347,6 +347,7 @@ mod tests {
                 permanent: plains,
                 index: 0,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -356,6 +357,7 @@ mod tests {
                 permanent: second,
                 index: 0,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );

@@ -22,10 +22,13 @@ pub use definition::{
 };
 pub use generation::valid_actions;
 pub(crate) use legality::action_is_legal;
-pub(crate) use payment::{apply_payment, payment_covers_cast};
 pub use payment::{
+    activation_discard_cost, activation_sacrifice_candidates, auto_activation_payment,
     auto_payment, discard_cost, is_plain_mana_source, mana_ability_pips, payment_pips,
     payment_sources, remaining_cost_pips, sacrifice_cost, DiscardCost, PaymentPip, SacrificeCost,
+};
+pub(crate) use payment::{
+    apply_payment, chosen_costs_are_payable, payment_covers_activation, payment_covers_cast,
 };
 pub(crate) use targeting::legal_targets_for_spec;
 pub use targeting::target_requirements;

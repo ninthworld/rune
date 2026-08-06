@@ -27,13 +27,19 @@ pub(crate) fn is_castable_spell(data: &crate::CardData) -> bool {
 }
 
 /// Whether every cost in `cost` is payable right now, given the source
-/// `permanent`'s state and its controller's mana pool.
+/// `permanent`'s state, its controller's mana pool, and — for a cost the player picks
+/// what pays it with — whether the board and hand hold anything that could.
 ///
 /// Mana affordability is decided by the same [`ManaPool::can_pay`](crate::ManaPool::can_pay)
 /// the cast path uses over the same `{...}` notation, so an ability is offered
 /// exactly when [`crate::apply_action`] will succeed in charging for it — the
 /// offer and the charge can never disagree about a cost string.
-pub(crate) fn cost_payable(state: &GameState, cost: &[Cost], permanent: &Permanent) -> bool {
+pub(crate) fn cost_payable(
+    state: &GameState,
+    db: &CardDatabase,
+    cost: &[Cost],
+    permanent: &Permanent,
+) -> bool {
     cost.iter().all(|c| match c {
         Cost::Tap => !permanent.tapped,
         Cost::Mana { mana } => state
@@ -56,6 +62,14 @@ pub(crate) fn cost_payable(state: &GameState, cost: &[Cost], permanent: &Permane
         // permanent actually has, which is what makes a three-charge artifact offer its
         // ability three times and then stop.
         Cost::RemoveCounters { counter, count } => permanent.counter_count(*counter) >= *count,
+        // CR 601.2b: the two costs whose payment the player *picks* are payable only while
+        // there is something to pick, so an ability with nothing to feed it is not offered
+        // rather than offered and then found free. The candidate enumeration is the one
+        // the action's own slot is posed from, so the offer, the question, and the charge
+        // are one answer.
+        Cost::Sacrifice { .. } | Cost::Discard { .. } => {
+            crate::actions::chosen_costs_are_payable(state, db, permanent, c)
+        }
     })
 }
 
@@ -115,9 +129,16 @@ pub(crate) fn graveyard_cost_payable(state: &GameState, seat: PlayerId, cost: &[
                 .mana_pool
                 .can_pay(&crate::mana::parse_mana_cost(mana))
         }),
-        Cost::Tap | Cost::Loyalty { .. } | Cost::SacrificeThis | Cost::RemoveCounters { .. } => {
-            false
-        }
+        Cost::Tap
+        | Cost::Loyalty { .. }
+        | Cost::SacrificeThis
+        | Cost::RemoveCounters { .. }
+        // A chosen sacrifice or discard is refused here for the same reason as the rest:
+        // the catalog validator lets a graveyard ability charge mana and nothing else, and
+        // this is the second, independent gate that holds for a database assembled in a
+        // test.
+        | Cost::Sacrifice { .. }
+        | Cost::Discard { .. } => false,
     })
 }
 

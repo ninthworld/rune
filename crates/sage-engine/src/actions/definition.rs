@@ -133,6 +133,24 @@ pub enum Action {
         /// each slot come from [`crate::target_requirements`], and a filled-in selection
         /// is validated slot-by-slot in [`crate::apply_action`].
         targets: Vec<Target>,
+        /// The parts of the activation cost the player **chose** (CR 601.2b): the
+        /// permanents sacrificed to a `Sacrifice another creature`, and the cards
+        /// discarded to a `Discard a card`. Empty for every ability whose cost is
+        /// entirely about its own source and the pool, which is almost all of them.
+        ///
+        /// Carried here for the reason [`Self::CastSpell::payment`] is: a cost is paid as
+        /// the ability is activated, so there is no resolution to ask during and nothing
+        /// left to take back once the ability is on the stack. A player part-way through
+        /// deciding what to feed it has sent **nothing**, and putting it back costs a
+        /// click and no message.
+        ///
+        /// **Mana is not carried here.** An activation pays mana out of its controller's
+        /// pool (CR 602.2b), floated by activating mana abilities as actions in their own
+        /// right, exactly as it was before this field existed; a
+        /// [`CostPayment::Mana`] entry on an activation is refused rather than ignored,
+        /// because a payment the engine silently dropped is one the player thought they
+        /// had made.
+        payment: Vec<CostPayment>,
     },
     /// Activate an ability of a card in the priority holder's **graveyard** that
     /// functions from there (CR 113.6 — [`crate::is_graveyard_ability`]).
@@ -460,12 +478,17 @@ impl Action {
     /// selection; every other variant is returned unchanged.
     pub(super) fn without_targets(&self) -> Action {
         match self {
+            // An activation drops its target selection *and* the chosen half of its cost,
+            // for the reason a cast drops both: CR 602.2 announces the ability first and
+            // chooses targets and pays costs as steps within it, so the requirement form
+            // is the bare announcement.
             Action::ActivateAbility {
                 permanent, index, ..
             } => Action::ActivateAbility {
                 permanent: *permanent,
                 index: *index,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             Action::ActivateAbilityFromGraveyard { card, index, .. } => {
                 Action::ActivateAbilityFromGraveyard {

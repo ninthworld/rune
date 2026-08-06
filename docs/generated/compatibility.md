@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (212)
+## Supported cards (215)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -55,6 +55,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `detection_tower` | Detection Tower | functional definition |
 | `diamond_mare` | Diamond Mare | functional definition |
 | `diregraf_ghoul` | Diregraf Ghoul | functional definition |
+| `dismissive_pyromancer` | Dismissive Pyromancer | functional definition |
 | `disperse` | Disperse | functional definition |
 | `divination` | Divination | functional definition |
 | `doomed_dissenter` | Doomed Dissenter | functional definition |
@@ -90,6 +91,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `gigantosaurus` | Gigantosaurus | functional definition |
 | `goblin_instigator` | Goblin Instigator | functional definition |
 | `goblin_motivator` | Goblin Motivator | functional definition |
+| `goblin_trashmaster` | Goblin Trashmaster | functional definition |
 | `grasping_scoundrel` | Grasping Scoundrel | functional definition |
 | `gravedigger` | Gravedigger | functional definition |
 | `gravewaker` | Gravewaker | functional definition |
@@ -155,6 +157,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `psychic_corrosion` | Psychic Corrosion | functional definition |
 | `psychic_symbiont` | Psychic Symbiont | functional definition |
 | `rabid_bite` | Rabid Bite | functional definition |
+| `ravenous_harpy` | Ravenous Harpy | functional definition |
 | `reassembling_skeleton` | Reassembling Skeleton | functional definition |
 | `reclamation_sage` | Reclamation Sage | functional definition |
 | `recollect` | Recollect | functional definition |
@@ -234,12 +237,12 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | --- | --- |
 | Abilities that trigger on a mana ability being activated | the activation condition watches the objects a transition put on the stack, which a mana ability never reaches (CR 605.3a) |
 | Abilities that trigger on someone else drawing a card | the draw trigger condition observes only its own controller's draws |
-| Activation costs paid by sacrificing another permanent, or by discarding | a cast carries its chosen sacrifices and discards on the action, but an activation names only its source, its ability, and its targets |
 | Attack requirements | a block requirement is maximised over the whole declaration (CR 509.1c), but nothing can force a creature into the attacker declaration (CR 508.1d) — and the one requirement modeled is that every creature able to block an attacker does so, never that one particular creature blocks |
 | Auras that enchant a player or land, or move between hosts | only enchant-creature Auras granting P/T, keywords, or combat restrictions are modeled |
 | Combat damage assigned by a value other than power | every attacker and blocker assigns damage equal to its current power |
 | Conditions other than a permanent count, a mill, a discard, or life gained this turn | a permanent count cannot require distinct names, and no condition asks what one permanent has done — on the intervening-if side or the continuous one |
 | Cost reduction and cost increase effects | no cost-modification layer |
+| Costs paid by exiling a card, by sacrificing more than one permanent, or by choosing to pay at all | a cast and an activation each carry the sacrifices and discards their cost names on the action, one permanent per sacrifice and always the caster's or activator's own; nothing exiles a card as a cost, no cost takes two permanents or any number of them, and every non-mana cost is mandatory rather than an option the player may decline |
 | Damage prevention | no prevention shield or damage-replacement layer |
 | Effects that ask a player to name a type or a card | a permanent records the colour its controller named as it entered; a card name and a creature type have no recorded identity, and nothing on a spell records a choice at all |
 | Effects that let a player choose the order of cards put back on a library | a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random |

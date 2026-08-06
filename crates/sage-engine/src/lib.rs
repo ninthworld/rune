@@ -52,6 +52,7 @@ pub use ability::{
     TriggerStep, TurnScope,
 };
 pub use actions::{
+    activation_discard_cost, activation_sacrifice_candidates, auto_activation_payment,
     auto_payment, discard_cost, is_plain_mana_source, mana_ability_pips, payment_pips,
     payment_sources, remaining_cost_pips, sacrifice_cost, target_requirements, valid_actions,
     Action, Attack, Block, CostPayment, DamageOrder, DiscardCost, ManaSource, PaymentPip,

@@ -52,11 +52,16 @@
 //! subtracted from what the generator announces against, so the boundary costs a player
 //! a convenience and never leaves them an offer they cannot take.
 
+mod activation;
 mod apply;
 mod pips;
 mod solve;
 mod sources;
 
+pub use activation::{
+    activation_discard_cost, activation_sacrifice_candidates, auto_activation_payment,
+};
+pub(crate) use activation::{chosen_costs_are_payable, payment_covers_activation};
 pub(crate) use apply::{apply_payment, payment_covers_cast};
 pub use pips::{
     discard_cost, payment_pips, remaining_cost_pips, sacrifice_cost, DiscardCost, PaymentPip,

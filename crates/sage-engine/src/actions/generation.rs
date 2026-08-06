@@ -507,12 +507,14 @@ fn offer_activations(
                     }
                     _ => Vec::new(),
                 };
-                if cost_payable(state, cost, perm) && groups_are_fillable(&groups, state, seat, db)
+                if cost_payable(state, db, cost, perm)
+                    && groups_are_fillable(&groups, state, seat, db)
                 {
                     actions.push(Action::ActivateAbility {
                         permanent: perm.id,
                         index,
                         targets: Vec::new(),
+                        payment: Vec::new(),
                     });
                 }
             }

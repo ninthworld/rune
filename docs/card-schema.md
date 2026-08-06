@@ -544,7 +544,9 @@ version of it. If *every* target is illegal the spell never resolves at all (CR 
 `cost` entries are `{"kind":"tap"}` (the `{T}` symbol),
 `{"kind":"mana","mana":"{1}{R}"}` — written in the same curly-brace notation a card's
 `mana_cost` uses — `{"kind":"loyalty","amount":-2}` (below), `{"kind":"sacrifice_this"}`,
-and `{"kind":"remove_counters","counter":"charge","count":1}`. Mana is paid from the
+`{"kind":"remove_counters","counter":"charge","count":1}`, and the two the player picks
+the payment for, `{"kind":"sacrifice","card_type":"creature","another":true}` and
+`{"kind":"discard","count":1}`. Mana is paid from the
 activating player's pool through the same seam a cast uses, and the whole cost is paid all
 or nothing — a failed mana payment never leaves the source tapped. CR 302.6 still forbids
 a summoning-sick creature paying `{T}`, including for a mana ability.
@@ -564,6 +566,28 @@ choice to ride on the action.
   content of a charge-counter card: the ability is offered three times and then stops. It
   is not a loyalty cost: that one is signed, may *add*, and carries CR 606.3's two
   timing rules, and collapsing the two would make a charge counter a loyalty ability.
+
+The other two are the ones the **player picks the payment for**, and everything about them
+follows from that. The choice arrives on the action, in the same `payment` list a cast
+carries (`docs/protocol.md`), because a cost is paid as the ability is activated (CR
+602.2b): there is no resolution to ask during, and once the ability is on the stack there is
+nothing left to take back. Neither is offered without something to pay it, so an ability
+with nothing to feed it is simply not activatable rather than activatable and then free.
+
+- `sacrifice` takes **one** permanent the activator controls (CR 701.17b — whose permanent
+  it is stays a rule rather than a field). `card_type` and `subtype` narrow what qualifies
+  and both default to any, so `{"kind":"sacrifice","subtype":"Goblin"}` is exactly
+  `Sacrifice a Goblin`: a Goblin is a Goblin whatever else it is, and a Goblin token counts
+  because the subtype is read off the printed face. `another` excludes the source — the
+  *another* of `Sacrifice another creature` — and without it an ability may eat its own
+  source, which is legal and still resolves (CR 113.7a). Paying it is a real death down the
+  same leaves-battlefield seam `sacrifice_this` uses, so a dies trigger sees it.
+- `discard` takes `count` cards from the activator's hand (CR 701.8). Unlike the cast-side
+  additional cost there is no card to exclude: the source is a permanent, not a card in the
+  hand paying for itself.
+
+Mana is **not** named on an activation's payment. It is paid from the pool, floated by
+activating mana abilities as actions in their own right, exactly as it always was.
 
 The counter kinds are `plus_one_plus_one`, `minus_one_minus_one`, `loyalty`, and the four
 that fold into no characteristic and no state-based action — `charge`, `gold`, `wish`, and

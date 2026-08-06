@@ -115,6 +115,7 @@ fn offers(state: &GameState, db: &CardDatabase, permanent: PermanentId, index: u
         permanent,
         index,
         targets: Vec::new(),
+        payment: Vec::new(),
     })
 }
 
@@ -137,6 +138,7 @@ fn activate(
             permanent,
             index,
             targets,
+            payment: Vec::new(),
         },
         db,
     );
@@ -322,6 +324,7 @@ fn issue_620_ajani_plus_one_refuses_one_creature_named_twice_or_a_third_target()
                 permanent: ajani,
                 index: 0,
                 targets: illegal.clone(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -346,6 +349,7 @@ fn issue_620_ajani_plus_one_advertises_two_optional_slots() {
             permanent: ajani,
             index: 0,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
     );
     assert_eq!(requirements.len(), 2, "two slots for up to two targets");
@@ -394,6 +398,7 @@ fn issue_620_ajani_minus_two_returns_a_cheap_creature_card_from_the_graveyard() 
             permanent: ajani,
             index: 1,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
     );
     assert_eq!(requirements.len(), 1);
@@ -745,6 +750,7 @@ fn issue_620_sarkhan_plus_one_discards_then_draws_and_draws_nothing_from_an_empt
             permanent: sarkhan,
             index: 0,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );
@@ -805,6 +811,7 @@ fn issue_620_sarkhan_plus_one_asks_for_each_colour_and_restricts_the_mana_to_dra
             permanent: sarkhan,
             index: 1,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );
@@ -951,6 +958,7 @@ fn issue_620_vivien_plus_one_offers_a_creature_or_land_from_the_top_four() {
             permanent: vivien,
             index: 0,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );
@@ -1002,6 +1010,7 @@ fn issue_620_vivien_minus_three_destroys_any_of_three_classes_and_nothing_else()
             permanent: vivien,
             index: 1,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
     );
     let candidates = &requirements[0].candidates;

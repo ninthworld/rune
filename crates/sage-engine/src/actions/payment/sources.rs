@@ -143,7 +143,7 @@ fn activation_is_available(
     };
     // CR 302.6 exempts nothing, mana abilities included: a `{T}` cost on a creature that
     // entered this turn is not activatable, so its mana is not mana this seat can make.
-    !tap_cost_is_summoning_sick(state, perm, cost, db) && cost_payable(state, cost, perm)
+    !tap_cost_is_summoning_sick(state, perm, cost, db) && cost_payable(state, db, cost, perm)
 }
 
 /// Every permanent `player` could tap for mana right now, with the options each offers.

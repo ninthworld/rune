@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "functional_id": "ravenous_harpy",
+  "name": "Ravenous Harpy",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Harpy"
+  ],
+  "mana_cost": "{2}{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 1,
+  "toughness": 2,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{B}"
+        },
+        {
+          "kind": "sacrifice",
+          "card_type": "creature",
+          "another": true
+        }
+      ],
+      "effects": [
+        {
+          "kind": "put_counters_on_self",
+          "counter": "plus_one_plus_one",
+          "count": 1
+        },
+        {
+          "kind": "gain_life",
+          "player_ref": "controller",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

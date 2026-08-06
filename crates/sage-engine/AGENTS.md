@@ -34,8 +34,14 @@
 ## The IR is the constraint
 
 Catalog coverage is limited by what the ability IR can *express*, not by authoring
-throughput. Today `Cost` says tapping, mana, and loyalty, so an activation cost paid by
-sacrificing or discarding is unwritable. `TriggerCondition` observes zone changes and attack
+throughput. Today `Cost` says tapping, mana, loyalty, spending the source itself, removing
+counters from it, and the two whose payment the **player picks** — sacrificing one permanent
+they control (filtered by card type, by subtype, and optionally excluding the source) and
+discarding cards. A picked payment rides on the action, in `Action::ActivateAbility`'s
+`payment` list, exactly as a cast's additional cost rides on `Action::CastSpell`'s; mana
+never does, because an activation pays it from the pool. Exiling a card as a cost,
+sacrificing two permanents, and *optional* non-mana costs are all still unwritable.
+`TriggerCondition` observes zone changes and attack
 declarations (its own source's and, through `ObservedPermanent`, another permanent's), a
 draw by its controller, an activation that uses the stack — never a mana ability, which
 uses none — life gain, casting, and step boundaries; its observed-permanent selectors filter

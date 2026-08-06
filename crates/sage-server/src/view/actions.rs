@@ -391,6 +391,13 @@ fn valid_action_view(
         // the card first and the payment second, and take the payment back apart without
         // having sent anything.
         Action::CastSpell { card, .. } => cast_payment_prompts(state, db, *card),
+        // An activation carries the parts of its cost the player *picks* the payment for
+        // (CR 601.2b) — a sacrifice or a discard — on the same select-from-zone slots a
+        // cast poses them on. No pips: an activation's mana comes from the pool, floated by
+        // activating mana abilities as actions in their own right.
+        Action::ActivateAbility {
+            permanent, index, ..
+        } => activation_payment_prompts(state, db, *permanent, *index),
         _ => Vec::new(),
     };
     // One-gesture mana: mark the activation of a mana ability

@@ -102,6 +102,7 @@ fn issue_579_each_push_site_records_its_own_ability_origin() {
             permanent: sparker,
             index: 0,
             targets: vec![Target::Permanent(lurker)],
+            payment: Vec::new(),
         },
         &db,
     );
