@@ -36,6 +36,7 @@ impl GameState {
             battlefield: Vec::new(),
             emblems: Vec::new(),
             graveyard_casting: Vec::new(),
+            ignoring_hexproof: Vec::new(),
             stack: Vec::new(),
             static_effects: Vec::new(),
             next_object_id: 1,

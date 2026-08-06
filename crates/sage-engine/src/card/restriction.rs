@@ -20,10 +20,14 @@ use crate::mana::Color;
 /// Each variant is enforced in **exactly one place**, and the doc comment on each says
 /// where. Splitting one restriction across two gates is how the two halves drift.
 ///
-/// A closed, `Copy`, plain-data enum (ADR 0003), deserialized externally tagged: a
+/// A closed, plain-data enum (ADR 0003), deserialized externally tagged: a
 /// unit variant is its bare `snake_case` name and a parameterized one wraps its
 /// payload, e.g. `["cant_attack", {"cant_be_blocked_by": "black"}]`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+///
+/// `Clone` rather than `Copy`: a subtype is an open-ended string
+/// ([`Self::CantBeBlockedExceptBy`]), exactly as it is everywhere else the engine
+/// names one, so the enum owns one.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CombatRestriction {
     /// This creature can't attack (CR 506.3a) — the restriction an Aura like a
@@ -72,6 +76,24 @@ pub enum CombatRestriction {
     /// the opposite of the colour form, which reads printed colour only because CR 613
     /// layer 5 is not implemented.
     CantBeBlockedByPowerOrLess(i32),
+    /// This creature can't be blocked **except** by creatures of the named subtype
+    /// (CR 509.1b) — `Departed Deckhand can't be blocked except by Spirits.` The one
+    /// evasion in this vocabulary stated as a permission rather than a prohibition,
+    /// which is why it is a separate variant instead of a negation of
+    /// [`Self::CantBeBlockedBy`]: a subtype it does not name is forbidden, and the
+    /// colour form forbids exactly what it names.
+    ///
+    /// Enforced in
+    /// [`blocker_can_block_attacker`](crate::combat::blocker_can_block_attacker), the
+    /// pairwise gate the colour and power forms already live in.
+    ///
+    /// The blocker's subtypes are read through the **computed**
+    /// [`Characteristics`](crate::Characteristics), like the power form and unlike the
+    /// colour one: CR 613 layer 4 (type-changing effects) is not implemented yet, so
+    /// today the computed subtypes *are* the printed ones — but this is the read path
+    /// that becomes correct on its own the day that layer lands, with no call site to
+    /// remember.
+    CantBeBlockedExceptBy(String),
 }
 
 impl CombatRestriction {
@@ -80,14 +102,15 @@ impl CombatRestriction {
     /// A named accessor rather than a `matches!` at each call site, so the two
     /// blocking gates ask the same question of the same variant.
     #[must_use]
-    pub fn forbidden_blocker_color(self) -> Option<Color> {
+    pub fn forbidden_blocker_color(&self) -> Option<Color> {
         match self {
-            CombatRestriction::CantBeBlockedBy(color) => Some(color),
+            CombatRestriction::CantBeBlockedBy(color) => Some(*color),
             CombatRestriction::CantAttack
             | CombatRestriction::CantBlock
             | CombatRestriction::CantBeBlocked
             | CombatRestriction::CantBeBlockedByMoreThanOne
-            | CombatRestriction::CantBeBlockedByPowerOrLess(_) => None,
+            | CombatRestriction::CantBeBlockedByPowerOrLess(_)
+            | CombatRestriction::CantBeBlockedExceptBy(_) => None,
         }
     }
 
@@ -96,14 +119,34 @@ impl CombatRestriction {
     /// The numeric counterpart of [`Self::forbidden_blocker_color`], and a named
     /// accessor for the same reason: one question, asked in one place.
     #[must_use]
-    pub fn forbidden_blocker_power(self) -> Option<i32> {
+    pub fn forbidden_blocker_power(&self) -> Option<i32> {
         match self {
-            CombatRestriction::CantBeBlockedByPowerOrLess(power) => Some(power),
+            CombatRestriction::CantBeBlockedByPowerOrLess(power) => Some(*power),
             CombatRestriction::CantAttack
             | CombatRestriction::CantBlock
             | CombatRestriction::CantBeBlocked
             | CombatRestriction::CantBeBlockedBy(_)
-            | CombatRestriction::CantBeBlockedByMoreThanOne => None,
+            | CombatRestriction::CantBeBlockedByMoreThanOne
+            | CombatRestriction::CantBeBlockedExceptBy(_) => None,
+        }
+    }
+
+    /// The subtype a blocker must have for this restriction to let it through, if this
+    /// restriction names one.
+    ///
+    /// The third named accessor beside [`Self::forbidden_blocker_color`] and
+    /// [`Self::forbidden_blocker_power`], and the one whose sense is inverted: what it
+    /// returns is what a blocker must **be**, not what it must not be.
+    #[must_use]
+    pub fn required_blocker_subtype(&self) -> Option<&str> {
+        match self {
+            CombatRestriction::CantBeBlockedExceptBy(subtype) => Some(subtype),
+            CombatRestriction::CantAttack
+            | CombatRestriction::CantBlock
+            | CombatRestriction::CantBeBlocked
+            | CombatRestriction::CantBeBlockedBy(_)
+            | CombatRestriction::CantBeBlockedByMoreThanOne
+            | CombatRestriction::CantBeBlockedByPowerOrLess(_) => None,
         }
     }
 }
@@ -122,7 +165,8 @@ mod tests {
         let json = r#"[{"schema_version":1,"functional_id":"every_restriction",
             "name":"Every Restriction","types":["creature"],"mana_cost":"","power":1,"toughness":1,
             "restrictions":["cant_attack","cant_block","cant_be_blocked",
-                            {"cant_be_blocked_by":"black"},"cant_be_blocked_by_more_than_one"]}]"#;
+                            {"cant_be_blocked_by":"black"},"cant_be_blocked_by_more_than_one",
+                            {"cant_be_blocked_except_by":"Spirit"}]}]"#;
         let db = crate::card::CardDatabase::from_json(json).unwrap();
         let card = crate::card::tests::card_named(&db, "every_restriction");
         assert_eq!(
@@ -133,6 +177,7 @@ mod tests {
                 CombatRestriction::CantBeBlocked,
                 CombatRestriction::CantBeBlockedBy(Color::Black),
                 CombatRestriction::CantBeBlockedByMoreThanOne,
+                CombatRestriction::CantBeBlockedExceptBy("Spirit".to_string()),
             ]
         );
     }
@@ -148,8 +193,28 @@ mod tests {
             CombatRestriction::CantBlock,
             CombatRestriction::CantBeBlocked,
             CombatRestriction::CantBeBlockedByMoreThanOne,
+            CombatRestriction::CantBeBlockedExceptBy("Spirit".to_string()),
         ] {
             assert_eq!(other.forbidden_blocker_color(), None);
+        }
+    }
+
+    #[test]
+    fn issue_742_only_the_subtype_restriction_names_a_subtype() {
+        assert_eq!(
+            CombatRestriction::CantBeBlockedExceptBy("Spirit".to_string())
+                .required_blocker_subtype(),
+            Some("Spirit")
+        );
+        for other in [
+            CombatRestriction::CantAttack,
+            CombatRestriction::CantBlock,
+            CombatRestriction::CantBeBlocked,
+            CombatRestriction::CantBeBlockedBy(Color::Black),
+            CombatRestriction::CantBeBlockedByMoreThanOne,
+            CombatRestriction::CantBeBlockedByPowerOrLess(2),
+        ] {
+            assert_eq!(other.required_blocker_subtype(), None);
         }
     }
 }

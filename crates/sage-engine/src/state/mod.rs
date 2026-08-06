@@ -25,8 +25,8 @@ mod zone;
 
 pub use types::{
     CommanderDamage, CounterKind, DamageTarget, Duration, EffectAffects, Emblem, GameEvent,
-    GameLogEntry, GameResult, GraveyardCasting, LoggedIdentity, LoggedPermanent, Modification,
-    Permanent, StaticEffect,
+    GameLogEntry, GameResult, GraveyardCasting, IgnoringHexproof, LoggedIdentity, LoggedPermanent,
+    Modification, Permanent, StaticEffect,
 };
 
 use crate::id::PlayerId;
@@ -79,6 +79,11 @@ pub struct GameState {
     /// [`GraveyardCasting`]. Empty in almost every state, and cleared at the turn
     /// boundary.
     pub graveyard_casting: Vec<GraveyardCasting>,
+    /// Permissions to aim spells and abilities as though hexproof were not there,
+    /// granted this turn — see [`IgnoringHexproof`]. The same per-player, per-turn
+    /// shape as [`Self::graveyard_casting`], empty in almost every state, and cleared
+    /// at the same turn boundary.
+    pub ignoring_hexproof: Vec<IgnoringHexproof>,
     /// The stack of spells and abilities, bottom first (the last element is the
     /// top and resolves first). Mana abilities never appear here.
     pub stack: Vec<StackObject>,

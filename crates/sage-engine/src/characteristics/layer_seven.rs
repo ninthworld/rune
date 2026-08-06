@@ -75,7 +75,7 @@ pub(super) fn ordered_pt_modifiers(
         .static_effects
         .iter()
         .filter(|effect| affects(state, effect, perm, is_creature))
-        .copied()
+        .cloned()
         .collect();
     // CR 303.4 / 301.5 / 613.7c: each attachment on `perm` contributes its static P/T
     // modifier, timestamped by the attachment's own object id (CR 613.7).

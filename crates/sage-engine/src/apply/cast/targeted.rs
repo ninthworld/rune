@@ -214,7 +214,7 @@ pub(crate) fn apply_targeted_effect(
                     state.static_effects.push(StaticEffect {
                         source,
                         affects: EffectAffects::SpecificPermanent(id),
-                        modification: Modification::GrantRestriction(*restriction),
+                        modification: Modification::GrantRestriction(restriction.clone()),
                         duration: Duration::UntilEndOfTurn,
                     });
                 }
@@ -396,6 +396,7 @@ pub(crate) fn apply_targeted_effect(
         | Effect::DrawCard { .. }
         | Effect::CreateEmblem { .. }
         | Effect::AllowCastingFromGraveyard { .. }
+        | Effect::IgnoreHexproof { .. }
         | Effect::Conditional { .. }
         | Effect::PumpAll { .. }
         | Effect::GrantKeywordAll { .. }

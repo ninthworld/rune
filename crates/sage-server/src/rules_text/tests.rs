@@ -1182,3 +1182,27 @@ fn the_watched_draw_attack_and_activation_each_have_words() {
         "Whenever a player activates a nonmana ability, you gain 1 life."
     );
 }
+
+#[test]
+fn issue_742_a_subtype_evasion_reads_as_a_permission() {
+    // The one restriction stated backwards: what it names is what may block, so the
+    // sentence says "except by" rather than listing what may not. No bundled card
+    // prints it yet, so the predicate is asked directly — the same string every subject
+    // position composes around.
+    assert_eq!(
+        restriction_predicate(&CombatRestriction::CantBeBlockedExceptBy(
+            "Spirit".to_string()
+        )),
+        "can't be blocked except by Spirits"
+    );
+}
+
+#[test]
+fn issue_742_detection_tower_states_its_mana_and_its_permission() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "detection_tower"),
+        "{T}: Add {C}.\n{1}, {T}: Spells and abilities you control may target as though \
+         hexproof were not there this turn."
+    );
+}

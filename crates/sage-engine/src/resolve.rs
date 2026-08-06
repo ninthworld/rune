@@ -46,6 +46,24 @@ fn has_type(perm: &Permanent, card_type: CardType, db: &CardDatabase) -> bool {
         .is_some_and(|face| face.has_type(card_type))
 }
 
+/// Whether a permission granted **this turn** lets `player` aim spells and abilities as
+/// though hexproof were not there ([`Effect::IgnoreHexproof`](crate::Effect)).
+///
+/// The turn comparison is belt-and-braces for the same reason the graveyard-casting one
+/// is: the turn boundary clears the list, so an entry from an earlier turn should never
+/// be here — checking anyway means the permission cannot outlive its turn even if some
+/// future path forgets to clear it.
+///
+/// Read from inside [`target_is_legal`], which is the *only* place hexproof is enforced,
+/// so announcement and the CR 608.2b re-check consult it by construction rather than by
+/// each remembering to.
+fn ignores_hexproof(state: &GameState, player: PlayerId) -> bool {
+    state
+        .ignoring_hexproof
+        .iter()
+        .any(|permission| permission.player == player && permission.turn == state.turn)
+}
+
 /// Whether `target` is a legal choice for `spec` against the *current* `state`
 /// (CR 115), for an object controlled by `controller`.
 ///
@@ -80,9 +98,11 @@ pub(crate) fn target_is_legal(
 ) -> bool {
     // CR 702.11b: a hexproof permanent is off limits to its controller's opponents and
     // to nobody else. Checked before the spec so every present and future permanent
-    // spec inherits it.
+    // spec inherits it — and skipped outright while `controller` holds a permission to
+    // aim as though hexproof were not there, which is the one thing that turns it off.
     if let Target::Permanent(id) = target {
-        if permanent_has_keyword(state, id, Keyword::Hexproof, db)
+        if !ignores_hexproof(state, controller)
+            && permanent_has_keyword(state, id, Keyword::Hexproof, db)
             && state.battlefield.iter().any(|p| {
                 p.id == id && crate::characteristics::controller_of(state, p) != controller
             })

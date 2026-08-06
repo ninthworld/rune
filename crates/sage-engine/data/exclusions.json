@@ -104,8 +104,8 @@
     "blocker": "an optional effect's cost is a mana payment; sacrificing, discarding, or exiling to pay is unwritable"
   },
   {
-    "name": "Protection, and evasion that names a subtype or a land type",
-    "blocker": "a blocking restriction names a colour, a count, or a power; there is no protection layer"
+    "name": "Protection",
+    "blocker": "there is no protection layer: nothing stops a spell, a block, an aura, or damage by a quality the way CR 702.16 does"
   },
   {
     "name": "Replacement effects",

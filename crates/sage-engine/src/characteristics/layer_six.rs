@@ -86,14 +86,14 @@ pub(super) fn layer_six_modifications(
             .static_effects
             .iter()
             .filter(|effect| affects(state, effect, perm, is_creature))
-            .map(|effect| effect.modification),
+            .map(|effect| effect.modification.clone()),
     );
     // CR 604.3 / 613.1f: a printed static ability in force ("Creatures you control have
     // vigilance"), derived from its source's battlefield presence alone.
     modifications.extend(
         static_ability_effects(state, perm, is_creature, db)
             .into_iter()
-            .map(|effect| effect.modification),
+            .map(|effect| effect.modification.clone()),
     );
     // CR 303.4 / 301.5 / 613.1f: each attachment on `perm` — an Aura or an Equipment —
     // grants its listed keywords and imposes its listed restrictions while attached. One
@@ -119,7 +119,7 @@ pub(super) fn layer_six_modifications(
                 grant
                     .restrictions
                     .iter()
-                    .copied()
+                    .cloned()
                     .map(Modification::GrantRestriction),
             );
         }

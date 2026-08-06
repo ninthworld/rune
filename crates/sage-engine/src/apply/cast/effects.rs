@@ -79,6 +79,18 @@ pub(crate) fn apply_effect(
                 });
             }
         }
+        // The same permission shape at the targeting gate instead of the casting one:
+        // recorded per seat with the turn it was granted on, and idempotent for the same
+        // reason — two identical permissions permit the same aims.
+        Effect::IgnoreHexproof { player_ref } => {
+            let turn = state.turn;
+            for seat in non_targeting_subjects(state, *player_ref, controller) {
+                state.ignoring_hexproof.push(crate::state::IgnoringHexproof {
+                    player: seat,
+                    turn,
+                });
+            }
+        }
         Effect::DrawCard { count } => {
             // Routes each draw through `Player::draw`, so a card-draw effect that
             // empties the library also flags the decking loss (CR 704.5c). Only the
@@ -209,7 +221,7 @@ pub(crate) fn apply_effect(
                 state,
                 affects,
                 controller,
-                Modification::GrantRestriction(*restriction),
+                Modification::GrantRestriction(restriction.clone()),
                 db,
             );
         }
@@ -243,7 +255,7 @@ pub(crate) fn apply_effect(
                     state.static_effects.push(StaticEffect {
                         source: stamp,
                         affects: EffectAffects::SpecificPermanent(id),
-                        modification: Modification::GrantRestriction(*restriction),
+                        modification: Modification::GrantRestriction(restriction.clone()),
                         duration: Duration::UntilEndOfTurn,
                     });
                 }
@@ -349,7 +361,7 @@ fn apply_mass_modification(
         state.static_effects.push(StaticEffect {
             source,
             affects: EffectAffects::SpecificPermanent(id),
-            modification,
+            modification: modification.clone(),
             duration: Duration::UntilEndOfTurn,
         });
     }

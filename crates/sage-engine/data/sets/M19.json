@@ -810,6 +810,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "detection_tower",
+    "collector_number": "249",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "forsaken_sanctuary",
     "collector_number": "250",
     "rarity": "common"

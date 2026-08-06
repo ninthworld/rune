@@ -816,6 +816,27 @@ pub enum Effect {
         #[serde(default)]
         filter: CardFilter,
     },
+    /// Let the referenced player aim spells and abilities **as though hexproof were not
+    /// there** for the rest of the turn (`Creatures your opponents control with hexproof
+    /// can be the targets of spells and abilities you control as though they didn't have
+    /// hexproof.`).
+    ///
+    /// A permission, exactly like [`Self::AllowCastingFromGraveyard`], and recorded the
+    /// same way: per player, with the turn it was granted on
+    /// ([`IgnoringHexproof`](crate::IgnoringHexproof)), dropped at the turn boundary.
+    ///
+    /// It names no permanent and no class of permanent because hexproof is already
+    /// relative to who is aiming (CR 702.11b): the permission's holder is the only
+    /// player it can change anything for, and their opponents' hexproof creatures are
+    /// the only permanents it can change anything about. It is consulted in the single
+    /// predicate that enforces hexproof, which both the announcement gate and the
+    /// CR 608.2b resolution re-check run.
+    IgnoreHexproof {
+        /// Whose spells and abilities ignore hexproof. Defaults to the effect's
+        /// controller.
+        #[serde(default = "PlayerRef::controller")]
+        player_ref: PlayerRef,
+    },
 }
 
 impl Effect {
@@ -910,6 +931,9 @@ impl Effect {
             // its player without targeting.
             | Effect::CreateEmblem { .. }
             | Effect::AllowCastingFromGraveyard { .. }
+            // A hexproof-ignoring permission names its player the same way, and for the
+            // same reason: it is a fact about a seat, not about an object.
+            | Effect::IgnoreHexproof { .. }
             // A choice over the controller's own library names no target: the library
             // is theirs by definition (CR 115.1).
             | Effect::Scry { .. }

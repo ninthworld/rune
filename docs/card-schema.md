@@ -175,6 +175,7 @@ parameter. A unit restriction is its bare name and a parameterized one wraps its
 | `cant_be_blocked_by` | no creature of the named colour may block it | the pairwise block check |
 | `cant_be_blocked_by_more_than_one` | at most one blocker may be assigned to it | the whole-selection block check |
 | `cant_be_blocked_by_power_or_less` | no creature of at most the named power may block it | the pairwise block check |
+| `cant_be_blocked_except_by` | **only** a creature of the named subtype may block it | the pairwise block check |
 
 Printed restrictions belong only on creatures; the loader rejects them elsewhere. They are
 read through the computed characteristics at CR 613 layer 6, exactly as keywords are, so a
@@ -196,6 +197,20 @@ test is deliberate rather than an inconsistency: the layers that change power *a
 implemented, so a blocker pumped past the bound has really escaped it and one shrunk into
 it has really fallen in. Printed colour stands in for current colour only because nothing
 in the engine can change a colour yet.
+
+`cant_be_blocked_except_by` names a **subtype** and is the one restriction stated as a
+permission — everything the subtype does not name is forbidden, which is the exact
+inverse of what `cant_be_blocked_by` forbids, and why it is its own restriction rather
+than a negated colour form:
+
+```json
+"restrictions": [{"cant_be_blocked_except_by": "Spirit"}]
+```
+
+Its test reads the blocker's **computed** subtypes, following the power test rather than
+the colour one. CR 613 layer 4 (type-changing effects) is not implemented, so today those
+are the printed subtypes — but the read path is already the one that becomes correct on
+its own the day that layer lands, with no call site left to remember.
 
 Attack and block *requirements* ("attacks each combat if able") are not modeled: a
 declaration can be restricted but never required.
@@ -647,6 +662,33 @@ hand, and are cast through the same action, the same stack object, and the same 
 hand cast uses. The permission is recorded with the turn it was granted on and dropped at the
 turn boundary, so "this turn" is a comparison of turn numbers rather than a countdown that
 could drift.
+
+### Ignoring hexproof
+
+`ignore_hexproof` grants a player permission to aim spells and abilities **as though hexproof
+were not there**, for the rest of the turn:
+
+```json
+{ "kind": "ignore_hexproof", "player_ref": "controller" }
+```
+
+It is the same permission shape as `allow_casting_from_graveyard` — per player, recorded with
+the turn it was granted on, dropped at the same turn boundary — applied at the targeting gate
+instead of the casting one.
+
+It names **no permanent and no class of permanent**, and that is the whole of why one field is
+enough. Hexproof is already relative to who is aiming (CR 702.11b): a permanent's own
+controller is never stopped by it, so the only player a permission can change anything for is
+its holder, and the only permanents it can change anything about are their opponents' hexproof
+ones. "Creatures your opponents control with hexproof can be targeted by spells and abilities
+you control as though they didn't have hexproof" and "this player is not stopped by hexproof"
+describe the same set of legal aims.
+
+Hexproof is enforced in exactly one predicate, and that predicate is what both the announcement
+gate and the CR 608.2b resolution re-check run. So the permission is consulted in one place and
+honoured in both by construction: a creature targeted while the permission is in force stays a
+legal target when the spell resolves, and a spell aimed on an earlier turn does not become legal
+because a permission was granted on a later one.
 
 ### Effects on the ability's own source
 

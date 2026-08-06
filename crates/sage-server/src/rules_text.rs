@@ -61,7 +61,7 @@ pub(crate) fn rules_text(data: &CardData, scripted: Option<&str>) -> String {
     // A printed combat restriction is not a keyword, so it gets its own sentence about
     // the card rather than a word in the keyword line: "Bristling Boar can't be blocked
     // by more than one creature."
-    for &restriction in &data.restrictions {
+    for restriction in &data.restrictions {
         lines.push(finish(&format!(
             "{source} {}",
             restriction_predicate(restriction)
@@ -112,7 +112,7 @@ pub(crate) fn token_rules_text(token: &TokenData) -> String {
         let words: Vec<&str> = token.keywords.iter().map(|&kw| keyword_word(kw)).collect();
         lines.push(sentence_case(&words.join(", ")));
     }
-    for &restriction in &token.restrictions {
+    for restriction in &token.restrictions {
         lines.push(finish(&format!(
             "{source} {}",
             restriction_predicate(restriction)
@@ -498,7 +498,7 @@ fn attachment_text(data: &CardData, attachment: &Attachment) -> Vec<String> {
         let clauses: Vec<String> = attachment
             .restrictions
             .iter()
-            .map(|&r| restriction_predicate(r))
+            .map(restriction_predicate)
             .collect();
         lines.push(sentence_case(&finish(&format!(
             "{host} {}",

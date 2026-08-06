@@ -119,7 +119,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         } => format!(
             "{} {} this turn",
             target_noun(*target),
-            restriction_predicate(*restriction)
+            restriction_predicate(restriction)
         ),
         Effect::RestrictAll {
             affects,
@@ -127,7 +127,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         } => format!(
             "{} {} this turn",
             mass_subject(affects),
-            restriction_predicate(*restriction)
+            restriction_predicate(restriction)
         ),
         // A self-referential effect names the source by name, so the sentence reads
         // the way the card does rather than as an anonymous "this".
@@ -135,7 +135,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             format!("{source} gets {power:+}/{toughness:+} until end of turn")
         }
         Effect::RestrictSelf { restriction } => {
-            format!("{source} {} this turn", restriction_predicate(*restriction))
+            format!("{source} {} this turn", restriction_predicate(restriction))
         }
         Effect::PutCountersOnSelf { counter, count } => {
             format!("put {} on {source}", counters(*counter, *count))
@@ -379,6 +379,11 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             subject_pronoun(*player_ref),
             filter_noun(filter, true),
             possessive_pronoun(*player_ref),
+        ),
+        Effect::IgnoreHexproof { player_ref } => format!(
+            "spells and abilities {} control may target as though hexproof were not there \
+             this turn",
+            subject_pronoun(*player_ref),
         ),
     }
 }
