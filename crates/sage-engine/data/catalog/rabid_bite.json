@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "functional_id": "rabid_bite",
+  "name": "Rabid Bite",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{1}{G}",
+  "colors": [
+    "green"
+  ],
+  "spell_effects": [
+    {
+      "kind": "fight",
+      "dealer": "any_creature_you_control",
+      "dealt_to": "any_creature_an_opponent_controls"
+    }
+  ]
+}

@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (211)
+## Supported cards (212)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -154,6 +154,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `prodigious_growth` | Prodigious Growth | functional definition |
 | `psychic_corrosion` | Psychic Corrosion | functional definition |
 | `psychic_symbiont` | Psychic Symbiont | functional definition |
+| `rabid_bite` | Rabid Bite | functional definition |
 | `reassembling_skeleton` | Reassembling Skeleton | functional definition |
 | `reclamation_sage` | Reclamation Sage | functional definition |
 | `recollect` | Recollect | functional definition |
@@ -225,7 +226,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `wall_of_vines` | Wall of Vines | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (34)
+## Excluded (33)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
@@ -247,7 +248,6 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Effects whose amount is derived from a source outside the four the IR names | an amount may be a count of permanents (feeding power/toughness, life, damage, a token count, and an attachment's static grant), the life gained this turn, a count of what this resolution milled, or the greatest mana value among a class of permanents — the last three feeding power/toughness and a draw; nothing else may — not cards in a zone, a life total, one named object's mana value, another object's power, half of a total, a count of what this resolution sacrificed, or the permanent an effect just put onto the battlefield |
 | Emblems with an activated ability | an emblem carries static and triggered abilities only; nothing offers a way to activate one |
 | Equipment that grants an ability or a type, and cards that ask whether a creature is equipped | an attachment grants power/toughness, keywords, and combat restrictions at CR 613 layers 6 and 7c; it adds no triggered ability and no type, and nothing asks whether a permanent is attached |
-| Fight, and other effects taking two differently-specified targets | one effect's target slots all share a single spec, so two differently-specified slots are unwritable |
 | Gaining control of a permanent for longer than a turn, and exchanging control | a control change is a targeted layer-2 effect the cleanup step ends; no duration outlives the turn and nothing swaps two permanents' controllers |
 | Kicker and other optional additional costs | no optional cost declared on announcement |
 | Losing abilities on a permanent other than the effect's own source | a layer-6 removal names its own source, loses named keywords or all abilities until end of turn, and reaches no target and no class |

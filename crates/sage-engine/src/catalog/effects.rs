@@ -396,14 +396,22 @@ fn is_optional(effect: &serde_json::Value) -> bool {
     effect.get("kind").and_then(serde_json::Value::as_str) == Some("may")
 }
 
+/// The authored keys that carry a target spec — the JSON spelling of one target slot.
+///
+/// Nearly every targeting effect names its one slot `target`. A `fight` names two, and
+/// names them separately *because* they do not share a spec (CR 701.12). Keeping the set
+/// as a list is what makes counting slots one rule rather than one rule plus a special
+/// case: the next effect with slots of its own adds a key here.
+const TARGET_SPEC_FIELDS: [&str; 3] = ["target", "dealer", "dealt_to"];
+
 /// How many target groups `effect` declares — the JSON mirror of
-/// [`Effect::target_group`](crate::Effect::target_group), which every announcement path
+/// [`Effect::target_groups`](crate::Effect::target_groups), which every announcement path
 /// reads.
 ///
-/// One for an effect that names a target of its own; for a `may`, the sum over what it
-/// wraps, because that is precisely what the wrapper forwards. A `conditional` declares
-/// none, however its branches are written — [`conditional_wraps_a_target`] is what
-/// rejects a branch that tries.
+/// One per target-spec field the effect names, plus one for a `player_ref` naming a
+/// targeted seat; for a `may`, the sum over what it wraps, because that is precisely what
+/// the wrapper forwards. A `conditional` declares none, however its branches are written
+/// — [`conditional_wraps_a_target`] is what rejects a branch that tries.
 fn declared_target_groups(effect: &serde_json::Value) -> usize {
     if is_optional(effect) {
         return effect
@@ -418,37 +426,42 @@ fn declared_target_groups(effect: &serde_json::Value) -> usize {
     if effect.get("kind").and_then(serde_json::Value::as_str) == Some("conditional") {
         return 0;
     }
-    usize::from(names_a_target(effect))
+    target_spec_fields(effect) + usize::from(names_a_targeted_seat(effect))
+}
+
+/// How many of `effect`'s own fields carry a target spec ([`TARGET_SPEC_FIELDS`]).
+fn target_spec_fields(effect: &serde_json::Value) -> usize {
+    TARGET_SPEC_FIELDS
+        .iter()
+        .filter(|key| effect.get(*key).is_some())
+        .count()
+}
+
+/// Whether `effect` names a **targeted seat** through its `player_ref` — the spelling a
+/// life-, mill-, or discard-shaped effect uses instead of a target spec.
+fn names_a_targeted_seat(effect: &serde_json::Value) -> bool {
+    matches!(
+        effect.get("player_ref").and_then(serde_json::Value::as_str),
+        Some("target_player" | "target_opponent")
+    )
 }
 
 /// Whether `effect` itself names a target, in either of the two authored spellings: a
-/// `target` spec, or a `player_ref` naming a targeted seat.
+/// target spec field, or a `player_ref` naming a targeted seat.
 fn names_a_target(effect: &serde_json::Value) -> bool {
-    effect.get("target").is_some()
-        || matches!(
-            effect.get("player_ref").and_then(serde_json::Value::as_str),
-            Some("target_player" | "target_opponent")
-        )
+    target_spec_fields(effect) > 0 || names_a_targeted_seat(effect)
 }
 
 /// Whether `effect`, or anything nested inside it, chooses a target (CR 115.1).
 ///
-/// Two authored spellings say "target", and both count: a `target` spec on the effect
-/// itself, and a `player_ref` naming a targeted seat. Kept here rather than in the typed
-/// IR because `build.rs` validates JSON before the IR exists (ADR 0008 §5).
+/// Two authored spellings say "target", and both count: a target spec field on the
+/// effect itself, and a `player_ref` naming a targeted seat. Kept here rather than in the
+/// typed IR because `build.rs` validates JSON before the IR exists (ADR 0008 §5).
 pub(super) fn effect_chooses_a_target(effect: &serde_json::Value) -> bool {
-    if effect.get("target").is_some() {
-        return true;
-    }
-    if matches!(
-        effect.get("player_ref").and_then(serde_json::Value::as_str),
-        Some("target_player" | "target_opponent")
-    ) {
-        return true;
-    }
-    nested_effects(effect)
-        .into_iter()
-        .any(effect_chooses_a_target)
+    names_a_target(effect)
+        || nested_effects(effect)
+            .into_iter()
+            .any(effect_chooses_a_target)
 }
 
 /// Whether any ability of `object` watches "a spell of the **chosen color**" — the one

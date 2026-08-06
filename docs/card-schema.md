@@ -438,6 +438,15 @@ characteristics where they can, so `any_creature_with_flying` accepts a creature
 An effect fills exactly one target slot by default, and a card's slots are consumed in the
 order its effects are written.
 
+**Two differently-specified slots.** An effect's slots are an ordered list, so they need
+not all name the same class. `fight` is the effect that uses it: its two slots are written
+as two fields, and each carries its own spec (see [Fighting](#fighting-cr-70112)). Two
+effects would not do — they would be aimed independently, and the point of such a card is
+that the two creatures it names are related to each other. Every rule stated above in terms
+of *groups* counts both: an announcement fills both slots or is illegal, a `may` may not
+wrap such an effect (one wrapper cannot forward two slots), and a conditional branch may
+not contain one.
+
 **Up to N targets.** One effect — `put_counters` — may name more than one, with a `targets`
 count:
 
@@ -498,8 +507,37 @@ that arrived after the spell was cast is included and one that has died is not.
 Damage is not life loss. Damage to a creature is *marked* on it and drives the
 lethal-damage state-based action (CR 704.5g); damage to a player is life loss
 (CR 120.3a). A card that says "loses life" is authored with `lose_life`, and one that
-says "deals damage" cannot be approximated by it. Damage prevention and deathtouch on
-non-combat damage are out of scope.
+says "deals damage" cannot be approximated by it. Damage prevention is out of scope.
+Deathtouch and lifelink apply to damage whose **source is a permanent** — combat damage,
+and `fight` below; a spell's damage has no creature behind it that could carry either.
+
+### Fighting (CR 701.12)
+
+`fight` is the one effect whose target slots do not share a spec. It names two creatures in
+two fields, in the order the printed sentence names them:
+
+```json
+{ "kind": "fight", "dealer": "any_creature_you_control",
+  "dealt_to": "any_creature_an_opponent_controls" }
+{ "kind": "fight", "dealer": "any_creature_you_control",
+  "dealt_to": "any_creature_an_opponent_controls", "mutual": true }
+```
+
+- `dealer` is the first slot: the creature that deals damage equal to its power.
+- `dealt_to` is the second slot: the creature that damage is dealt to.
+- `mutual` (default `false`) makes the second creature deal damage equal to *its* power
+  back — the printed word **fights** (CR 701.12a). Left off, it is the one-sided form a
+  card prints as "deals damage equal to its power to".
+
+There is no amount field, and there is no amount vocabulary behind it: CR 701.12a *defines*
+the verb as each creature dealing damage equal to its power, so the power read is part of
+the verb. Both powers are read before either damage is dealt, so the damage is simultaneous
+and a creature that dies to it still dealt its own power.
+
+If **either** creature is an illegal target as the effect is reached, neither deals nor is
+dealt damage (CR 701.12c) — stricter than the do-as-much-as-possible default, and the rule
+for every effect whose slots do not share a spec: half of such an effect is not a smaller
+version of it. If *every* target is illegal the spell never resolves at all (CR 608.2b).
 
 ### Activation costs
 

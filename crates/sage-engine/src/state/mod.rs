@@ -182,8 +182,8 @@ pub struct GameState {
     /// Empty in every state that is not mid-resolution, so a game that never resolves a
     /// choice-posing effect is byte-for-byte unchanged.
     pub pending_choices: Vec<crate::choice::PendingChoice>,
-    /// Permanents dealt combat damage this combat by a source with deathtouch
-    /// (CR 702.2b), pending the CR 704.5h state-based action that destroys them.
+    /// Permanents dealt damage by a source with deathtouch (CR 702.2b), pending the
+    /// CR 704.5h state-based action that destroys them.
     ///
     /// **Raw stored input, not a derivation** (ADR 0005 §1): the combat-damage
     /// step records a struck creature here (see `apply.rs :: deal_combat_damage`)
@@ -191,7 +191,11 @@ pub struct GameState {
     /// snapshot cannot recover — the same reasoning as [`Permanent::damage`] and
     /// [`Player::attempted_draw_from_empty`](crate::player::Player::attempted_draw_from_empty). The SBA loop
     /// ([`crate::sba::run_state_based_actions`]) consumes (drains) it, so it is
-    /// empty between combats; non-combat deathtouch is not modeled yet.
+    /// empty between resolutions.
+    ///
+    /// Combat is not the only writer: a fight's damage has a *permanent* as its source
+    /// (CR 701.12), so it carries that creature's deathtouch through this same list.
+    /// Damage from a spell has no source that could.
     pub deathtouch_struck: Vec<crate::id::PermanentId>,
     /// Cumulative **combat** damage each commander has dealt each player over the
     /// game (CR 903.10a), one entry per `(commander designation, damaged player)`

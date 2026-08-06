@@ -503,7 +503,7 @@ fn offer_activations(
                 // of anything to aim at.
                 let groups: Vec<crate::ability::TargetGroup> = match ability {
                     Ability::Activated { effects, .. } => {
-                        effects.iter().filter_map(Effect::target_group).collect()
+                        effects.iter().flat_map(Effect::target_groups).collect()
                     }
                     _ => Vec::new(),
                 };
@@ -552,7 +552,7 @@ fn offer_graveyard_activations(
                 continue;
             };
             let groups: Vec<crate::ability::TargetGroup> =
-                effects.iter().filter_map(Effect::target_group).collect();
+                effects.iter().flat_map(Effect::target_groups).collect();
             if graveyard_cost_payable(state, seat, cost)
                 && groups_are_fillable(&groups, state, seat, db)
             {

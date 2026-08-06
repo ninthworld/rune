@@ -55,6 +55,25 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         }
         Effect::Destroy { target } => format!("destroy {}", target_noun(*target)),
         Effect::Exile { target } => format!("exile {}", target_noun(*target)),
+        // The one clause with two target nouns in it (CR 701.12). The mutual form is the
+        // printed verb *fights*, which says the power reading on its own; the one-sided
+        // form has to spell it out, and "its" refers back to the first noun the sentence
+        // named — which is why the two targets are one clause rather than two.
+        Effect::Fight {
+            dealer,
+            dealt_to,
+            mutual,
+        } => {
+            if *mutual {
+                format!("{} fights {}", target_noun(*dealer), target_noun(*dealt_to))
+            } else {
+                format!(
+                    "{} deals damage equal to its power to {}",
+                    target_noun(*dealer),
+                    target_noun(*dealt_to)
+                )
+            }
+        }
         Effect::GainLife { player_ref, amount } => {
             format!("{} {amount} life", conjugate(*player_ref, "gain"))
         }

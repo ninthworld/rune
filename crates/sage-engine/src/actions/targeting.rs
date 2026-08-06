@@ -50,9 +50,10 @@ pub fn target_requirements(
         .collect()
 }
 
-/// The ordered [`TargetGroup`]s `action` must be given targets for — one per
-/// targeting effect the action declares, in resolution order. Empty for an action
-/// with no targeting effects (or one the state cannot resolve).
+/// The ordered [`TargetGroup`]s `action` must be given targets for — every group its
+/// effects declare, in resolution order, which for nearly every targeting effect is one
+/// apiece and for a fight is two. Empty for an action with no targeting effects (or one
+/// the state cannot resolve).
 ///
 /// An [`Action::ActivateAbility`] reads its activated ability's effects; an
 /// [`Action::CastSpell`] reads the cast card's cast target groups
@@ -75,7 +76,7 @@ pub(crate) fn action_target_groups(
             let Some(Ability::Activated { effects, .. }) = abilities.get(*index) else {
                 return Vec::new();
             };
-            effects.iter().filter_map(Effect::target_group).collect()
+            effects.iter().flat_map(Effect::target_groups).collect()
         }
         // The graveyard counterpart, read off the card rather than off a permanent that
         // does not exist (CR 113.6). The same `graveyard_ability` lookup the offer and
@@ -84,7 +85,7 @@ pub(crate) fn action_target_groups(
         Action::ActivateAbilityFromGraveyard { card, index, .. } => {
             match super::utilities::graveyard_ability(state, db, state.priority, *card, *index) {
                 Some(Ability::Activated { effects, .. }) => {
-                    effects.iter().filter_map(Effect::target_group).collect()
+                    effects.iter().flat_map(Effect::target_groups).collect()
                 }
                 _ => Vec::new(),
             }
@@ -102,7 +103,7 @@ pub(crate) fn action_target_groups(
             .find(|o| o.id == *ability)
             .map(|o| match &o.kind {
                 crate::stack::StackObjectKind::Ability { effects, .. } => {
-                    effects.iter().filter_map(Effect::target_group).collect()
+                    effects.iter().flat_map(Effect::target_groups).collect()
                 }
                 crate::stack::StackObjectKind::Spell { .. } => Vec::new(),
             })

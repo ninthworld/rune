@@ -811,3 +811,60 @@ fn issue_723_a_triggered_ability_functions_from_a_graveyard_by_the_same_derivati
         &serde_json::from_str::<Ability>(watcher).unwrap()
     ));
 }
+
+#[test]
+fn issue_737_a_fight_declares_two_groups_of_its_own_specs() {
+    // The target-spec seam: an effect's slots are an ordered list, so the two a fight
+    // declares carry *different* specs and the slot order is the order the printed
+    // sentence names them (CR 701.12). `mutual` defaults off — the one-sided form is
+    // what a card prints when it does not print the word "fights".
+    let json = r#"{"kind":"fight","dealer":"any_creature_you_control",
+        "dealt_to":"any_creature_an_opponent_controls"}"#;
+    let effect: Effect = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        effect,
+        Effect::Fight {
+            dealer: TargetSpec::AnyCreatureYouControl,
+            dealt_to: TargetSpec::AnyCreatureAnOpponentControls,
+            mutual: false,
+        }
+    );
+    assert_eq!(
+        effect
+            .target_groups()
+            .iter()
+            .map(|group| (group.spec, group.min, group.max))
+            .collect::<Vec<_>>(),
+        vec![
+            (TargetSpec::AnyCreatureYouControl, 1, 1),
+            (TargetSpec::AnyCreatureAnOpponentControls, 1, 1),
+        ],
+        "two required slots, each with its own class"
+    );
+    // A two-slot effect has no single spec, and the single-group convenience says so
+    // rather than answering with the first of two.
+    assert_eq!(effect.target_spec(), None);
+    assert_eq!(effect.target_group(), None);
+
+    // Both slots are required, so the announcement takes exactly two targets.
+    let effects = vec![effect];
+    assert_eq!(minimum_targets(&effects), 2);
+    assert_eq!(maximum_targets(&effects), 2);
+    assert_eq!(
+        target_counts(&effects, 2),
+        vec![1, 1],
+        "one target per group, counted per group rather than per effect"
+    );
+
+    // The mutual form is the same two slots plus the printed verb.
+    let mutual = r#"{"kind":"fight","dealer":"any_creature_you_control",
+        "dealt_to":"any_creature_an_opponent_controls","mutual":true}"#;
+    assert_eq!(
+        serde_json::from_str::<Effect>(mutual).unwrap(),
+        Effect::Fight {
+            dealer: TargetSpec::AnyCreatureYouControl,
+            dealt_to: TargetSpec::AnyCreatureAnOpponentControls,
+            mutual: true,
+        }
+    );
+}

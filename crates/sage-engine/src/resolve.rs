@@ -6,7 +6,7 @@
 //! routes a spell by its card types and applies an ability's effects.
 
 use crate::ability::{Effect, GraveyardScope, Target, TargetGroup, TargetSpec};
-use crate::apply::{apply_effect, apply_targeted_effect};
+use crate::apply::{apply_effect, apply_multi_target_effect, apply_targeted_effect};
 use crate::card::{spell_effects_of, CardData, Keyword};
 use crate::card_type::CardType;
 use crate::characteristics::permanent_has_keyword;
@@ -289,9 +289,7 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
     // a target at cast though it produces no `Effect` — so a fizzled Aura target is
     // re-checked on the same path as any other (CR 608.2b).
     let groups: Vec<TargetGroup> = match &object.kind {
-        StackObjectKind::Ability { .. } => {
-            effects.iter().filter_map(Effect::target_group).collect()
-        }
+        StackObjectKind::Ability { .. } => effects.iter().flat_map(Effect::target_groups).collect(),
         StackObjectKind::Spell { card } => db
             .card(card.card)
             .map(CardData::cast_target_groups)
@@ -517,23 +515,22 @@ pub(crate) fn apply_effects_with_targets(
             continue;
         }
 
-        // A group takes as many stored targets as the announcement gave it (CR 601.2c),
-        // which for every effect but one is exactly one.
-        let group = effect.target_group();
-        let taken: Vec<Target> = match group {
-            Some(group) => {
-                // The remaining queue's other groups still owe their minimums; whatever
-                // is left over belongs to this one, up to its maximum.
-                let later: usize = queue
-                    .iter()
-                    .filter_map(Effect::target_group)
-                    .map(|g| usize::from(g.min))
-                    .sum();
-                let available = targets.len().saturating_sub(later);
-                let take = available.min(usize::from(group.max));
-                (0..take).filter_map(|_| targets.pop_front()).collect()
-            }
-            None => Vec::new(),
+        // An effect's groups take as many stored targets as the announcement gave them
+        // (CR 601.2c) — no group for a class-subject effect, one for nearly every
+        // targeting one, and two for an effect whose slots do not share a spec.
+        let groups = effect.target_groups();
+        let taken: Vec<Target> = {
+            // The remaining queue's groups still owe their minimums; whatever is left
+            // over belongs to this effect, up to its groups' summed maximum.
+            let later: usize = queue
+                .iter()
+                .flat_map(Effect::target_groups)
+                .map(|g| usize::from(g.min))
+                .sum();
+            let available = targets.len().saturating_sub(later);
+            let capacity: usize = groups.iter().map(|g| usize::from(g.max)).sum();
+            let take = available.min(capacity);
+            (0..take).filter_map(|_| targets.pop_front()).collect()
         };
 
         // A choice-posing effect (CR 701.8 discard, 701.17 scry, 701.19 search) stops
@@ -559,12 +556,13 @@ pub(crate) fn apply_effects_with_targets(
             continue;
         }
 
-        match group {
+        match groups.as_slice() {
+            [] => apply_effect(state, &effect, controller, source, resolution_start, db),
             // CR 608.2c: each chosen target is re-checked on its own, and an
             // individually-illegal one is skipped while its legal siblings resolve. For
             // an "up to two" effect that is the difference between one dead target
             // wasting the whole ability and it doing half its work.
-            Some(group) => {
+            [group] => {
                 for target in taken {
                     if target_is_legal(group.spec, target, state, controller, db) {
                         apply_targeted_effect(
@@ -579,7 +577,21 @@ pub(crate) fn apply_effects_with_targets(
                     }
                 }
             }
-            None => apply_effect(state, &effect, controller, source, resolution_start, db),
+            // An effect whose slots have **different** specs acts on all of them or on
+            // none: its slots are not interchangeable, so half of a fight is not a
+            // smaller fight but a different effect the card never printed. CR 701.12c
+            // says so outright — if either creature is an illegal target, neither deals
+            // nor is dealt damage — and it is the conservative reading of CR 608.2c for
+            // whatever multi-slot effect comes next.
+            slots => {
+                let filled = taken.len() == slots.len()
+                    && slots.iter().zip(&taken).all(|(group, &target)| {
+                        target_is_legal(group.spec, target, state, controller, db)
+                    });
+                if filled {
+                    apply_multi_target_effect(state, &effect, &taken, db);
+                }
+            }
         }
     }
     false
