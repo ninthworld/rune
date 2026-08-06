@@ -8,6 +8,18 @@
     "blocker": "the draw trigger condition observes only its own controller's draws"
   },
   {
+    "name": "Abilities that trigger on a permanent becoming the target of a spell or ability",
+    "blocker": "a trigger condition is a pure predicate over the states one action produced, and what it can find there is a zone change, an attack declaration, a draw, a life gain, a cast, an activation that used the stack, or a step boundary; a target is chosen at announcement and stored on the stack object, and no condition reads that list"
+  },
+  {
+    "name": "Abilities that trigger on damage being dealt",
+    "blocker": "damage is dealt at one seam, and the only thing that reads it afterwards is the flag a permanent carries for whether it has dealt any yet — a question a continuous ability may ask about its own source and nothing else; no trigger condition reads that flag or the damage beside it, so nothing fires on a creature dealing damage or on a player being dealt it"
+  },
+  {
+    "name": "Abilities that trigger on a card leaving a graveyard",
+    "blocker": "the zone changes a trigger observes are a permanent entering the battlefield and a permanent leaving it for a graveyard, both read by diffing the battlefield; no condition names a zone, so a card moving out of a graveyard — or into or out of a hand, a library, or exile — is watched by nothing"
+  },
+  {
     "name": "Attack requirements",
     "blocker": "a block requirement is maximised over the whole declaration (CR 509.1c), but nothing can force a creature into the attacker declaration (CR 508.1d) — and the one requirement modeled is that every creature able to block an attacker does so, never that one particular creature blocks"
   },
@@ -40,6 +52,18 @@
     "blocker": "a shield prevents all damage — or all combat damage — for the rest of the turn, consulted at the one seam damage is dealt, and a spell may declare its own damage unpreventable to defeat it; nothing prevents a fixed amount, names a recipient or a source, redirects damage, or lasts anything but the turn"
   },
   {
+    "name": "Delayed triggers that wait for anything but the next spell cast",
+    "blocker": "a resolution may leave one delayed trigger behind, the single condition it can wait for is the next spell of a named class its controller casts, firing spends it (CR 603.7b), and the turn boundary clears it; nothing waits for a step, a zone change, or an attack declaration, and no delayed trigger outlives the turn that created it"
+  },
+  {
+    "name": "Effects that act on a player unless that player pays",
+    "blocker": "the one cost an effect asks for mid-resolution belongs to an optional effect, it is posed to the asking ability's own controller and never to a player the effect merely names, and declining splices nothing onto the remainder — the game continues exactly as if the effect were absent; no effect is reached because a payment was refused"
+  },
+  {
+    "name": "Effects acting on the controller of a permanent the same resolution chose",
+    "blocker": "a player-subject effect names its player as the controller, each opponent, each player, a targeted player, or a targeted opponent, each resolved on its own; nothing reads a controller off a permanent another slot in the same resolution is pointed at, so a token created by *that permanent's* controller cannot be written"
+  },
+  {
     "name": "Effects that ask a player to name a type",
     "blocker": "a permanent records the colour and the card its controller named as it entered — the card as a functional identity chosen from the catalog, never a string — but a card or creature type has no recorded identity, only a nonbasic land may be named, and nothing on a spell records a choice at all"
   },
@@ -50,6 +74,14 @@
   {
     "name": "Effects that return a card from a graveyard to a zone other than a hand or the battlefield",
     "blocker": "a targeted card returns from a graveyard to a hand or to the battlefield, and a whole graveyard can be exiled; nothing else moves a card out of one"
+  },
+  {
+    "name": "Effects that exile a permanent until the source that exiled it leaves the battlefield",
+    "blocker": "an exile moves the permanent an effect targeted one way and records nothing about what moved it; there is no linked-object reference (CR 610.3) and no effect watching for a source's departure, so nothing an exile removes ever comes back"
+  },
+  {
+    "name": "Effects that change a permanent's types, or set its base power and toughness",
+    "blocker": "CR 613 layer 1 copies a permanent's copiable values and layer 7a lets a characteristic-defining ability say what its power is, but nothing between them applies: every card type and subtype the engine reads is the printed one, no effect adds or removes a type, no layer-7b effect sets a base power and toughness, and no layer 7d switches the two"
   },
   {
     "name": "Effects that untap a permanent it did not just take",
@@ -64,8 +96,8 @@
     "blocker": "an emblem carries static and triggered abilities only; nothing offers a way to activate one"
   },
   {
-    "name": "Equipment that grants a type, and cards that ask whether a creature is equipped",
-    "blocker": "an attachment grants power/toughness, keywords, combat restrictions, and written-out abilities at CR 613 layers 6 and 7c — one block for both kinds, so an Equipment grants an ability exactly as an Aura does; it adds no type, and nothing asks whether a permanent is attached"
+    "name": "Equipment that grants a type, and cards that ask which kind of attachment they carry",
+    "blocker": "an attachment grants power/toughness, keywords, combat restrictions, and written-out abilities at CR 613 layers 6 and 7c — one block for both kinds, so an Equipment grants an ability exactly as an Aura does; it adds no type, and a continuous ability may ask only whether its own source has *something* attached, never whether that something is an Aura, an Equipment, or one of several"
   },
   {
     "name": "Gaining control of a permanent for longer than a turn, and exchanging control",
@@ -104,6 +136,10 @@
     "blocker": "an optional effect's cost is mana, a permanent the chooser picks, or a discard; a cost that names the source — tapping it, sacrificing it, moving its loyalty, removing counters from it — is unwritable, because the question is answered from a queue that carries no source"
   },
   {
+    "name": "Prohibiting counters from being put on a permanent or a player",
+    "blocker": "counters reach a permanent from an effect, from its own entry, and from a planeswalker's loyalty, and each of those writes them with nothing to consult first; no continuous effect refuses a counter, and a player bears no counters at all"
+  },
+  {
     "name": "Protection",
     "blocker": "there is no protection layer: nothing stops a spell, a block, an aura, or damage by a quality the way CR 702.16 does"
   },
@@ -116,12 +152,32 @@
     "blocker": "a permanent count, an enters-or-dies trigger selector, a blocking restriction, a card choice, a mass-effect class, and the class of spell a cast trigger or a cost modifier names each carry a fixed power threshold; a target spec and a static ability's condition carry none, no threshold reads toughness, and no threshold is another permanent's power"
   },
   {
+    "name": "Winning the game outright",
+    "blocker": "a game ends when a player *loses* — at zero or less life, on a draw attempted from an empty library, or on the commander-damage tally — and the last seat standing is what winning is; no effect names a winner or a loser, so nothing a resolution does ends a game directly"
+  },
+  {
     "name": "X anywhere but a spell's own mana cost",
     "blocker": "a cast announces X, folds it into the cost as generic mana, and locks it on the stack for the resolution and the generated text to read; nothing announces X for an activation or on a trigger, and the announced value feeds only the amounts a derived amount already feeds — never the counters a permanent enters with, a token count, or a mana-value filter"
   },
   {
     "name": "Static abilities that affect a class of the source's controller's own noncreature permanents, or a class of tokens",
     "blocker": "the continuous-effect selector names the source, one class of that controller's creatures, or permanents an opponent controls filtered by card type and by the card name the source was given as it entered; it cannot name a class of the controller's own noncreature permanents, and nothing anywhere filters a class by token-ness"
+  },
+  {
+    "name": "Static abilities that select by a keyword a permanent was granted",
+    "blocker": "a printed static ability's class may be filtered by keyword, and the keyword is read off the **printed** face: the selector is evaluated from inside the CR 613 layer-6 fold that is computing the affected permanent's keyword set, so it cannot ask for the answer being produced — a creature *granted* defender falls outside a class that names defender, exactly as the printed-subtype read beside it already does"
+  },
+  {
+    "name": "Target specs scoped to the combat in progress",
+    "blocker": "a target spec names a card type, a controller, a keyword, a mana value, or a graveyard, each answered without reference to combat; no slot narrows to a creature that is attacking or blocking, and none resolves the player or planeswalker a source is attacking"
+  },
+  {
+    "name": "Taking an extra turn",
+    "blocker": "the turn structure hands the next turn to a player already owed one, but nothing puts a player on that list: no effect in the vocabulary reaches the turn order, and none skips a turn or a step either"
+  },
+  {
+    "name": "The CR 613.8 dependency rules",
+    "blocker": "continuous effects are ordered by CR 613.7 timestamp alone; the layer-6 walk gates each source with that source's *stored* abilities — until-end-of-turn effects and the attachments on it — and never with another permanent's printed static ability, which is the one place the walk is cut so it cannot recurse, so a permanent silenced by a printed static ability still contributes its own"
   },
   {
     "name": "The legend-rule choice among duplicates",

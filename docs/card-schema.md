@@ -2356,6 +2356,346 @@ The full `abilities`, `spell_effects`, target, cost, and attachment shapes are t
 `crates/sage-engine/src/ability.rs`. Those Rust types are authoritative; do not reproduce
 the IR in a second documentation schema that can drift.
 
+## How far the vocabulary reaches
+
+Catalog coverage is limited by what the ability IR can *express*, not by authoring
+throughput, so this section is the standing survey of where each half of it stops and why.
+It is prose, and prose drifts; `crates/sage-engine/data/exclusions.json` does not. **Where a
+paragraph here and an exclusion entry there disagree, believe the entry and fix the
+paragraph.**
+
+### Costs
+
+`Cost` says tapping, mana, loyalty, spending the source itself, removing counters from it,
+and the three whose payment the **player picks** — sacrificing permanents they control
+(filtered by card type, by subtype, optionally excluding the source, and always a fixed
+count), discarding cards, and exiling cards from their own graveyard. A picked payment rides
+on the action, in `Action::ActivateAbility`'s `payment` list, exactly as a cast's additional
+cost rides on `Action::CastSpell`'s; mana never does, because an activation pays it from the
+pool. A `may` charges the same vocabulary minus every component that names the source
+(`OptionalCost`), answered mid-resolution instead.
+
+**How many a cost takes is never a decision**: a size the payer picks needs a resolution to
+be asked during, so `Sacrifice any number of lands` is an `Effect::Sacrifice` with no amount
+and not a cost — countering Scapeshift therefore takes no lands. **What a payment settled is
+recorded as it is paid**, on `StackObject::paid` beside the targets: the power the sacrificed
+creature had. A cost is paid as the object goes on the stack (CR 601.2h), so by resolution
+that permanent is gone and the number could not be recovered from anywhere — CR 608.2h's
+last-known information, written down while it was still current. Exiling from any zone but a
+graveyard is still unwritable.
+
+### Triggers and conditions
+
+`TriggerCondition` observes zone changes and attack declarations (its own source's and,
+through `ObservedPermanent`, another permanent's), a draw by its controller, an activation
+that uses the stack — never a mana ability, which uses none — life gain, casting, and step
+boundaries; its observed-permanent selectors filter by subtype, controller, token-ness,
+power, and keyword.
+
+A condition *is* attachable, as `Effect::Conditional`, and `Condition` names five questions:
+a permanent count, a mill by this resolution, a discard by this resolution, life gained this
+turn, and whether the ability's own source attacked or blocked this turn. It is judged as the
+effect is reached (CR 608.2), which is an if-clause on an effect rather than the CR 603.4
+trigger check. Every question but the count reads recorded events over a window — the
+resolution, or the turn — because none of them can be answered from a snapshot, and the last
+is the only one about the **source**: it reads the turn's declarations because end of combat
+has already cleared the board's (CR 511.3). The separate `StaticCondition` adds
+`SourceHasNotDealtDamage`, the question no window could answer at all — "yet" reaches back to
+the permanent's arrival, so it is stored on the permanent (`dealt_damage`, written at the
+three seams a permanent is the *source* of damage) and re-asked on every read, never latched.
+
+### Amounts
+
+A count of permanents (`count_of`) may feed an effect's amount, the number of tokens it
+creates, and an attachment's static grant — the last recalculated on every read, because a
+static ability is not a resolution. Every *other* X an effect reads is a `DerivedAmount`, a
+closed set of seven phrases with no expression language over them — the life gained this
+turn, a count of what this resolution milled, the greatest mana value among a class, the
+**X its controller announced**, the two that read a **sacrifice** back (how many permanents
+this resolution sacrificed, and the power the creature a *cost* sacrificed had), and half a
+named player's life total, hand, or creature count rounded up. Each is read once where the
+effect applies, and between them they feed seven verbs: a pump, a draw, a damage, a search's
+size, a life loss, a discard, and a sacrifice. The halved one is the only arithmetic there
+is, it rounds one way because only one way is printed, and it is read of the player the
+effect *names* rather than of its controller.
+
+The announced X and the two sacrifice amounts are the ones that read neither the board nor
+the event log. The first two were settled before the effects ran — an X at announcement, a
+cost's sacrifice at CR 601.2h, and both objects have left; the count of what *this
+resolution* sacrificed is instead a live answer a player has just given, written onto the
+`Resolution` on the way back into the suspended remainder because a sacrificed land leaves no
+event to count (only a creature dies, CR 700.4). The count keeps its own spelling because it
+is the one source a static grant may also name; nothing windowed over events could stand
+there.
+
+**Two amounts sit outside that vocabulary, each because of *when* it is read.** A count of
+cards in a graveyard (`GraveyardCount`) feeds a **characteristic-defining power** and nothing
+else — `Ability::DefinedPower`, at CR 613 **layer 7a** ahead of every other P/T layer,
+re-derived on every read rather than fixed on a resolution (CR 604.3); it replaces the
+printed seed and 7c piles on top of its answer. A chosen permanent's power (`PermanentAmount`)
+is a field on `Effect::Exile`, because CR 608.2h makes it readable only *before* the exile
+removes the object it is about. A whole life total or hand, one named object's mana value, a
+chosen permanent's toughness, and half of anything rounded down still feed nothing.
+
+### What is chosen at announcement
+
+**A choice made at announcement rides the action, and the mode is made first** (CR 601.2b).
+`Action::CastSpell` carries a `mode` and an `x`, both cleared to build the requirement form.
+The ordering is structural rather than remembered: `target_requirements` reads the mode off
+the action, and a modal cast that has not chosen one declares **no slots at all** — which is
+why `announcement_is_legal` refuses that announcement explicitly instead of letting it pass
+as a spell that happened to target nothing. A modal card's effects live in `CardData::modes`,
+held between two and `MAX_MODES` (four, because a mode is a numbered dock row and a fifth
+would have to be truncated).
+
+**X is announced, then locked**: `cast_cost` is the one place it becomes generic mana,
+`StackObjectKind::Spell::x` is the only X anything reads afterwards, and `x_options`
+enumerates the legal values *with what each one costs* — the multiplication is the engine's.
+Both are re-derived independently in `apply_action`, so a forged mode and an unpayable X are
+refused rather than merely unoffered.
+
+A `SpellTrait` is what is true of a spell *on the stack* rather than what it does, which is
+why it is not an `Effect`: both members are read by somebody else's resolution — a
+counterspell (CR 701.5a) and the damage seam (CR 615.1, `PendingDamage::unpreventable`). What
+a resolution knows about itself now travels as one `Resolution` value: its log window, its
+announced X, that declaration, and what its cost payment recorded.
+
+### Layer 6, and the two accessors
+
+**Layer 6 subtracts as well as adds**, and is therefore ordered by timestamp (CR 613.1f): a
+grant after a removal grants, a removal after a grant removes. Two verbs subtract:
+`alter_abilities_self`, which names its own source, loses named keywords or *all* abilities
+until end of turn, and reaches no target and no class; and a printed static ability's
+`lose_all_abilities`, which names a *class* and lasts as long as its source is on the
+battlefield. What is added is a keyword *or a whole written-out ability* — an attachment's
+`abilities`, a `pump`'s, a static's `grant_ability` — folded in by
+`characteristics::current_abilities`, so a granted activation is offered by `valid_actions`,
+a granted mana ability still uses no stack (CR 605.1a), and a granted trigger is collected,
+each by the code a printed ability goes through.
+
+Grant and loses-all are both read through `abilities_of_permanent`, which is why that
+accessor takes `&GameState` and is the only path a collector uses: no printed-abilities
+reader to pick by mistake, and no boolean standing in for the ordered answer — losing all
+abilities is one more contribution to that fold rather than a predicate beside it. **The walk
+is cut in exactly one place, `stored_abilities_of_permanent`** — the smaller answer folding
+stored effects and attachments only, which `static_ability_effects` gates each *source* with,
+so collecting printed statics goes one level deep and terminates. Its cost is that a permanent
+silenced by another *printed static* still contributes its own: CR 613.8 dependency is
+unmodeled.
+
+**A rule modification is in no layer, and that is the point** (`Modification::ModifyRule`,
+`RuleModification`). CR 613 orders effects that change *characteristics*; these change none,
+so nothing folds them in and each is read where its rule is asked —
+`assigns_combat_damage_by` at the one place the combat-damage step computes an amount (so
+trample's excess and the marked damage CR 704.5g reads follow it for free),
+`attacks_as_though_no_defender` at the attacker declaration. Assigning by toughness is **not**
+a P/T change and attacking as though it had no defender is **not** `LoseKeyword` (CR 609.4):
+the power and the keyword are both untouched, which is what keeps the creature inside the
+`keyword`-filtered class that granted it either one. That filter reads the **printed** face
+inside the layer system — asking the layer-6 fold for the set it is producing would not
+terminate — while the trigger selector's runs outside it and reads the computed set.
+
+### Combat restrictions
+
+Combat restrictions are a second layer-6 vocabulary beside `Keyword` (`CombatRestriction`):
+they are not keyword abilities, some carry a parameter, and each is enforced in exactly one
+place — the attacker candidate set, the blocker candidate set, the pairwise block check, or
+the whole-selection block check. A restriction that can only be judged over the assembled
+declaration must also be stated in the blocker slot's prompt, or it reaches the player as a
+submit that silently does nothing.
+
+One member of the vocabulary is a *permission* rather than a restriction —
+`CanBlockAdditional`, which lifts the CR 509.1a default that a blocker blocks one attacker —
+so `Permanent.blocking` is an ordered list, and its order is the blocker's CR 509.3 damage
+assignment order, carried by the declaration that named them. One member is a **requirement**
+rather than either — `MustBeBlockedByAllAble` — and it is the only rule in the engine that
+refuses a declaration for what it *omits*: CR 509.1c asks for the maximum number of
+requirements obeyable without violating a restriction, which is a fact about the declarations
+that were not submitted. That is why it is a search (`combat::requirements`) run last, over
+declarations every other gate has already called legal — so a restriction beats a
+requirement, and a requirement no legal declaration can meet is simply not met, with no
+clause anywhere saying so. **Attack** requirements ("attacks each combat if able", CR 508.1d)
+remain unmodeled.
+
+### Objects that are not one card with one face
+
+**Not every permanent is a card, and a card need not have one face** (ADR 0015, CR 712).
+`Permanent.printed` is a `Printed` — a catalog `CardId` *and which of its faces is up*, or
+the `TokenData` an effect gave a token (CR 111) — and every read of a permanent's printed
+face goes through `Printed::face(db)`, which answers all three. A `FunctionalId` names the
+**card**, never a face, so a two-faced card is one identity, one printing, and one row in the
+report; transforming changes that one field and nothing else, which is the whole of CR 712.a.
+The one accessor that crosses back to card identity, `Printed::card()`, returns `None` for a
+token, and that `None` is where CR 111.7 lives: a token leaving the battlefield has no
+`CardInstance` to put in the destination zone, so it is put nowhere and ceases to exist. A
+token's *death* is therefore observed from the recorded `PermanentDied` event rather than
+from a graveyard it never reaches. `TokenData` has no `functional_id` field at all, which is
+why a token cannot reach the compatibility report.
+
+**A planeswalker's loyalty is counters, and an attack names a target** (ADR 0016).
+`CounterKind::Loyalty` is what a planeswalker enters with (CR 306.5b, applied at the
+battlefield-entry seam), what `Cost::Loyalty` spends, what damage removes (CR 120.3c —
+`deal_damage_to_permanent` is the one seam that decides marking versus loyalty), and what
+CR 704.5i reads at zero. `is_loyalty_ability` carries the two CR 606.3 timing rules, gated in
+the offer *and* re-derived in `apply_action`. `Attack.defender` and `Permanent.attacking` are
+an `AttackTarget` — a player or a planeswalker — so "what is attacked" (`attack_target_of`)
+and "who declares blockers" (`attacking_defender_of`, which resolves a planeswalker's
+controller) are separate questions.
+
+**An emblem is in no zone and is never removed** (ADR 0017). `GameState::emblems` is a
+*second source list* both ability paths walk — `characteristics::static_ability_effects` and
+`triggers::collect_triggers` — and nothing else in the engine reads it. Neither list's
+position decides anything: every contribution is timestamped by its source's object id and
+the caller sorts by that. `AbilitySource` says what an ability on the stack came from, and
+its `permanent()` answering `None` is what makes an emblem need no special case in a
+self-referential effect. Do not put an emblem on the battlefield: every state-based action,
+every target spec, and every combat gate would then need a clause saying why it does not
+apply, and *saying nothing* is the correct answer.
+
+**A copy is CR 613 layer 1, and it is a different printed seed.** `Permanent::copied` records
+the copiable values its controller named *as it entered* (CR 707.2) — a `Printed` handle,
+since that is exactly what "the printed values" means and a card's face never changes — plus
+whether the copy applies to that permanent (CR 707.5) or to the one it is attached to
+(CR 707.2c, so the host's copy is derived and ends with the Aura). `copy::copiable_printed`
+is the whole layer: `characteristics` starts from its answer instead of `perm.printed`, so a
+copy with two `+1/+1` counters is the copied P/T plus two. Chains resolve when the snapshot
+is taken (CR 707.3), and the face that is **up** is the one copied (CR 707.8) — a copy of a
+transformed permanent is the back face, at mana value 0 (CR 712.8e). Copying a *spell* stays
+a different operation: `StackObjectKind::SpellCopy` has no card, so it was never cast, no
+cast trigger sees it, and it reaches no graveyard (CR 707.10/707.10a). No token is ever
+created as a copy.
+
+### Targets, statics, and control
+
+**One effect may declare more than one target, and its slots need not share a spec**
+(ADR 0017 §5, ADR 0004). `Effect::target_groups` returns an ordered `Vec<{spec, min, max}>`;
+`min == 0` is the "up to N" shape, and a group with `min == 0` is never a reason to withhold
+an offer. At most **one** variable-arity group per ability or spell — the stored target list
+is flat, and the validator enforces the limit so the pairing back onto effects is exact
+rather than a guess. `Effect::Fight` is the one effect with *two* groups, one spec each, and
+an effect with more than one group acts on all of its slots or on none (CR 701.12c) rather
+than doing as much as it can. It is also the one damage whose **source is a permanent**, so
+it is the one place outside combat where deathtouch and lifelink apply.
+
+`Ability::Static` covers anthems and lords ("creatures you control", optionally filtered to a
+printed subtype or a printed keyword, optionally excluding the source), the class of one, and
+one class its controller does **not** control: permanents an opponent controls, filtered by
+card type and by the card name the source was given as it entered. Its `as long as …` asks
+one of three questions — a permanent count, whether the source is attacking, and whether
+anything is attached to it. It is **derived, never stored** — `characteristics` reads it off
+the battlefield on every call, so the effect begins and ends with its source's presence, a
+permanent arriving later joins the class the moment it does, and nothing enters
+`GameState::static_effects`. That re-derivation is the whole distinction from a
+`MassAffects`, which is locked in on resolution. Extend `StaticAffects` when a card needs a
+scope it cannot name.
+
+**A continuous ability is one of three kinds, and its subject decides which**: a `Static`
+modifies permanents at a CR 613 layer, a `PlayerStatic` states something about a person, and
+a `CostModifier` changes what a class of **spell** costs its own controller to cast
+(CR 601.2f) — not a layer, since it applies before the spell's object exists. Its arithmetic
+is the rule's own (plus every increase, minus every reduction, one floor at `{0}`) and only
+the generic component moves. It is the one continuous ability with several readers, so it has
+exactly one seam: `total_cast_cost` is what the offer, the pips, the payment search, the
+legality gate, the charge, and the view all ask, and the idle predicate joins them by asking
+`valid_actions` rather than a cost. Wiring it into fewer than all of those advertises casts a
+seat cannot take, or auto-passes a seat that has a play.
+
+**Control is CR 613 layer 2, and it is computed** (ADR 0005 §1/§3). `Permanent::controller`
+is the *base* controller, not the answer: every rule that asks who controls a permanent —
+attacking, activating, `creatures you control`, combat damage, the untap step — goes through
+`characteristics::controller_of`, which folds `Modification::GainControl` over the stored
+field. Reading the field directly is right **only** for a question about *ownership*, which
+today means the four battlefield-departure seams: because nothing overwrites it, a creature
+that dies while stolen goes to its own graveyard (CR 400.7) with no ownership model needed. A
+control change restamps `entered_turn` (CR 302.6), which is why a card that steals a creature
+to attack with also grants it haste.
+
+### Questions asked mid-resolution
+
+**A mid-resolution player choice is queued state, never a flag** (ADR 0013). An effect that
+asks a player to choose cards (discard, scry, look at the top N, search) pushes a
+`PendingChoice` onto `GameState::pending_choices` and *suspends* the resolution, carrying the
+rest of it — remaining effects, remaining targets, and the spell's final zone — in the
+choice's `Resume`. Whether a choice is owed is derived (`pending_player_choice`), and so are
+the cards it offers (`choice_candidates`); nothing snapshots a candidate list. A choice whose
+clamped maximum is zero is applied outright instead of posed, which is the whole of the
+never-stall guarantee. Priority goes to the chooser and returns via the one
+`interrupted_priority` slot shared with trigger aiming — a third interrupting choice must
+join that check rather than add a second slot.
+
+**A choice a permanent makes as it enters is the same queue, and the permanent waits off the
+battlefield for it** (ADR 0013 §8–§9). `EntersChoosingColor` and `EntersNamingCard` declare
+that a card's controller answers something as it arrives (CR 614.12), and each answer is an
+**unfilled slot on the `PendingEntry`** rather than a branch: `begin_battlefield_entry`
+refuses to finish while one is empty, queues the question, and returns no `PermanentId`;
+answering writes the slot and re-enters that same function, as a CR 616.1 ordering answer
+does. So nothing is on the battlefield to be caught mid-decision, a card asking twice needs
+no code saying which comes first, and the loop terminates because a filled slot is never
+emptied. The answers are stored once on `Permanent::chosen_color` and `Permanent::named_card`.
+**A named card is a `FunctionalId`, never prose**: `named_card_candidates` derives the answer
+set from the *catalog*, the action carries a `CardId`, and the gate re-checks it, so no card
+name SAGE has not defined can reach a game state. Naming a **type** is still unwritable, only
+a nonbasic land may be named, and nothing records a choice on a spell.
+
+A choice asks one shape of **question** (`ChoiceQuestion`, ADR 0014): pick cards, pick
+**permanents** (the sacrifice — a separate shape because a token has no `CardInstance` to
+name, CR 111), answer a `you may` yes-or-no, name a colour, name a card, order applicable
+replacements by position in a derived list, or arrange cards into a **permutation** — the
+*in any order* a look bottoms its remainder in. Everything around them is single — one queue,
+one chooser, one `Resume` — and only the answer branches, so a new question shape is a
+variant plus its own `Action`, never a second queue. Two rules the permutation added and
+every later answer inherits: an answer replacing something the game used to **roll** for
+consumes no randomness (`BottomOrder::Chosen` leaves `rng_seed` where `Random` advances it,
+or a replay diverges), and an outcome may pose the *next* question — "the rest" is unknown
+until the taking is answered — so a `Resume` travels onto the question that follows.
+
+An accepted optional effect is *spliced onto the front of the remainder*, not applied on the
+spot; declining is the same path with nothing spliced, which is why "a decline leaves the
+game as if the effect were absent" needs no proof. An optional **cost** is mana, a permanent
+the chooser picks, or a discard (`OptionalCost`); a cost naming the **source** does not
+parse, because the queue carries no source. Mana is charged from the chooser's pool, the one
+place mana moves outside the cast path; the other two are decisions, so accepting poses one
+of the questions above and hangs the whole remainder behind it — the cost is therefore paid
+before what it bought, and the sacrifice is a real death. While a costed question is owed its
+chooser may activate mana abilities (CR 605.3a) and nothing else, and a picked cost does not
+widen that. A mana cost is *posed* against the mana the board could still make
+(`potential_mana_pool`, shared with the idle-seat predicate) and *accepted* against the pool
+as it stands; a picked payment has no such gap, so one construction of its request answers
+both.
+
+### Deferred and replaceable events
+
+**A replaceable event is a value, and there is exactly one road onto the battlefield**
+(ADR 0019). `PendingEntry` describes an arrival *before it happens* — the object, its
+controller, the tapped state and counters it would carry, and whether it got there by being
+cast — and `begin_battlefield_entry` is the only place a `Permanent` is born: a land played,
+a token created, a permanent spell resolving, and a card an effect put there all build one.
+Applicable replacements are **derived** from two source lists (the entering object's own
+`EntersTapped`/`EntersWithCounters`, and the one-shot `GameState::replacements` an ability
+created for the turn), the affected object's **controller** orders them when more than one
+applies (CR 616.1, through the same choice queue), and `PendingEntry::applied` is what stops
+any of them applying twice (CR 614.5) — which is also what makes the loop terminate. Applying
+either modifies the event or replaces it outright, and answering an ordering question
+re-enters the same function. `EntersChoosingColor`, `EntersNamingCard`, and `EntersAsCopy`
+are not collected here — they are questions, not modifications to order.
+
+**A delayed triggered ability is a fourth source list** (CR 603.7).
+`GameState::delayed_triggers` is one-shot and one-turn like `replacements`, fires from a
+sibling of `collect_triggers` rather than a branch in it, and is deliberately not gated on
+its source surviving (CR 603.7e) — `AbilitySource::DelayedAbility` names nothing because
+there is nothing honest to name. The object it acts on is fixed by the trigger event, so
+`Trigger::targets` arrives pre-filled.
+
+**Damage is the second replaceable event** (CR 615). `PendingDamage` is the value — the
+recipient, the amount, whether it is *combat* damage — and `GameState::deal_damage` is the
+one seam anything deals damage through, so a prevention shield covers combat, a burn spell,
+and a fight in one place; prevented damage is never marked, never lethal, never life loss,
+and gains a lifelink source nothing. A shield is **not** one-shot: it lives on
+`GameState::prevention` and ends in the cleanup step beside the pumps (CR 514.2), and none is
+ordered against another because every one modeled prevents all of it. A permanent leaving the
+battlefield, a draw, and life gained route nowhere near this, and the leave seams run inside
+the SBA loop where there is nothing to suspend a question onto.
+
 ## Closed schema and generated text
 
 `CardData` uses `deny_unknown_fields`. A definition cannot contain exact Oracle text,
