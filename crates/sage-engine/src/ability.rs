@@ -293,9 +293,21 @@ pub fn is_equip_ability(ability: &Ability) -> bool {
 /// return this card from your graveyard to your hand` says it inside an [`Effect::May`],
 /// and an ability that functions in a graveyard only when the player pays still functions
 /// in a graveyard.
+///
+/// A trigger that watches its **own source dying** is the one exception, and it is not a
+/// hedge. Such an ability functions from the battlefield — that is where its source was
+/// when the event happened, and CR 603.6c is the rule that lets it fire on the way out —
+/// so it belongs to the battlefield pass however its effects then reach the card the
+/// permanent became. Classifying it by its effect alone would file it under the graveyard
+/// pass, which reads printed abilities off cards already sitting there and would never
+/// have seen a permanent die at all.
 #[must_use]
 pub fn is_graveyard_ability(ability: &Ability) -> bool {
     match ability {
+        Ability::Triggered {
+            event: TriggerCondition::SelfDies,
+            ..
+        } => false,
         Ability::Activated { effects, .. } | Ability::Triggered { effects, .. } => {
             returns_self_from_graveyard(effects)
         }

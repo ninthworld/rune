@@ -133,6 +133,13 @@ pub enum StackObjectKind {
 /// physical [`CardInstance`] because that — not a [`crate::CardId`] — is what identifies
 /// *which* copy in the graveyard the ability belongs to, and a self-referential effect
 /// that moves the source out of the graveyard has to name exactly that copy.
+///
+/// The fourth is the one object that is **both**: a permanent whose dies trigger is on
+/// the stack (CR 603.6c). Its ability functioned from the battlefield — that is where it
+/// triggered — but by the time anyone can respond the permanent is gone and its card is
+/// in a graveyard, and an ability that acts on "it" means that card. CR 603.10a calls
+/// this last-known information; here it is simply both halves of the identity recorded
+/// at the moment the trigger was collected, so neither accessor below has to guess.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AbilitySource {
     /// A permanent on the battlefield.
@@ -143,15 +150,34 @@ pub enum AbilitySource {
     /// A card in a graveyard whose ability functions from that zone (CR 113.6) — the
     /// source of an activation that never involved the battlefield.
     GraveyardCard(CardInstance),
+    /// A permanent that has **left the battlefield for a graveyard**, and the card it
+    /// became — the source of a dies trigger (CR 603.6c).
+    ///
+    /// Only the leave-the-battlefield pass of the trigger diff creates one, and only for
+    /// a permanent that was a card: a token reaches no graveyard (CR 111.7), so its dies
+    /// trigger records [`Self::Permanent`] and its `graveyard_card` is rightly `None`.
+    DeadPermanent {
+        /// What the permanent was, by the battlefield identity it had. Never reused, so
+        /// it still names that object and nothing else.
+        permanent: PermanentId,
+        /// The physical card it is now, in its owner's graveyard.
+        card: CardInstance,
+    },
 }
 
 impl AbilitySource {
     /// The permanent this ability came from, or `None` for an emblem or a card in a
     /// graveyard — neither of which is one.
+    ///
+    /// A **dead** permanent answers with the id it had. That is the same answer it gave
+    /// before the id had a name for the state it is in, and it stays right for the same
+    /// reason: every caller looks the id up on the battlefield, finds nothing, and does
+    /// nothing — which is what a self-referential effect on a permanent that has left
+    /// should do.
     #[must_use]
     pub fn permanent(self) -> Option<PermanentId> {
         match self {
-            Self::Permanent(id) => Some(id),
+            Self::Permanent(id) | Self::DeadPermanent { permanent: id, .. } => Some(id),
             Self::Emblem(_) | Self::GraveyardCard(_) => None,
         }
     }
@@ -159,13 +185,14 @@ impl AbilitySource {
     /// The graveyard card this ability came from, or `None` for every other source.
     ///
     /// The counterpart of [`Self::permanent`], and the accessor a self-referential
-    /// effect that moves its own card out of a graveyard reads. A permanent's ability
-    /// answers `None` here for the same reason a graveyard card's answers `None` there:
-    /// the object is simply not that kind of thing.
+    /// effect that moves its own card out of a graveyard reads. A permanent still on the
+    /// battlefield answers `None` here for the same reason a graveyard card's answers
+    /// `None` there: the object is simply not that kind of thing. A **dead** permanent
+    /// answers both, because it is both.
     #[must_use]
     pub fn graveyard_card(self) -> Option<CardInstance> {
         match self {
-            Self::GraveyardCard(card) => Some(card),
+            Self::GraveyardCard(card) | Self::DeadPermanent { card, .. } => Some(card),
             Self::Permanent(_) | Self::Emblem(_) => None,
         }
     }

@@ -176,6 +176,7 @@ pub(crate) fn apply_targeted_effect(
             power,
             toughness,
             keywords,
+            abilities,
             restrictions,
             ..
         } => {
@@ -197,6 +198,20 @@ pub(crate) fn apply_targeted_effect(
                             source,
                             affects: EffectAffects::SpecificPermanent(id),
                             modification: Modification::GrantKeyword(*keyword),
+                            duration: Duration::UntilEndOfTurn,
+                        });
+                    }
+                    // A written-out ability, in the same breath and at the same layer:
+                    // folded into the creature's computed set on demand, so it offers
+                    // the activation — or fires the trigger — exactly as a printed one
+                    // would, and is gone at cleanup with nothing written on the
+                    // permanent to undo (ADR 0005).
+                    for ability in abilities {
+                        let source = state.mint_id();
+                        state.static_effects.push(StaticEffect {
+                            source,
+                            affects: EffectAffects::SpecificPermanent(id),
+                            modification: Modification::GrantAbility(Box::new(ability.clone())),
                             duration: Duration::UntilEndOfTurn,
                         });
                     }

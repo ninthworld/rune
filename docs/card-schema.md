@@ -66,7 +66,7 @@ no Oracle text, flavor, art, or branding.
 | `modes` | no | The bullets of a modal spell (CR 700.2); two to four, each `{ "effects": [...] }` |
 | `spell_traits` | no | What is true of the card **as a spell on the stack** — can't be countered, damage can't be prevented |
 | `additional_cost` | no | An additional cost to **cast** the card (CR 601.2b); never on a land |
-| `attachment` | no | Aura or Equipment: what it may be attached to, its equip cost, and its static power/toughness, keyword, and/or combat-restriction grant |
+| `attachment` | no | Aura or Equipment: what it may be attached to, its equip cost, and its static power/toughness, keyword, ability, and/or combat-restriction grant |
 | `scripted` | no | Declares behavior implemented in `src/scripted.rs`; defaults to `false` |
 
 Current keyword values are `flying`, `reach`, `vigilance`, `haste`, `defender`, `menace`,
@@ -132,6 +132,47 @@ keywords are read (combat legality, evasion, damage, view projection, generated 
   {"kind": "pump", "target": "any_creature", "power": 3, "toughness": 3,
    "restrictions": ["must_be_blocked_by_all_able"]}
   ```
+
+### Granting a whole ability (continuous, CR 613.1f)
+
+A keyword ability *is* an ability (CR 702.1), so granting one written out in full is the
+same layer and the same mechanism — the ability is folded into the host's set by
+`abilities_of_permanent`, the one accessor every collector reads, and is therefore offered
+by `valid_actions`, paid for, put on the stack, and fired by exactly the code a printed
+ability goes through. A granted **mana** ability is still a mana ability (CR 605.1a) and
+still uses no stack, because that is derived from what the ability says rather than from
+who granted it.
+
+- An **attachment** grants for as long as it is attached, through `attachment.abilities`:
+
+  ```json
+  "attachment": {"kind": "aura", "attach_to": "any_land", "abilities": [
+    {"type": "activated", "cost": [{"kind": "tap"}],
+     "effects": [{"kind": "add_mana_any_color", "amount": 2, "same_color": true}]}]}
+  ```
+
+  One block for both kinds, so an Equipment grants an ability exactly as an Aura does.
+- A **spell or ability** grants **until end of turn** through the `abilities` list on a
+  `pump`, beside its `keywords` and `restrictions` and for the same reason — one effect
+  declares one target group, and a card that says *gets +2/+0 **and** gains "…"* names one
+  creature:
+
+  ```json
+  {"kind": "pump", "target": "any_creature", "power": 2, "toughness": 0, "abilities": [
+    {"type": "triggered", "event": "self_dies",
+     "effects": [{"kind": "return_self_from_graveyard",
+                  "destination": "battlefield_tapped"}]}]}
+  ```
+
+Unlike a keyword grant this one is **not** idempotent: two grants of the same ability are
+two abilities, because two Auras each saying `{T}: Add {G}` really are two activations.
+
+A granted **dies** trigger is the one grant that outlives the grant. It fires on the way
+out (CR 603.6c), read from the snapshot the permanent still existed in — and still carried
+the grant in — so `return_self_from_graveyard` on such a trigger reaches the card the
+permanent became. That is why a dies trigger's source records both halves of what the
+object now is (CR 603.10a), and why a `self_dies` trigger is never treated as an ability
+that *functions from* a graveyard: it functioned from the battlefield.
 
 ### Losing keywords and losing all abilities (continuous, CR 613.1f)
 
@@ -426,8 +467,9 @@ grants are independent; any combination may be present.
 **One block, with a `kind`.** An Aura and an Equipment share a single `attachment` field
 rather than owning a field each, and that is a decision worth stating because it is the
 one the rest of the vocabulary is built on. The *grant* is one thing: what an attached
-permanent does to its host is read at CR 613 layer 6 (keywords, combat restrictions) and
-layer 7c (power/toughness), and a creature carrying a sword is indistinguishable at both
+permanent does to its host is read at CR 613 layer 6 (keywords, abilities, combat
+restrictions) and layer 7c (power/toughness), and a creature carrying a sword is
+indistinguishable at both
 layers from one under an Aura. Two fields would mean every reader of a permanent's
 characteristics asked two questions where the rules ask one — and could answer them
 differently. Widening what may be attached to (a player, a land) therefore widens both
@@ -438,6 +480,13 @@ kinds at once, in one place.
 "attachment": {"kind": "equipment", "attach_to": "any_creature_you_control",
                "equip": "{2}", "power": 2, "toughness": 1}
 ```
+
+**`attach_to` is an ordinary target class**, so an Aura's host need not be a creature: an
+enchant-land Aura writes `"attach_to": "any_land"`, and the cast slot, the CR 704.5m
+state-based action, and the generated text all read that one field. A grant that has
+nothing to say about the host — a `power`/`toughness` on a land — simply applies to a
+characteristic that is not there. Enchanting a **player** is not expressible: no target
+class an attachment may name is a player.
 
 The `kind` decides exactly two things, and nothing else in the schema branches on it:
 
@@ -1019,18 +1068,22 @@ resolution that does nothing.
 `return_to_hand`'s hand and `exile`'s exile. A **token** put anywhere but the battlefield
 ceases to exist (CR 111.7), so a bounced token never arrives in the library either.
 
-### Mana in any combination of colours
+### Mana whose colours the player chooses
 
-`add_mana_any_color` produces mana whose **colours the player chooses**, one point at a time:
+`add_mana_any_color` produces mana whose **colours the player chooses**:
 
 ```json
 { "kind": "add_mana_any_color", "amount": 2,
   "restriction": { "kind": "spells_with_subtype", "subtype": "Dragon" } }
+{ "kind": "add_mana_any_color", "amount": 2, "same_color": true }
 ```
 
 The amount is authored; the colours are not authored at all. On resolution the controller is
-asked once per point — so two mana may be two of one colour or one each of two — through the
-same mid-resolution choice queue a discard or a scry uses, answered with `answer_color`. The
+asked through the same mid-resolution choice queue a discard or a scry uses, answered with
+`answer_color`. How many times they are asked is the whole of the difference between the two
+printed phrasings: *add two mana in any combination of colours* asks once per point, so two
+mana may be one each of two, while `"same_color": true` — *add two mana of any one colour* —
+asks once and pays out the whole amount in the answer. `same_color` defaults to `false`. The
 optional `restriction` rides on every point produced, exactly as `add_restricted_mana`'s does.
 
 ### A colour named as a permanent enters (CR 614.12)

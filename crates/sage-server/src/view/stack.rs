@@ -164,7 +164,11 @@ fn source_name(state: &GameState, source: AbilitySource, db: &CardDatabase) -> S
             // sentences use ("return Reassembling Skeleton from your graveyard …"), so
             // this is the one source that answers with a real title while off the
             // battlefield.
-            AbilitySource::GraveyardCard(card) => card_name(card.card, db),
+            // A permanent that died has a name too, and it is the card now sitting in
+            // the graveyard — which is what its own dies trigger is talking about.
+            AbilitySource::GraveyardCard(card) | AbilitySource::DeadPermanent { card, .. } => {
+                card_name(card.card, db)
+            }
             AbilitySource::Permanent(_) => "This ability's source".to_string(),
         },
         |perm| permanent_name(perm, db),

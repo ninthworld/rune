@@ -68,28 +68,28 @@ pub fn equip_ability(data: &super::CardData) -> Option<Ability> {
 /// has only what the effect that created it wrote down, because the code tier is keyed
 /// on an authored `functional_id` and a token has none (CR 111).
 ///
-/// **It takes the state because layer 6 subtracts.** A permanent under a
-/// loses-all-abilities effect has none
-/// ([`loses_all_abilities`](crate::characteristics::loses_all_abilities)), and *every*
-/// collector has to agree about that or a removed trigger still fires, a silenced
-/// permanent still offers its activation, or a suppressed anthem still pumps. Making
-/// the one accessor answer it is what makes those impossible to get wrong
-/// individually — there is no printed-abilities reader left to reach for by mistake.
-/// The predicate reads stored effects only, so this is safe to call from inside the
-/// characteristics computation itself.
+/// **It takes the state because layer 6 both adds and subtracts.** A permanent under a
+/// loses-all-abilities effect has none, and one carrying an Aura that hands it an ability
+/// has that too — both settled in timestamp order by
+/// [`current_abilities`](crate::characteristics::current_abilities). *Every* collector
+/// has to agree about the answer or a removed trigger still fires, a silenced permanent
+/// still offers its activation, or a granted mana ability is never offered at all. Making
+/// the one accessor answer it is what makes those impossible to get wrong individually —
+/// there is no printed-abilities reader left to reach for by mistake.
+///
+/// The fold reads stored effects and attachments only, never a computed characteristic,
+/// so this is safe to call from inside the characteristics computation itself.
 #[must_use]
 pub fn abilities_of_permanent(
     state: &crate::GameState,
     db: &CardDatabase,
     perm: &Permanent,
 ) -> Vec<crate::ability::Ability> {
-    if crate::characteristics::loses_all_abilities(state, perm) {
-        return Vec::new();
-    }
-    match &perm.printed {
+    let printed = match &perm.printed {
         crate::token::Printed::Card(card) => abilities_of(db, *card),
         crate::token::Printed::Token(token) => token.abilities.clone(),
-    }
+    };
+    crate::characteristics::current_abilities(state, perm, printed, db)
 }
 
 /// The effects a spell of printed card `card` produces on resolution

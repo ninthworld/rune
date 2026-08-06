@@ -146,12 +146,17 @@ fn color_prompt(request: &ColorRequest, db: &CardDatabase) -> Prompt {
 fn color_question(request: &ColorRequest, db: &CardDatabase) -> String {
     match &request.outcome {
         ColorOutcome::AddMana {
+            amount,
             restriction: Some(restriction),
         } => format!(
-            "Choose a color of mana to add — you may spend it only to {}",
+            "Choose a color of mana to add{} — you may spend it only to {}",
+            color_mana_count(*amount),
             crate::rules_text::restriction_phrase(restriction)
         ),
-        ColorOutcome::AddMana { restriction: None } => "Choose a color of mana to add".to_string(),
+        ColorOutcome::AddMana {
+            amount,
+            restriction: None,
+        } => format!("Choose a color of mana to add{}", color_mana_count(*amount)),
         ColorOutcome::RecordOnEntry(entry) => match entry.object.card() {
             Some(card) => format!(
                 "Choose a color as {} enters the battlefield",
@@ -161,6 +166,20 @@ fn color_question(request: &ColorRequest, db: &CardDatabase) -> String {
             // this arm is unreachable in play; naming no card is the honest rendering.
             None => "Choose a color as this permanent enters the battlefield".to_string(),
         },
+    }
+}
+
+/// How much mana one colour answer produces, for the question that produces more than
+/// one point of it — `Add two mana of any one color` is a single decision worth two, and
+/// a player choosing has to be told which.
+///
+/// Empty for the ordinary one-point answer, so every question that existed before a
+/// single-colour clause did reads exactly as it did.
+fn color_mana_count(amount: u8) -> String {
+    if amount <= 1 {
+        String::new()
+    } else {
+        format!(" ({amount} mana of that color)")
     }
 }
 

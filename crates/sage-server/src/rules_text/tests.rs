@@ -1572,3 +1572,38 @@ fn issue_735_a_cost_modifier_states_the_class_and_the_amount() {
          power 4 or greater gain trample until end of turn."
     );
 }
+
+#[test]
+fn issue_740_a_granted_ability_is_quoted_on_the_card_that_grants_it() {
+    // CR 613.1f, three ways. An Aura on a land handing over an activated ability, an Aura
+    // on a creature handing over a triggered one, and a spell doing the same for a turn.
+    //
+    // The granted ability is in quotation marks and worded against **its host** — "this
+    // creature", not the name of the card granting it — because that is whose ability it
+    // becomes. It is composed by the same `ability_text` that words a printed ability and
+    // labels the dock button, so a granted activation and a printed one are one string.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "gift_of_paradise"),
+        "When Gift of Paradise enters the battlefield, you gain 2 life.\n\
+         Enchant land.\n\
+         Enchanted land has \"{T}: Add two mana of any one color.\""
+    );
+    assert_eq!(
+        text_of(&db, "infernal_scarring"),
+        "Enchant creature.\n\
+         Enchanted creature gets +2/+0.\n\
+         Enchanted creature has \"When this creature dies, draw a card.\""
+    );
+    // One sentence, because it is one effect on one target: the numbers and the ability
+    // are granted together or not at all.
+    assert_eq!(
+        text_of(&db, "abnormal_endurance"),
+        "Target creature gets +2/+0 and gains \"When this creature dies, return this \
+         creature from your graveyard to the battlefield tapped.\" until end of turn."
+    );
+
+    // The two phrasings of a chosen-colour mana clause are different decisions, so they
+    // are different sentences: Manalith asks once per point, the Aura above asks once.
+    assert_eq!(text_of(&db, "manalith"), "{T}: Add one mana of any color.");
+}

@@ -292,6 +292,46 @@ pub(super) fn object_noun(spec: TargetSpec) -> String {
     }
 }
 
+/// What a **granted** ability calls the object it was granted to (CR 613.1f) — the
+/// `this creature` of `gains "When this creature dies, draw a card."`
+///
+/// A third naming of the same class beside [`object_noun`] and [`target_noun`], and it
+/// has to be its own: the words inside a granted ability belong to the *host*, so they
+/// say "this creature" where the sentence that grants them says "target creature" and
+/// where the card's own text would say its name. A possessive class — "creature you
+/// control" — loses the possessive here, because the ability speaks from the object
+/// rather than about it.
+///
+/// Exhaustive, so a new [`TargetSpec`] cannot be granted an ability that calls its host
+/// nothing. The classes no printed card grants an ability to still answer, with the
+/// broadest word that is true of them.
+pub(super) fn granted_subject(spec: TargetSpec) -> &'static str {
+    match spec {
+        TargetSpec::AnyCreature
+        | TargetSpec::AnyCreatureYouControl
+        | TargetSpec::AnyCreatureAnOpponentControls
+        | TargetSpec::AnyCreatureWithFlying
+        | TargetSpec::AnyTappedCreature
+        | TargetSpec::AnyArtifactCreatureYouControl
+        | TargetSpec::CreatureSpellOnStack => "this creature",
+        TargetSpec::AnyLand => "this land",
+        TargetSpec::AnyArtifact => "this artifact",
+        TargetSpec::AnyEnchantment => "this enchantment",
+        TargetSpec::AnyPermanent
+        | TargetSpec::AnyPermanentWithManaValue { .. }
+        | TargetSpec::AnyNonlandPermanent
+        | TargetSpec::AnyNonlandPermanentAnOpponentControls
+        | TargetSpec::AnyArtifactOrEnchantment
+        | TargetSpec::AnyArtifactEnchantmentOrCreatureWithFlying
+        | TargetSpec::AnyPlayer
+        | TargetSpec::AnyPlayerOrPlaneswalker
+        | TargetSpec::AnyOpponent
+        | TargetSpec::AnyTarget
+        | TargetSpec::SpellOnStack
+        | TargetSpec::CardInGraveyard { .. } => "this permanent",
+    }
+}
+
 /// The non-targeted subject of an effect (CR 115.1 — no target is chosen), with its
 /// verb conjugated to agree with it: `you gain`, but a future third-person subject
 /// would read `target player gains`.

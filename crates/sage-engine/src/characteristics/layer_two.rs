@@ -45,6 +45,7 @@ pub fn controller_of(state: &GameState, perm: &Permanent) -> PlayerId {
             // A rule modification is in no layer and changes no characteristic, so it
             // has nothing to say about control either.
             | Modification::ModifyRule(_)
+            | Modification::GrantAbility(_)
             | Modification::LoseAllAbilities => None,
         })
         .max_by_key(|(timestamp, _)| *timestamp)

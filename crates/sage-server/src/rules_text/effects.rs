@@ -124,17 +124,28 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             power,
             toughness,
             keywords,
+            abilities,
             restrictions,
         } => {
             // One subject, one duration, and as many clauses as the card prints between
-            // them: the numbers, then any keywords gained, then any combat restriction
-            // imposed. Each is a predicate the target noun and "until end of turn" wrap,
-            // which is why they join as a list rather than as separate sentences.
+            // them: the numbers, then any keywords gained, then any written-out ability,
+            // then any combat restriction imposed. Each is a predicate the target noun
+            // and "until end of turn" wrap, which is why they join as a list rather than
+            // as separate sentences.
             let mut clauses = vec![format!("gets {power:+}/{toughness:+}")];
             if !keywords.is_empty() {
                 let words: Vec<&str> = keywords.iter().map(|&kw| keyword_word(kw)).collect();
                 clauses.push(format!("gains {}", list_words(&words)));
             }
+            // Quoted, because the words inside a granted ability belong to the *host*:
+            // "this creature" in them names the creature that gained it, not the spell
+            // that handed it over.
+            clauses.extend(abilities.iter().map(|ability| {
+                format!(
+                    "gains \"{}\"",
+                    ability_text(granted_subject(*target), ability)
+                )
+            }));
             clauses.extend(restrictions.iter().map(restriction_predicate));
             let verbs = list_words(&clauses.iter().map(String::as_str).collect::<Vec<_>>());
             format!("{} {verbs} until end of turn", target_noun(*target))
@@ -473,13 +484,17 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             format!("you draw cards equal to {}", amount_noun(amount))
         }
         // The colors are the player's, so the sentence says how many mana and leaves
-        // the colors to them — exactly what the card says.
+        // the colors to them — exactly what the card says. Which of the two phrasings it
+        // is is the difference between one decision and several.
         Effect::AddManaAnyColor {
             amount,
+            same_color,
             restriction,
         } => {
             let mana = if *amount == 1 {
                 "add one mana of any color".to_string()
+            } else if *same_color {
+                format!("add {} mana of any one color", number(u32::from(*amount)))
             } else {
                 format!(
                     "add {} mana in any combination of colors",

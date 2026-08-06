@@ -330,6 +330,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "abnormal_endurance",
+    "collector_number": "85",
+    "rarity": "common"
+  },
+  {
     "functional_id": "blood_divination",
     "collector_number": "86",
     "rarity": "uncommon"
@@ -392,6 +397,11 @@
   {
     "functional_id": "infectious_horror",
     "collector_number": "101",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "infernal_scarring",
+    "collector_number": "103",
     "rarity": "common"
   },
   {
@@ -722,6 +732,11 @@
   {
     "functional_id": "giant_spider",
     "collector_number": "183",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "gift_of_paradise",
+    "collector_number": "184",
     "rarity": "common"
   },
   {

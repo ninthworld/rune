@@ -690,6 +690,19 @@ fn attachment_text(data: &CardData, attachment: &Attachment) -> Vec<String> {
             .collect();
         lines.push(sentence_case(&format!("{host} has {}.", words.join(", "))));
     }
+    if !attachment.abilities.is_empty() {
+        // A granted ability is quoted, because the words inside it are the host's: it is
+        // the *land* that taps for mana and the *creature* that dies, so the ability is
+        // worded against that object and set apart from the sentence granting it. "Has",
+        // not "gains", for the reason the keyword line uses it — an attachment's grant is
+        // continuously true rather than an event.
+        for ability in &attachment.abilities {
+            lines.push(sentence_case(&format!(
+                "{host} has \"{}\"",
+                ability_text(granted_subject(attachment.attach_to), ability)
+            )));
+        }
+    }
     if !attachment.restrictions.is_empty() {
         // Restrictions are predicates rather than nouns, so they are joined into one
         // sentence about the host — "enchanted creature can't attack and can't block".

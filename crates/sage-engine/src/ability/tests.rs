@@ -406,6 +406,7 @@ fn issue_150_pump_round_trips_with_its_target_spec() {
             power: 3,
             toughness: 3,
             keywords: Vec::new(),
+            abilities: Vec::new(),
             restrictions: Vec::new(),
         }
     );
@@ -424,6 +425,7 @@ fn issue_150_pump_round_trips_with_its_target_spec() {
             power: 2,
             toughness: 2,
             keywords: vec![crate::card::Keyword::Flying],
+            abilities: Vec::new(),
             restrictions: Vec::new(),
         }
     );
@@ -446,6 +448,7 @@ fn issue_150_pump_round_trips_with_its_target_spec() {
             power: 3,
             toughness: 3,
             keywords: Vec::new(),
+            abilities: Vec::new(),
             restrictions: vec![crate::card::CombatRestriction::MustBeBlockedByAllAble],
         }
     );
@@ -866,6 +869,52 @@ fn issue_723_a_triggered_ability_functions_from_a_graveyard_by_the_same_derivati
     assert!(!is_graveyard_ability(
         &serde_json::from_str::<Ability>(watcher).unwrap()
     ));
+}
+
+#[test]
+fn issue_740_a_dies_trigger_functions_from_the_battlefield_whatever_it_then_does() {
+    // The one exception the derivation has to make. A trigger that watches its own source
+    // dying fired *from the battlefield* — CR 603.6c is the rule that lets it fire on the
+    // way out — so it belongs to the battlefield pass of the trigger diff even though its
+    // effect then reaches the card the permanent became. Filing it under the graveyard
+    // pass would hand it to a walk over cards already sitting there, which never saw a
+    // permanent die.
+    let json = r#"{"type":"triggered","event":"self_dies",
+        "effects":[{"kind":"return_self_from_graveyard","destination":"battlefield_tapped"}]}"#;
+    let ability: Ability = serde_json::from_str(json).unwrap();
+    assert!(!is_graveyard_ability(&ability));
+}
+
+#[test]
+fn issue_740_two_mana_of_any_one_color_is_one_choice_rather_than_two() {
+    // Two printed phrasings, one verb, and the field that tells them apart. `same_color`
+    // defaults off, so every card authored before a land Aura needed the other form still
+    // means "in any combination of colors".
+    let combination = r#"{"kind":"add_mana_any_color","amount":2}"#;
+    assert_eq!(
+        serde_json::from_str::<Effect>(combination).unwrap(),
+        Effect::AddManaAnyColor {
+            amount: 2,
+            same_color: false,
+            restriction: None,
+        }
+    );
+    let one_color = r#"{"kind":"add_mana_any_color","amount":2,"same_color":true}"#;
+    let effect: Effect = serde_json::from_str(one_color).unwrap();
+    assert_eq!(
+        effect,
+        Effect::AddManaAnyColor {
+            amount: 2,
+            same_color: true,
+            restriction: None,
+        }
+    );
+    // Either way it names no target and is a mana ability wherever it is activated.
+    assert_eq!(effect.target_group(), None);
+    assert!(is_mana_ability(&Ability::Activated {
+        cost: vec![Cost::Tap],
+        effects: vec![effect],
+    }));
 }
 
 #[test]

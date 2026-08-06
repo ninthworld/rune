@@ -39,7 +39,7 @@ mod rules_modifying;
 
 use continuous::*;
 use layer_seven::*;
-pub use layer_six::loses_all_abilities;
+pub(crate) use layer_six::current_abilities;
 use layer_six::*;
 pub use layer_two::{controller_of, controller_of_id};
 pub use rules_modifying::{assigns_combat_damage_by, attacks_as_though_no_defender};
@@ -94,9 +94,10 @@ pub struct Characteristics {
     /// printed seed and the computed value, except that nothing modifies this one: no
     /// layer changes printed loyalty, so it is carried through unchanged.
     pub loyalty: Option<u32>,
-    /// The permanent's current ability set, unioning data-driven and scripted
-    /// sources via [`abilities_of`] — **empty** while a CR 613 layer-6 effect has it
-    /// losing all abilities ([`loses_all_abilities`]).
+    /// The permanent's current ability set at CR 613 **layer 6**: the data-driven and
+    /// scripted sources [`abilities_of`] unions, plus every ability granted to it — by an
+    /// Aura, by an Equipment, or by a spell — and minus everything a loses-all took away
+    /// before the grant's timestamp ([`current_abilities`]).
     pub abilities: Vec<Ability>,
     /// The permanent's *current* keyword abilities (CR 702): its printed
     /// [`CardData::keywords`](crate::CardData::keywords) unioned with any granted by

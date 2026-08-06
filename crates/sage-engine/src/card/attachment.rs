@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use super::keyword::Keyword;
 use super::restriction::CombatRestriction;
-use crate::ability::{PermanentCount, TargetSpec};
+use crate::ability::{Ability, PermanentCount, TargetSpec};
 
 /// Which kind of attachment a card is — the one field that is *not* shared between an
 /// Aura and an Equipment (CR 303.4, CR 301.5).
@@ -146,6 +146,29 @@ pub struct Attachment {
     /// pacified creature is freed by destroying the Aura.
     #[serde(default)]
     pub restrictions: Vec<CombatRestriction>,
+    /// The **abilities** this grants the attached object at CR 613 layer 6 (CR 613.1f) —
+    /// the `Enchanted land has "{T}: Add two mana of any one color."` of a land Aura, and
+    /// the `Enchanted creature has "When this creature dies, draw a card."` of a creature
+    /// one. Empty for an attachment that grants only keywords, restrictions, or P/T.
+    ///
+    /// **The same layer as [`Self::keywords`], and not a different kind of thing.** A
+    /// keyword ability *is* an ability (CR 702.1); the two fields differ only in that a
+    /// keyword is named by a word and this is written out in full. So the grant is folded
+    /// into the host's computed ability set by the one accessor every collector reads
+    /// ([`abilities_of_permanent`](crate::abilities_of_permanent)), which is what makes a
+    /// granted activation offered by [`valid_actions`](crate::valid_actions), a granted
+    /// mana ability still a mana ability that uses no stack (CR 605.1a), and a granted
+    /// trigger fired by [`collect_triggers`](crate::collect_triggers) — each of them by
+    /// the same code a printed ability goes through, with nothing that reads the list
+    /// able to tell where a member came from.
+    ///
+    /// Derived on every read like the rest of the block, so the ability arrives with the
+    /// attachment and is gone the instant it leaves or moves (ADR 0005). An ability the
+    /// host already prints is granted again rather than collapsed: two copies of
+    /// `{T}: Add {G}` are two activations, which is what a second Aura on the same land
+    /// means.
+    #[serde(default)]
+    pub abilities: Vec<Ability>,
 }
 
 #[cfg(test)]
@@ -185,6 +208,7 @@ mod tests {
                 count_of: None,
                 keywords: vec![],
                 restrictions: vec![],
+                abilities: vec![],
             })
         );
         // An Aura chooses its enchant target as it is cast (CR 601.2c): one slot.
@@ -203,6 +227,7 @@ mod tests {
                 count_of: None,
                 keywords: vec![],
                 restrictions: vec![],
+                abilities: vec![],
             })
         );
 
@@ -237,6 +262,7 @@ mod tests {
                 count_of: None,
                 keywords: vec![],
                 restrictions: vec![],
+                abilities: vec![],
             })
         );
         assert!(
@@ -259,6 +285,53 @@ mod tests {
         assert_eq!(
             AttachmentKind::Equipment.host_legality(TargetSpec::AnyCreatureYouControl),
             TargetSpec::AnyCreature
+        );
+    }
+
+    #[test]
+    fn issue_740_an_aura_may_name_a_land_as_its_host_and_grant_it_an_ability() {
+        // CR 303.4a: the enchant restriction is whatever class the card names, so the
+        // state-based action's host test is `any_land` and the cast slot is too. The
+        // grant is a whole ability rather than a keyword, which the block carries beside
+        // the keywords because a keyword ability is an ability (CR 702.1).
+        use crate::ability::{Cost, Effect};
+        let db = crate::card::CardDatabase::bundled().unwrap();
+
+        let gift = crate::card::tests::card_named(&db, "gift_of_paradise");
+        let grant = gift.attachment.as_ref().unwrap();
+        assert_eq!(grant.attach_to, TargetSpec::AnyLand);
+        assert_eq!(
+            AttachmentKind::Aura.host_legality(grant.attach_to),
+            TargetSpec::AnyLand
+        );
+        assert_eq!(gift.cast_target_specs(None), vec![TargetSpec::AnyLand]);
+        assert_eq!(
+            grant.abilities,
+            vec![Ability::Activated {
+                cost: vec![Cost::Tap],
+                effects: vec![Effect::AddManaAnyColor {
+                    amount: 2,
+                    same_color: true,
+                    restriction: None,
+                }],
+            }]
+        );
+        assert!(
+            crate::ability::is_mana_ability(&grant.abilities[0]),
+            "what an Aura grants is judged by what it says, not by who granted it"
+        );
+
+        // The other half of the pair: a P/T grant and a triggered ability on one Aura,
+        // which is the shape that proves the two fields are independent.
+        let scarring = crate::card::tests::card_named(&db, "infernal_scarring");
+        let grant = scarring.attachment.as_ref().unwrap();
+        assert_eq!((grant.power, grant.toughness), (2, 0));
+        assert_eq!(
+            grant.abilities,
+            vec![Ability::Triggered {
+                event: crate::ability::TriggerCondition::SelfDies,
+                effects: vec![Effect::DrawCard { count: 1 }],
+            }]
         );
     }
 }

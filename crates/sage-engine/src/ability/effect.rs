@@ -31,23 +31,31 @@ pub enum Effect {
         /// How much colorless mana is produced.
         amount: u8,
     },
-    /// Add `amount` mana **in any combination of colors** — the player chooses each
-    /// point's color as the effect resolves (`Add two mana in any combination of
-    /// colors.`).
+    /// Add `amount` mana whose **colors the player chooses** as the effect resolves —
+    /// `Add two mana in any combination of colors.`, and, with
+    /// [`same_color`](Self::AddManaAnyColor::same_color) set, `Add two mana of any one
+    /// color.`
     ///
-    /// The choice is real and it is per point: the player is asked once for each mana,
-    /// so two mana may be two of one color or one each of two. The questions ride the
-    /// ordinary mid-resolution choice queue ([`crate::ChoiceQuestion::Color`]), which
-    /// is why an effect that looks like a variant of [`Effect::AddMana`] is a separate
-    /// verb — the amount is fixed, but the *colors* are not authored at all.
+    /// The choice is real, and how many times it is asked is the whole of the difference
+    /// between the two printed phrases: a combination asks once per point, so two mana
+    /// may be one each of two colors, while "of any one color" asks once and pays out
+    /// the whole amount in the answer. The questions ride the ordinary mid-resolution
+    /// choice queue ([`crate::ChoiceQuestion::Color`]), which is why an effect that
+    /// looks like a variant of [`Effect::AddMana`] is a separate verb — the amount is
+    /// fixed, but the *colors* are not authored at all.
     ///
     /// The optional `restriction` rides on every point produced, exactly as
     /// [`Effect::AddRestrictedMana`]'s does (CR 106.6), so `Add two mana in any
     /// combination of colors. Spend this mana only to cast Dragon spells.` is one
     /// effect rather than a colored one repeated five ways.
     AddManaAnyColor {
-        /// How many mana are produced, and therefore how many colors are chosen.
+        /// How many mana are produced in total.
         amount: u8,
+        /// Whether all of it must be **one** color — one question answered once, rather
+        /// than one question per point. Defaults to `false`, the combination form every
+        /// card authored before a land Aura needed the other one writes.
+        #[serde(default)]
+        same_color: bool,
         /// What the produced mana may be spent on (CR 106.6). Absent means
         /// unrestricted.
         #[serde(default)]
@@ -291,6 +299,26 @@ pub enum Effect {
         /// the ordinary pump that only changes numbers.
         #[serde(default)]
         keywords: Vec<Keyword>,
+        /// **Written-out** abilities granted to the same target until end of turn — the
+        /// `and gains "When this creature dies, return it to the battlefield tapped under
+        /// its owner's control"` of a black combat trick — applied at CR 613 layer 6 as a
+        /// [`Modification::GrantAbility`](crate::Modification::GrantAbility) keyed to that
+        /// one permanent. Empty for every pump that grants only words from the keyword
+        /// list.
+        ///
+        /// Beside [`keywords`](Self::Pump::keywords) rather than in a verb of its own for
+        /// the reason the keywords are beside the numbers: one effect declares one target
+        /// group, and a card that says `gets +2/+0 **and** gains "…"` names one creature.
+        /// Unlike a keyword grant it is not idempotent — two castings give two abilities,
+        /// because two grants are two abilities (CR 613.1f adds, it does not merge).
+        ///
+        /// A granted **dies** trigger is the shape the catalog needs it for, and it is
+        /// the one grant that outlives the grant: the trigger fires on the way out
+        /// (CR 603.6c), read from the state the permanent was still in and still granted
+        /// in, and what its effects then do to the card in the graveyard is the ability's
+        /// business rather than the creature's.
+        #[serde(default)]
+        abilities: Vec<Ability>,
         /// Combat restrictions imposed on the same target until end of turn, applied at
         /// CR 613 layer 6 exactly as [`Effect::Restrict`] imposes one — including the
         /// one *requirement* in that vocabulary, `all creatures able to block it do so`.

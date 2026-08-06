@@ -74,7 +74,7 @@ pub use card_type::{CardType, Supertype};
 pub use catalog::{Violation, MAX_MODES};
 pub use characteristics::{
     assigns_combat_damage_by, attacks_as_though_no_defender, characteristics, controller_of,
-    controller_of_id, loses_all_abilities, Characteristics,
+    controller_of_id, Characteristics,
 };
 pub use choice::{
     choice_bounds, choice_candidates, confirm_is_payable, pending_player_choice, ChoiceOutcome,

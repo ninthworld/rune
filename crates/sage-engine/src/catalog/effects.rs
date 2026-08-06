@@ -148,6 +148,13 @@ pub(super) fn effect_lists(
             lists.push(effects.iter().collect());
         }
     }
+    // An ability an attachment grants is one object's worth of announcement once it is
+    // on its host, so its effect list is its own list here.
+    for ability in granted_abilities(object) {
+        if let Some(effects) = ability.get("effects").and_then(serde_json::Value::as_array) {
+            lists.push(effects.iter().collect());
+        }
+    }
     for effect in every_effect(object) {
         for ability in effect
             .get("abilities")
@@ -255,7 +262,10 @@ const RETURN_SELF_FROM_GRAVEYARD: &str = "return_self_from_graveyard";
 ///
 /// - **Anywhere but an activated or a triggered ability.** A spell effect or an ability
 ///   handed to an emblem has no source in a graveyard for the return to act on, so the
-///   effect would sit in a card that reads as recursive and never is.
+///   effect would sit in a card that reads as recursive and never is. An ability a card
+///   **grants** — an Aura's, or a pump's — counts as one of those positions: it is an
+///   ability, it will sit on an object that can die, and where it happens to be authored
+///   says nothing about whether it works.
 /// - **Beside a cost a card in a graveyard cannot pay.** A card in a zone is not a
 ///   permanent: it cannot be tapped, sacrificed, or have counters removed. Mana is the
 ///   only cost component such an ability can charge, and one that charged anything else
@@ -272,9 +282,9 @@ pub(super) fn graveyard_ability_is_bad(
     }
     /// Occurrences in one ability's own effect tree — its list, and the `may` and
     /// `conditional` wrappers inside it. Deliberately **not** [`nested_effects`], which
-    /// also descends into the abilities a `create_emblem` hands out: an emblem is in no
-    /// zone and has no card in a graveyard, so one authored there is uncounted here and
-    /// falls out as a mismatch below.
+    /// also descends into the abilities an effect hands out: those are counted by walking
+    /// the abilities themselves below, and an emblem's — which are in no zone and have no
+    /// card in a graveyard — are counted nowhere and fall out as a mismatch.
     fn count_in(effects: &[serde_json::Value]) -> usize {
         effects
             .iter()
@@ -288,11 +298,29 @@ pub(super) fn graveyard_ability_is_bad(
             })
             .sum()
     }
-    let abilities = object
+    // Every ability position that becomes a real ability of a real object: the card's
+    // own, and the ones it grants — through an `attachment` block, or through the
+    // `abilities` an effect like a pump hands to the creature it targets. An emblem's are
+    // deliberately absent, which is what makes one authored there a mismatch.
+    let mut abilities: Vec<&serde_json::Value> = object
         .get("abilities")
         .and_then(serde_json::Value::as_array)
         .map(Vec::as_slice)
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .iter()
+        .collect();
+    abilities.extend(granted_abilities(object));
+    for effect in every_effect(object) {
+        if effect.get("kind").and_then(serde_json::Value::as_str) == Some("pump") {
+            abilities.extend(
+                effect
+                    .get("abilities")
+                    .and_then(serde_json::Value::as_array)
+                    .map(Vec::as_slice)
+                    .unwrap_or_default(),
+            );
+        }
+    }
     // Every authored occurrence, at any depth and in any list.
     let total = every_effect(object)
         .into_iter()
@@ -369,6 +397,27 @@ pub(super) fn ability_change_is_empty(effect: &serde_json::Value) -> bool {
         && names_none("gain")
 }
 
+/// The abilities a definition **grants** rather than has: the ones an `attachment` block
+/// hands to whatever it is attached to (CR 613.1f).
+///
+/// A third ability position beside the card's own `abilities` and the ones a
+/// `create_emblem` effect writes, and it has to be walked like the other two: an ability
+/// a card gives away is still an ability this catalog authored, so every rule stated
+/// about "every effect a definition authors" has to be able to see inside it.
+///
+/// The abilities a **pump** grants need no entry here — they hang off an effect, and
+/// [`nested_effects`] already descends into any effect's `abilities`.
+pub(super) fn granted_abilities(
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> &[serde_json::Value] {
+    object
+        .get("attachment")
+        .and_then(|attachment| attachment.get("abilities"))
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+}
+
 /// Every effect a definition authors at the top level of an ability or of its spell
 /// effects, in file order.
 ///
@@ -377,15 +426,20 @@ pub(super) fn ability_change_is_empty(effect: &serde_json::Value) -> bool {
 pub(super) fn authored_effects(
     object: &serde_json::Map<String, serde_json::Value>,
 ) -> impl Iterator<Item = &serde_json::Value> {
-    let abilities = object
-        .get("abilities")
-        .and_then(serde_json::Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or_default()
-        .iter()
-        .filter_map(|ability| ability.get("effects"))
-        .filter_map(serde_json::Value::as_array)
-        .flatten();
+    fn effects_of(abilities: &[serde_json::Value]) -> impl Iterator<Item = &serde_json::Value> {
+        abilities
+            .iter()
+            .filter_map(|ability| ability.get("effects"))
+            .filter_map(serde_json::Value::as_array)
+            .flatten()
+    }
+    let abilities = effects_of(
+        object
+            .get("abilities")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default(),
+    );
     let spell = object
         .get("spell_effects")
         .and_then(serde_json::Value::as_array)
@@ -395,9 +449,13 @@ pub(super) fn authored_effects(
     // A modal spell's effects hang off its modes instead (CR 700.2), and every rule
     // stated about "every effect a definition authors" has to reach them — otherwise a
     // check that holds for a plain spell would quietly not hold once the same text was
-    // written as one bullet of two.
+    // written as one bullet of two. An attachment's granted abilities carry effects for
+    // the same reason.
     let modes = mode_effects(object).into_iter();
-    abilities.chain(spell).chain(modes)
+    abilities
+        .chain(spell)
+        .chain(modes)
+        .chain(effects_of(granted_abilities(object)))
 }
 
 /// The effects of every mode a definition declares, flattened (CR 700.2).

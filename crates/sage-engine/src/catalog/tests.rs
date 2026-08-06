@@ -679,6 +679,44 @@ fn a_return_self_from_graveyard_must_sit_on_an_ability_that_could_reach_it() {
 }
 
 #[test]
+fn issue_740_a_granted_ability_is_an_ability_position_like_any_other() {
+    // An ability a card hands away is still an ability of a real object once it is
+    // granted, so the CR 113.6 rule above has to see inside the two places a card writes
+    // one: an `attachment` block's grant, and the `abilities` a pump gives its target.
+    // A `create_emblem`'s stay excluded — an emblem is in no zone and has no card.
+    for granted in [
+        r#", "spell_effects": [{"kind": "pump", "target": "any_creature",
+             "power": 2, "toughness": 0, "abilities": [
+                 {"type": "triggered", "event": "self_dies", "effects": [
+                     {"kind": "return_self_from_graveyard",
+                      "destination": "battlefield_tapped"}]}]}]"#,
+        r#", "subtypes": ["Aura"],
+            "attachment": {"kind": "aura", "attach_to": "any_creature", "abilities": [
+                {"type": "activated", "cost": [{"kind": "mana", "mana": "{B}"}],
+                 "effects": [{"kind": "return_self_from_graveyard",
+                              "destination": "hand"}]}]}"#,
+    ] {
+        assert!(
+            validate_definition(None, &definition(granted)).is_ok(),
+            "expected `{granted}` to validate"
+        );
+    }
+
+    // And the cost rule reaches a granted ability too: a card in a graveyard has nothing
+    // to tap, whoever granted the ability that would tap it.
+    let tapped = r#", "subtypes": ["Aura"],
+        "attachment": {"kind": "aura", "attach_to": "any_creature", "abilities": [
+            {"type": "activated", "cost": [{"kind": "tap"}],
+             "effects": [{"kind": "return_self_from_graveyard", "destination": "hand"}]}]}"#;
+    assert_eq!(
+        validate_definition(None, &definition(tapped)),
+        Err(Violation::GraveyardAbilityCannotFunction {
+            functional_id: "test_card".to_string(),
+        }),
+    );
+}
+
+#[test]
 fn issue_738_the_chosen_color_must_be_chosen_somewhere_on_the_card() {
     // "A spell of the chosen color" is the one trigger selector that refers to the rest
     // of its own card. Without an `enters_choosing_color` there is no colour to refer to

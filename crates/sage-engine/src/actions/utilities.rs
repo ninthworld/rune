@@ -281,8 +281,11 @@ pub(crate) fn potential_mana_pool(
                     // over-counts on purpose, in the direction this estimate is allowed
                     // to err: it can only ever offer a decision that turns out
                     // unaffordable, never withhold one the player could have taken.
+                    // Whether the colors must all match is exactly the constraint this
+                    // over-count already ignores, so it changes nothing here.
                     Effect::AddManaAnyColor {
                         amount,
+                        same_color: _,
                         restriction,
                     } => {
                         for color in crate::mana::Color::ALL {

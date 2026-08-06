@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use crate::ability::Ability;
 use crate::card::{CombatRestriction, Keyword, RuleModification};
 use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::player::LossReason;
@@ -749,16 +750,34 @@ pub enum Modification {
     /// The one modification that is not about a single named thing, and therefore the
     /// one every collector that walks a permanent's abilities has to respect: a
     /// silenced permanent offers no activation, contributes no continuous effect to
-    /// anything, and fires no trigger. The single question those collectors ask is
-    /// [`characteristics::loses_all_abilities`](crate::characteristics::loses_all_abilities),
-    /// which reads the stored effects and nothing else — so it can be asked from
-    /// *inside* the layer computation, exactly as layer 2 can.
+    /// anything, and fires no trigger. They all read one accessor,
+    /// [`abilities_of_permanent`](crate::abilities_of_permanent), which folds this and
+    /// every grant in timestamp order over the stored effects and the attachments and
+    /// nothing else — so it can be asked from *inside* the layer computation, exactly as
+    /// layer 2 can.
     ///
-    /// A keyword granted **after** it is still granted (CR 613.1f), which the ordered
-    /// layer-6 fold handles on its own. Nothing in the IR grants a non-keyword ability,
-    /// so for the ability collectors a boolean is not an approximation of the ordered
-    /// answer — it *is* the ordered answer.
+    /// Anything granted **after** it is still granted (CR 613.1f) — a keyword by
+    /// [`Self::GrantKeyword`], a written-out ability by [`Self::GrantAbility`] — which
+    /// the ordered layer-6 folds handle on their own. That ordering is the reason no
+    /// collector may ask a bare "has this lost everything?" boolean: an Aura hung on a
+    /// silenced permanent afterwards really does give it an ability.
     LoseAllAbilities,
+    /// CR 613 **layer 6** (CR 613.1f): add a **written-out ability** to the affected
+    /// permanent — the `gains "When this creature dies, …"` of a spell, and the
+    /// `Enchanted land has "{T}: Add …"` of an Aura.
+    ///
+    /// [`Self::GrantKeyword`]'s sibling, and deliberately not a widening of it: a keyword
+    /// is one `Copy` word from a closed list, while this carries a whole [`Ability`] —
+    /// costs, effects, a trigger condition — and so must be boxed to keep the enum from
+    /// growing to the size of its largest variant everywhere it is stored.
+    ///
+    /// A granted ability is folded into the host's set by
+    /// [`abilities_of_permanent`](crate::abilities_of_permanent), the one accessor every
+    /// collector reads, so it is offered, paid for, put on the stack, and fired by the
+    /// same code a printed ability goes through. Unlike a keyword grant it is **not**
+    /// idempotent: granting the same ability twice is two abilities, because two Auras
+    /// each saying `{T}: Add {G}` really are two activations.
+    GrantAbility(Box<Ability>),
     /// CR 613 **layer 6** (CR 613.1f): impose a combat restriction on the affected
     /// permanent — an Aura's "can neither attack nor block", or a spell's "target
     /// creature can't be blocked this turn". The exact counterpart of

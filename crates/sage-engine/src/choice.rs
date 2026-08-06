@@ -196,8 +196,12 @@ pub struct ColorRequest {
 /// priority hand-off single, which is the rule [`ChoiceQuestion`] is built on.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ColorOutcome {
-    /// Put one mana of the chosen colour into the chooser's pool (CR 106.4).
+    /// Put mana of the chosen colour into the chooser's pool (CR 106.4).
     AddMana {
+        /// How many points of it this one answer produces. One for `add N mana in any
+        /// combination of colors`, which asks N times; N for `add N mana of any one
+        /// color`, which asks once.
+        amount: u8,
         /// What the produced mana may be spent on (CR 106.6), or `None` for ordinary
         /// mana. Copied from the effect so the restriction rides each point as it is
         /// chosen.
@@ -944,28 +948,40 @@ pub(crate) fn choices_for_effect(
                 outcome: ChoiceOutcome::TakeAndShuffle(*destination),
             }),
         )]),
-        // One question per point of mana, so a player producing two really is asked
-        // twice and may answer differently each time. They are separate queue entries
-        // rather than one multi-answer question because that is what makes the second
-        // question askable *after* seeing the first answered, and because the resume
-        // machinery already attaches the rest of the resolution to the last of them.
+        // One question per point of mana, so a player producing two in any combination
+        // really is asked twice and may answer differently each time. They are separate
+        // queue entries rather than one multi-answer question because that is what makes
+        // the second question askable *after* seeing the first answered, and because the
+        // resume machinery already attaches the rest of the resolution to the last of
+        // them. `Add two mana of any one color` is the same queue with the arithmetic the
+        // other way round: one question, paying out the whole amount — which is what
+        // stops a single-colour clause from being answerable twice.
         Effect::AddManaAnyColor {
             amount,
+            same_color,
             restriction,
-        } => Some(
-            (0..*amount)
-                .map(|_| {
-                    (
-                        controller,
-                        ChoiceQuestion::Color(ColorRequest {
-                            outcome: ColorOutcome::AddMana {
-                                restriction: restriction.clone(),
-                            },
-                        }),
-                    )
-                })
-                .collect(),
-        ),
+        } => {
+            let (questions, each) = if *same_color {
+                (1, *amount)
+            } else {
+                (*amount, 1)
+            };
+            Some(
+                (0..questions)
+                    .map(|_| {
+                        (
+                            controller,
+                            ChoiceQuestion::Color(ColorRequest {
+                                outcome: ColorOutcome::AddMana {
+                                    amount: each,
+                                    restriction: restriction.clone(),
+                                },
+                            }),
+                        )
+                    })
+                    .collect(),
+            )
+        }
         // The one question the *controller* always answers, whoever else the ability
         // names: an optional effect is theirs to take or leave (CR 608.2).
         Effect::May { cost, effects } => Some(vec![(
@@ -994,15 +1010,20 @@ pub(crate) fn apply_color_outcome(
     db: &CardDatabase,
 ) {
     match &request.outcome {
-        ColorOutcome::AddMana { restriction } => {
+        ColorOutcome::AddMana {
+            amount,
+            restriction,
+        } => {
             let Some(player) = state.players.get_mut(chooser.0) else {
                 return;
             };
             match restriction {
-                Some(restriction) => player
-                    .mana_pool
-                    .add_restricted(color, 1, restriction.clone()),
-                None => player.mana_pool.add(color, 1),
+                Some(restriction) => {
+                    player
+                        .mana_pool
+                        .add_restricted(color, *amount, restriction.clone());
+                }
+                None => player.mana_pool.add(color, *amount),
             }
         }
         // The deferred half of a battlefield entry (CR 614.12): the permanent arrives

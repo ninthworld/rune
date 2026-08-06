@@ -7,12 +7,13 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (229)
+## Supported cards (232)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
 | Functional ID | Name | Implementation |
 | --- | --- | --- |
+| `abnormal_endurance` | Abnormal Endurance | functional definition |
 | `act_of_treason` | Act of Treason | functional definition |
 | `aegis_of_the_heavens` | Aegis of the Heavens | functional definition |
 | `aerial_engineer` | Aerial Engineer | functional definition |
@@ -92,6 +93,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `ghirapur_guide` | Ghirapur Guide | functional definition |
 | `ghostform` | Ghostform | functional definition |
 | `giant_spider` | Giant Spider | functional definition |
+| `gift_of_paradise` | Gift of Paradise | functional definition |
 | `gigantosaurus` | Gigantosaurus | functional definition |
 | `goblin_instigator` | Goblin Instigator | functional definition |
 | `goblin_motivator` | Goblin Motivator | functional definition |
@@ -112,6 +114,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `horizon_scholar` | Horizon Scholar | functional definition |
 | `hostile_minotaur` | Hostile Minotaur | functional definition |
 | `infectious_horror` | Infectious Horror | functional definition |
+| `infernal_scarring` | Infernal Scarring | functional definition |
 | `inspired_charge` | Inspired Charge | functional definition |
 | `invoke_the_divine` | Invoke the Divine | functional definition |
 | `island` | Island | functional definition |
@@ -252,7 +255,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Abilities that trigger on a mana ability being activated | the activation condition watches the objects a transition put on the stack, which a mana ability never reaches (CR 605.3a) |
 | Abilities that trigger on someone else drawing a card | the draw trigger condition observes only its own controller's draws |
 | Attack requirements | a block requirement is maximised over the whole declaration (CR 509.1c), but nothing can force a creature into the attacker declaration (CR 508.1d) — and the one requirement modeled is that every creature able to block an attacker does so, never that one particular creature blocks |
-| Auras that enchant a player or land, or move between hosts | only enchant-creature Auras granting P/T, keywords, or combat restrictions are modeled |
+| Auras that enchant a player, or move between hosts | an Aura's enchant restriction is any class the target vocabulary names, so a creature and a land are both hosts, and its grant may be P/T, keywords, combat restrictions, or a written-out ability; but no attachment names a player, and once attached an Aura stays on the host it entered on — nothing moves one |
 | Combat damage assigned by anything but the assigning creature's own power or toughness | an attacker or blocker assigns its current power, or its current toughness while a continuous effect names that one instead, read at the single place the combat-damage step asks how much a creature assigns; no other characteristic can be named, nothing assigns a fixed amount or a count, and nothing reads another object's characteristic |
 | Conditions other than a permanent count, a mill, a discard, or life gained this turn | a permanent count cannot require distinct names, and no condition asks what one permanent has done — on the intervening-if side or the continuous one |
 | Cost modification of another player's spells, or of an ability's activation cost | a permanent continuously takes generic mana off, or puts it on, the cost of a class of spell its own controller casts (CR 601.2f), read wherever a cast's cost is read; nothing reaches a spell another player casts, no modification applies to an activated ability's cost, and a coloured or colourless requirement is never changed |
@@ -264,7 +267,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Effects that untap a permanent it did not just take | untapping rides on the control change that steals a creature, because one effect names one target; nothing else brings an untap forward |
 | Effects whose amount is derived from a source outside the six the IR names | an amount may be a count of permanents (feeding power/toughness, life, damage, a token count, and an attachment's static grant), the life gained this turn, a count of what this resolution milled, the greatest mana value among a class of permanents, how many permanents this object's own cost sacrificed, or the power the creature that cost sacrificed had — the last five feeding power/toughness, a draw, damage, and a search's size; nothing else may — not cards in a zone, a life total, one named object's mana value, a surviving object's power, half of a total, or the permanent an effect just put onto the battlefield |
 | Emblems with an activated ability | an emblem carries static and triggered abilities only; nothing offers a way to activate one |
-| Equipment that grants an ability or a type, and cards that ask whether a creature is equipped | an attachment grants power/toughness, keywords, and combat restrictions at CR 613 layers 6 and 7c; it adds no triggered ability and no type, and nothing asks whether a permanent is attached |
+| Equipment that grants a type, and cards that ask whether a creature is equipped | an attachment grants power/toughness, keywords, combat restrictions, and written-out abilities at CR 613 layers 6 and 7c — one block for both kinds, so an Equipment grants an ability exactly as an Aura does; it adds no type, and nothing asks whether a permanent is attached |
 | Gaining control of a permanent for longer than a turn, and exchanging control | a control change is a targeted layer-2 effect the cleanup step ends; no duration outlives the turn and nothing swaps two permanents' controllers |
 | Kicker and other optional additional costs | no optional cost declared on announcement |
 | Losing abilities on a permanent other than the effect's own source | a layer-6 removal names its own source, loses named keywords or all abilities until end of turn, and reaches no target and no class |

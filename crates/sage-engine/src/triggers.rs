@@ -49,11 +49,19 @@ struct Watcher<'a> {
     controller: PlayerId,
 }
 
-/// Where a watching ability lives — the three source lists [`collect_triggers`] walks.
+/// Where a watching ability lives — the source lists [`collect_triggers`] walks.
 #[derive(Clone, Copy)]
 enum Origin<'a> {
     /// A permanent on the battlefield.
     Permanent(&'a Permanent),
+    /// A permanent that **left** the battlefield across this transition, read from the
+    /// snapshot that still has it (CR 603.10a, last-known information).
+    ///
+    /// The same object as [`Self::Permanent`] for every question about what it was and
+    /// what it could see; a separate variant for the one question it answers
+    /// differently, which is what the ability's source *is* now that the permanent is
+    /// gone — see [`Watcher::source`].
+    DeadPermanent(&'a Permanent),
     /// An emblem (CR 114), by its object id.
     Emblem(u64),
     /// A card in its owner's graveyard whose ability functions from there (CR 113.6).
@@ -69,10 +77,19 @@ impl<'a> Watcher<'a> {
         }
     }
 
-    /// The source permanent, or `None` for the two origins that are not one.
+    /// A watcher on a permanent that has left the battlefield across this transition.
+    fn departed(permanent: &'a Permanent, controller: PlayerId) -> Self {
+        Self {
+            origin: Origin::DeadPermanent(permanent),
+            controller,
+        }
+    }
+
+    /// The source permanent, or `None` for the two origins that are not one. A permanent
+    /// that has just left is still one — that is exactly what a dies trigger is about.
     fn permanent(self) -> Option<&'a Permanent> {
         match self.origin {
-            Origin::Permanent(perm) => Some(perm),
+            Origin::Permanent(perm) | Origin::DeadPermanent(perm) => Some(perm),
             Origin::Emblem(_) | Origin::GraveyardCard(_) => None,
         }
     }
@@ -87,6 +104,9 @@ impl<'a> Watcher<'a> {
     fn still_present(self, after: &GameState) -> bool {
         match self.origin {
             Origin::Permanent(perm) => after.battlefield.iter().any(|p| p.id == perm.id),
+            // By construction it is not: the departure pass is the only thing that
+            // builds one.
+            Origin::DeadPermanent(_) => false,
             Origin::Emblem(_) => true,
             Origin::GraveyardCard(card) => after
                 .players
@@ -96,9 +116,25 @@ impl<'a> Watcher<'a> {
     }
 
     /// This watcher as the [`AbilitySource`] a collected trigger records.
+    ///
+    /// A permanent that has left records **both** halves of what it is now
+    /// ([`AbilitySource::DeadPermanent`]): the id it had, for every effect that asks
+    /// about the permanent, and the card it became, for the one that acts on the card in
+    /// the graveyard. A **token** records only the id, because CR 111.7 leaves no card
+    /// behind for the second half to name.
     fn source(self) -> AbilitySource {
         match self.origin {
             Origin::Permanent(perm) => AbilitySource::Permanent(perm.id),
+            Origin::DeadPermanent(perm) => match perm.printed.card() {
+                Some(card) => AbilitySource::DeadPermanent {
+                    permanent: perm.id,
+                    card: crate::id::CardInstance {
+                        id: perm.instance,
+                        card,
+                    },
+                },
+                None => AbilitySource::Permanent(perm.id),
+            },
             Origin::Emblem(id) => AbilitySource::Emblem(id),
             Origin::GraveyardCard(card) => AbilitySource::GraveyardCard(card),
         }
@@ -170,7 +206,7 @@ pub fn collect_triggers(before: &GameState, after: &GameState, db: &CardDatabase
             // Read against `before`, the snapshot the permanent still exists in — and
             // therefore the one whose control-changing effects still apply to it. A
             // creature that dies while stolen dies under the thief's control.
-            Watcher::on(perm, crate::characteristics::controller_of(before, perm)),
+            Watcher::departed(perm, crate::characteristics::controller_of(before, perm)),
             // Read against `before` for the same reason the controller is: it is the
             // snapshot the permanent still exists in, and therefore the one whose
             // layer-6 effects still silenced it as it died.
@@ -798,7 +834,8 @@ mod tests {
     fn issue_151_collect_triggers_detects_a_death_by_battlefield_to_graveyard_diff() {
         // CR 700.4 / 603.6c: the permanent left the battlefield and its instance is
         // now in a graveyard — the diff observes the death and yields the dies
-        // trigger, its source the (now-gone) permanent id.
+        // trigger, its source both halves of what the object now is (CR 603.10a): the
+        // (now-gone) permanent id, and the card it became.
         let db = lurker_db();
         let (before, id, instance) = before_with_lurker(&db);
         let mut after = before.clone();
@@ -810,7 +847,17 @@ mod tests {
 
         let triggers = collect_triggers(&before, &after, &db);
         assert_eq!(triggers.len(), 1);
-        assert_eq!(triggers[0].source, AbilitySource::Permanent(id));
+        assert_eq!(
+            triggers[0].source,
+            AbilitySource::DeadPermanent {
+                permanent: id,
+                card: crate::id::CardInstance {
+                    id: instance,
+                    card: id_in(&db, "test_lurker"),
+                },
+            }
+        );
+        assert_eq!(triggers[0].source.permanent(), Some(id));
         assert_eq!(triggers[0].controller, PlayerId(0));
         assert_eq!(triggers[0].effects, vec![Effect::DrawCard { count: 1 }]);
     }

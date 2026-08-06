@@ -112,6 +112,7 @@ fn rule_modifications(
             Modification::PowerToughness { .. }
             | Modification::GrantKeyword(_)
             | Modification::LoseKeyword(_)
+            | Modification::GrantAbility(_)
             | Modification::LoseAllAbilities
             | Modification::GrantRestriction(_)
             | Modification::GainControl(_) => None,

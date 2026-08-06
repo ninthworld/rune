@@ -101,11 +101,17 @@ paragraph.
 **Layer 6 subtracts as well as adds**, and is therefore ordered by timestamp (CR 613.1f):
 a grant after a removal grants, a removal after a grant removes. `alter_abilities_self` is
 the one verb that subtracts — it names its own source, loses named keywords or *all*
-abilities until end of turn, and reaches no target and no class. Losing all abilities is
-answered by `characteristics::loses_all_abilities`, a stored-effects-only predicate read
-from inside `abilities_of_permanent`; that accessor takes `&GameState` for exactly this
-reason and is the only path any collector uses, so there is no printed-abilities reader to
-pick by mistake.
+abilities until end of turn, and reaches no target and no class. What layer 6 adds is a
+keyword *or a whole written-out ability* — an attachment's `abilities`, a `pump`'s — folded
+in by `characteristics::current_abilities`, so a granted activation is offered by
+`valid_actions`, a granted mana ability still uses no stack (CR 605.1a), and a granted
+trigger is collected, each by the code a printed ability goes through. Grant and loses-all
+are both read through `abilities_of_permanent`, which is why that accessor takes
+`&GameState` and is the only path a collector uses: no printed-abilities reader to pick by
+mistake, and no boolean standing in for the ordered answer — losing all abilities is one
+more contribution to that fold rather than a predicate beside it. The fold sees stored
+effects and attachments only, never a
+printed static ability, which is what stops it recursing into the computation it is part of.
 
 **A rule modification is in no layer, and that is the point** (`Modification::ModifyRule`,
 `RuleModification`). CR 613 orders effects that change *characteristics*; these change
