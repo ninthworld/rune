@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (233)
+## Supported cards (235)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -116,6 +116,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `hostile_minotaur` | Hostile Minotaur | functional definition |
 | `infectious_horror` | Infectious Horror | functional definition |
 | `infernal_scarring` | Infernal Scarring | functional definition |
+| `inferno_hellion` | Inferno Hellion | functional definition |
 | `inspired_charge` | Inspired Charge | functional definition |
 | `invoke_the_divine` | Invoke the Divine | functional definition |
 | `island` | Island | functional definition |
@@ -160,6 +161,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `one_with_the_machine` | One with the Machine | functional definition |
 | `open_the_graves` | Open the Graves | functional definition |
 | `oreskos_swiftclaw` | Oreskos Swiftclaw | functional definition |
+| `palladia_mors_the_ruiner` | Palladia-Mors, the Ruiner | functional definition |
 | `patient_rebuilding` | Patient Rebuilding | functional definition |
 | `pelakka_wurm` | Pelakka Wurm | functional definition |
 | `pendulum_of_patterns` | Pendulum of Patterns | functional definition |
@@ -258,7 +260,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Attack requirements | a block requirement is maximised over the whole declaration (CR 509.1c), but nothing can force a creature into the attacker declaration (CR 508.1d) — and the one requirement modeled is that every creature able to block an attacker does so, never that one particular creature blocks |
 | Auras that enchant a player, or move between hosts | an Aura's enchant restriction is any class the target vocabulary names, so a creature and a land are both hosts, and its grant may be P/T, keywords, combat restrictions, or a written-out ability; but no attachment names a player, and once attached an Aura stays on the host it entered on — nothing moves one |
 | Combat damage assigned by anything but the assigning creature's own power or toughness | an attacker or blocker assigns its current power, or its current toughness while a continuous effect names that one instead, read at the single place the combat-damage step asks how much a creature assigns; no other characteristic can be named, nothing assigns a fixed amount or a count, and nothing reads another object's characteristic |
-| Conditions other than a permanent count, a mill, a discard, or life gained this turn | a permanent count cannot require distinct names, and no condition asks what one permanent has done — on the intervening-if side or the continuous one |
+| Conditions other than a permanent count, a mill, a discard, life gained this turn, or what one permanent has attacked, blocked, or damaged | a permanent count is a tally of a class and cannot require its members to have distinct names |
 | Cost modification of another player's spells, or of an ability's activation cost | a permanent continuously takes generic mana off, or puts it on, the cost of a class of spell its own controller casts (CR 601.2f), read wherever a cast's cost is read; nothing reaches a spell another player casts, no modification applies to an activated ability's cost, and a coloured or colourless requirement is never changed |
 | Costs paid by exiling from anywhere but a graveyard, or by choosing to pay at all | a cast and an activation each carry the sacrifices, discards, and graveyard exiles their cost names on the action — a fixed number of permanents or any number of them, and always the payer's own — but a cost exiles only out of the payer's own graveyard, never from a hand, a library, or the battlefield, and every non-mana cost is mandatory rather than an option the player may decline |
 | Damage prevention beyond a blanket shield for the turn | a shield prevents all damage — or all combat damage — for the rest of the turn, consulted at the one seam damage is dealt, and a spell may declare its own damage unpreventable to defeat it; nothing prevents a fixed amount, names a recipient or a source, redirects damage, or lasts anything but the turn |

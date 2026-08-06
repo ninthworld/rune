@@ -423,6 +423,7 @@ async fn issue_455_a_resolved_removal_spell_and_its_death_reach_the_skipped_seat
         attacking: None,
         blocking: Vec::new(),
         skips_untap: false,
+        dealt_damage: false,
         damage: 0,
         counters: Default::default(),
         attached_to: None,

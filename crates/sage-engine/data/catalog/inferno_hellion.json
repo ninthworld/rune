@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "functional_id": "inferno_hellion",
+  "name": "Inferno Hellion",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Hellion"
+  ],
+  "mana_cost": "{3}{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 7,
+  "toughness": 3,
+  "keywords": [
+    "trample"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "beginning_of_step": {
+          "step": "end_step",
+          "whose_turn": "each"
+        }
+      },
+      "effects": [
+        {
+          "kind": "conditional",
+          "condition": {
+            "kind": "attacked_or_blocked_this_turn"
+          },
+          "then": [
+            {
+              "kind": "shuffle_self_into_library"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

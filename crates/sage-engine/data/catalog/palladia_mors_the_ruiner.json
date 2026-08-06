@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "functional_id": "palladia_mors_the_ruiner",
+  "name": "Palladia-Mors, the Ruiner",
+  "supertypes": [
+    "legendary"
+  ],
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elder",
+    "Dragon"
+  ],
+  "mana_cost": "{3}{R}{G}{W}",
+  "colors": [
+    "white",
+    "red",
+    "green"
+  ],
+  "power": 6,
+  "toughness": 6,
+  "keywords": [
+    "flying",
+    "vigilance",
+    "trample"
+  ],
+  "abilities": [
+    {
+      "type": "static",
+      "affects": {
+        "scope": "source"
+      },
+      "modification": {
+        "kind": "grant_keyword",
+        "keyword": "hexproof"
+      },
+      "condition": {
+        "kind": "source_has_not_dealt_damage"
+      }
+    }
+  ]
+}

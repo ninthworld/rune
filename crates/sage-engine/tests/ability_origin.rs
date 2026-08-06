@@ -60,6 +60,7 @@ fn place(state: &mut GameState, card: CardId) -> PermanentId {
         attacking: None,
         blocking: Vec::new(),
         skips_untap: false,
+        dealt_damage: false,
         damage: 0,
         counters: Default::default(),
         attached_to: None,

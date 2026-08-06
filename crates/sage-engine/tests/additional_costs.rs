@@ -231,6 +231,7 @@ fn a_discard_is_refused_on_a_card_that_owes_no_additional_cost() {
         attacking: None,
         blocking: Vec::new(),
         skips_untap: false,
+        dealt_damage: false,
         damage: 0,
         counters: Default::default(),
         attached_to: None,

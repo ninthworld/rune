@@ -542,6 +542,22 @@ pub struct Permanent {
     /// continuous effect, it does not end at cleanup, and no layer applies to it. The
     /// permanent carries it the way it carries [`Self::damage`].
     pub skips_untap: bool,
+    /// Whether this permanent has **dealt** damage at any point since it entered the
+    /// battlefield (CR 120) — the "hasn't dealt damage **yet**" of a conditional
+    /// continuous ability ([`StaticCondition::SourceHasNotDealtDamage`](crate::StaticCondition)).
+    ///
+    /// The mirror of [`Self::damage`], which is damage dealt *to* it, and stored for the
+    /// same reason: it is history, and no snapshot of the battlefield could recover it.
+    /// The event log cannot answer it either — the log is a bounded ring and records what
+    /// damage was dealt *to*, never by what — so the fact is kept where it belongs, on the
+    /// object it is about.
+    ///
+    /// Written at the three seams a permanent is the source of damage: the combat-damage
+    /// batch (CR 510.2), a fight (CR 701.12), and the damage verb of an ability whose
+    /// source is a permanent (CR 609.7). Once true it stays true; nothing clears it,
+    /// because "yet" has no end. A permanent that leaves and returns is a different object
+    /// with a fresh [`PermanentId`] and a fresh `false`.
+    pub dealt_damage: bool,
     /// Damage marked on this permanent this turn (CR 120.3). Raw stored state,
     /// zeroed as a turn-based action during the cleanup step (CR 514.2) and,
     /// once combat lands (issue #118), compared against toughness by the

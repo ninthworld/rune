@@ -168,6 +168,7 @@ pub(crate) mod tests {
             attacking: Some(crate::combat::AttackTarget::Player(defender)),
             blocking: Vec::new(),
             skips_untap: false,
+            dealt_damage: false,
             damage: 0,
             counters: Default::default(),
             attached_to: None,

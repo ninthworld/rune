@@ -55,6 +55,7 @@ pub(crate) fn put_permanent(
         attacking: attacking.then_some(sage_engine::AttackTarget::Player(PlayerId(1))),
         blocking: Vec::new(),
         skips_untap: false,
+        dealt_damage: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,

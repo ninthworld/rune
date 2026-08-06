@@ -554,10 +554,11 @@ fn named_card_class_noun(class: NamedCardClass) -> &'static str {
 /// Whether a static ability's subject is **plural** — a class of permanents rather than
 /// the single permanent that printed the ability.
 ///
-/// Read by the one verb that has to agree with its subject: an as-though clause carries a
-/// pronoun back to it ("as though **it** didn't have defender"), and there is no wording
-/// that is right for both numbers. The other verbs need no such agreement — "get +1/+1"
-/// and "have flying" read the same after either subject — so only that one asks.
+/// Every verb that has to agree with its subject reads it. The `source` scope is a class
+/// of **one**, and it is the card's own name — "Palladia-Mors, the Ruiner **has** hexproof",
+/// never "have" — while every other scope names a plural class; and an as-though clause
+/// carries a pronoun back to the subject ("as though **it** didn't have defender"), where
+/// there is no wording right for both numbers.
 fn subject_is_plural(affects: &StaticAffects) -> bool {
     match affects {
         StaticAffects::Source => false,
@@ -578,6 +579,9 @@ fn static_condition_clause(condition: &StaticCondition) -> String {
         }
         StaticCondition::SourceIsAttacking => "it's attacking".to_string(),
         StaticCondition::SourceIsEnchantedOrEquipped => "it's enchanted or equipped".to_string(),
+        // "Yet" is the whole clause: the window reaches back to the moment the permanent
+        // entered, so the sentence says so rather than naming a turn.
+        StaticCondition::SourceHasNotDealtDamage => "it hasn't dealt damage yet".to_string(),
     }
 }
 
@@ -658,18 +662,23 @@ fn plural(subtype: &str) -> String {
 /// The predicate of a static ability's sentence — what the affected permanents get.
 ///
 /// `plural` says whether the subject is a class or the one permanent that printed the
-/// ability ([`subject_is_plural`]). Only the as-though clause reads it, because only it
-/// refers back to its own subject with a pronoun.
+/// ability ([`subject_is_plural`]). A card that modifies itself prints its own name as the
+/// subject, and "Grasping Scoundrel get +1/+0" is not a sentence; the as-though clause
+/// reads it for a second reason, being the only one that refers back to its subject with a
+/// pronoun. Taken as a flag rather than read off the selector here so this function stays
+/// about the predicate; the caller owns the subject and therefore owns its number.
 fn static_verb(modification: &StaticModification, plural: bool) -> String {
     match modification {
         StaticModification::PowerToughness { power, toughness } => {
-            format!("get {power:+}/{toughness:+}")
+            let verb = if plural { "get" } else { "gets" };
+            format!("{verb} {power:+}/{toughness:+}")
         }
         // "have", not "gain": a static ability is continuously true, where a spell's
         // grant is an event. The distinction is the whole difference between an anthem
         // and a pump.
         StaticModification::GrantKeyword { keyword } => {
-            format!("have {}", keyword_word(*keyword))
+            let verb = if plural { "have" } else { "has" };
+            format!("{verb} {}", keyword_word(*keyword))
         }
         // "Rather than their power" is stated even though it is implied, because it is
         // the whole content of the ability: without it the sentence claims a creature

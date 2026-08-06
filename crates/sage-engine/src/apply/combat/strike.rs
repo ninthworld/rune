@@ -31,24 +31,27 @@ pub(crate) fn deal_combat_damage(state: &mut GameState, db: &CardDatabase) {
     // CR 509.1h: which attackers are blocked is fixed before any damage is dealt.
     let blocked = blocked_attackers(state);
     if combat_has_first_strike(state, db) {
-        apply_combat_batch(
-            state,
-            combat_damage(state, db, DamageStep::FirstStrike, &blocked),
-            db,
-        );
+        apply_step(state, db, DamageStep::FirstStrike, &blocked);
         // CR 510.5: SBAs are checked between the two combat-damage steps.
         run_state_based_actions(state, db);
-        apply_combat_batch(
-            state,
-            combat_damage(state, db, DamageStep::Regular, &blocked),
-            db,
-        );
+        apply_step(state, db, DamageStep::Regular, &blocked);
     } else {
-        apply_combat_batch(
-            state,
-            combat_damage(state, db, DamageStep::Only, &blocked),
-            db,
-        );
+        apply_step(state, db, DamageStep::Only, &blocked);
+    }
+}
+
+/// Compute and apply one combat-damage step: the batch, then the note on each creature
+/// that dealt something in it (CR 120, [`Permanent::dealt_damage`](crate::Permanent)).
+///
+/// The note lands with the batch rather than after the whole combat, so a creature that
+/// strikes in the first-strike step has dealt damage by the time the state-based actions
+/// between the two steps run — and any continuous ability conditioned on not having dealt
+/// damage is already off when they do.
+fn apply_step(state: &mut GameState, db: &CardDatabase, step: DamageStep, blocked: &[PermanentId]) {
+    let (batch, dealers) = combat_damage_and_dealers(state, db, step, blocked);
+    apply_combat_batch(state, batch, db);
+    for dealer in dealers {
+        state.note_damage_dealt_by(dealer);
     }
 }
 

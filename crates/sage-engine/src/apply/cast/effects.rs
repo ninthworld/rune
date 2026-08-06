@@ -211,14 +211,30 @@ pub(crate) fn apply_effect(
         // each player (CR 120.3a). A targeting subject named a target instead and is
         // applied through [`apply_targeted_effect`], so it is a no-op here.
         Effect::DealDamage { subject, amount } => {
-            apply_class_damage(state, subject, *amount, controller, resolution, db);
+            apply_class_damage(
+                state,
+                subject,
+                *amount,
+                controller,
+                resolution,
+                permanent_source,
+                db,
+            );
         }
         // The same damage with the amount taken off the announcement instead of off the
         // card (CR 608.2). A class-subject form chose no target and is applied here; a
         // targeted one goes through [`apply_targeted_effect`] and is a no-op in this arm.
         Effect::DealDamageByAmount { subject, amount } => {
             let value = crate::condition::derived_amount(state, amount, controller, resolution, db);
-            apply_class_damage(state, subject, value, controller, resolution, db);
+            apply_class_damage(
+                state,
+                subject,
+                value,
+                controller,
+                resolution,
+                permanent_source,
+                db,
+            );
         }
         // CR 701.7, over a class instead of a target. The set is enumerated **here**, on
         // resolution (CR 611.2c), and each member leaves through the one destruction seam
@@ -344,6 +360,15 @@ pub(crate) fn apply_effect(
                 }
             }
         }
+        // The source puts *itself* back in the deck (CR 701.19). The same implicit
+        // subject every self-referential effect has, and the same no-op when the source
+        // is gone — a creature already destroyed in response is not there to shuffle, and
+        // nothing is shuffled in its place.
+        Effect::ShuffleSelfIntoLibrary => {
+            if let Some(id) = permanent_source {
+                state.shuffle_permanent_into_library(id);
+            }
+        }
         Effect::PutCountersOnSelf { counter, count } => {
             if let Some(id) = permanent_source {
                 if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
@@ -447,7 +472,15 @@ pub(crate) fn apply_effect(
         } => {
             let count = crate::condition::count_permanents(state, count_of, controller, db);
             let amount = amount_per.saturating_mul(count);
-            apply_class_damage(state, subject, amount, controller, resolution, db);
+            apply_class_damage(
+                state,
+                subject,
+                amount,
+                controller,
+                resolution,
+                permanent_source,
+                db,
+            );
         }
         // Every card of the named graveyard, at once. An empty graveyard is a legal
         // subject and a resolution that does nothing.
@@ -744,25 +777,37 @@ fn apply_class_damage(
     amount: u32,
     controller: PlayerId,
     resolution: crate::resolve::Resolution,
+    source: Option<PermanentId>,
     db: &CardDatabase,
 ) {
+    let mut dealt = false;
     match subject {
         DamageSubject::Target(_) => {}
         DamageSubject::Players(player_ref) => {
             for seat in non_targeting_subjects(state, *player_ref, controller) {
-                state.deal_damage(
+                // Prevented damage was never dealt (CR 615.1), so a shield is also what
+                // keeps `hasn't dealt damage yet` true — the flag follows the amount that
+                // actually landed rather than the amount that was aimed.
+                dealt |= state.deal_damage(
                     resolution.damage(PendingDamage::to_player(seat, amount)),
                     db,
-                );
+                ) > 0;
             }
         }
         DamageSubject::Permanents(affects) => {
             for id in permanents_in(state, affects, controller, db) {
-                state.deal_damage(
+                dealt |= state.deal_damage(
                     resolution.damage(PendingDamage::to_permanent(id, amount)),
                     db,
-                );
+                ) > 0;
             }
+        }
+    }
+    // CR 609.7: an ability's damage comes from the permanent the ability is on, so a
+    // class-wide hit is still that permanent dealing damage.
+    if dealt {
+        if let Some(source) = source {
+            state.note_damage_dealt_by(source);
         }
     }
 }

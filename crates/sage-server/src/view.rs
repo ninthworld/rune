@@ -783,6 +783,7 @@ mod tests {
             attacking: None,
             blocking: Vec::new(),
             skips_untap: false,
+            dealt_damage: false,
             damage: 0,
             counters: std::collections::BTreeMap::new(),
             attached_to: None,

@@ -603,6 +603,7 @@ pub(crate) fn apply_effects_with_targets(
                 state,
                 condition,
                 controller,
+                source.and_then(AbilitySource::permanent),
                 resolution.start,
                 db,
             ) {

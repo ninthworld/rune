@@ -1157,6 +1157,22 @@ pub enum Effect {
         /// this shape names: a hand, the battlefield, or the battlefield tapped.
         destination: FoundDestination,
     },
+    /// **Shuffle this ability's own source into its owner's library** (CR 701.19) —
+    /// `its owner shuffles it into their library`.
+    ///
+    /// The fourth destination beside [`Effect::ReturnToHand`]'s hand, [`Effect::Exile`]'s
+    /// exile, and [`Effect::PutOnTopOfLibrary`]'s top of a library, and the only one that
+    /// is not a place: a shuffled card is somewhere in the deck and nowhere in particular,
+    /// which is what separates this from putting it on top. The shuffle draws from the
+    /// seeded stream (ADR 0006), so a game replays identically through it.
+    ///
+    /// Self-referential, like [`Effect::PumpSelf`]: the subject is the ability's own
+    /// source, which is not a target (CR 115.1), so this fills no slot and can never
+    /// fizzle. A source that has already left the battlefield is not there to move, and
+    /// the effect does nothing. A **token** ceases to exist on the way (CR 111.7) and
+    /// never reaches the library; the library is still shuffled, because the instruction
+    /// was to shuffle.
+    ShuffleSelfIntoLibrary,
 }
 
 impl Effect {
@@ -1331,6 +1347,9 @@ impl Effect {
             // not a target either (CR 115.1) — the reason a graveyard activation needs no
             // candidate set to be offered.
             | Effect::ReturnSelfFromGraveyard { .. }
+            // Nor is a permanent shuffling itself away: the source names itself, so there
+            // is no slot to fill and nothing to fizzle on.
+            | Effect::ShuffleSelfIntoLibrary
             | Effect::PutCountersOnSelf { .. } => Vec::new(),
         }
     }

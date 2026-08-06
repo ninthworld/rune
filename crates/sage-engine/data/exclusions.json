@@ -24,8 +24,8 @@
     "blocker": "an attacker or blocker assigns its current power, or its current toughness while a continuous effect names that one instead, read at the single place the combat-damage step asks how much a creature assigns; no other characteristic can be named, nothing assigns a fixed amount or a count, and nothing reads another object's characteristic"
   },
   {
-    "name": "Conditions other than a permanent count, a mill, a discard, or life gained this turn",
-    "blocker": "a permanent count cannot require distinct names, and no condition asks what one permanent has done — on the intervening-if side or the continuous one"
+    "name": "Conditions other than a permanent count, a mill, a discard, life gained this turn, or what one permanent has attacked, blocked, or damaged",
+    "blocker": "a permanent count is a tally of a class and cannot require its members to have distinct names"
   },
   {
     "name": "Cost modification of another player's spells, or of an ability's activation cost",

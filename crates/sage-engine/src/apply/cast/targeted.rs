@@ -103,10 +103,10 @@ pub(crate) fn apply_targeted_effect(
         } => {
             let count = crate::condition::count_permanents(state, count_of, controller, db);
             let amount = amount_per.saturating_mul(count);
-            deal_damage_to_target(state, target, amount, resolution, db);
+            deal_damage_to_target(state, target, amount, resolution, source, db);
         }
         Effect::DealDamage { amount, .. } => {
-            deal_damage_to_target(state, target, *amount, resolution, db);
+            deal_damage_to_target(state, target, *amount, resolution, source, db);
         }
         // The derived-amount damage verb: for an announced X the value was fixed at
         // announcement (CR 601.2b), so reading it here is a lookup rather than a
@@ -116,7 +116,7 @@ pub(crate) fn apply_targeted_effect(
         // whole reason it was written down at announcement (CR 601.2h).
         Effect::DealDamageByAmount { amount, .. } => {
             let value = crate::condition::derived_amount(state, amount, controller, resolution, db);
-            deal_damage_to_target(state, target, value, resolution, db);
+            deal_damage_to_target(state, target, value, resolution, source, db);
         }
         // Destroy the targeted permanent (CR 701.7): move it to its owner's
         // graveyard through the one creature-death seam
@@ -515,6 +515,9 @@ pub(crate) fn apply_targeted_effect(
                 state.put_permanent_on_top_of_library(id);
             }
         }
+        // A source shuffling *itself* away names no target, so it is applied by
+        // [`apply_effect`] and is a no-op here.
+        Effect::ShuffleSelfIntoLibrary => {}
     }
 }
 
@@ -526,27 +529,37 @@ pub(crate) fn apply_targeted_effect(
 /// rather than three. A card or a spell is never a damage recipient and is simply
 /// ignored: the target specs cannot produce one, and a silent skip is the right answer
 /// for a pairing the type system permits and the rules do not.
+///
+/// It is also where the one thing that is *not* about the recipient is stated once: that
+/// the source has now dealt damage (CR 609.7, the reading behind
+/// [`Permanent::dealt_damage`](crate::Permanent)). A spell's damage has no permanent
+/// source and notes nothing.
 fn deal_damage_to_target(
     state: &mut GameState,
     target: Target,
     amount: u32,
     resolution: crate::resolve::Resolution,
+    source: Option<PermanentId>,
     db: &CardDatabase,
 ) {
-    match target {
-        Target::Permanent(id) => {
-            state.deal_damage(
-                resolution.damage(PendingDamage::to_permanent(id, amount)),
-                db,
-            );
+    let dealt = match target {
+        Target::Permanent(id) => state.deal_damage(
+            resolution.damage(PendingDamage::to_permanent(id, amount)),
+            db,
+        ),
+        Target::Player(seat) => state.deal_damage(
+            resolution.damage(PendingDamage::to_player(seat, amount)),
+            db,
+        ),
+        Target::Card(_) | Target::Spell(_) => 0,
+    };
+    // CR 609.7: an ability's damage comes from the permanent the ability is on. Read off
+    // what actually landed, so damage a shield prevented (CR 615.1) leaves `hasn't dealt
+    // damage yet` true.
+    if dealt > 0 {
+        if let Some(source) = source {
+            state.note_damage_dealt_by(source);
         }
-        Target::Player(seat) => {
-            state.deal_damage(
-                resolution.damage(PendingDamage::to_player(seat, amount)),
-                db,
-            );
-        }
-        Target::Card(_) | Target::Spell(_) => {}
     }
 }
 
@@ -667,6 +680,11 @@ fn deal_damage_between_permanents(
         crate::characteristics::permanent_has_keyword(state, source, Keyword::Lifelink, db);
     let gains = crate::characteristics::controller_of_id(state, source);
     let dealt = state.deal_damage(PendingDamage::to_permanent(recipient, amount), db);
+    // CR 120: the source really dealt this, so the "hasn't dealt damage yet" of a
+    // conditional continuous ability stops holding for it here, in the same step.
+    if dealt > 0 {
+        state.note_damage_dealt_by(source);
+    }
     // CR 702.2b / 704.5h: any nonzero damage from a deathtouch source makes the
     // recipient a candidate for destruction, whether or not it was lethal.
     if dealt > 0 && deathtouch && !state.deathtouch_struck.contains(&recipient) {

@@ -443,6 +443,13 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         Effect::PutOnTopOfLibrary { target } => {
             format!("put {} on top of its owner's library", target_noun(*target))
         }
+        // The self-referential sibling of the line above, and the reason it names its
+        // source rather than a target: nothing was chosen, so the sentence has to say
+        // which permanent goes back — and "its owner's" is the card's own owner, whoever
+        // currently controls it.
+        Effect::ShuffleSelfIntoLibrary => {
+            format!("shuffle {source} into its owner's library")
+        }
         // The equip action (CR 702.6b). The subject is the source — an Equipment attaches
         // *itself* — so the sentence names it, which is also what makes the dock button
         // read as an instruction about a specific sword rather than about equipment in
@@ -772,6 +779,11 @@ fn condition_clause(condition: &Condition) -> String {
         Condition::GainedLifeThisTurn { amount: 1 } => "you gained life this turn".to_string(),
         Condition::GainedLifeThisTurn { amount } => {
             format!("you gained {} or more life this turn", number(*amount))
+        }
+        // The one condition whose subject is the source rather than its controller, so
+        // the clause says "this creature" where the others say "you".
+        Condition::AttackedOrBlockedThisTurn => {
+            "this creature attacked or blocked this turn".to_string()
         }
     }
 }

@@ -59,6 +59,29 @@ pub enum Condition {
         /// The threshold, inclusive. `1` is the plain "if you gained life this turn".
         amount: u32,
     },
+    /// The effect's **own source attacked or blocked this turn** — the `if this creature
+    /// attacked or blocked this turn` of an end-step trigger that takes the creature
+    /// back.
+    ///
+    /// The first condition here about the *source* rather than about its controller, and
+    /// the reason [`condition_holds`](crate::condition) is handed one: "you" is not the
+    /// subject of this sentence, one particular permanent is, and a card that asks it
+    /// means the object its ability is on.
+    ///
+    /// Read off the declarations the turn recorded
+    /// ([`GameEvent::AttackersDeclared`](crate::GameEvent) and
+    /// [`GameEvent::BlockersDeclared`](crate::GameEvent)) rather than off
+    /// [`Permanent::attacking`](crate::Permanent) and
+    /// [`Permanent::blocking`](crate::Permanent), because by the end step both of those
+    /// have been cleared: the end-of-combat turn-based action removes every creature from
+    /// combat (CR 511.3), so a snapshot taken when this condition is asked can no longer
+    /// tell a creature that attacked from one that stayed home. The declaration is the
+    /// event, and the event is what survives it.
+    ///
+    /// Both halves are one question because a printed card asks them as one. The window is
+    /// the **turn**, like [`Self::GainedLifeThisTurn`]'s, so two combats in one turn both
+    /// count and the next turn starts clean.
+    AttackedOrBlockedThisTurn,
 }
 
 /// The `X` of `where X is …` — a number an effect takes off the **game** rather than

@@ -585,6 +585,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "inferno_hellion",
+    "collector_number": "148",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "lathliss_dragon_queen",
     "collector_number": "149",
     "rarity": "rare"
@@ -878,6 +883,11 @@
     "functional_id": "heroic_reinforcements",
     "collector_number": "217",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "palladia_mors_the_ruiner",
+    "collector_number": "219",
+    "rarity": "mythic"
   },
   {
     "functional_id": "poison_tip_archer",

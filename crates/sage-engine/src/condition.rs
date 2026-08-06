@@ -27,17 +27,23 @@
 //! applied to a window this module chooses.
 
 use crate::ability::{CardFilter, Condition, CountScope, DerivedAmount, PermanentCount};
-use crate::id::PlayerId;
+use crate::id::{PermanentId, PlayerId};
 use crate::state::{GameEvent, GameState};
 use crate::CardDatabase;
 
-/// Whether `condition` holds for an object controlled by `controller`, resolving in a
-/// window that began at log sequence `resolution_start`.
+/// Whether `condition` holds for an object controlled by `controller` whose source is the
+/// permanent `source`, resolving in a window that began at log sequence
+/// `resolution_start`.
+///
+/// `source` is `None` for every object that is not an ability of a permanent — a spell,
+/// an emblem's ability, a graveyard activation — and a condition about the source is
+/// simply false for those, the same no-op a self-referential effect gives them.
 #[must_use]
 pub(crate) fn condition_holds(
     state: &GameState,
     condition: &Condition,
     controller: PlayerId,
+    source: Option<PermanentId>,
     resolution_start: u64,
     db: &CardDatabase,
 ) -> bool {
@@ -59,7 +65,39 @@ pub(crate) fn condition_holds(
         Condition::GainedLifeThisTurn { amount } => {
             life_gained_this_turn(state, controller) >= *amount
         }
+        Condition::AttackedOrBlockedThisTurn => {
+            source.is_some_and(|id| attacked_or_blocked_this_turn(state, id))
+        }
     }
+}
+
+/// Whether the permanent `id` was named in an attacker or a blocker declaration this turn
+/// (CR 508.1 / CR 509.1).
+///
+/// Read from the recorded declarations over the turn's window, for the reason
+/// [`Condition::AttackedOrBlockedThisTurn`] gives: combat clears
+/// [`Permanent::attacking`](crate::Permanent) and
+/// [`Permanent::blocking`](crate::Permanent) at end of combat (CR 511.3), so by the end
+/// step the board no longer remembers what the declaration said and the log is the only
+/// place the fact still lives.
+///
+/// A [`PermanentId`] is minted fresh on every battlefield entry and never reused, so
+/// matching on it is exact: a creature that attacked, died, and was returned is a new
+/// object that has not attacked, which is what the printed card means.
+#[must_use]
+fn attacked_or_blocked_this_turn(state: &GameState, id: PermanentId) -> bool {
+    events_since(state, turn_start(state)).any(|event| match event {
+        GameEvent::AttackersDeclared { attackers, .. } => {
+            attackers.iter().any(|logged| logged.permanent == id)
+        }
+        // A blocker is the *first* half of each recorded pair; the second is the attacker
+        // it was assigned to, which this condition already counts through the attacker
+        // declaration that named it.
+        GameEvent::BlockersDeclared { blocks, .. } => {
+            blocks.iter().any(|(blocker, _)| blocker.permanent == id)
+        }
+        _ => false,
+    })
 }
 
 /// How many permanents `wanted` names, for an object controlled by `controller`.
@@ -266,6 +304,9 @@ fn turn_start(state: &GameState) -> u64 {
         })
         .map_or(0, |entry| entry.sequence + 1)
 }
+
+#[cfg(test)]
+mod tests;
 
 /// Whether the printed card `card` satisfies `filter`.
 ///

@@ -90,10 +90,11 @@ pub enum StaticAffects {
 /// outlive the condition.
 ///
 /// Deliberately a small enum of its own rather than the [`Condition`] an
-/// [`Effect::Conditional`] takes. Two of that enum's three variants ask what *this
-/// resolution* has already done, and a continuous ability is not a resolution: it has no
-/// window to read and no start to measure from, so those questions would be
-/// unanswerable rather than merely unused.
+/// [`Effect::Conditional`] takes. Most of that enum reads events over a window — this
+/// resolution, or this turn — and a continuous ability is neither: it has no resolution
+/// to measure from and no reason to stop at a turn boundary, so those questions would be
+/// unanswerable here rather than merely unused. What the two vocabularies share is
+/// asked through one reader, never two ([`crate::condition::count_permanents`]).
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum StaticCondition {
@@ -124,6 +125,24 @@ pub enum StaticCondition {
     /// turns on the instant an Aura resolves onto the creature and off the instant the
     /// Equipment is moved elsewhere, with nothing to prune either way.
     SourceIsEnchantedOrEquipped,
+    /// The source permanent **has not yet dealt damage** — `as long as it hasn't dealt
+    /// damage yet` (CR 120).
+    ///
+    /// The window is the object's whole life, not a turn and not a resolution, which is
+    /// why this is here and not in [`Condition`]: "yet" reaches back to the moment the
+    /// permanent entered the battlefield, and a continuous ability has no resolution to
+    /// measure anything from. It is also why the answer is a fact stored on the permanent
+    /// ([`Permanent::dealt_damage`](crate::Permanent)) rather than read out of the event
+    /// log the turn-scoped conditions read: the log is a bounded ring, so a game long
+    /// enough would forget the very hit this condition exists to notice.
+    ///
+    /// Stored, but never *latched*: the flag is a fact about the permanent, and the
+    /// question is re-asked on every read of any permanent's characteristics, so hexproof
+    /// disappears in the same batch the damage lands in rather than at the next
+    /// resolution. A permanent that leaves and returns is a new object with a fresh
+    /// [`PermanentId`](crate::PermanentId) and a fresh answer, which is what CR 400.7
+    /// means here.
+    SourceHasNotDealtDamage,
 }
 
 /// The default threshold of a [`StaticCondition::ControlsAtLeast`]: one, the "an" of

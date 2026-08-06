@@ -52,11 +52,17 @@ declarations (its own source's and, through `ObservedPermanent`, another permane
 draw by its controller, an activation that uses the stack — never a mana ability, which
 uses none — life gain, casting, and step boundaries; its observed-permanent selectors filter
 by subtype, controller, token-ness, power, and keyword. A condition *is* attachable now, as
-`Effect::Conditional`, and `Condition` names four questions: a permanent count, a mill by
-this resolution, a discard by this resolution, and life gained this turn. It is judged as
+`Effect::Conditional`, and `Condition` names five questions: a permanent count, a mill by
+this resolution, a discard by this resolution, life gained this turn, and whether the
+ability's own source attacked or blocked this turn. It is judged as
 the effect is reached (CR 608.2), which is an if-clause on an effect rather than the
 CR 603.4 trigger check. Every question but the count reads recorded events over a window —
-the resolution, or the turn — because none of them can be answered from a snapshot.
+the resolution, or the turn — because none of them can be answered from a snapshot, and the
+last is the only one about the **source**: it reads the turn's declarations because end of
+combat has already cleared the board's (CR 511.3). The separate `StaticCondition` adds
+`SourceHasNotDealtDamage`, the question no window could answer at all — "yet" reaches back
+to the permanent's arrival, so it is stored on the permanent (`dealt_damage`, written at the
+three seams a permanent is the *source* of damage) and re-asked on every read, never latched.
 A count of permanents (`count_of`) may feed an effect's amount, the number of tokens it
 creates, and an attachment's static grant — the last recalculated on every read, because a
 static ability is not a resolution. Every *other* X is a `DerivedAmount`, a closed set of

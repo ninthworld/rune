@@ -871,6 +871,7 @@ The conditions are:
 | `milled_this_way` | Whether a card matching `filter` was milled **by this resolution** |
 | `discarded_this_way` | Whether the controller discarded a card during this resolution |
 | `gained_life_this_turn` | Whether the controller gained at least `amount` life **this turn** |
+| `attacked_or_blocked_this_turn` | Whether the effect's own **source** was declared as an attacker or a blocker **this turn** |
 
 Every one but the first reads the recorded events rather than the zones or the totals, and
 that is the point: a Zombie already in the graveyard was not milled this way, and a graveyard
@@ -890,6 +891,21 @@ three life gained, so no reading of a life total — against the turn's opening 
 other — could answer it. `amount` is an inclusive lower bound on the turn's gains **in
 total**, so two gains of three satisfy a threshold of five; `1` is the plain "if you gained
 life this turn" and is written that way in the generated rules text.
+
+```json
+{ "kind": "conditional",
+  "condition": { "kind": "attacked_or_blocked_this_turn" },
+  "then":      [{ "kind": "shuffle_self_into_library" }] }
+```
+
+`attacked_or_blocked_this_turn` is the one condition about the **source** rather than about
+its controller — "you" is not the subject of that sentence, one particular permanent is — so
+it is false for any object that is not an ability of a permanent (a spell, an emblem's
+ability). Its window is the turn, and it reads the turn's recorded attacker and blocker
+declarations rather than the board, because the board has forgotten: the end-of-combat
+turn-based action clears `attacking` and `blocking` (CR 511.3), so by the end step where a
+card asks this, the declaration is the only witness left. Both halves are one question
+because a printed card asks them as one, and two combats in a turn both count.
 
 A `permanents` selector is a small product — `scope` (`you_control`, `opponents_control`,
 `any`; default `you_control`), optional `card_type`, optional `subtype`, optional `color`,
@@ -1067,6 +1083,19 @@ resolution that does nothing.
 `put_on_top_of_library` is the third destination a permanent can be pushed to, beside
 `return_to_hand`'s hand and `exile`'s exile. A **token** put anywhere but the battlefield
 ceases to exist (CR 111.7), so a bounced token never arrives in the library either.
+
+`shuffle_self_into_library` is the fourth, and the only one that is not a place: the card
+goes into its owner's library and the library is then randomized (CR 701.19), so a shuffled
+card is somewhere in the deck and nowhere in particular. It takes no `target` — the subject
+is the ability's **own source**, like `pump_self` and `restrict_self` — so it fills no slot
+and can never fizzle, and a source that has already left the battlefield is simply not there
+to move. The shuffle draws from the game's seeded stream (ADR 0006), so the same seed replays
+the same deck order; it happens whether or not a card arrived, which is why a token shuffled
+into a library ceases to exist on the way and the library is still shuffled.
+
+```json
+{ "kind": "shuffle_self_into_library" }
+```
 
 ### Mana whose colours the player chooses
 
@@ -1565,13 +1594,31 @@ battlefield, with nothing ever put on the stack — an anthem or a lord:
 
   The conditions are `controls_at_least` — the same `permanents` selector an
   intervening-if counts, with `count` defaulting to the "an" of "as long as you control
-  **an** artifact" — `source_is_attacking`, and `source_is_enchanted_or_equipped` (the
+  **an** artifact" — `source_is_attacking`, `source_is_enchanted_or_equipped` (the
   source has something attached to it, CR 303.4 / CR 301.5 — one condition because a card
-  prints one, and only the attachment's own kind tells the two words apart). It is a
-  separate vocabulary from the `Condition` an `Effect::Conditional` takes, because most of
-  that one's variants ask what a *resolution* or a *turn* has already done and a
-  continuous ability is neither: it has no window of its own to read and no start to
-  measure from.
+  prints one, and only the attachment's own kind tells the two words apart), and
+  `source_has_not_dealt_damage`. It is a separate vocabulary from the `Condition` an
+  `Effect::Conditional` takes, because most of that one's variants ask what a *resolution*
+  or a *turn* has already done and a continuous ability is neither: it has no window of its
+  own to read and no start to measure from.
+
+  ```json
+  {"type": "static", "affects": {"scope": "source"},
+   "modification": {"kind": "grant_keyword", "keyword": "hexproof"},
+   "condition": {"kind": "source_has_not_dealt_damage"}}
+  ```
+
+  `source_has_not_dealt_damage` is the "…**yet**" of a card that is protected until it
+  strikes, and its window is the permanent's whole life on the battlefield — not a turn and
+  not a resolution, which is exactly why it belongs here rather than in the intervening-if
+  vocabulary. It is the one condition answered from a fact stored on the permanent rather
+  than from the event log: the log is a bounded ring and records what damage was dealt *to*,
+  never by what, so a long enough game would forget the very hit the condition exists to
+  notice. Stored is not latched — the clause is re-asked on every read, so the keyword is
+  gone in the same batch the damage lands in — and a permanent that leaves and returns is a
+  new object that has dealt nothing (CR 400.7). The fact is written at the three seams a
+  permanent is the *source* of damage: combat damage, a `fight`, and the damage verb of an
+  ability whose source is a permanent (CR 609.7).
 
   A `permanents` selector gains a `color` alongside its `card_type` and `subtype`, which
   is what lets a card ask for "a **blue** creature" or "an **Ajani** planeswalker".

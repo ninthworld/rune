@@ -5,6 +5,7 @@ use crate::combat::AttackTarget;
 use crate::id::{CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::player::Player;
 use crate::replacement::{DamageRecipient, EnteringObject, PendingDamage, PendingEntry};
+use crate::rng::SplitMix64;
 use crate::token::TokenData;
 use crate::CardDatabase;
 
@@ -155,6 +156,49 @@ impl GameState {
             owner.library.push(card);
         }
         Some(perm)
+    }
+
+    /// **Shuffle** the permanent `id` into its owner's library (CR 701.19) — the fourth
+    /// battlefield-departure seam, and the only one whose destination is unordered.
+    ///
+    /// It is [`Self::put_permanent_on_top_of_library`] plus the shuffle, and the shuffle
+    /// is the whole difference: a card put on top is a known next draw, while one shuffled
+    /// in is nowhere in particular. The library is randomized whether or not a card
+    /// arrived, because the instruction is to shuffle — a **token** shuffled into a library
+    /// ceases to exist on the way (CR 111.7, [`card_leaving`]) and the shuffle still
+    /// happened.
+    ///
+    /// Owner, not controller: the card goes to the library of the permanent's **base**
+    /// controller, the owner shim every other departure seam uses (CR 400.7), so a stolen
+    /// creature shuffled away goes into its own player's deck.
+    pub(crate) fn shuffle_permanent_into_library(&mut self, id: PermanentId) -> Option<Permanent> {
+        let pos = self.battlefield.iter().position(|p| p.id == id)?;
+        let perm = self.battlefield.remove(pos);
+        let owner = perm.controller;
+        if let (Some(card), Some(player)) = (card_leaving(&perm), self.players.get_mut(owner.0)) {
+            player.library.push(card);
+        }
+        self.shuffle_library(owner);
+        Some(perm)
+    }
+
+    /// Randomize the order of `player`'s library (CR 103.3) from the seeded stream, storing
+    /// the generator's state back into [`GameState::rng_seed`](crate::GameState::rng_seed)
+    /// so the next draw of randomness continues it.
+    ///
+    /// The engine's one in-game shuffle, shared by the search that ends with one
+    /// (CR 701.19c) and the effect that shuffles a permanent back in, so a game replays
+    /// identically from its seed however the library came to be shuffled (ADR 0006).
+    pub(crate) fn shuffle_library(&mut self, player: PlayerId) {
+        let Some(mut library) = self.players.get(player.0).map(|p| p.library.clone()) else {
+            return;
+        };
+        let mut rng = SplitMix64::new(self.rng_seed);
+        rng.shuffle(&mut library);
+        self.rng_seed = rng.state();
+        if let Some(p) = self.players.get_mut(player.0) {
+            p.library = library;
+        }
     }
 
     /// Put the physical card `card` onto the battlefield under `controller` — the
@@ -373,6 +417,7 @@ impl GameState {
             attacking: entry.attacking,
             blocking: Vec::new(),
             skips_untap: false,
+            dealt_damage: false,
             damage: 0,
             counters,
             attached_to: entry.attached_to,
@@ -642,6 +687,21 @@ impl GameState {
             });
         }
         amount
+    }
+
+    /// Record that the permanent `source` has **dealt** damage
+    /// ([`Permanent::dealt_damage`]) — the counterpart of the two seams above, which
+    /// record damage *taken*.
+    ///
+    /// Called wherever a permanent is the source of damage that was actually dealt: the
+    /// combat-damage batch, a fight, and the damage verb of an ability whose source is a
+    /// permanent (CR 609.7). Zero damage is not damage (CR 120.3) and never reaches here.
+    /// Idempotent and one-way — nothing ever unsets it, because "hasn't dealt damage yet"
+    /// has no end.
+    pub(crate) fn note_damage_dealt_by(&mut self, source: PermanentId) {
+        if let Some(perm) = self.battlefield.iter_mut().find(|p| p.id == source) {
+            perm.dealt_damage = true;
+        }
     }
 
     /// Add `amount` to the cumulative combat damage the commander owned by

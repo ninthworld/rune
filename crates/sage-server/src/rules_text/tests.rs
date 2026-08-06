@@ -1201,6 +1201,35 @@ fn a_life_gained_condition_states_its_threshold_only_when_there_is_one() {
 }
 
 #[test]
+fn issue_727_a_condition_about_the_source_names_the_creature_not_its_controller() {
+    // Every other intervening if says "you"; this one is about the permanent the ability
+    // is on, so the sentence has to say so — and the effect it gates names the card,
+    // because a self-referential effect chose no target to name instead.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "inferno_hellion"),
+        "Trample\nAt the beginning of each end step, if this creature attacked or \
+         blocked this turn, shuffle Inferno Hellion into its owner's library."
+    );
+}
+
+#[test]
+fn issue_727_a_static_condition_about_the_source_reads_as_a_standing_statement() {
+    // The `as long as …` clause of a continuous ability, and — because the subject is the
+    // card's own name rather than a class — a verb that agrees with it in the singular.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "palladia_mors_the_ruiner"),
+        "Flying, vigilance, trample\nPalladia-Mors, the Ruiner has hexproof as long as \
+         it hasn't dealt damage yet."
+    );
+    assert_eq!(
+        text_of(&db, "grasping_scoundrel"),
+        "Grasping Scoundrel gets +1/+0 as long as it's attacking."
+    );
+}
+
+#[test]
 fn the_watched_draw_attack_and_activation_each_have_words() {
     // A draw and an activation, from the two real cards that watch them. The activation
     // sentence states the CR 605.3a exclusion the condition enforces structurally,

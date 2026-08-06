@@ -240,6 +240,17 @@ fn static_condition_holds(
         Some(StaticCondition::SourceIsEnchantedOrEquipped) => source
             .permanent
             .is_some_and(|id| state.battlefield.iter().any(|p| p.attached_to == Some(id))),
+        // Re-asked here on every read, like every other clause: the flag is written at
+        // the damage seams and this is the only thing that reads it, so hexproof is gone
+        // in the same batch the damage was dealt in rather than at some later resolution.
+        // A source that is not a permanent (an emblem) has nothing to have dealt damage
+        // and nothing to modify either, so `None` answers no exactly as it does above.
+        Some(StaticCondition::SourceHasNotDealtDamage) => source.permanent.is_some_and(|id| {
+            state
+                .battlefield
+                .iter()
+                .any(|p| p.id == id && !p.dealt_damage)
+        }),
     }
 }
 

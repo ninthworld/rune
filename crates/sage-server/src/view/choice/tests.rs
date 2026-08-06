@@ -157,6 +157,7 @@ fn issue_604_a_searched_library_reaches_the_searcher_and_no_other_seat() {
         attacking: None,
         blocking: Vec::new(),
         skips_untap: false,
+        dealt_damage: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,

@@ -213,13 +213,39 @@ fn push_attack_target_damage(
 /// Deathtouch is recorded on each [`CombatDamage::ToPermanent`] so the CR 704.5h
 /// state-based action can destroy a creature dealt any nonzero deathtouch damage.
 /// Pure over the immutable state.
+#[cfg(test)]
 pub(crate) fn combat_damage(
     state: &GameState,
     db: &CardDatabase,
     step: DamageStep,
     blocked: &[PermanentId],
 ) -> Vec<CombatDamage> {
+    combat_damage_and_dealers(state, db, step, blocked).0
+}
+
+/// [`combat_damage`], paired with the creatures that actually **dealt** something in the
+/// step — the fact `Palladia-Mors, the Ruiner`'s "hasn't dealt damage yet" reads
+/// ([`Permanent::dealt_damage`](crate::Permanent)).
+///
+/// A second return value rather than a `source` field on every [`CombatDamage`] because
+/// the assignment is about what one object *receives*: three creatures blocking one
+/// attacker take three separate assignments, and who dealt them is a fact about the batch,
+/// not about any one of its entries. A creature is listed here exactly when an assignment
+/// was pushed on its behalf, so a blocked non-trampler whose blockers all died — which
+/// assigns its damage nowhere — has dealt nothing and is not listed.
+pub(crate) fn combat_damage_and_dealers(
+    state: &GameState,
+    db: &CardDatabase,
+    step: DamageStep,
+    blocked: &[PermanentId],
+) -> (Vec<CombatDamage>, Vec<PermanentId>) {
     let mut out = Vec::new();
+    let mut dealers: Vec<PermanentId> = Vec::new();
+    let note = |dealers: &mut Vec<PermanentId>, id: PermanentId| {
+        if !dealers.contains(&id) {
+            dealers.push(id);
+        }
+    };
     for attacker in state.battlefield.iter().filter(|p| p.attacking.is_some()) {
         // What this attacker is attacking (CR 508.1a): its damage and any trample
         // overflow route here, not to a single global defender. A planeswalker that has
@@ -245,6 +271,7 @@ pub(crate) fn combat_damage(
                 // Unblocked: the attacker's damage goes to what it attacks.
                 if assigned > 0 {
                     if let Some(target) = defender {
+                        let before = out.len();
                         push_attack_target_damage(
                             &mut out,
                             state,
@@ -254,6 +281,12 @@ pub(crate) fn combat_damage(
                             lifelink,
                             source_commander,
                         );
+                        // A planeswalker that has already left takes nothing and no
+                        // assignment is pushed, so the attacker dealt no damage — which
+                        // is exactly what the length says.
+                        if out.len() > before {
+                            note(&mut dealers, attacker.id);
+                        }
                     }
                 }
             } else {
@@ -267,6 +300,7 @@ pub(crate) fn combat_damage(
                     let assign = remaining.min(lethal_needed(state, *blocker, db, deathtouch));
                     if assign > 0 {
                         push_permanent_damage(&mut out, *blocker, assign, deathtouch, lifelink);
+                        note(&mut dealers, attacker.id);
                         remaining -= assign;
                     }
                 }
@@ -277,6 +311,7 @@ pub(crate) fn combat_damage(
                 // reaches a player: loyalty is not life.
                 if remaining > 0 && has_keyword(state, attacker, Keyword::Trample, db) {
                     if let Some(target) = defender {
+                        let before = out.len();
                         push_attack_target_damage(
                             &mut out,
                             state,
@@ -286,6 +321,9 @@ pub(crate) fn combat_damage(
                             lifelink,
                             source_commander,
                         );
+                        if out.len() > before {
+                            note(&mut dealers, attacker.id);
+                        }
                     }
                 }
             }
@@ -333,11 +371,12 @@ pub(crate) fn combat_damage(
             };
             if assign > 0 {
                 push_permanent_damage(&mut out, *attacker, assign, deathtouch, lifelink);
+                note(&mut dealers, blocker.id);
                 remaining -= assign;
             }
         }
     }
-    out
+    (out, dealers)
 }
 
 #[cfg(test)]
