@@ -24,11 +24,11 @@
 use sage_engine::{
     equip_ability, Ability, ActivatorScope, AdditionalCost, Attachment, AttachmentKind, CardData,
     CardFilter, CardType, Chooser, Color, CombatRestriction, Condition, Cost, CountScope,
-    CounterKind, DamageCharacteristic, DamageSubject, DerivedAmount, Effect, EnteringFilter,
-    FoundDestination, GraveyardCardClass, GraveyardScope, Keyword, ManaRestriction, MassAffects,
-    ObservedPermanent, ObservedSpell, PermanentCount, PlayerModification, PlayerRef,
-    ReplacementEffect, StaticAffects, StaticCondition, StaticModification, TargetCount, TargetSpec,
-    TokenData, TriggerCondition, TriggerStep, TurnScope,
+    CounterKind, DamageCharacteristic, DamageSubject, DerivedAmount, DestroyAffects, Effect,
+    EnteringFilter, FoundDestination, GraveyardCardClass, GraveyardScope, Keyword, ManaRestriction,
+    MassAffects, ObservedPermanent, ObservedSpell, PermanentCount, PlayerModification, PlayerRef,
+    ReplacementEffect, SpellMode, SpellTrait, StaticAffects, StaticCondition, StaticModification,
+    TargetCount, TargetSpec, TokenData, TriggerCondition, TriggerStep, TurnScope,
 };
 
 mod effects;
@@ -85,6 +85,18 @@ pub(crate) fn rules_text(data: &CardData, scripted: Option<&str>) -> String {
         lines.push(finish(&effect_clause(source, effect)));
     }
 
+    // A modal spell prints its bullets where a plain one prints its effects, because
+    // that is what they are (CR 700.2) — one list instead of a loose sentence.
+    if data.is_modal() {
+        lines.push(modes_text(source, &data.modes));
+    }
+
+    // What is true of the spell on the stack, after what it does. A printed card puts
+    // this clause last for the same reason: it is a rider on the sentence above it.
+    for declared in &data.spell_traits {
+        lines.push(spell_trait_text(source, *declared));
+    }
+
     for ability in &data.abilities {
         lines.push(ability_text(source, ability));
     }
@@ -98,6 +110,57 @@ pub(crate) fn rules_text(data: &CardData, scripted: Option<&str>) -> String {
     }
 
     lines.join("\n")
+}
+
+/// The bulleted list a modal spell prints (CR 700.2): a `Choose one —` header and one
+/// line per mode, each the mode's own effects as sentences.
+///
+/// One line per mode is load-bearing beyond looking right: the numbered dock rows a
+/// player picks a mode from are drawn from exactly these lines
+/// (`docs/client-design.md` §6.7), one row apiece, so the split here *is* the split
+/// there.
+#[must_use]
+pub(crate) fn modes_text(source: &str, modes: &[SpellMode]) -> String {
+    let mut lines = vec!["Choose one —".to_string()];
+    for mode in modes {
+        lines.push(format!("• {}", mode_text(source, mode)));
+    }
+    lines.join("\n")
+}
+
+/// One mode as the sentence its bullet carries — its effects, finished and joined.
+///
+/// Shared by the card's own text and by the dock row that offers the mode, so a player
+/// choosing a mode reads exactly the words the card prints for it.
+#[must_use]
+pub(crate) fn mode_text(source: &str, mode: &SpellMode) -> String {
+    mode.effects
+        .iter()
+        .map(|effect| finish(&effect_clause(source, effect)))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// A [`SpellTrait`] as the sentence a card prints for it, with its X threshold where the
+/// card puts one.
+///
+/// Both members read as a fact about the spell rather than as something it does, which
+/// is why they are their own clause and not an effect: "**Banefire** can't be countered"
+/// is true while it is on the stack, before anything resolves.
+fn spell_trait_text(source: &str, declared: SpellTrait) -> String {
+    let (threshold, clause) = match declared {
+        SpellTrait::CantBeCountered { if_x_at_least } => {
+            (if_x_at_least, format!("{source} can't be countered"))
+        }
+        SpellTrait::DamageCantBePrevented { if_x_at_least } => (
+            if_x_at_least,
+            format!("the damage {source} deals can't be prevented"),
+        ),
+    };
+    match threshold {
+        None => finish(&clause),
+        Some(least) => finish(&format!("if X is {least} or more, {clause}")),
+    }
 }
 
 /// Generate the rules text of a **token** (CR 111.3), from the characteristics the

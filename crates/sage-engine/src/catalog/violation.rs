@@ -112,6 +112,39 @@ pub enum Violation {
         /// The definition at fault.
         functional_id: String,
     },
+    /// A `modes` list that is not a choice a player could be asked to make (CR 700.2):
+    /// fewer than two modes, more than [`MAX_MODES`], a mode that does nothing, or a
+    /// modal card that also carries loose `spell_effects`.
+    ///
+    /// The upper bound is the one rule here that is not a rules rule. A mode is a
+    /// numbered row in a dock band of fixed height (`docs/client-design.md` §6.7), and
+    /// the alternative to refusing a fifth is truncating a sentence the player has to
+    /// read *before* choosing it — so the limit belongs in the schema, where it fails
+    /// the person authoring the card, rather than in a renderer, where it fails the
+    /// person playing it.
+    MalformedModes {
+        /// The definition at fault.
+        functional_id: String,
+        /// How many modes it declared.
+        modes: usize,
+    },
+    /// An `{X}` appears in an **activation** cost (CR 107.3). X is announced as part of
+    /// casting a spell (CR 601.2b); an activation pays out of a pool and has no
+    /// announcement step to fix a value in, so the symbol would simply be ignored and
+    /// the ability activated for nothing.
+    XOutsideAManaCost {
+        /// The definition at fault.
+        functional_id: String,
+        /// The cost string that contains it.
+        cost: String,
+    },
+    /// A `spell_traits` entry names an `if_x_at_least` threshold on a card whose mana
+    /// cost prints no `{X}` — a sentence about a value the card never asks for, and
+    /// therefore a clause that could never be true.
+    SpellTraitNeedsX {
+        /// The definition at fault.
+        functional_id: String,
+    },
     /// A printed `restrictions` list appears on a card that is not a creature. Every
     /// combat restriction is about attacking or blocking (CR 506.3, CR 509.1b), so on
     /// a non-creature it could only ever be inert — which makes it an authoring
@@ -338,6 +371,28 @@ impl fmt::Display for Violation {
                 f,
                 "{functional_id} carries an `additional_cost` that could never be paid: \
                  a land is played rather than cast, and a cost of no cards is no cost"
+            ),
+            Self::MalformedModes {
+                functional_id,
+                modes,
+            } => write!(
+                f,
+                "{functional_id} declares {modes} mode(s): a modal card prints between \
+                 {MIN_MODES} and {MAX_MODES} of them, each doing something, and carries \
+                 no `spell_effects` of its own"
+            ),
+            Self::XOutsideAManaCost {
+                functional_id,
+                cost,
+            } => write!(
+                f,
+                "{functional_id} writes `{{X}}` in the activation cost `{cost}`; X is \
+                 announced only as a spell is cast, so nothing would ever charge for it"
+            ),
+            Self::SpellTraitNeedsX { functional_id } => write!(
+                f,
+                "{functional_id} declares a spell trait conditional on X, but its mana \
+                 cost prints no `{{X}}` to announce"
             ),
             Self::RestrictionsOnNonCreature { functional_id } => write!(
                 f,

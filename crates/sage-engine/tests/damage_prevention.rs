@@ -104,6 +104,8 @@ fn cast(
         &state,
         &Action::CastSpell {
             card,
+            mode: None,
+            x: None,
             targets,
             payment: Vec::new(),
         },

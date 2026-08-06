@@ -144,6 +144,8 @@ fn cast(
     assert!(
         valid_actions(&state, db).contains(&Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         }),
@@ -153,6 +155,8 @@ fn cast(
         &state,
         &Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets,
             payment: Vec::new(),
         },
@@ -322,6 +326,8 @@ fn issue_608_any_target_offers_planeswalkers_alongside_creatures_and_players() {
         &db,
         &Action::CastSpell {
             card: bolt,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -345,6 +351,8 @@ fn issue_608_any_target_offers_planeswalkers_alongside_creatures_and_players() {
         &db,
         &Action::CastSpell {
             card: smite,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -477,6 +485,8 @@ fn issue_608_apply_rejects_a_forged_loyalty_activation() {
         &with_stack,
         &Action::CastSpell {
             card: sentinel,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },

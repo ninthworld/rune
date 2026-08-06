@@ -57,9 +57,16 @@ pub fn target_requirements(
 ///
 /// An [`Action::ActivateAbility`] reads its activated ability's effects; an
 /// [`Action::CastSpell`] reads the cast card's cast target groups
-/// ([`crate::CardData::cast_target_groups`]) — the spell-effect target slots plus, for an
-/// Aura, its enchant restriction (CR 303.4a) — so a spell chooses targets exactly
-/// as an ability does (CR 601.2c). Every other action targets nothing.
+/// ([`crate::CardData::cast_target_groups`]) **for the mode it announced** — the
+/// spell-effect target slots plus, for an Aura, its enchant restriction (CR 303.4a) — so
+/// a spell chooses targets exactly as an ability does (CR 601.2c). Every other action
+/// targets nothing.
+///
+/// A **modal** cast that has not chosen a mode yet declares no groups at all. That is
+/// not an absence of targets, it is an absence of an answer: the mode is what says which
+/// effects the spell has, so nothing here can speak until it is chosen. The
+/// announcement gate ([`announcement_is_legal`](super::announcement_is_legal)) is what
+/// stops that silence being mistaken for "this spell targets nothing".
 pub(crate) fn action_target_groups(
     state: &GameState,
     db: &CardDatabase,
@@ -90,9 +97,13 @@ pub(crate) fn action_target_groups(
                 _ => Vec::new(),
             }
         }
-        Action::CastSpell { card, .. } => db
+        // A cast reads its groups off the card **for the mode it announced** (CR 700.2).
+        // With no mode chosen a modal card declares none, which is the ordering rule of
+        // this issue made structural: the question "what does this spell target" has no
+        // answer until the question "which of its two things does it do" has one.
+        Action::CastSpell { card, mode, .. } => db
             .card(card.card)
-            .map(crate::card::CardData::cast_target_groups)
+            .map(|data| data.cast_target_groups(*mode))
             .unwrap_or_default(),
         // A trigger's slots are the target groups of the effects it carries on the
         // stack — read from the object itself, since a triggered ability's effects

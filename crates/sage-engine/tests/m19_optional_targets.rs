@@ -94,6 +94,8 @@ fn cast_creature(state: &GameState, db: &CardDatabase, slug: &str) -> GameState 
         &state,
         &Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },

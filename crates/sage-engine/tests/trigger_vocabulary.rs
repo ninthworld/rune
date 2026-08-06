@@ -138,6 +138,8 @@ fn cast_by(state: &GameState, db: &CardDatabase, slug: &str, seat: PlayerId) -> 
         &state,
         &Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },

@@ -332,15 +332,16 @@ pub struct Resume {
     pub targets: Vec<Target>,
     /// The spell whose card still has to reach its final zone, `None` for an ability.
     pub spell: Option<SuspendedSpell>,
-    /// The log sequence this resolution began at — the window an intervening condition
-    /// about what *this* resolution has done reads over
-    /// ([`Condition::MilledThisWay`](crate::Condition)).
+    /// What the suspended resolution knows about itself — the window an intervening
+    /// condition reads over, the X its object announced, and whether its damage can be
+    /// prevented (see [`Resolution`](crate::Resolution)).
     ///
     /// Carried through the suspension for the same reason the remaining effects are: a
     /// discard-then-draw asks its question, and the `if a card is discarded this way`
     /// that follows must still be measured from where the resolution started, not from
-    /// where it woke up.
-    pub resolution_start: u64,
+    /// where it woke up. The same is true of an announced X — a spell that stops to ask
+    /// something resumes with the value it was cast for, not with none.
+    pub resolution: crate::resolve::Resolution,
 }
 
 /// A spell whose resolution was suspended, and which must still be put into its final

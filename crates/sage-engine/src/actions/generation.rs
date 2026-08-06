@@ -2,8 +2,6 @@
 
 use crate::ability::{is_equip_ability, is_loyalty_ability, is_mana_ability, Ability, Effect};
 use crate::choice::ChoiceQuestion;
-use crate::commander::commander_tax_cost;
-use crate::mana::parse_mana_cost;
 use crate::phase::Step;
 use crate::state::GameState;
 use crate::CardDatabase;
@@ -11,7 +9,7 @@ use crate::CardDatabase;
 use super::definition::Action;
 use super::targeting::legal_targets_for_spec;
 use super::utilities::{
-    castable_at_instant_speed, cost_payable, equip_timing_allows, graveyard_ability,
+    cast_cost, castable_at_instant_speed, cost_payable, equip_timing_allows, graveyard_ability,
     graveyard_cost_payable, is_castable_spell, is_land, loyalty_timing_allows,
     tap_cost_is_summoning_sick,
 };
@@ -270,8 +268,15 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             // CR 117.1a: an instant — or a card with flash (CR 702.8) — ignores the
             // sorcery-speed gate; every other spell is bound by it.
             let timing_ok = castable_at_instant_speed(data) || sorcery_speed;
+            // The cheapest this cast can be: X = 0 (CR 202.3b), through the one
+            // function that answers what a cast costs, so the offer and the charge can
+            // never price the same spell differently. A larger X is enumerated
+            // separately, by [`crate::x_options`], against the same function.
+            let base_cost = cast_cost(state, db, card, None).map(|(cost, _)| cost);
             if timing_ok
-                && payable.covers(&parse_mana_cost(&data.mana_cost), spend_purpose(data))
+                && base_cost
+                    .as_ref()
+                    .is_some_and(|cost| payable.covers(cost, spend_purpose(data)))
                 && additional_cost_is_payable(state, priority, data, card.id, db)
             {
                 // A targeted spell is offered only when *every* target slot has at
@@ -280,9 +285,11 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 // "no legal object to enchant" rule). A slot's candidates come from
                 // the same per-slot enumeration abilities use, so this stays O(N)
                 // per slot and never forms the cartesian product.
-                if groups_are_fillable(&data.cast_target_groups(), state, priority, db) {
+                if cast_is_announceable(state, db, data, priority) {
                     actions.push(Action::CastSpell {
                         card,
+                        mode: None,
+                        x: None,
                         targets: Vec::new(),
                         payment: Vec::new(),
                     });
@@ -306,13 +313,18 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 continue;
             }
             let timing_ok = castable_at_instant_speed(data) || sorcery_speed;
+            let base_cost = cast_cost(state, db, card, None).map(|(cost, _)| cost);
             if timing_ok
-                && payable.covers(&parse_mana_cost(&data.mana_cost), spend_purpose(data))
+                && base_cost
+                    .as_ref()
+                    .is_some_and(|cost| payable.covers(cost, spend_purpose(data)))
                 && additional_cost_is_payable(state, priority, data, card.id, db)
-                && groups_are_fillable(&data.cast_target_groups(), state, priority, db)
+                && cast_is_announceable(state, db, data, priority)
             {
                 actions.push(Action::CastSpell {
                     card,
+                    mode: None,
+                    x: None,
                     targets: Vec::new(),
                     payment: Vec::new(),
                 });
@@ -326,7 +338,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
         // its cost *plus the commander tax*: {2} generic for each previous cast from
         // the command zone this game. Payability is checked against that taxed cost,
         // so the offer and the charge (in `apply_cast_spell`) always agree.
-        if let Some(commander) = &player.commander {
+        if player.commander.is_some() {
             for &card in &player.command {
                 let Some(data) = db.card(card.card) else {
                     continue;
@@ -335,14 +347,21 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                     continue;
                 }
                 let timing_ok = castable_at_instant_speed(data) || sorcery_speed;
-                let cost = commander_tax_cost(&parse_mana_cost(&data.mana_cost), commander.casts);
+                // The commander tax (CR 903.8) is part of what the cast costs, not a
+                // surcharge added afterwards, so it comes out of the same function every
+                // other cost does rather than being re-applied here.
+                let Some((cost, _)) = cast_cost(state, db, card, None) else {
+                    continue;
+                };
                 if timing_ok
                     && payable.covers(&cost, spend_purpose(data))
                     && additional_cost_is_payable(state, priority, data, card.id, db)
-                    && groups_are_fillable(&data.cast_target_groups(), state, priority, db)
+                    && cast_is_announceable(state, db, data, priority)
                 {
                     actions.push(Action::CastSpell {
                         card,
+                        mode: None,
+                        x: None,
                         targets: Vec::new(),
                         payment: Vec::new(),
                     });
@@ -372,7 +391,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
 /// target creatures" is a legal announcement with no creatures on the board, choosing
 /// none. That is the whole difference an arity-aware gate makes, and it is why this asks
 /// the group rather than the spec.
-fn groups_are_fillable(
+pub(super) fn groups_are_fillable(
     groups: &[crate::ability::TargetGroup],
     state: &GameState,
     actor: crate::id::PlayerId,
@@ -381,6 +400,31 @@ fn groups_are_fillable(
     groups.iter().all(|group| {
         group.min == 0 || !legal_targets_for_spec(group.spec, state, actor, db).is_empty()
     })
+}
+
+/// Whether a cast of `data` could be **announced** at all right now — the CR 601.2c
+/// target gate, asked over whichever modes the card offers.
+///
+/// A non-modal card has one set of slots and this is [`groups_are_fillable`] over them.
+/// A **modal** card has one set per mode (CR 700.2) and is castable while *any* of them
+/// can be filled: choosing a mode whose targets are unavailable is illegal, but choosing
+/// another one is not, and a spell with one live mode is a spell you may cast.
+///
+/// Which modes those are is enumerated separately, by
+/// [`mode_options`](crate::mode_options), against this same per-slot check — so the modes
+/// on offer and the reason the cast is on offer are one answer.
+fn cast_is_announceable(
+    state: &GameState,
+    db: &CardDatabase,
+    data: &crate::card::CardData,
+    actor: crate::id::PlayerId,
+) -> bool {
+    if !data.is_modal() {
+        return groups_are_fillable(&data.cast_target_groups(None), state, actor, db);
+    }
+    (0..data.modes.len())
+        .filter_map(|index| u8::try_from(index).ok())
+        .any(|index| groups_are_fillable(&data.cast_target_groups(Some(index)), state, actor, db))
 }
 
 /// Whether `data`'s additional cast cost (CR 601.2b) can be paid by `actor` right now,

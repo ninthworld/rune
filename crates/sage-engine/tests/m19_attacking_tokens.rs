@@ -369,6 +369,8 @@ fn issue_734_outside_combat_the_effect_creates_nothing_attacking() {
         &state,
         &Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -409,6 +411,8 @@ fn issue_734_a_creator_removed_from_combat_creates_no_attackers() {
         &state,
         &Action::CastSpell {
             card: murder,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(warleader)],
             payment: Vec::new(),
         },

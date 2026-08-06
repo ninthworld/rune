@@ -440,6 +440,21 @@ export type PromptOption = z.infer<typeof PromptOption>
  * how a client knows to ask "which?" without knowing what mana is: ask when the slot being
  * filled lists this `source` more than once.
  */
+/**
+ * One legal value of a `number` slot, and what choosing it costs.
+ *
+ * This exists for X. A range is enough for a number that costs nothing; the value of X in
+ * a mana cost is not that, because choosing it changes what the spell costs — and working
+ * out what a spell costs is exactly what this client must never do. So the server states
+ * each value's price and the stepper shows the one it is told.
+ */
+export const NumberValue = z.object({
+  value: z.number(),
+  /** The whole cost at this value, in `{...}` notation — never a delta, never with an `X` left in it. */
+  cost: z.string().optional(),
+})
+export type NumberValue = z.infer<typeof NumberValue>
+
 export const ManaOption = z.object({
   id: z.string(),
   source: EntityId,
@@ -487,6 +502,12 @@ export const Prompt = z.discriminatedUnion('kind', [
     prompt: z.string(),
     min: z.number(),
     max: z.number(),
+    /**
+     * Every legal value and what it costs — present exactly when the number is the X of a
+     * mana cost. When present these, not the range, are the stepper's stops; the two
+     * agree. Absent for a number that costs nothing.
+     */
+    values: z.array(NumberValue).optional(),
   }),
   z.object({
     kind: z.literal('pay_mana'),

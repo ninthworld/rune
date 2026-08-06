@@ -434,7 +434,11 @@ async fn issue_455_a_resolved_removal_spell_and_its_death_reach_the_skipped_seat
     state.stack.push(sage_engine::StackObject {
         id: sid,
         controller: PlayerId(1),
-        kind: sage_engine::StackObjectKind::Spell { card: shock },
+        kind: sage_engine::StackObjectKind::Spell {
+            card: shock,
+            mode: None,
+            x: None,
+        },
         targets: vec![sage_engine::Target::Permanent(elves)],
     });
     state.priority = PlayerId(0);

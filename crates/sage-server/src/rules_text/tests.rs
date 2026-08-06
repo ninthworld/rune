@@ -587,6 +587,10 @@ fn every_bundled_card_with_rules_generates_text_for_them() {
             || !card.restrictions.is_empty()
             || !card.abilities.is_empty()
             || !card.spell_effects.is_empty()
+            // A modal spell's sentences live in its modes, and a spell trait is a
+            // sentence in its own right (issue #733).
+            || !card.modes.is_empty()
+            || !card.spell_traits.is_empty()
             || card.attachment.is_some();
         let text = rules_text(card, sage_engine::scripted_rules_text(&card.functional_id));
         assert_eq!(
@@ -1486,5 +1490,34 @@ fn issue_736_a_prevention_shield_reads_as_prevent_all_damage_this_turn() {
     assert_eq!(
         text_of(&inline, "test_ward"),
         "Prevent all damage that would be dealt this turn."
+    );
+}
+
+/// **A modal spell renders as a printed card writes it** (CR 700.2, issue #733): a
+/// `Choose one —` header and one bulleted line per mode, each line the mode's own
+/// sentences.
+///
+/// The split into lines is the same split the dock's numbered rows use, so these are
+/// literally the words a player picks between.
+#[test]
+fn issue_733_a_modal_spell_prints_its_bullets() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "cleansing_nova"),
+        "Choose one —\n• Destroy all creatures.\n• Destroy all artifacts and enchantments."
+    );
+}
+
+/// **X renders as X** (issue #733). The card prints the letter; the value belongs to a
+/// particular cast and is stated on the stack entry, not here. The threshold clauses
+/// follow the sentence they qualify, where the printed card puts them.
+#[test]
+fn issue_733_x_renders_as_x_with_its_threshold_clauses() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "banefire"),
+        "Banefire deals X damage to any target.\n\
+         If X is 5 or more, Banefire can't be countered.\n\
+         If X is 5 or more, the damage Banefire deals can't be prevented."
     );
 }

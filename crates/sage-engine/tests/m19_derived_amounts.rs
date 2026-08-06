@@ -85,6 +85,8 @@ fn resolve_creature(state: &GameState, db: &CardDatabase, slug: &str) -> GameSta
         &state,
         &Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -113,6 +115,8 @@ fn cast_and_resolve(
         &state,
         &Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets,
             payment: Vec::new(),
         },
@@ -271,6 +275,8 @@ fn totally_lost_puts_a_permanent_on_top_of_its_owners_library() {
         &state,
         &Action::CastSpell {
             card: spell,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(ogre)],
             payment: Vec::new(),
         },
@@ -317,6 +323,8 @@ fn a_token_put_on_top_of_a_library_ceases_to_exist_instead() {
         &state,
         &Action::CastSpell {
             card: spell,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(token)],
             payment: Vec::new(),
         },

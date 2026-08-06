@@ -28,16 +28,18 @@ mod removal_tests;
 /// Both want a permanent, so both go through [`AbilitySource::permanent`](crate::AbilitySource),
 /// which answers `None` for an emblem and for a card in a graveyard — neither is one.
 ///
-/// `resolution_start` is the log sequence this resolution began at, carried for the same
+/// `resolution` is what the resolving object knows about itself, carried for the same
 /// reason [`apply_effect`] carries it: an amount that says "this way" is a question about
-/// what this resolution has already done.
+/// what this resolution has already done, an amount that says "X" is a question about
+/// what it announced, and whether its damage can be prevented is a fact about the object
+/// rather than about the recipient.
 pub(crate) fn apply_targeted_effect(
     state: &mut GameState,
     effect: &Effect,
     target: Target,
     controller: PlayerId,
     source: Option<crate::stack::AbilitySource>,
-    resolution_start: u64,
+    resolution: crate::resolve::Resolution,
     db: &CardDatabase,
 ) {
     let source = source.and_then(crate::stack::AbilitySource::permanent);
@@ -56,9 +58,22 @@ pub(crate) fn apply_targeted_effect(
         // spell's controller stands in as its owner.
         Effect::CounterSpell { .. } => {
             if let Target::Spell(id) = target {
-                if let Some(pos) = state.stack.iter().position(|o| o.id == id) {
+                // CR 701.5a: a spell that can't be countered stays on the stack. It was
+                // a perfectly legal target — "can't be countered" is not hexproof and
+                // does not touch targeting — so the counterspell resolved, chose it, and
+                // simply failed to remove it. Asked of the object rather than of its
+                // card, because the answer depends on the X *this* copy announced.
+                let protected = state
+                    .stack
+                    .iter()
+                    .find(|o| o.id == id)
+                    .is_some_and(|o| o.has_trait(db, crate::stack::SpellTraitKind::CantBeCountered));
+                if let Some(pos) = (!protected)
+                    .then(|| state.stack.iter().position(|o| o.id == id))
+                    .flatten()
+                {
                     let countered = state.stack.remove(pos);
-                    if let StackObjectKind::Spell { card } = countered.kind {
+                    if let StackObjectKind::Spell { card, .. } = countered.kind {
                         let owner = countered.controller;
                         if let Some(player) = state.players.get_mut(owner.0) {
                             player.graveyard.push(card);
@@ -87,25 +102,18 @@ pub(crate) fn apply_targeted_effect(
         } => {
             let count = crate::condition::count_permanents(state, count_of, controller, db);
             let amount = amount_per.saturating_mul(count);
-            match target {
-                Target::Permanent(id) => {
-                    state.deal_damage(PendingDamage::to_permanent(id, amount), db);
-                }
-                Target::Player(seat) => {
-                    state.deal_damage(PendingDamage::to_player(seat, amount), db);
-                }
-                Target::Card(_) | Target::Spell(_) => {}
-            }
+            deal_damage_to_target(state, target, amount, resolution, db);
         }
-        Effect::DealDamage { amount, .. } => match target {
-            Target::Permanent(id) => {
-                state.deal_damage(PendingDamage::to_permanent(id, *amount), db);
-            }
-            Target::Player(seat) => {
-                state.deal_damage(PendingDamage::to_player(seat, *amount), db);
-            }
-            Target::Card(_) | Target::Spell(_) => {}
-        },
+        Effect::DealDamage { amount, .. } => {
+            deal_damage_to_target(state, target, *amount, resolution, db);
+        }
+        // The announced-amount damage verb: X was fixed at announcement (CR 601.2b), so
+        // reading it here is a lookup rather than a computation, and it is the same
+        // number the cast was charged for.
+        Effect::DealDamageByAmount { amount, .. } => {
+            let value = crate::condition::derived_amount(state, amount, controller, resolution, db);
+            deal_damage_to_target(state, target, value, resolution, db);
+        }
         // Destroy the targeted permanent (CR 701.7): move it to its owner's
         // graveyard through the one creature-death seam
         // ([`GameState::destroy_permanent`], CR 700.4) — the same path lethal damage
@@ -395,7 +403,7 @@ pub(crate) fn apply_targeted_effect(
                 state,
                 amount,
                 controller,
-                resolution_start,
+                resolution,
                 db,
             ))
             .unwrap_or(i32::MAX);
@@ -439,6 +447,7 @@ pub(crate) fn apply_targeted_effect(
         | Effect::CreateReplacement { .. }
         | Effect::PreventDamage { .. }
         | Effect::Conditional { .. }
+        | Effect::DestroyAll { .. }
         | Effect::PumpAll { .. }
         | Effect::GrantKeywordAll { .. }
         | Effect::RestrictAll { .. }
@@ -491,6 +500,38 @@ pub(crate) fn apply_targeted_effect(
                 state.put_permanent_on_top_of_library(id);
             }
         }
+    }
+}
+
+/// Deal `amount` damage to the one object a targeting damage effect chose (CR 120.3).
+///
+/// Three damage verbs share it — the printed amount, the count-derived one, and the
+/// announced-X one — so the seam they all funnel into is written once, and the
+/// resolution's "can't be prevented" declaration (CR 615.1) is attached in one place
+/// rather than three. A card or a spell is never a damage recipient and is simply
+/// ignored: the target specs cannot produce one, and a silent skip is the right answer
+/// for a pairing the type system permits and the rules do not.
+fn deal_damage_to_target(
+    state: &mut GameState,
+    target: Target,
+    amount: u32,
+    resolution: crate::resolve::Resolution,
+    db: &CardDatabase,
+) {
+    match target {
+        Target::Permanent(id) => {
+            state.deal_damage(
+                resolution.damage(PendingDamage::to_permanent(id, amount)),
+                db,
+            );
+        }
+        Target::Player(seat) => {
+            state.deal_damage(
+                resolution.damage(PendingDamage::to_player(seat, amount)),
+                db,
+            );
+        }
+        Target::Card(_) | Target::Spell(_) => {}
     }
 }
 

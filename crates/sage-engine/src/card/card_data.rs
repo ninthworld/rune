@@ -102,6 +102,33 @@ pub struct CardData {
     /// is cast (CR 601.2c); read them with [`crate::card::spell_effects_of`].
     #[serde(default)]
     pub spell_effects: Vec<Effect>,
+    /// The **modes** of a modal spell (CR 700.2) — the bulleted list under `Choose
+    /// one —`. Empty for every card that is not modal, which is nearly all of them.
+    ///
+    /// A modal card carries its effects here instead of in [`Self::spell_effects`], and
+    /// the catalog validator enforces that either-or in both directions: a card with
+    /// modes and loose spell effects would be a spell that does something the player
+    /// never chose. It also holds the count between two and
+    /// [`MAX_MODES`](crate::MAX_MODES), because a mode is a numbered control in a band
+    /// of fixed height and a fifth one is a card the catalog refuses rather than a
+    /// layout to degrade at render time (`docs/client-design.md` §6.7).
+    ///
+    /// **Which mode was chosen decides which target slots exist**, so the choice is made
+    /// first, at announcement (CR 601.2b), and rides on the action and then on the stack
+    /// object. Read one mode's effects with [`Self::spell_effects_for_mode`].
+    #[serde(default)]
+    pub modes: Vec<super::SpellMode>,
+    /// What is true of this card **as a spell on the stack** that no effect of its own
+    /// produces — `this spell can't be countered`, `the damage can't be prevented`
+    /// (CR 701.5a, CR 615.1). Empty for every other card.
+    ///
+    /// Each entry may name the announced X it needs (CR 601.2b), which is what lets one
+    /// card be an ordinary burn spell for a small X and an uncounterable one for a
+    /// large one. Read through [`SpellTrait::applies`](super::SpellTrait::applies)
+    /// against the value the stack object recorded, never against a value re-derived
+    /// from the cost.
+    #[serde(default)]
+    pub spell_traits: Vec<super::SpellTrait>,
     /// The attachment ability of an **Aura** (CR 303.4) or an **Equipment**
     /// (CR 301.5): what it may be attached to, and what it grants its host while it is.
     /// `None` for every card that attaches to nothing, which is nearly all of them.
@@ -197,11 +224,50 @@ impl CardData {
     /// per-slot candidate enumeration, and the on-resolution fizzle re-check
     /// (CR 608.2b). Empty for a spell that chooses no targets.
     #[must_use]
-    pub fn cast_target_specs(&self) -> Vec<TargetSpec> {
-        self.cast_target_groups()
+    pub fn cast_target_specs(&self, mode: Option<u8>) -> Vec<TargetSpec> {
+        self.cast_target_groups(mode)
             .into_iter()
             .map(|group| group.spec)
             .collect()
+    }
+
+    /// Whether this card chooses a **mode** as it is announced (CR 700.2).
+    #[must_use]
+    pub fn is_modal(&self) -> bool {
+        !self.modes.is_empty()
+    }
+
+    /// How many `{X}` symbols this card's mana cost carries (CR 107.3) — zero for every
+    /// fixed cost, and the number an announced value is multiplied by for the rest.
+    #[must_use]
+    pub fn x_pips(&self) -> u8 {
+        crate::mana::x_pip_count(&self.mana_cost)
+    }
+
+    /// Whether casting this card **announces a value for X** (CR 601.2b) — its printed
+    /// cost contains at least one `{X}`.
+    #[must_use]
+    pub fn announces_x(&self) -> bool {
+        self.x_pips() > 0
+    }
+
+    /// The effects this card's spell ability produces for the chosen `mode`.
+    ///
+    /// A non-modal card ignores the argument and answers [`Self::spell_effects`]; a
+    /// modal one answers the named mode's effects, and answers **nothing** for a mode
+    /// that was not chosen or does not exist. That last part is the ordering rule made
+    /// structural rather than remembered: with no mode there are no effects, so there
+    /// are no target slots either, and an announcement that skipped the choice cannot
+    /// accidentally look like a complete one — [`crate::apply_action`] refuses it
+    /// outright.
+    #[must_use]
+    pub fn spell_effects_for_mode(&self, mode: Option<u8>) -> Vec<Effect> {
+        if !self.is_modal() {
+            return self.spell_effects.clone();
+        }
+        mode.and_then(|index| self.modes.get(usize::from(index)))
+            .map(|chosen| chosen.effects.clone())
+            .unwrap_or_default()
     }
 
     /// The ordered [`TargetGroup`]s a player chooses targets for when **casting** this
@@ -212,8 +278,12 @@ impl CardData {
     /// contributes a one-target group. An **Equipment** contributes none: it is cast like
     /// any other artifact and enters attached to nothing (CR 301.5c), choosing its host
     /// later, on its equip activation.
+    ///
+    /// `mode` is the mode announced for a **modal** card (CR 700.2) and is what makes
+    /// this answerable at all for one: the slots are the chosen mode's, so with no mode
+    /// there are none. Ignored by every non-modal card.
     #[must_use]
-    pub fn cast_target_groups(&self) -> Vec<crate::ability::TargetGroup> {
+    pub fn cast_target_groups(&self, mode: Option<u8>) -> Vec<crate::ability::TargetGroup> {
         let mut groups: Vec<crate::ability::TargetGroup> = self
             .attachment
             .as_ref()
@@ -225,7 +295,11 @@ impl CardData {
             })
             .into_iter()
             .collect();
-        groups.extend(self.spell_effects.iter().flat_map(Effect::target_groups));
+        groups.extend(
+            self.spell_effects_for_mode(mode)
+                .iter()
+                .flat_map(Effect::target_groups),
+        );
         groups
     }
 

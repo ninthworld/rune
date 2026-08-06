@@ -54,12 +54,31 @@ the resolution, or the turn — because none of them can be answered from a snap
 A count of permanents (`count_of`) may feed an effect's amount, the number of tokens it
 creates, and an attachment's static grant — the last recalculated on every read, because a
 static ability is not a resolution. Every *other* X is a `DerivedAmount`, a closed set of
-three phrases with no arithmetic over them — the life gained this turn, a count of what
-this resolution milled, the greatest mana value among a class — read once where the effect
-applies and feeding two verbs, a pump and a draw. The count keeps its own spelling because
-it is the one source a static grant may also name; nothing windowed over events could
-stand there. Cards in a zone, a life total, one named object's mana value, another
-object's power, and half of anything still feed nothing.
+four phrases with no arithmetic over them — the life gained this turn, a count of what
+this resolution milled, the greatest mana value among a class, and the **X its controller
+announced** — read once where the effect applies and feeding three verbs, a pump, a draw,
+and a damage. The count keeps its own spelling because it is the one source a static grant
+may also name; nothing windowed over events could stand there. Cards in a zone, a life
+total, one named object's mana value, another object's power, and half of anything still
+feed nothing.
+
+**A choice made at announcement rides the action, and the mode is made first** (CR
+601.2b). `Action::CastSpell` carries a `mode` and an `x`, both cleared to build the
+requirement form. The ordering is structural rather than remembered: `target_requirements`
+reads the mode off the action, and a modal cast that has not chosen one declares **no slots
+at all** — which is why `announcement_is_legal` refuses that announcement explicitly
+instead of letting it pass as a spell that happened to target nothing. A modal card's
+effects live in `CardData::modes`, held between two and `MAX_MODES` (four, because a mode is
+a numbered dock row and a fifth would have to be truncated). **X is announced, then
+locked**: `cast_cost` is the one place it becomes generic mana, `StackObjectKind::Spell::x`
+is the only X anything reads afterwards, and `x_options` enumerates the legal values *with
+what each one costs* — the multiplication is the engine's. Both are re-derived
+independently in `apply_action`, so a forged mode and an unpayable X are refused rather
+than merely unoffered. A `SpellTrait` is what is true of a spell *on the stack* rather than
+what it does, which is why it is not an `Effect`: both members are read by somebody else's
+resolution — a counterspell (CR 701.5a) and the damage seam (CR 615.1,
+`PendingDamage::unpreventable`). What a resolution knows about itself now travels as one
+`Resolution` value: its log window, its announced X, and that declaration.
 
 **`data/exclusions.json` is the maintained list, and it is the one that has to stay
 right.** Every exclusion names a single blocker; `make compat` regenerates

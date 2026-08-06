@@ -138,13 +138,19 @@ pub fn sacrifice_cost(
 /// Empty when the pool already covers the cost (CR 605.3 — mana floated first), which is
 /// exactly the case where there is nothing left to choose. `None` for a card the database
 /// does not hold.
+///
+/// `x` is the announced value of X (CR 601.2b), which is part of the cost and therefore
+/// part of the pips: `{X}{R}` at X = 3 owes four of them. A caller asking before the
+/// value is chosen passes `None` and is answered for the base cost, which is what X = 0
+/// costs anyway.
 #[must_use]
 pub fn payment_pips(
     state: &GameState,
     db: &CardDatabase,
     card: CardInstance,
+    x: Option<u32>,
 ) -> Option<Vec<PaymentPip>> {
-    let (cost, subtypes) = cast_cost(state, db, card)?;
+    let (cost, subtypes) = cast_cost(state, db, card, x)?;
     let purpose = SpendPurpose::CastingSpell {
         subtypes: &subtypes,
     };
@@ -317,7 +323,7 @@ mod tests {
             &["plains", "plains", "plains", "plains"],
             "ajani_s_pridemate",
         );
-        let pips = payment_pips(&state, &database, spell).unwrap();
+        let pips = payment_pips(&state, &database, spell, None).unwrap();
 
         assert_eq!(pips.len(), 2, "{{1}}{{W}} is two pips");
         assert_eq!(pips[0].pip, "{W}", "the colored pip comes first");
@@ -348,7 +354,7 @@ mod tests {
             board(&["plains", "plains"], "ajani_s_pridemate");
         state.players[0].mana_pool.add(Color::White, 1);
 
-        let pips = payment_pips(&state, &database, spell).unwrap();
+        let pips = payment_pips(&state, &database, spell, None).unwrap();
         assert_eq!(pips.len(), 1);
         assert_eq!(pips[0].pip, "{1}");
         assert_eq!(remaining_cost_pips(&pips), "{1}");
@@ -361,7 +367,9 @@ mod tests {
         let (mut state, database, _lands, spell) = board(&[], "ajani_s_pridemate");
         state.players[0].mana_pool.add(Color::White, 1);
         state.players[0].mana_pool.add_colorless(1);
-        assert!(payment_pips(&state, &database, spell).unwrap().is_empty());
+        assert!(payment_pips(&state, &database, spell, None)
+            .unwrap()
+            .is_empty());
     }
 
     /// **The dual-land rule.** A dual land is offered twice for a colored pip — the two
@@ -371,7 +379,7 @@ mod tests {
     fn a_dual_land_is_asked_about_only_where_the_answer_matters() {
         let (state, database, lands, spell) =
             board(&["meandering_river", "plains"], "ajani_s_pridemate");
-        let pips = payment_pips(&state, &database, spell).unwrap();
+        let pips = payment_pips(&state, &database, spell, None).unwrap();
 
         let white = &pips[0];
         assert_eq!(white.pip, "{W}");
@@ -399,7 +407,7 @@ mod tests {
     #[test]
     fn a_source_of_the_wrong_color_is_not_offered_for_a_colored_pip() {
         let (state, database, lands, spell) = board(&["island", "plains"], "ajani_s_pridemate");
-        let pips = payment_pips(&state, &database, spell).unwrap();
+        let pips = payment_pips(&state, &database, spell, None).unwrap();
 
         assert_eq!(pips[0].pip, "{W}");
         assert_eq!(pips[0].candidates.len(), 1);

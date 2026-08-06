@@ -7,7 +7,8 @@ use super::*;
 mod tests;
 
 /// Apply a single [`Effect`] to `state` on behalf of `controller`, resolving in a window
-/// that began at log sequence `resolution_start`.
+/// described by `resolution` (its log window, its announced X, and whether its damage
+/// can be prevented).
 ///
 /// The window is the same one an intervening condition is judged over, and it is here for
 /// the same reason: an amount that says "this way" ([`DerivedAmount::MilledThisWay`]) is
@@ -18,7 +19,7 @@ pub(crate) fn apply_effect(
     effect: &Effect,
     controller: PlayerId,
     source: Option<crate::stack::AbilitySource>,
-    resolution_start: u64,
+    resolution: crate::resolve::Resolution,
     db: &CardDatabase,
 ) {
     if state.players.get(controller.0).is_none() {
@@ -130,7 +131,7 @@ pub(crate) fn apply_effect(
         // "this way" sources read.
         Effect::DrawCardsByAmount { amount } => {
             let count =
-                crate::condition::derived_amount(state, amount, controller, resolution_start, db);
+                crate::condition::derived_amount(state, amount, controller, resolution, db);
             draw_cards(state, controller, count);
         }
         // CR 119.3: the referenced player gains life. A non-targeting reference names
@@ -208,7 +209,24 @@ pub(crate) fn apply_effect(
         // each player (CR 120.3a). A targeting subject named a target instead and is
         // applied through [`apply_targeted_effect`], so it is a no-op here.
         Effect::DealDamage { subject, amount } => {
-            apply_class_damage(state, subject, *amount, controller, db);
+            apply_class_damage(state, subject, *amount, controller, resolution, db);
+        }
+        // The same damage with the amount taken off the announcement instead of off the
+        // card (CR 608.2). A class-subject form chose no target and is applied here; a
+        // targeted one goes through [`apply_targeted_effect`] and is a no-op in this arm.
+        Effect::DealDamageByAmount { subject, amount } => {
+            let value = crate::condition::derived_amount(state, amount, controller, resolution, db);
+            apply_class_damage(state, subject, value, controller, resolution, db);
+        }
+        // CR 701.7, over a class instead of a target. The set is enumerated **here**, on
+        // resolution (CR 611.2c), and each member leaves through the one destruction seam
+        // a single `Destroy` uses — so a token ceases to exist (CR 111.7) and a death
+        // trigger sees every one of them. Collected before any of it happens, because
+        // destroying the first member moves the battlefield out from under the scan.
+        Effect::DestroyAll { affects } => {
+            for id in permanents_to_destroy(state, *affects, db) {
+                state.destroy_permanent(id, db);
+            }
         }
         // A mass, non-targeting until-end-of-turn modification (CR 611.2c): the
         // affected class is enumerated **once, here**, and one modifier is keyed to
@@ -427,7 +445,7 @@ pub(crate) fn apply_effect(
         } => {
             let count = crate::condition::count_permanents(state, count_of, controller, db);
             let amount = amount_per.saturating_mul(count);
-            apply_class_damage(state, subject, amount, controller, db);
+            apply_class_damage(state, subject, amount, controller, resolution, db);
         }
         // Every card of the named graveyard, at once. An empty graveyard is a legal
         // subject and a resolution that does nothing.
@@ -712,19 +730,54 @@ fn apply_class_damage(
     subject: &DamageSubject,
     amount: u32,
     controller: PlayerId,
+    resolution: crate::resolve::Resolution,
     db: &CardDatabase,
 ) {
     match subject {
         DamageSubject::Target(_) => {}
         DamageSubject::Players(player_ref) => {
             for seat in non_targeting_subjects(state, *player_ref, controller) {
-                state.deal_damage(PendingDamage::to_player(seat, amount), db);
+                state.deal_damage(
+                    resolution.damage(PendingDamage::to_player(seat, amount)),
+                    db,
+                );
             }
         }
         DamageSubject::Permanents(affects) => {
             for id in permanents_in(state, affects, controller, db) {
-                state.deal_damage(PendingDamage::to_permanent(id, amount), db);
+                state.deal_damage(
+                    resolution.damage(PendingDamage::to_permanent(id, amount)),
+                    db,
+                );
             }
         }
     }
+}
+
+/// The permanents a [`DestroyAffects`] class names, in battlefield order.
+///
+/// The mass-destruction counterpart of [`permanents_in`], and separate from it for the
+/// reason [`DestroyAffects`] is separate from [`MassAffects`]: nothing here is
+/// controller-relative and nothing here is limited to creatures, so sharing the scan
+/// would mean a filter with two halves that never both apply.
+fn permanents_to_destroy(
+    state: &GameState,
+    affects: crate::ability::DestroyAffects,
+    db: &CardDatabase,
+) -> Vec<PermanentId> {
+    use crate::ability::DestroyAffects;
+    use crate::card_type::CardType;
+    state
+        .battlefield
+        .iter()
+        .filter(|p| {
+            p.printed.face(db).is_some_and(|face| match affects {
+                DestroyAffects::EachCreature => face.has_type(CardType::Creature),
+                DestroyAffects::EachArtifactOrEnchantment => {
+                    face.has_type(CardType::Artifact) || face.has_type(CardType::Enchantment)
+                }
+            })
+        })
+        .map(|p| p.id)
+        .collect()
 }

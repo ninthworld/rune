@@ -197,10 +197,23 @@ pub(crate) fn bind_ability_targets(
     action: &Action,
     targets: &[TargetChoice],
 ) -> Option<Action> {
+    // The announcement first (CR 601.2b), because the mode is what decides which target
+    // slots there are to bind. A modal cast whose mode slot went unanswered has no
+    // announcement to make and is rejected here — inventing a mode would be playing
+    // somebody else's game, which is not the kind of decision ADR 0010 leaves to the
+    // server.
+    let (mode, x) = match action {
+        Action::CastSpell { .. } => bind_announcement(state, db, action, targets)?,
+        _ => (None, None),
+    };
+    // With the mode in hand the engine can finally say what the slots are — and `mode`
+    // being `Some` is exactly the condition under which they were advertised
+    // mode-scoped, so it names them here too.
+    let action = &cast_with_announcement(action, mode, x);
     let requirements = target_requirements(state, db, action);
     let mut chosen = Vec::with_capacity(requirements.len());
     for (index, req) in requirements.iter().enumerate() {
-        match chosen_for(targets, &format!("t{index}")) {
+        match chosen_for(targets, &target_slot(mode, index)) {
             [id] => {
                 let target = req
                     .candidates
@@ -246,10 +259,12 @@ pub(crate) fn bind_ability_targets(
         //
         // That judgment — *tap for the player instead of asking* — is exactly what the
         // engine has no opinion about. It only answers what a legal payment is.
-        Action::CastSpell { card, .. } => Some(Action::CastSpell {
+        Action::CastSpell { card, mode, x, .. } => Some(Action::CastSpell {
             card: *card,
+            mode: *mode,
+            x: *x,
             targets: chosen,
-            payment: bind_payment(state, db, *card, targets),
+            payment: bind_payment(state, db, *card, *x, targets),
         }),
         // Aiming a trigger (CR 603.3d) binds through the same per-slot candidate
         // path as a cast or an activation — the engine offers one target slot per
@@ -340,6 +355,60 @@ pub(crate) fn bind_discard(
     let hand = &state.players.get(state.priority.0)?.hand;
     let inst = hand.iter().find(|card| card_entity_id(card.id) == *id)?;
     Some(Action::Discard { card: *inst })
+}
+
+/// The mode and the X a returned selection announces for a cast (CR 601.2b), resolved
+/// against the choices the offer actually listed.
+///
+/// `None` — a rejected answer, not a defaulted one — when the card asks a question the
+/// selection did not answer, or answers one with a value the offer did not list. Both
+/// halves are re-derived here from the freshly recomputed offer and then re-derived
+/// *again*, independently, by the engine's own gate: a forged mode and an X the pool
+/// cannot pay are refused whether or not this layer catches them first.
+///
+/// `Some((None, None))` for the overwhelming majority of casts, which announce neither.
+fn bind_announcement(
+    state: &GameState,
+    db: &CardDatabase,
+    action: &Action,
+    targets: &[TargetChoice],
+) -> Option<(Option<u8>, Option<u32>)> {
+    let answered_mode = chosen_for(targets, MODE_SLOT).first().cloned();
+    let mode = match modal_cast_modes(state, db, action) {
+        None => {
+            // A card with no modes accepts no mode: an answer to a question nobody asked
+            // is a wrong answer, not a spare one.
+            if answered_mode.is_some() {
+                return None;
+            }
+            None
+        }
+        Some(modes) => {
+            let id = answered_mode?;
+            Some(
+                modes
+                    .iter()
+                    .find(|mode| mode_option_id(mode.index) == id)?
+                    .index,
+            )
+        }
+    };
+    let values = sage_engine::x_options(state, db, action);
+    let answered_x = chosen_for(targets, X_SLOT).first().cloned();
+    let x = if values.is_empty() {
+        if answered_x.is_some() {
+            return None;
+        }
+        None
+    } else {
+        let value: u32 = answered_x?.parse().ok()?;
+        // Only a value the offer enumerated. The client was handed the list *and* what
+        // each entry costs precisely so it never has to work one out, so an answer
+        // outside the list is a client that computed something.
+        values.iter().find(|option| option.value == value)?;
+        Some(value)
+    };
+    Some((mode, x))
 }
 
 #[cfg(test)]

@@ -374,8 +374,15 @@ where
             prompt: text,
             min,
             max,
+            values,
         } => {
             write_str(output, &format!("\n{text} ({min}-{max}):\n")).await?;
+            // Where the server enumerated what each value costs (the X of a mana cost),
+            // show the price beside the number. The client prints the strings it was
+            // handed and works nothing out.
+            for option in values {
+                write_str(output, &format!("  {} — {}\n", option.value, option.cost)).await?;
+            }
             let chosen = loop {
                 write_str(output, "> ").await?;
                 output.flush().await.map_err(SessionError::Io)?;

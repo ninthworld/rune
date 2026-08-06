@@ -55,8 +55,9 @@ pub(crate) fn cast_payment_prompts(
     state: &GameState,
     db: &CardDatabase,
     card: CardInstance,
+    x: Option<u32>,
 ) -> Vec<Prompt> {
-    let Some(pips) = sage_engine::payment_pips(state, db, card) else {
+    let Some(pips) = sage_engine::payment_pips(state, db, card, x) else {
         return Vec::new();
     };
     let mut prompts = mana_prompts(pips, state, db);
@@ -177,6 +178,10 @@ fn ability_pip_label(
 
 /// Bind a returned selection onto the payment for casting `card`.
 ///
+/// `x` is the value the announcement fixed (CR 601.2b): the pips are recomputed for the
+/// cost that value produces, so a payment is bound against what the spell actually costs
+/// rather than against what it would have cost at zero.
+///
 /// Every pip the client answered is resolved against the **freshly recomputed**
 /// candidates, so an id naming a source the board no longer offers — a land tapped since
 /// the view went out, a permanent that left — is refused rather than smuggled through. A
@@ -191,9 +196,10 @@ pub(crate) fn bind_payment(
     state: &GameState,
     db: &CardDatabase,
     card: CardInstance,
+    x: Option<u32>,
     targets: &[TargetChoice],
 ) -> Vec<CostPayment> {
-    let pips = sage_engine::payment_pips(state, db, card).unwrap_or_default();
+    let pips = sage_engine::payment_pips(state, db, card, x).unwrap_or_default();
     let mut chosen = Vec::new();
     let mut spent: Vec<PermanentId> = Vec::new();
     for (index, pip) in pips.iter().enumerate() {
@@ -209,18 +215,21 @@ pub(crate) fn bind_payment(
             .iter()
             .find(|candidate| mana_option_id(**candidate) == *id)
         else {
-            return fallback_payment(state, db, card);
+            return fallback_payment(state, db, card, x);
         };
         if spent.contains(&source.permanent) {
-            return fallback_payment(state, db, card);
+            return fallback_payment(state, db, card, x);
         }
         spent.push(source.permanent);
         chosen.push(CostPayment::Mana(*source));
     }
     if chosen.len() < pips.len() {
         // A payment the player did not finish. The server pays the whole thing rather
-        // than half of it — see the note above on why this is not a top-up.
-        return fallback_payment(state, db, card);
+        // than half of it — see the note above on why this is not a top-up. An announced
+        // X above zero lands here by construction today: the pips were posed for the base
+        // cost, so the mana the value adds is a slot no client was offered and therefore
+        // none filled.
+        return fallback_payment(state, db, card, x);
     }
     let (Some(discards), Some(sacrifices)) = (
         bind_discards(state, db, card, targets),
@@ -228,7 +237,7 @@ pub(crate) fn bind_payment(
     ) else {
         // The non-mana half was owed and not answered (or answered with an object that has
         // since moved): the server pays the whole cost rather than half of it.
-        return fallback_payment(state, db, card);
+        return fallback_payment(state, db, card, x);
     };
     chosen.extend(discards);
     chosen.extend(sacrifices);
@@ -300,8 +309,13 @@ fn bind_discards(
 }
 
 /// The payment the server assembles when the client did not (ADR 0010).
-fn fallback_payment(state: &GameState, db: &CardDatabase, card: CardInstance) -> Vec<CostPayment> {
-    sage_engine::auto_payment(state, db, card).unwrap_or_default()
+fn fallback_payment(
+    state: &GameState,
+    db: &CardDatabase,
+    card: CardInstance,
+    x: Option<u32>,
+) -> Vec<CostPayment> {
+    sage_engine::auto_payment(state, db, card, x).unwrap_or_default()
 }
 
 #[cfg(test)]

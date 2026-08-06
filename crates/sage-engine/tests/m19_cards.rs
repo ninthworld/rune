@@ -92,12 +92,16 @@ fn cast(state: &GameState, db: &CardDatabase, slug: &str, targets: Vec<Target>) 
     let instance = to_hand(&mut state, db, slug, PlayerId(0));
     let action = Action::CastSpell {
         card: instance,
+        mode: None,
+        x: None,
         targets,
         payment: Vec::new(),
     };
     assert!(
         valid_actions(&state, db).contains(&Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         }),
@@ -107,7 +111,7 @@ fn cast(state: &GameState, db: &CardDatabase, slug: &str, targets: Vec<Target>) 
     assert!(
         state.stack.iter().any(|o| matches!(
             o.kind,
-            StackObjectKind::Spell { card } if card.id == instance.id
+            StackObjectKind::Spell { card, .. } if card.id == instance.id
         )),
         "{slug} did not reach the stack — the cast was rejected"
     );
@@ -468,6 +472,8 @@ fn cast_by(
         &state,
         &Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets,
             payment: Vec::new(),
         },
@@ -569,6 +575,8 @@ fn vine_mare_is_hexproof_from_opponents_and_not_from_its_controller() {
         &db,
         &Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -1314,6 +1322,8 @@ fn satyr_enchanter_and_aven_wind_mage_watch_what_their_controller_casts() {
         &state,
         &Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets: vec![Target::Player(PlayerId(1))],
             payment: Vec::new(),
         },
@@ -1342,6 +1352,8 @@ fn satyr_enchanter_and_aven_wind_mage_watch_what_their_controller_casts() {
         &state,
         &Action::CastSpell {
             card: enchantment,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -1375,6 +1387,8 @@ fn guttersnipe_burns_each_opponent_when_its_controller_casts_an_instant() {
         &state,
         &Action::CastSpell {
             card: shock,
+            mode: None,
+            x: None,
             targets: vec![Target::Player(PlayerId(1))],
             payment: Vec::new(),
         },
@@ -1427,6 +1441,8 @@ fn guttersnipe_ignores_a_creature_spell_and_its_opponents_instants() {
         &state,
         &Action::CastSpell {
             card: creature,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -1443,6 +1459,8 @@ fn guttersnipe_ignores_a_creature_spell_and_its_opponents_instants() {
         &theirs,
         &Action::CastSpell {
             card: shock,
+            mode: None,
+            x: None,
             targets: vec![Target::Player(PlayerId(0))],
             payment: Vec::new(),
         },
@@ -1638,6 +1656,8 @@ fn plummet_destroys_only_creatures_that_currently_have_flying() {
             &attempt,
             &Action::CastSpell {
                 card: bad,
+                mode: None,
+                x: None,
                 targets: vec![Target::Permanent(ground)],
                 payment: Vec::new(),
             },
@@ -1690,6 +1710,8 @@ fn take_vengeance_destroys_only_a_tapped_creature() {
             &attempt,
             &Action::CastSpell {
                 card: bad,
+                mode: None,
+                x: None,
                 targets: vec![Target::Permanent(untapped)],
                 payment: Vec::new(),
             },
@@ -1732,6 +1754,8 @@ fn naturalize_and_invoke_the_divine_take_an_artifact_or_an_enchantment() {
             &attempt,
             &Action::CastSpell {
                 card: bad,
+                mode: None,
+                x: None,
                 targets: vec![Target::Permanent(creature)],
                 payment: Vec::new(),
             },
@@ -1770,6 +1794,8 @@ fn smelt_destroys_an_artifact_and_nothing_else() {
             &attempt,
             &Action::CastSpell {
                 card: bad,
+                mode: None,
+                x: None,
                 targets: vec![Target::Permanent(creature)],
                 payment: Vec::new(),
             },
@@ -1840,7 +1866,11 @@ fn essence_scatter_counters_a_creature_spell_but_not_an_instant() {
     state.stack.push(StackObject {
         id: creature_spell,
         controller: PlayerId(1),
-        kind: StackObjectKind::Spell { card: creature },
+        kind: StackObjectKind::Spell {
+            card: creature,
+            mode: None,
+            x: None,
+        },
         targets: Vec::new(),
     });
     // …and a noncreature spell beside it.
@@ -1849,7 +1879,11 @@ fn essence_scatter_counters_a_creature_spell_but_not_an_instant() {
     state.stack.push(StackObject {
         id: burn_spell,
         controller: PlayerId(1),
-        kind: StackObjectKind::Spell { card: burn },
+        kind: StackObjectKind::Spell {
+            card: burn,
+            mode: None,
+            x: None,
+        },
         targets: vec![Target::Player(PlayerId(0))],
     });
 
@@ -1860,6 +1894,8 @@ fn essence_scatter_counters_a_creature_spell_but_not_an_instant() {
             &attempt,
             &Action::CastSpell {
                 card: bad,
+                mode: None,
+                x: None,
                 targets: vec![Target::Spell(burn_spell)],
                 payment: Vec::new(),
             },
@@ -1875,6 +1911,8 @@ fn essence_scatter_counters_a_creature_spell_but_not_an_instant() {
         &good,
         &Action::CastSpell {
             card: scatter,
+            mode: None,
+            x: None,
             targets: vec![Target::Spell(creature_spell)],
             payment: Vec::new(),
         },
@@ -1907,7 +1945,11 @@ fn bone_to_ash_counters_a_creature_spell_and_replaces_itself() {
     state.stack.push(StackObject {
         id: spell,
         controller: PlayerId(1),
-        kind: StackObjectKind::Spell { card: creature },
+        kind: StackObjectKind::Spell {
+            card: creature,
+            mode: None,
+            x: None,
+        },
         targets: Vec::new(),
     });
 
@@ -1916,6 +1958,8 @@ fn bone_to_ash_counters_a_creature_spell_and_replaces_itself() {
         &state,
         &Action::CastSpell {
             card: bone,
+            mode: None,
+            x: None,
             targets: vec![Target::Spell(spell)],
             payment: Vec::new(),
         },

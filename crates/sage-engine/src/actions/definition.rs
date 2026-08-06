@@ -285,6 +285,39 @@ pub enum Action {
         /// The specific card in the caster's hand to cast. Names the physical
         /// copy, so two identical cards in hand are distinguishable.
         card: CardInstance,
+        /// The **mode** chosen for a modal spell (CR 700.2), as an index into
+        /// [`CardData::modes`](crate::CardData::modes). `None` for every card that is
+        /// not modal, and refused for one that is.
+        ///
+        /// It rides here for the same reason the targets do — it is chosen as part of
+        /// casting, and a player assembling one has sent nothing — but it is chosen
+        /// **before** them, and that ordering is a structural fact rather than a
+        /// convention. The mode decides which effects the spell has, the effects decide
+        /// which target slots exist, and so
+        /// [`crate::target_requirements`] cannot answer for a modal cast until this
+        /// field is filled: it reads the action, finds no chosen mode, and reports no
+        /// slots. An announcement that skipped the choice is therefore not a cast with
+        /// zero targets, it is one [`crate::apply_action`] rejects.
+        ///
+        /// Advertised as `None` in the requirement form; the offered options come from
+        /// [`crate::mode_options`], and a submitted index is re-derived against the
+        /// card's own list at apply, so a forged mode is refused rather than resolved.
+        mode: Option<u8>,
+        /// The value announced for **X** (CR 601.2b) on a spell whose mana cost carries
+        /// `{X}`. `None` for every card whose cost does not, and refused for one whose
+        /// cost does.
+        ///
+        /// **Announced, then locked.** This single number is what the cost is computed
+        /// from ([`cast_cost`](crate::actions::cast_cost)), what the payment is checked
+        /// against, what is recorded on the stack object, and what the resolving effect
+        /// reads ([`DerivedAmount::AnnouncedX`](crate::DerivedAmount)) — so payment,
+        /// resolution, and the text a player is shown cannot disagree about a value none
+        /// of them derived independently.
+        ///
+        /// Advertised as `None` in the requirement form; the legal values, and what each
+        /// one costs, come from [`crate::x_options`]. A value the caster's payment
+        /// cannot cover is refused at apply, not merely left unoffered.
+        x: Option<u32>,
         /// The targets chosen for this cast, one per target slot the card's spell
         /// effects declare (see [`crate::Effect::target_spec`]), in that order. Empty for
         /// a spell that targets nothing.
@@ -519,12 +552,15 @@ impl Action {
                     targets: Vec::new(),
                 }
             }
-            // A cast drops its target selection *and its payment* to its requirement
-            // form, the shape `valid_actions` advertises. Both are filled in later and
-            // by the same rule (CR 601.2): the process announces the spell first, and
-            // chooses targets and activates mana abilities as steps within it.
+            // A cast drops its **announcement choices**, its target selection, and its
+            // payment to its requirement form, the shape `valid_actions` advertises. All
+            // of them are filled in later and by the same rule (CR 601.2): the process
+            // announces the spell first, and chooses modes, then targets, then activates
+            // mana abilities as steps within it. The bare announcement is the card.
             Action::CastSpell { card, .. } => Action::CastSpell {
                 card: *card,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment: Vec::new(),
             },

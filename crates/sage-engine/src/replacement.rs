@@ -540,6 +540,18 @@ pub struct PendingDamage {
     /// combat-damage step, which includes a trampler's excess and a blocker's swing
     /// back. Damage from a spell, an ability, or a fight (CR 701.12) is not.
     pub combat: bool,
+    /// Whether **no prevention shield may apply** to this damage (CR 615.1) — the
+    /// `the damage can't be prevented` a spell declares about its own damage.
+    ///
+    /// A fact about the damage rather than about the shield, and carried here for
+    /// exactly the reason [`Self::combat`] is: by the time the amount is being marked,
+    /// nothing about the recipient could tell you where it came from. The resolving
+    /// object says so as it describes the event, and the one seam that consults shields
+    /// reads it.
+    ///
+    /// `false` everywhere but the handful of spells that print the clause, so a game
+    /// with none behaves byte-for-byte as it did before this field existed.
+    pub unpreventable: bool,
 }
 
 impl PendingDamage {
@@ -550,6 +562,7 @@ impl PendingDamage {
             recipient: DamageRecipient::Player(player),
             amount,
             combat: false,
+            unpreventable: false,
         }
     }
 
@@ -561,6 +574,7 @@ impl PendingDamage {
             recipient: DamageRecipient::Permanent(permanent),
             amount,
             combat: false,
+            unpreventable: false,
         }
     }
 
@@ -570,6 +584,17 @@ impl PendingDamage {
     #[must_use]
     pub fn in_combat(mut self) -> Self {
         self.combat = true;
+        self
+    }
+
+    /// The same damage, declared unpreventable by the object dealing it (CR 615.1).
+    ///
+    /// Written as a modifier for [`Self::in_combat`]'s reason: it is one more thing the
+    /// caller knows and the recipient cannot be asked, and neither constructor should
+    /// grow a second pair for it.
+    #[must_use]
+    pub fn unpreventable(mut self) -> Self {
+        self.unpreventable = true;
         self
     }
 }
@@ -605,6 +630,14 @@ impl DamageFilter {
 /// rather than everything, this becomes a fold and that question joins the choice queue.
 #[must_use]
 pub(crate) fn after_prevention(state: &GameState, damage: &PendingDamage) -> u32 {
+    // CR 615.1: damage that can't be prevented defeats every shield at once, however
+    // many there are and whatever each of them says. Checked ahead of the shields rather
+    // than inside `DamageFilter::matches`, because it is a property of the damage and not
+    // a restriction on the shield — a filter that had to know about it would be the
+    // wrong half of the sentence answering.
+    if damage.unpreventable {
+        return damage.amount;
+    }
     if state.prevention.iter().any(|shield| shield.matches(damage)) {
         0
     } else {

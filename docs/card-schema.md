@@ -62,7 +62,9 @@ no Oracle text, flavor, art, or branding.
 | `keywords` | no | Supported keyword abilities |
 | `restrictions` | no | Printed combat restrictions; creatures only |
 | `abilities` | no | Activated, triggered, or replacement-style ability IR |
-| `spell_effects` | no | Resolution effects for instants and sorceries |
+| `spell_effects` | no | Resolution effects for instants and sorceries; empty on a modal card |
+| `modes` | no | The bullets of a modal spell (CR 700.2); two to four, each `{ "effects": [...] }` |
+| `spell_traits` | no | What is true of the card **as a spell on the stack** — can't be countered, damage can't be prevented |
 | `additional_cost` | no | An additional cost to **cast** the card (CR 601.2b); never on a land |
 | `attachment` | no | Aura or Equipment: what it may be attached to, its equip cost, and its static power/toughness, keyword, and/or combat-restriction grant |
 | `scripted` | no | Declares behavior implemented in `src/scripted.rs`; defaults to `false` |
@@ -210,6 +212,83 @@ already does for an activation cost.
 
 A `count` of zero, or an `additional_cost` on a land (which is played, not cast —
 CR 116.2a), fails the catalog validator.
+
+### Modal spells (CR 700.2)
+
+A modal card puts its effects in `modes` instead of in `spell_effects`:
+
+```json
+"modes": [
+  { "effects": [ { "kind": "destroy_all", "affects": { "scope": "each_creature" } } ] },
+  { "effects": [ { "kind": "destroy_all",
+                   "affects": { "scope": "each_artifact_or_enchantment" } } ] }
+]
+```
+
+The choice is made **as the spell is announced** (CR 601.2b) and it is made *first*,
+before targets — because the chosen mode is what decides how many target slots the spell
+has and what each may aim at. Nothing downstream ever sees the modes that were not chosen:
+one mode's effects are what resolves, and the resolution path can reach no other.
+
+The validator enforces four things, and the last one is not a rules rule:
+
+- a modal card carries **no** `spell_effects` of its own — loose effects beside modes
+  would resolve whichever mode was chosen;
+- every mode does something;
+- there are at least **two** modes, since one is a question with a single answer;
+- there are at most **four** (`sage_engine::MAX_MODES`). A mode is a numbered row in a
+  dock band of fixed height (`client-design.md` §6.7), and the alternative to refusing a
+  fifth is truncating a sentence a player has to read *before* choosing it. So the limit
+  lands on whoever authors the card rather than on whoever plays it.
+
+Choosing more than one mode, repeating one, a mode with a cost of its own, and a modal
+*ability* are all still unwritable.
+
+### X in a mana cost (CR 107.3, CR 601.2b)
+
+A card whose `mana_cost` contains `{X}` announces a value for X as it is cast. There is no
+field for it: the symbol in the cost *is* the declaration.
+
+```json
+"mana_cost": "{X}{R}",
+"spell_effects": [
+  { "kind": "deal_damage_by_amount", "target": "any_target",
+    "amount": { "source": "announced_x" } }
+]
+```
+
+The announced value is folded into the cost as generic mana — one lot per `{X}` — by the
+single function every road asks what a cast costs, so the offer, the payment, and the
+charge cannot price the same spell differently. It is then **locked**: recorded on the
+stack object and read from there by the resolving effect and by anything measuring a
+threshold against it. Nothing re-derives it from the cost, because by then the cost has
+been paid and is gone.
+
+`{X}` in an **activation** cost is rejected by the validator. An activation pays out of a
+pool and has no announcement step to fix a value in, so the symbol would simply be ignored
+and the ability activated for nothing.
+
+### What is true of a spell on the stack
+
+`spell_traits` says what is true of the card **as a spell**, which no effect could say
+because an effect happens when its own object resolves and both of these are read by
+somebody else's:
+
+```json
+"spell_traits": [
+  { "kind": "cant_be_countered", "if_x_at_least": 5 },
+  { "kind": "damage_cant_be_prevented", "if_x_at_least": 5 }
+]
+```
+
+`cant_be_countered` (CR 701.5a) does **not** touch targeting: a counterspell may still
+choose the spell, resolve, and simply fail to remove it. `damage_cant_be_prevented`
+(CR 615.1) defeats every prevention shield at once, however many are in force.
+
+`if_x_at_least` measures the trait against the value this cast **announced**, so one card
+is an ordinary spell for a small X and an uncounterable one for a large one. It is omitted
+for a trait that always applies, and the validator rejects it on a card whose cost prints
+no `{X}` — a clause about a value the card never asks for could never be true.
 
 ### Combat restrictions (CR 506.3, CR 509.1b)
 
@@ -831,11 +910,19 @@ another. A card that needs a new phrase adds a source.
 
 | `source` | Reads | Written on a card as |
 | --- | --- | --- |
+| `announced_x` | the value of **X its controller announced** as the spell was cast (CR 601.2b) | `deals X damage to any target` |
 | `life_gained_this_turn` | how much life **you** have gained this turn (CR 118.3) | `where X is the amount of life you gained this turn` |
 | `milled_this_way` | how many cards **this resolution** milled matching `filter` | `for each land card put into their graveyard this way` |
 | `greatest_mana_value` | the greatest mana value among the permanents `among` names (CR 202.3) | `equal to the greatest mana value among artifacts you control` |
 
-Two effects read one:
+`announced_x` is the odd one out and worth stating plainly: it reads neither the board
+nor the event log, because there is nothing to read. X was **chosen**, at announcement,
+before targets and before payment, and it was locked the moment it was named — it rides on
+the stack object from there, so the mana that was charged, the effect that resolves, and
+the text the stack entry shows are all the same number by construction. It is zero for an
+object that announced none.
+
+Three effects read one:
 
 ```json
 { "kind": "pump_by_amount", "target": "any_creature",
@@ -846,7 +933,12 @@ Two effects read one:
               "among": { "scope": "you_control", "card_type": "artifact" } } }
 { "kind": "draw_cards_by_amount",
   "amount": { "source": "milled_this_way", "filter": { "kind": "land" } } }
+{ "kind": "deal_damage_by_amount", "target": "any_target",
+  "amount": { "source": "announced_x" } }
 ```
+
+`deal_damage_by_amount` is `deal_damage`'s sibling in the same way, and its subject
+decides whether a target is chosen exactly as every other damage verb's does.
 
 `pump_by_amount` is `pump_by_count`'s sibling for every X that is not a count, and freezes
 X into a fixed modifier in exactly the same way: life gained later in the turn does not
@@ -1156,6 +1248,20 @@ and replaces the noun in the generated text — `{"scope": "creatures_you_contro
 The affected set is locked in on resolution (CR 611.2c) — a creature that arrives later in
 the turn is untouched. That is the whole difference between one of these and an
 `Ability::Static` anthem, which is re-derived on every read.
+
+`destroy_all` is the mass counterpart of `destroy` (CR 701.7), and it takes its **own**
+scope vocabulary rather than the one above:
+
+```json
+{ "kind": "destroy_all", "affects": { "scope": "each_artifact_or_enchantment" } }
+```
+
+Its scopes are `each_creature` and `each_artifact_or_enchantment`. Separate because every
+member of the set above is a class of *creatures* feeding a pump or a keyword grant, and a
+non-creature scope there would make "artifacts you control get +1/+1" an authorable
+sentence that means nothing. Like every mass effect the set is enumerated on resolution,
+and each member leaves through the same destruction seam a single `destroy` uses — so a
+token ceases to exist (CR 111.7) and a death trigger sees every one of them.
 
 ### Tapping a whole seat's creatures, and skipping an untap step
 

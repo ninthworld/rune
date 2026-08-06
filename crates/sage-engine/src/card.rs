@@ -17,6 +17,7 @@
 //! ignored. The authored schema is documented in `docs/card-schema.md`.
 
 mod additional_cost;
+mod announcement;
 mod attachment;
 mod card_data;
 mod catalog;
@@ -33,6 +34,7 @@ mod tests;
 
 pub use crate::catalog::SCHEMA_VERSION;
 pub use additional_cost::AdditionalCost;
+pub use announcement::{SpellMode, SpellTrait};
 pub use attachment::{Attachment, AttachmentKind};
 pub use card_data::CardData;
 pub use database::CardDatabase;

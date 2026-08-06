@@ -119,6 +119,9 @@ fn issue_256_no_bundled_card_is_a_functionless_shell() {
     for id in every_id() {
         let card = db.card(id).unwrap();
         let has_ir = !card.spell_effects.is_empty()
+            // A modal spell's effects live in its modes (CR 700.2), so a card with two
+            // bullets and no loose `spell_effects` is the opposite of a shell.
+            || !card.modes.is_empty()
             || !abilities_of(&db, id).is_empty()
             || card.attachment.is_some()
             || !card.keywords.is_empty()

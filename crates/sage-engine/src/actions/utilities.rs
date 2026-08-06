@@ -348,13 +348,28 @@ pub(crate) fn all_unique<T: PartialEq>(ids: &[T]) -> bool {
 ///
 /// `None` for a card the database does not hold — the same defensive absence every other
 /// lookup here returns rather than a zero cost that would read as free.
+///
+/// `x` is the value announced for X (CR 601.2b), and folding it in here is what makes
+/// the announcement binding: a `{X}{R}` announced at 3 costs `{3}{R}`, and every road
+/// that asks what the spell costs asks this one, so no road can price it differently. An
+/// unannounced X contributes nothing (CR 202.3b), which is also exactly right for the
+/// offer gate — the cheapest a spell with X can be is X = 0.
 pub(crate) fn cast_cost(
     state: &GameState,
     db: &CardDatabase,
     card: crate::id::CardInstance,
+    x: Option<u32>,
 ) -> Option<(crate::mana::ManaCost, Vec<String>)> {
     let data = db.card(card.card)?;
-    let base = crate::mana::parse_mana_cost(&data.mana_cost);
+    let mut base = crate::mana::parse_mana_cost(&data.mana_cost);
+    // Each `{X}` in the printed cost demands the announced value in generic mana
+    // (CR 107.3). Saturating rather than wrapping: the enumeration never offers a value
+    // this could overflow, and a cost that silently wrapped would read as free.
+    if let Some(announced) = x {
+        let pips = u32::from(data.x_pips());
+        let added = u8::try_from(pips.saturating_mul(announced)).unwrap_or(u8::MAX);
+        base.generic = base.generic.saturating_add(added);
+    }
     let player = state.players.get(state.priority.0)?;
     // A commander cast from the command zone carries the tax; the same card cast from
     // hand does not, so *where it is* decides the cost (CR 903.8).

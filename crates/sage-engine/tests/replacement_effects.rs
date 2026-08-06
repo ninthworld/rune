@@ -420,6 +420,8 @@ fn issue_731_a_cast_creature_is_not_replaced_by_a_without_being_cast_effect() {
         &state,
         &Action::CastSpell {
             card: ghoul,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },

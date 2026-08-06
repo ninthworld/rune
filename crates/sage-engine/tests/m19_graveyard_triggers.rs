@@ -71,6 +71,8 @@ fn land_a_dragon(state: &GameState, db: &CardDatabase, seat: PlayerId) -> GameSt
     state.players[seat.0].hand.push(dragon);
     let cast = Action::CastSpell {
         card: dragon,
+        mode: None,
+        x: None,
         targets: Vec::new(),
         payment: Vec::new(),
     };
@@ -220,6 +222,8 @@ fn issue_723_a_graveyard_trigger_does_not_also_fire_from_the_battlefield() {
     state.players[0].hand.push(bear);
     let cast = Action::CastSpell {
         card: bear,
+        mode: None,
+        x: None,
         targets: Vec::new(),
         payment: Vec::new(),
     };

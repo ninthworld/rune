@@ -58,6 +58,8 @@ fn cast(state: &GameState, db: &CardDatabase, slug: &str, seat: PlayerId) -> Gam
         &state,
         &Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -211,6 +213,8 @@ fn each_permanent_records_its_own_colour_and_a_returning_card_chooses_again() {
                 id: instance,
                 card: cid(&db, "diamond_mare"),
             },
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -255,6 +259,8 @@ fn the_trigger_fires_for_the_chosen_colour_and_for_no_other() {
         &red,
         &Action::CastSpell {
             card: shock,
+            mode: None,
+            x: None,
             targets: vec![sage_engine::Target::Player(PlayerId(1))],
             payment: Vec::new(),
         },
@@ -275,6 +281,8 @@ fn the_trigger_fires_for_the_chosen_colour_and_for_no_other() {
         &blue,
         &Action::CastSpell {
             card: divination,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -303,6 +311,8 @@ fn the_same_card_watches_whatever_each_copy_chose() {
         &state,
         &Action::CastSpell {
             card: divination,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -335,6 +345,8 @@ fn an_opponents_spell_and_a_colourless_spell_both_fire_nothing() {
         &theirs,
         &Action::CastSpell {
             card: shock,
+            mode: None,
+            x: None,
             targets: vec![sage_engine::Target::Player(PlayerId(0))],
             payment: Vec::new(),
         },
@@ -353,6 +365,8 @@ fn an_opponents_spell_and_a_colourless_spell_both_fire_nothing() {
         &colourless,
         &Action::CastSpell {
             card: manalith,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },

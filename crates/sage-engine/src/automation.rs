@@ -408,7 +408,11 @@ mod tests {
         state.stack.push(crate::stack::StackObject {
             id: sid,
             controller: PlayerId(0),
-            kind: crate::stack::StackObjectKind::Spell { card: boar },
+            kind: crate::stack::StackObjectKind::Spell {
+                card: boar,
+                mode: None,
+                x: None,
+            },
             targets: Vec::new(),
         });
         assert!(

@@ -32,9 +32,9 @@ use sage_protocol::{
     ActionDestination, CardType, CardView, ChooseAction, CommanderDamage as CommanderDamageView,
     CommanderIdentity as CommanderIdentityView, CommanderTax as CommanderTaxView, Counter,
     Emblem as EmblemView, GameLogEntry, GameLogEvent, GameOverReason, GameResult as GameResultView,
-    GameView, LogBlock, LogDamageTarget, LogEntity, ManaOption, MaximumHandSize, OpponentView,
-    Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, SpectatorView, StackItem,
-    StackItemKind, StackTarget, TargetChoice, TargetRequirement, ValidAction, ZonePile,
+    GameView, LogBlock, LogDamageTarget, LogEntity, ManaOption, MaximumHandSize, NumberValue,
+    OpponentView, Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, SpectatorView,
+    StackItem, StackItemKind, StackTarget, TargetChoice, TargetRequirement, ValidAction, ZonePile,
 };
 
 mod actions;

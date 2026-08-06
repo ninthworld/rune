@@ -123,6 +123,45 @@ pub enum DerivedAmount {
         /// Which permanents are looked at, relative to the effect's controller.
         among: PermanentCount,
     },
+    /// The **X its controller announced** as the spell was cast (CR 601.2b) — the `X` of
+    /// `deals X damage to any target` on a spell whose cost is `{X}{R}`.
+    ///
+    /// The one member of this vocabulary that reads neither the board nor the event log,
+    /// because there is nothing to read: X was *chosen*, before targets and before
+    /// payment, and locked the moment it was announced. It rides on the stack object
+    /// from that point on ([`StackObjectKind::Spell`](crate::StackObjectKind)), so the
+    /// mana that was charged, the effect that resolves, and the text a player reads are
+    /// all the same number by construction rather than by three agreeing lookups.
+    ///
+    /// Zero for an object that announced no X at all, which is every ability and every
+    /// spell whose cost has no `{X}` in it. That is the safe direction and it is also
+    /// the honest one: such an effect has no X, and an effect that reads one it never
+    /// had should do nothing rather than guess.
+    AnnouncedX,
+}
+
+/// The class of permanents a **mass destruction** puts into their owners' graveyards
+/// (CR 701.7) — the `all creatures` and the `all artifacts and enchantments` of a
+/// sweeper's two modes.
+///
+/// Its own vocabulary rather than a widening of [`MassAffects`], which every existing
+/// member of is a class of *creatures* feeding a pump or a keyword grant: a
+/// non-creature scope there would make "artifacts you control get +1/+1" an authorable
+/// sentence that means nothing. Closed and named, for [`MassAffects`]'s reason — a
+/// disjunction of two card types is not a product of independent filters and
+/// [`PermanentCount`] could not say it — and it grows by adding variants.
+///
+/// The affected set is enumerated **on resolution** (CR 611.2c), so a permanent that
+/// arrives afterwards survives.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(tag = "scope", rename_all = "snake_case")]
+pub enum DestroyAffects {
+    /// Every creature on the battlefield, whoever controls it.
+    EachCreature,
+    /// Every artifact and every enchantment on the battlefield, whoever controls it. One
+    /// class rather than two, because the printed sentence is one destruction and a
+    /// permanent that is both is destroyed once.
+    EachArtifactOrEnchantment,
 }
 
 /// A class of permanents to **count**, relative to an effect's controller.

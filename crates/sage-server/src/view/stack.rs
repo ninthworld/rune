@@ -26,10 +26,10 @@ pub(crate) fn stack_item(state: &GameState, object: &StackObject, db: &CardDatab
     // is what makes a reconnect mid-resolution rebuild the same relationships.
     let targets = object.targets.iter().map(stack_target).collect();
     match &object.kind {
-        StackObjectKind::Spell { card } => StackItem {
+        StackObjectKind::Spell { card, mode, x } => StackItem {
             id: stack_entity_id(object.id),
             controller: player_id(object.controller),
-            description: card_name(card.card, db),
+            description: announced_spell_description(*card, *mode, *x, db),
             source: None,
             // The physical card being cast (CR 108.1, issue #650). The engine carries
             // the whole `CardInstance` across the stack precisely so this survives, and
@@ -73,6 +73,37 @@ pub(crate) fn stack_item(state: &GameState, object: &StackObject, db: &CardDatab
             card: source_permanent(state, *source).map(|perm| permanent_card_view(state, perm, db)),
         },
     }
+}
+
+/// The spell's name, plus whatever its controller **announced** as they cast it
+/// (CR 601.2b) — the mode it chose, and the value it named for X.
+///
+/// A stack entry is the record of one *particular* cast, which is exactly why the
+/// announcement is read back here and not off the card. The card says `X`; this object
+/// says 5. Two Banefires on the stack for different values are two different things to
+/// everyone deciding whether to respond, and a modal spell whose mode is not stated is a
+/// spell nobody can answer.
+fn announced_spell_description(
+    card: sage_engine::CardInstance,
+    mode: Option<u8>,
+    x: Option<u32>,
+    db: &CardDatabase,
+) -> String {
+    let mut description = card_name(card.card, db);
+    if let Some(chosen) = db
+        .card(card.card)
+        .and_then(|data| mode.and_then(|index| data.modes.get(usize::from(index)).cloned()))
+    {
+        description.push_str(" — ");
+        description.push_str(&crate::rules_text::mode_text(
+            &card_name(card.card, db),
+            &chosen,
+        ));
+    }
+    if let Some(value) = x {
+        description.push_str(&format!(" (X={value})"));
+    }
+    description
 }
 
 /// The wire kind for an ability, from the provenance the engine recorded at the push
@@ -213,7 +244,11 @@ mod tests {
         let spell = push(
             &mut state,
             PlayerId(0),
-            StackObjectKind::Spell { card: shock },
+            StackObjectKind::Spell {
+                card: shock,
+                mode: None,
+                x: None,
+            },
             vec![Target::Permanent(ogre)],
         );
         let ability = push(
@@ -302,7 +337,11 @@ mod tests {
         let bolt = push(
             &mut state,
             PlayerId(0),
-            StackObjectKind::Spell { card: twin },
+            StackObjectKind::Spell {
+                card: twin,
+                mode: None,
+                x: None,
+            },
             // One damage to the creature, one to its controller.
             vec![Target::Permanent(bear), Target::Player(PlayerId(1))],
         );
@@ -311,7 +350,11 @@ mod tests {
         push(
             &mut state,
             PlayerId(1),
-            StackObjectKind::Spell { card: counter },
+            StackObjectKind::Spell {
+                card: counter,
+                mode: None,
+                x: None,
+            },
             vec![Target::Spell(bolt)],
         );
 
@@ -408,7 +451,11 @@ mod tests {
         push(
             &mut state,
             PlayerId(0),
-            StackObjectKind::Spell { card: twin },
+            StackObjectKind::Spell {
+                card: twin,
+                mode: None,
+                x: None,
+            },
             vec![Target::Permanent(bear), Target::Player(PlayerId(1))],
         );
 

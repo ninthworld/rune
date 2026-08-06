@@ -146,6 +146,8 @@ fn issue_728_an_equipment_enters_attached_to_nothing_and_equips_a_creature() {
 
     let cast = Action::CastSpell {
         card: axe,
+        mode: None,
+        x: None,
         targets: Vec::new(),
         payment: Vec::new(),
     };
@@ -256,6 +258,8 @@ fn issue_728_the_axe_survives_its_host_and_an_aura_does_not() {
     let spell = to_hand(&mut state, &db, "take_vengeance");
     let cast = Action::CastSpell {
         card: spell,
+        mode: None,
+        x: None,
         targets: vec![Target::Permanent(host)],
         payment: Vec::new(),
     };
@@ -323,6 +327,8 @@ fn issue_728_an_equipment_whose_host_stops_being_a_legal_permanent_falls_off() {
     let (state, bounce) = spell;
     let cast = Action::CastSpell {
         card: bounce,
+        mode: None,
+        x: None,
         targets: vec![Target::Permanent(host)],
         payment: Vec::new(),
     };
@@ -457,6 +463,8 @@ fn issue_728_equip_is_sorcery_speed_at_the_offer_and_at_the_apply() {
         &responding,
         &Action::CastSpell {
             card: bolt,
+            mode: None,
+            x: None,
             targets: vec![Target::Player(PlayerId(1))],
             payment: Vec::new(),
         },

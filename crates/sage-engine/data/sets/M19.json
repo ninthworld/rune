@@ -35,6 +35,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "cleansing_nova",
+    "collector_number": "9",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "daybreak_chaplain",
     "collector_number": "10",
     "rarity": "common"
@@ -478,6 +483,11 @@
     "functional_id": "act_of_treason",
     "collector_number": "127",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "banefire",
+    "collector_number": "130",
+    "rarity": "rare"
   },
   {
     "functional_id": "boggart_brute",

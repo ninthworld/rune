@@ -42,6 +42,20 @@ use std::fmt;
 /// migrated under one forcing function instead of half-loading.
 pub const SCHEMA_VERSION: u32 = 1;
 
+/// The most modes a modal card may print (CR 700.2).
+///
+/// A rules-free bound with a presentation reason, and it is stated here rather than
+/// worked around later: a mode is a numbered row in a dock band of fixed height, sized
+/// to hold four of them at the text floor (`docs/client-design.md` §6.7). A fifth is not
+/// a layout to degrade at render time — degrading would mean truncating a mode a player
+/// has to read before choosing it — so it is a card the catalog refuses. Every modal
+/// card in the catalog has two.
+pub const MAX_MODES: usize = 4;
+
+/// The fewest a modal card may print. One mode is not a choice, and a card whose single
+/// bullet was authored as a mode would pose a question with one answer.
+const MIN_MODES: usize = 2;
+
 /// The subtype that makes a card an Aura (CR 303.4), and therefore the only kind of
 /// card an `attachment` of kind `aura` may appear on.
 const AURA_SUBTYPE: &str = "Aura";
@@ -193,6 +207,47 @@ pub(crate) fn validate_definition(
         }
     }
 
+    // CR 700.2: a modal card's effects live in its modes and nowhere else, it prints
+    // between two and MAX_MODES of them, and each of its modes does something. All three
+    // directions matter: loose spell effects beside modes would resolve whichever mode
+    // was chosen, one mode is a question with a single answer, and a fifth is a row the
+    // dock has no band for.
+    if let Some(modes) = object.get("modes").and_then(serde_json::Value::as_array) {
+        let empty_mode = modes.iter().any(|mode| {
+            mode.get("effects")
+                .and_then(serde_json::Value::as_array)
+                .is_none_or(Vec::is_empty)
+        });
+        let loose_effects = object
+            .get("spell_effects")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|effects| !effects.is_empty());
+        if modes.len() < MIN_MODES || modes.len() > MAX_MODES || empty_mode || loose_effects {
+            return Err(Violation::MalformedModes {
+                functional_id,
+                modes: modes.len(),
+            });
+        }
+    }
+
+    // CR 107.3: `{X}` is announced as a spell is cast, so it belongs in a card's mana
+    // cost and nowhere else. An activation pays out of a pool with no announcement step
+    // to fix a value in, so an `{X}` in an ability's cost is a symbol nothing would ever
+    // charge for — it would simply be ignored and the ability activated for free.
+    if let Some(cost) = ability_cost_with_x(object) {
+        return Err(Violation::XOutsideAManaCost {
+            functional_id,
+            cost,
+        });
+    }
+
+    // A spell trait that names a threshold for X is a sentence about a value the card
+    // never asks for unless its cost prints `{X}` — "if X is 5 or more" on a fixed cost
+    // is a clause that can never be true.
+    if spell_trait_needs_x(object) && !mana_cost_has_x(object) {
+        return Err(Violation::SpellTraitNeedsX { functional_id });
+    }
+
     // A printed combat restriction only ever restricts attacking or blocking, so it
     // belongs only on a creature. An Aura *grants* restrictions to its host through
     // `aura.restrictions` instead, which is why this looks only at the printed list.
@@ -342,3 +397,61 @@ pub(crate) fn check_printings<'a>(
 
 #[cfg(test)]
 mod tests;
+
+/// Whether this definition's printed mana cost contains an `{X}` (CR 107.3).
+fn mana_cost_has_x(object: &serde_json::Map<String, serde_json::Value>) -> bool {
+    object
+        .get("mana_cost")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|cost| cost.contains("{X}"))
+}
+
+/// The first activation cost string in this definition that contains an `{X}`, if any.
+///
+/// Walks the costs of every authored ability, including the abilities an emblem hands
+/// out — the same reach [`every_effect`] has, for the same reason.
+fn ability_cost_with_x(object: &serde_json::Map<String, serde_json::Value>) -> Option<String> {
+    fn costs_of(ability: &serde_json::Value) -> Vec<&serde_json::Value> {
+        ability
+            .get("cost")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+            .iter()
+            .collect()
+    }
+    let printed = object
+        .get("abilities")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter();
+    let granted: Vec<&serde_json::Value> = every_effect(object)
+        .into_iter()
+        .flat_map(|effect| {
+            effect
+                .get("abilities")
+                .and_then(serde_json::Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default()
+                .iter()
+        })
+        .collect();
+    printed
+        .chain(granted)
+        .flat_map(costs_of)
+        .filter_map(|cost| cost.get("mana").and_then(serde_json::Value::as_str))
+        .find(|mana| mana.contains("{X}"))
+        .map(str::to_string)
+}
+
+/// Whether any declared spell trait names an X threshold (`if_x_at_least`).
+fn spell_trait_needs_x(object: &serde_json::Map<String, serde_json::Value>) -> bool {
+    object
+        .get("spell_traits")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter()
+        .any(|declared| declared.get("if_x_at_least").is_some_and(|v| !v.is_null()))
+}

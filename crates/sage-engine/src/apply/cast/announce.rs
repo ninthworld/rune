@@ -181,7 +181,7 @@ pub(crate) fn apply_activate_ability(
                     effect,
                     controller,
                     Some(crate::stack::AbilitySource::Permanent(permanent)),
-                    state.next_log_sequence,
+                    crate::resolve::Resolution::at(state.next_log_sequence),
                     db,
                 ),
             }
@@ -304,9 +304,12 @@ pub(crate) fn apply_choose_trigger_targets(
 /// (a permanent enters the battlefield, an instant/sorcery goes to the graveyard,
 /// CR 608.3), routed in [`resolve_stack_object`]; timing legality (instant vs.
 /// sorcery speed, CR 117.1a) is enforced upstream in [`crate::valid_actions`].
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn apply_cast_spell(
     state: &mut GameState,
     card: CardInstance,
+    mode: Option<u8>,
+    x: Option<u32>,
     targets: &[Target],
     payment: &[crate::CostPayment],
     db: &CardDatabase,
@@ -315,24 +318,20 @@ pub(crate) fn apply_cast_spell(
     let Some(data) = db.card(card.card) else {
         return;
     };
-    let base = parse_mana_cost(&data.mana_cost);
-    // A commander may be cast from the command zone (CR 903.8); anything else is
-    // cast from hand. Detect which zone this instance is in so the cost carries the
-    // commander tax and the card is removed from the right pile.
+    // What this cast costs, from the one function that answers that — the announced X
+    // folded in and the commander tax (CR 903.8) with it. Charging it here from a cost
+    // assembled locally is how the offer and the charge drift apart, and an X makes that
+    // drift a spell paid for at the wrong price.
+    let Some((cost, _)) = crate::actions::cast_cost(state, db, card, x) else {
+        return;
+    };
+    // Which pile the card leaves. One instance is in one zone, so naming it is naming
+    // where it is; the command zone is called out because a cast from there also raises
+    // the tax for the next one.
     let from_command = state
         .players
         .get(controller.0)
         .is_some_and(|p| p.command.iter().any(|c| c.id == card.id));
-    let cost = if from_command {
-        let casts = state
-            .players
-            .get(controller.0)
-            .and_then(|p| p.commander.as_ref())
-            .map_or(0, |c| c.casts);
-        commander_tax_cost(&base, casts)
-    } else {
-        base
-    };
     {
         let Some(player) = state.players.get_mut(controller.0) else {
             return;
@@ -374,7 +373,10 @@ pub(crate) fn apply_cast_spell(
     state.stack.push(StackObject {
         id: StackId(id),
         controller,
-        kind: StackObjectKind::Spell { card },
+        // The announcement travels with the object (CR 601.2b): the mode decides which
+        // effects will resolve, and the X is now locked — the same number that was just
+        // charged is the one the resolution and every reader of this object will see.
+        kind: StackObjectKind::Spell { card, mode, x },
         // The targets chosen as part of casting this spell (CR 601.2c), already
         // validated against freshly computed legal sets in `action_is_legal` and
         // re-checked once more on resolution (CR 608.2b). Empty for a spell that

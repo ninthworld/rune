@@ -51,6 +51,8 @@ fn to_hand(state: &mut GameState, db: &CardDatabase, slug: &str, seat: PlayerId)
 fn cast_of(card: CardInstance) -> Action {
     Action::CastSpell {
         card,
+        mode: None,
+        x: None,
         targets: Vec::new(),
         payment: Vec::new(),
     }
@@ -64,7 +66,7 @@ fn offered(state: &GameState, db: &CardDatabase, card: CardInstance) -> bool {
 /// `apply_action` returning the state it was handed.
 fn reaches_the_stack(state: &GameState, db: &CardDatabase, card: CardInstance) -> bool {
     apply_action(state, &cast_of(card), db).stack.iter().any(
-        |o| matches!(o.kind, StackObjectKind::Spell { card: on_stack } if on_stack.id == card.id),
+        |o| matches!(o.kind, StackObjectKind::Spell { card: on_stack, .. } if on_stack.id == card.id),
     )
 }
 
@@ -109,6 +111,8 @@ fn issue_748_hired_blade_is_castable_with_something_on_the_stack() {
         &state,
         &Action::CastSpell {
             card: shock,
+            mode: None,
+            x: None,
             targets: vec![sage_engine::Target::Player(PlayerId(1))],
             payment: Vec::new(),
         },

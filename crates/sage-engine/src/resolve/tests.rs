@@ -49,6 +49,8 @@ fn resolving_a_creature_spell_puts_it_on_the_battlefield() {
         &state,
         &Action::CastSpell {
             card: scout,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -82,7 +84,11 @@ fn issue_47_non_permanent_spell_resolves_to_graveyard_not_battlefield() {
     state.stack.push(StackObject {
         id: StackId(sid),
         controller: PlayerId(0),
-        kind: StackObjectKind::Spell { card: bolt },
+        kind: StackObjectKind::Spell {
+            card: bolt,
+            mode: None,
+            x: None,
+        },
         targets: Vec::new(),
     });
 
@@ -262,7 +268,11 @@ fn issue_148_spell_on_stack_target_is_legal_only_while_the_spell_is_on_the_stack
     state.stack.push(StackObject {
         id: sid,
         controller: PlayerId(0),
-        kind: StackObjectKind::Spell { card: spell },
+        kind: StackObjectKind::Spell {
+            card: spell,
+            mode: None,
+            x: None,
+        },
         targets: Vec::new(),
     });
     // An ability sharing the stack is not a spell target.
@@ -631,6 +641,8 @@ fn issue_152_aura_resolves_attached_to_its_target_and_boosts_it_cr_303_4d() {
         &state,
         &Action::CastSpell {
             card: aura,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(host)],
             payment: Vec::new(),
         },
@@ -673,6 +685,8 @@ fn issue_152_aura_fizzles_when_its_target_left_before_resolution_cr_608_2b() {
         &state,
         &Action::CastSpell {
             card: aura,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(host)],
             payment: Vec::new(),
         },
@@ -726,6 +740,8 @@ fn issue_155_zero_zero_entering_with_two_counters_lives_cr_614_12() {
         &state,
         &Action::CastSpell {
             card: hatchling,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -771,7 +787,11 @@ fn issue_155_etb_trigger_observes_the_replaced_counters_state_cr_614_12() {
     state.stack.push(StackObject {
         id: StackId(sid),
         controller: PlayerId(0),
-        kind: StackObjectKind::Spell { card: broodling },
+        kind: StackObjectKind::Spell {
+            card: broodling,
+            mode: None,
+            x: None,
+        },
         targets: Vec::new(),
     });
 

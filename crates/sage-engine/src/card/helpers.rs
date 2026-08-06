@@ -101,10 +101,15 @@ pub fn abilities_of_permanent(
 /// at cast), and [`crate::valid_actions`] reads them to enumerate a targeted
 /// cast's requirement slots — the same effect IR, whether it rides an ability or
 /// a spell.
+///
+/// `mode` is the mode chosen at announcement for a **modal** card (CR 700.2); it names
+/// which of the printed bullets these effects are. A modal card given no mode has no
+/// effects at all, which is what makes an unchosen mode unresolvable rather than
+/// silently all of them.
 #[must_use]
-pub(crate) fn spell_effects_of(db: &CardDatabase, card: CardId) -> Vec<Effect> {
+pub(crate) fn spell_effects_of(db: &CardDatabase, card: CardId, mode: Option<u8>) -> Vec<Effect> {
     db.card(card)
-        .map(|c| c.spell_effects.clone())
+        .map(|c| c.spell_effects_for_mode(mode))
         .unwrap_or_default()
 }
 

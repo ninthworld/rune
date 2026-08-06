@@ -6,6 +6,7 @@
 //! and, for a targeted action, against freshly computed legal target sets — in
 //! [`action_is_legal`] before applying it.
 
+mod announcement;
 mod definition;
 mod generation;
 mod legality;
@@ -16,6 +17,8 @@ mod utilities;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use announcement::announcement_is_legal;
+pub use announcement::{mode_options, x_options, ModeOption, XOption};
 pub(crate) use definition::{discards_of, sacrifices_of};
 pub use definition::{
     Action, Attack, Block, CostPayment, DamageOrder, ManaSource, TargetRequirement,
@@ -32,4 +35,4 @@ pub(crate) use payment::{
 };
 pub(crate) use targeting::legal_targets_for_spec;
 pub use targeting::target_requirements;
-pub(crate) use utilities::{graveyard_ability, potential_mana_pool};
+pub(crate) use utilities::{cast_cost, graveyard_ability, potential_mana_pool};

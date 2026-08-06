@@ -22,7 +22,11 @@ fn issue_148_counterspell_counters_a_creature_spell_end_to_end_cr_701_5() {
     state.stack.push(StackObject {
         id: boar_sid,
         controller: PlayerId(1),
-        kind: StackObjectKind::Spell { card: boar },
+        kind: StackObjectKind::Spell {
+            card: boar,
+            mode: None,
+            x: None,
+        },
         targets: Vec::new(),
     });
 
@@ -38,6 +42,8 @@ fn issue_148_counterspell_counters_a_creature_spell_end_to_end_cr_701_5() {
         &state,
         &Action::CastSpell {
             card: negation,
+            mode: None,
+            x: None,
             targets: vec![Target::Spell(boar_sid)],
             payment: Vec::new(),
         },
@@ -101,14 +107,22 @@ fn issue_148_counterspell_fizzles_when_its_target_resolves_first_cr_608_2b() {
     state.stack.push(StackObject {
         id: neg_sid,
         controller: PlayerId(0),
-        kind: StackObjectKind::Spell { card: negation },
+        kind: StackObjectKind::Spell {
+            card: negation,
+            mode: None,
+            x: None,
+        },
         targets: vec![Target::Spell(boar_sid)],
     });
     // Top of the stack: player 1's vanilla creature spell, resolves first.
     state.stack.push(StackObject {
         id: boar_sid,
         controller: PlayerId(1),
-        kind: StackObjectKind::Spell { card: boar },
+        kind: StackObjectKind::Spell {
+            card: boar,
+            mode: None,
+            x: None,
+        },
         targets: Vec::new(),
     });
 
@@ -159,6 +173,8 @@ fn issue_149_burn_spell_kills_a_creature_via_lethal_damage_sba_cr_704_5g() {
         &state,
         &Action::CastSpell {
             card: shock,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(boar)],
             payment: Vec::new(),
         },
@@ -193,6 +209,8 @@ fn issue_149_burn_spell_to_a_player_drops_life_and_loses_at_zero_cr_704_5a() {
         &state,
         &Action::CastSpell {
             card: shock,
+            mode: None,
+            x: None,
             targets: vec![Target::Player(PlayerId(1))],
             payment: Vec::new(),
         },
@@ -221,6 +239,8 @@ fn issue_256_lightning_strike_deals_three_to_any_target() {
         &state,
         &Action::CastSpell {
             card: bolt,
+            mode: None,
+            x: None,
             targets: vec![Target::Player(PlayerId(1))],
             payment: Vec::new(),
         },
@@ -247,6 +267,8 @@ fn issue_149_destroy_puts_a_creature_in_its_owners_graveyard_cr_701_7() {
         &state,
         &Action::CastSpell {
             card: ray,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(boar)],
             payment: Vec::new(),
         },
@@ -278,6 +300,8 @@ fn issue_149_destroy_fizzles_if_its_target_left_first_cr_608_2b() {
         &state,
         &Action::CastSpell {
             card: ray,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(boar)],
             payment: Vec::new(),
         },
@@ -319,6 +343,8 @@ fn issue_149_minus_one_counter_lowers_toughness_to_lethal_cr_704_5g() {
         &state,
         &Action::CastSpell {
             card: touch,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(boar)],
             payment: Vec::new(),
         },
@@ -350,6 +376,8 @@ fn issue_401_strangling_spores_shrinks_a_creature_to_death_cr_704_5f() {
         &state,
         &Action::CastSpell {
             card: spores,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(ogre)],
             payment: Vec::new(),
         },
@@ -380,6 +408,8 @@ fn issue_401_lichs_caress_destroys_a_creature_and_gains_three_life() {
         &state,
         &Action::CastSpell {
             card: caress,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(victim)],
             payment: Vec::new(),
         },
@@ -414,6 +444,8 @@ fn issue_401_lava_axe_deals_five_to_a_player() {
         &state,
         &Action::CastSpell {
             card: axe,
+            mode: None,
+            x: None,
             targets: vec![Target::Player(PlayerId(1))],
             payment: Vec::new(),
         },

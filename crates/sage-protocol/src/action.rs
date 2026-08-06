@@ -182,6 +182,32 @@ pub struct PromptOption {
     pub requires: Vec<String>,
 }
 
+/// One legal value of a [`Prompt::Number`] slot, and what choosing it costs.
+///
+/// This exists because of X. `min` and `max` describe a *range*, and a range is enough
+/// for a number that costs nothing — how many counters to remove, how much of a divided
+/// effect goes where. The value of X in a mana cost is not that: choosing it changes what
+/// the spell costs, and **the client may not work out what a spell costs** (`AGENTS.md`,
+/// zero game logic in the client). So the server states each value's cost outright rather
+/// than sending `{X}{R}` and leaving a multiplication to whoever draws the bar.
+///
+/// A client walks these as the stepper's stops (`docs/client-design.md` §6.7): the
+/// current value, a decrement and an increment that move along the list and stop at its
+/// ends, and this entry's `cost` shown beside it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NumberValue {
+    /// The value itself — one of the numbers between the slot's `min` and `max`.
+    pub value: u32,
+    /// What the action costs at this value, in printed `{...}` notation (`"{3}{R}"`).
+    ///
+    /// The whole cost, never a delta and never a cost with an `X` still in it. Display
+    /// text and the input to nothing: a client renders the symbols and compares nothing.
+    /// Omitted from the wire for a number that costs nothing, which is every
+    /// [`Prompt::Number`] that is not an X in a cost.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub cost: String,
+}
+
 /// One way to pay one pip of a cost: a permanent to tap and what tapping it that way
 /// produces (CR 601.2f–g).
 ///
@@ -334,6 +360,19 @@ pub enum Prompt {
         min: u32,
         /// The largest legal value, inclusive. Always serialized.
         max: u32,
+        /// Every legal value **and what choosing it costs** (see [`NumberValue`]) —
+        /// present exactly when the number is the X of a mana cost.
+        ///
+        /// The server enumerates them because working out what `{X}{R}` costs at X = 3
+        /// is deciding what a spell costs, which no client may do. When present this
+        /// list, not the range, is the set of stops a stepper walks; the two agree, and
+        /// `min`/`max` remain so a client that ignores this field still sees a range it
+        /// understands.
+        ///
+        /// Additive: omitted when empty, so a costless number slot serializes exactly as
+        /// it did before this field existed.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        values: Vec<NumberValue>,
     },
     /// Pay **one pip** of a mana cost by tapping something (CR 601.2f–g).
     ///

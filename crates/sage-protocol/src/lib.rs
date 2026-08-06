@@ -43,7 +43,7 @@ mod result;
 mod spectator;
 mod view;
 
-pub use action::{ManaOption, Prompt, PromptOption, TargetRequirement, ValidAction};
+pub use action::{ManaOption, NumberValue, Prompt, PromptOption, TargetRequirement, ValidAction};
 pub use card::{
     CardType, CardView, Counter, Emblem, MaximumHandSize, OpponentView, Permanent, Phase, SelfView,
     StackItem, StackItemKind, StackTarget, ZonePile,

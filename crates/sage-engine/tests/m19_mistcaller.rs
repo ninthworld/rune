@@ -132,6 +132,8 @@ fn issue_731_mistcaller_is_castable_at_instant_speed_on_an_opponents_turn() {
     let castable = |card: CardInstance| {
         offers.contains(&Action::CastSpell {
             card,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         })
@@ -192,6 +194,8 @@ fn issue_731_mistcaller_does_not_touch_a_creature_that_was_cast() {
         &state,
         &Action::CastSpell {
             card: skeleton,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },

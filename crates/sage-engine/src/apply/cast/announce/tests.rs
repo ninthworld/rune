@@ -86,6 +86,8 @@ fn casting_a_creature_moves_it_to_the_stack_and_pays_mana() {
         &state,
         &Action::CastSpell {
             card: scout,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },

@@ -135,6 +135,19 @@ pub(super) fn effect_lists(
     {
         lists.push(effects.iter().collect());
     }
+    // Each mode is its own list, because each is announced on its own: one mode's
+    // variable-arity group has nothing to do with another's, and the two are never
+    // resolved together (CR 700.2).
+    for mode in object
+        .get("modes")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+    {
+        if let Some(effects) = mode.get("effects").and_then(serde_json::Value::as_array) {
+            lists.push(effects.iter().collect());
+        }
+    }
     for effect in every_effect(object) {
         for ability in effect
             .get("abilities")
@@ -379,7 +392,28 @@ pub(super) fn authored_effects(
         .map(Vec::as_slice)
         .unwrap_or_default()
         .iter();
-    abilities.chain(spell)
+    // A modal spell's effects hang off its modes instead (CR 700.2), and every rule
+    // stated about "every effect a definition authors" has to reach them — otherwise a
+    // check that holds for a plain spell would quietly not hold once the same text was
+    // written as one bullet of two.
+    let modes = mode_effects(object).into_iter();
+    abilities.chain(spell).chain(modes)
+}
+
+/// The effects of every mode a definition declares, flattened (CR 700.2).
+pub(super) fn mode_effects(
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> Vec<&serde_json::Value> {
+    object
+        .get("modes")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|mode| mode.get("effects"))
+        .filter_map(serde_json::Value::as_array)
+        .flatten()
+        .collect()
 }
 
 /// Whether `effect` is a `may` wrapping **more than one** targeting effect.

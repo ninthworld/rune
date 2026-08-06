@@ -336,7 +336,11 @@ async fn issue_264_a_castable_instant_is_never_auto_passed() {
     state.stack.push(sage_engine::StackObject {
         id: sid,
         controller: PlayerId(0),
-        kind: sage_engine::StackObjectKind::Spell { card: boar },
+        kind: sage_engine::StackObjectKind::Spell {
+            card: boar,
+            mode: None,
+            x: None,
+        },
         targets: Vec::new(),
     });
     state.priority = PlayerId(1);

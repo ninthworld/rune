@@ -459,6 +459,8 @@ mod tests {
             &state,
             &Action::CastSpell {
                 card: instance,
+                mode: None,
+                x: None,
                 targets,
                 payment: Vec::new(),
             },
@@ -732,6 +734,8 @@ mod tests {
             &state,
             &Action::CastSpell {
                 card: spell,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment: Vec::new(),
             },
@@ -890,6 +894,8 @@ mod tests {
             &state,
             &Action::CastSpell {
                 card: ward_card,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment: Vec::new(),
             },

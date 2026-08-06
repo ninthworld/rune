@@ -98,12 +98,20 @@ fn hash_prompt(prompt: &Prompt, hasher: &mut impl std::hash::Hasher) {
             prompt,
             min,
             max,
+            values,
         } => {
             3u8.hash(hasher);
             slot.hash(hasher);
             prompt.hash(hasher);
             min.hash(hasher);
             max.hash(hasher);
+            // The enumerated values and their costs are content too: a board that can
+            // suddenly pay for a larger X is a different offer, and an answer bound to
+            // the old one is exactly the stale binding the token exists to catch.
+            for value in values {
+                value.value.hash(hasher);
+                value.cost.hash(hasher);
+            }
         }
         // A mana pip: its candidates are part of the action's content, so a payment
         // bound to sources the board no longer offers — a land tapped in between, a

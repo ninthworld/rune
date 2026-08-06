@@ -691,3 +691,124 @@ fn issue_737_a_two_slot_effect_counts_as_two_target_groups() {
         "dealt_to": "any_creature_an_opponent_controls"}]"#;
     assert!(validate_definition(None, &definition(bare)).is_ok());
 }
+
+/// The mode list of a sorcery with `count` identical, harmless modes.
+fn modal(count: usize) -> serde_json::Value {
+    let mode = serde_json::json!({"effects": [{"kind": "draw_card", "count": 1}]});
+    serde_json::json!({
+        "schema_version": 1,
+        "functional_id": "test_card",
+        "name": "Test Card",
+        "types": ["sorcery"],
+        "mana_cost": "{G}",
+        "modes": vec![mode; count],
+    })
+}
+
+/// **The dock's band is four rows wide, so a fifth mode is a card the catalog refuses**
+/// (`docs/client-design.md` §6.7). The alternative is truncating a mode a player has to
+/// read before they can choose it, which §6 forbids outright — so the limit lands on the
+/// person authoring the card rather than on the person playing it.
+#[test]
+fn a_fifth_mode_is_refused() {
+    for count in [2, 3, 4] {
+        assert!(
+            validate_definition(Some("test_card"), &modal(count)).is_ok(),
+            "{count} modes fit the band"
+        );
+    }
+    assert_eq!(
+        validate_definition(Some("test_card"), &modal(MAX_MODES + 1)).unwrap_err(),
+        Violation::MalformedModes {
+            functional_id: "test_card".to_string(),
+            modes: MAX_MODES + 1,
+        }
+    );
+}
+
+/// One mode is a question with a single answer, and no modes at all in a `modes` key is
+/// a typo rather than a card.
+#[test]
+fn fewer_than_two_modes_is_not_a_choice() {
+    for count in [0, 1] {
+        assert_eq!(
+            validate_definition(Some("test_card"), &modal(count)).unwrap_err(),
+            Violation::MalformedModes {
+                functional_id: "test_card".to_string(),
+                modes: count,
+            }
+        );
+    }
+}
+
+/// A modal card's effects live in its modes. Loose `spell_effects` beside them would
+/// resolve whichever mode was chosen — a sentence the player never picked.
+#[test]
+fn a_modal_card_carries_no_loose_spell_effects() {
+    let mut card = modal(2);
+    card["spell_effects"] = serde_json::json!([{"kind": "draw_card", "count": 1}]);
+    assert_eq!(
+        validate_definition(Some("test_card"), &card).unwrap_err(),
+        Violation::MalformedModes {
+            functional_id: "test_card".to_string(),
+            modes: 2,
+        }
+    );
+}
+
+/// A mode that does nothing is a bullet with no sentence under it.
+#[test]
+fn a_mode_that_does_nothing_is_refused() {
+    let mut card = modal(2);
+    card["modes"][1] = serde_json::json!({"effects": []});
+    assert!(validate_definition(Some("test_card"), &card).is_err());
+}
+
+/// CR 107.3: X is announced as a spell is cast. An activation pays out of a pool with no
+/// announcement step to fix a value in, so an `{X}` there would simply be ignored — and
+/// the ability activated for nothing.
+#[test]
+fn an_x_in_an_activation_cost_is_refused() {
+    let card = definition(
+        r#", "abilities": [{"type": "activated",
+                            "cost": [{"kind": "mana", "mana": "{X}{R}"}],
+                            "effects": [{"kind": "draw_card", "count": 1}]}]"#,
+    );
+    assert_eq!(
+        validate_definition(Some("test_card"), &card).unwrap_err(),
+        Violation::XOutsideAManaCost {
+            functional_id: "test_card".to_string(),
+            cost: "{X}{R}".to_string(),
+        }
+    );
+}
+
+/// "If X is 5 or more" on a card whose cost prints no `{X}` is a clause that could never
+/// be true.
+#[test]
+fn a_spell_trait_conditional_on_x_needs_an_x_to_announce() {
+    let with_x = serde_json::json!({
+        "schema_version": 1,
+        "functional_id": "test_card",
+        "name": "Test Card",
+        "types": ["sorcery"],
+        "mana_cost": "{X}{R}",
+        "spell_effects": [{"kind": "draw_card", "count": 1}],
+        "spell_traits": [{"kind": "cant_be_countered", "if_x_at_least": 5}],
+    });
+    assert!(validate_definition(Some("test_card"), &with_x).is_ok());
+
+    let mut without_x = with_x.clone();
+    without_x["mana_cost"] = serde_json::json!("{2}{R}");
+    assert_eq!(
+        validate_definition(Some("test_card"), &without_x).unwrap_err(),
+        Violation::SpellTraitNeedsX {
+            functional_id: "test_card".to_string(),
+        }
+    );
+
+    // An unconditional trait needs no X at all — a card that simply can't be countered
+    // is sayable on a fixed cost.
+    without_x["spell_traits"] = serde_json::json!([{"kind": "cant_be_countered"}]);
+    assert!(validate_definition(Some("test_card"), &without_x).is_ok());
+}

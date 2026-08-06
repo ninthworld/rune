@@ -54,6 +54,16 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             )
         }
         Effect::Destroy { target } => format!("destroy {}", target_noun(*target)),
+        Effect::DestroyAll { affects } => format!("destroy all {}", destroy_class(*affects)),
+        // The announced-X damage verb reads the way a printed card writes it: the letter
+        // itself, not the number it turned out to be. What a *particular* cast announced
+        // is a fact about that object on the stack, and the stack entry says so; the card
+        // says `X`.
+        Effect::DealDamageByAmount { subject, amount } => format!(
+            "{source} deals {} damage to {}",
+            amount_symbol(amount),
+            damage_recipient(subject)
+        ),
         Effect::Exile { target } => format!("exile {}", target_noun(*target)),
         // The one clause with two target nouns in it (CR 701.12). The mutual form is the
         // printed verb *fights*, which says the power reading on its own; the one-sided
@@ -621,6 +631,32 @@ fn amount_noun(amount: &DerivedAmount) -> String {
         DerivedAmount::GreatestManaValue { among } => {
             format!("the greatest mana value among {}", count_subject(among))
         }
+        // An announced X has no "where X is" clause at all: the card writes the letter and
+        // the player supplies the value as they cast it (CR 601.2b). Reaching this
+        // position would mean a card said "where X is X", so it says the plain letter.
+        DerivedAmount::AnnouncedX => "X".to_string(),
+    }
+}
+
+/// A [`DerivedAmount`] where a card prints it **as a quantity in the sentence** — the
+/// `X` of "deals X damage" — rather than after "where X is".
+///
+/// An announced X is simply the letter; every other source has no letter of its own, so
+/// it is written out in the words [`amount_noun`] gives it. Two positions, two functions,
+/// for the reason the class nouns come in pairs: English does not put the same phrase in
+/// both.
+fn amount_symbol(amount: &DerivedAmount) -> String {
+    match amount {
+        DerivedAmount::AnnouncedX => "X".to_string(),
+        other => amount_noun(other),
+    }
+}
+
+/// The class a mass destruction names, as the plural noun after "destroy all".
+fn destroy_class(affects: DestroyAffects) -> &'static str {
+    match affects {
+        DestroyAffects::EachCreature => "creatures",
+        DestroyAffects::EachArtifactOrEnchantment => "artifacts and enchantments",
     }
 }
 

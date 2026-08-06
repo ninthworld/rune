@@ -91,6 +91,8 @@ fn cast_at(
         state,
         &Action::CastSpell {
             card,
+            mode: None,
+            x: None,
             targets,
             payment: Vec::new(),
         },
@@ -141,6 +143,8 @@ fn issue_748_ghostform_offers_two_slots_of_which_neither_is_required() {
         &db,
         &Action::CastSpell {
             card,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -308,6 +312,8 @@ fn issue_748_one_dead_target_does_not_waste_the_other() {
         &state,
         &Action::CastSpell {
             card,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(doomed), Target::Permanent(survivor)],
             payment: Vec::new(),
         },

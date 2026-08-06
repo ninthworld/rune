@@ -95,6 +95,8 @@ fn candidates(state: &GameState, db: &CardDatabase, card: CardInstance) -> Vec<T
         db,
         &Action::CastSpell {
             card,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -116,6 +118,8 @@ fn cast_at(
         state,
         &Action::CastSpell {
             card,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(target)],
             payment: Vec::new(),
         },

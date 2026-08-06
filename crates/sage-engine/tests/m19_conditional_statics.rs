@@ -268,6 +268,8 @@ fn a_conditional_static_stores_nothing() {
         &state,
         &Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(millstone)],
             payment: Vec::new(),
         },

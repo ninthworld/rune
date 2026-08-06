@@ -434,6 +434,70 @@ impl ManaCost {
             + u16::from(self.green)
             + u16::from(self.colorless)
     }
+
+    /// This cost written back as `{...}` notation — `"{3}{R}"` — generic first, then
+    /// the colored pips in WUBRG order, then `{C}`.
+    ///
+    /// The inverse of [`parse_mana_cost`] for everything that parser recognises, and the
+    /// one place a *computed* cost becomes words. It exists for the announced value of
+    /// X: the server states what each legal X costs rather than sending a cost with an
+    /// `X` still in it, because working that out is deciding what a spell costs and no
+    /// client may do that. A zero cost renders as the empty string, like a land's.
+    #[must_use]
+    pub fn printed(&self) -> String {
+        let mut out = String::new();
+        if self.generic > 0 {
+            out.push_str(&format!("{{{}}}", self.generic));
+        }
+        for (count, color) in [
+            (self.white, Color::White),
+            (self.blue, Color::Blue),
+            (self.black, Color::Black),
+            (self.red, Color::Red),
+            (self.green, Color::Green),
+        ] {
+            for _ in 0..count {
+                out.push_str(color.pip());
+            }
+        }
+        for _ in 0..self.colorless {
+            out.push_str("{C}");
+        }
+        out
+    }
+}
+
+/// How many `{X}` symbols `text` contains (CR 107.3) — one for `{X}{R}`, two for
+/// `{X}{X}{U}`, zero for every fixed cost.
+///
+/// X is **not** a component of a [`ManaCost`]: a cost with an unannounced X has no
+/// value at all (CR 202.3b reads it as zero everywhere but the stack), and a cost with
+/// an announced one is an ordinary fixed cost with `count × X` more generic in it. So
+/// [`parse_mana_cost`] ignores the symbol and this counts it, and the one place the two
+/// are put together is [`cast_cost`](crate::actions::cast_cost) — which is why no other
+/// caller can accidentally pay for an X it never asked the player about.
+#[must_use]
+pub fn x_pip_count(text: &str) -> u8 {
+    let mut count: u8 = 0;
+    let mut symbol = String::new();
+    let mut in_symbol = false;
+    for ch in text.chars() {
+        match ch {
+            '{' => {
+                in_symbol = true;
+                symbol.clear();
+            }
+            '}' => {
+                if in_symbol && symbol == "X" {
+                    count = count.saturating_add(1);
+                }
+                in_symbol = false;
+            }
+            _ if in_symbol => symbol.push(ch),
+            _ => {}
+        }
+    }
+    count
 }
 
 /// Parse a mana cost in `{...}` notation into a [`ManaCost`].
@@ -506,6 +570,26 @@ mod tests {
     #[test]
     fn empty_cost_parses_to_zero() {
         assert_eq!(parse_mana_cost(""), ManaCost::default());
+    }
+
+    /// CR 202.3b: an unannounced X is worth nothing, so the parser leaves it out and
+    /// counts it separately. `{X}{R}` is one red pip and one X.
+    #[test]
+    fn an_x_is_counted_but_never_parsed_as_a_value() {
+        let cost = parse_mana_cost("{X}{R}");
+        assert_eq!(cost.red, 1);
+        assert_eq!(cost.generic, 0);
+        assert_eq!(x_pip_count("{X}{R}"), 1);
+        assert_eq!(x_pip_count("{X}{X}{U}"), 2);
+        assert_eq!(x_pip_count("{2}{G}"), 0);
+    }
+
+    #[test]
+    fn a_cost_reads_back_as_the_notation_it_came_from() {
+        assert_eq!(parse_mana_cost("{3}{R}").printed(), "{3}{R}");
+        assert_eq!(parse_mana_cost("{W}{U}").printed(), "{W}{U}");
+        assert_eq!(parse_mana_cost("{2}{C}").printed(), "{2}{C}");
+        assert_eq!(parse_mana_cost("").printed(), "");
     }
 
     #[test]

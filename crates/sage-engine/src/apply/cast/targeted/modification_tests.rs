@@ -27,6 +27,8 @@ fn issue_150_pump_spell_boosts_its_target_until_end_of_turn_end_to_end() {
         &state,
         &Action::CastSpell {
             card: surge,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(creature)],
             payment: Vec::new(),
         },
@@ -112,6 +114,8 @@ fn issue_374_grant_keyword_spell_grants_the_keyword_until_end_of_turn_end_to_end
         &state,
         &Action::CastSpell {
             card: jump,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(creature)],
             payment: Vec::new(),
         },
@@ -281,6 +285,8 @@ fn issue_152_minus_x_aura_cast_kills_its_host_and_follows_it_cr_704_5f() {
         &state,
         &Action::CastSpell {
             card: curse,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(host)],
             payment: Vec::new(),
         },
@@ -333,6 +339,8 @@ fn issue_401_aegis_of_the_heavens_pumps_plus_one_plus_seven() {
         &state,
         &Action::CastSpell {
             card: aegis,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(creature)],
             payment: Vec::new(),
         },
@@ -363,6 +371,8 @@ fn issue_401_mighty_leap_pumps_and_grants_flying_in_one_spell() {
         &state,
         &Action::CastSpell {
             card: leap,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(creature)],
             payment: Vec::new(),
         },
@@ -398,7 +408,10 @@ fn mighty_leap_pumps_and_grants_to_one_creature_not_two() {
     state.players[0].mana_pool.colorless = 1;
 
     // One slot: the spell advertises exactly one target requirement.
-    let groups = crate::CardData::cast_target_groups(db.card(fixture("mighty_leap")).unwrap());
+    let groups = db
+        .card(fixture("mighty_leap"))
+        .unwrap()
+        .cast_target_groups(None);
     assert_eq!(groups.len(), 1, "one effect, one target group");
 
     // Two different creatures is not a legal announcement.
@@ -406,6 +419,8 @@ fn mighty_leap_pumps_and_grants_to_one_creature_not_two() {
         &state,
         &Action::CastSpell {
             card: leap,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(mine), Target::Permanent(theirs)],
             payment: Vec::new(),
         },
@@ -416,6 +431,8 @@ fn mighty_leap_pumps_and_grants_to_one_creature_not_two() {
         &state,
         &Action::CastSpell {
             card: leap,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(mine)],
             payment: Vec::new(),
         },
@@ -448,6 +465,8 @@ fn issue_401_sure_strike_pumps_power_and_grants_first_strike() {
         &state,
         &Action::CastSpell {
             card: strike,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(creature)],
             payment: Vec::new(),
         },
@@ -477,6 +496,8 @@ fn issue_401_knights_pledge_aura_boosts_its_host_plus_two_plus_two() {
         &state,
         &Action::CastSpell {
             card: pledge,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(host)],
             payment: Vec::new(),
         },
@@ -513,6 +534,8 @@ fn issue_401_oakenform_aura_boosts_its_host_plus_three_plus_three() {
         &state,
         &Action::CastSpell {
             card: oak,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(host)],
             payment: Vec::new(),
         },
@@ -541,6 +564,8 @@ fn issue_401_prodigious_growth_aura_grants_p_t_and_trample() {
         &state,
         &Action::CastSpell {
             card: growth,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(host)],
             payment: Vec::new(),
         },

@@ -165,8 +165,23 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
     //     asked before the player has chosen anything, and a player is free to assemble a
     //     payment that does not cover the cost. The widened offer therefore never widens
     //     what is legal.
-    if let Action::CastSpell { card, payment, .. } = action {
-        if !super::payment_covers_cast(state, db, *card, payment) {
+    // 1f-pre. The announcement choices (CR 601.2b), re-derived from the card itself:
+    //     a modal spell must name one of its own printed modes and a spell with `{X}` in
+    //     its cost must name a value, and neither may be named by a spell that does not
+    //     ask. Check 1 above cannot catch either, because the requirement form is the
+    //     *bare* announcement — it drops both fields before comparing — so this is the
+    //     only gate a forged mode meets. It runs **before** the target check below for
+    //     the same reason it runs before payment: the mode is what decides which target
+    //     slots exist, and an unchosen one would otherwise read as a spell with none.
+    if !super::announcement_is_legal(db, action) {
+        return false;
+    }
+
+    if let Action::CastSpell {
+        card, x, payment, ..
+    } = action
+    {
+        if !super::payment_covers_cast(state, db, *card, *x, payment) {
             return false;
         }
     }

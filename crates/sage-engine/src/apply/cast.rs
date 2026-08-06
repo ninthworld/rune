@@ -18,7 +18,6 @@ use crate::ability::{
     is_mana_ability, Ability, Cost, DamageSubject, Effect, MassAffects, PlayerRef, Target,
 };
 use crate::card::abilities_of_permanent;
-use crate::commander::commander_tax_cost;
 use crate::id::{CardInstance, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
 use crate::replacement::PendingDamage;

@@ -42,6 +42,23 @@ pub enum StackObjectKind {
         /// card's identity is preserved from hand, across the stack, onto the
         /// battlefield or into the graveyard.
         card: CardInstance,
+        /// The **mode** chosen as this spell was announced (CR 700.2), as an index into
+        /// its card's printed list. `None` for every spell that is not modal.
+        ///
+        /// Recorded here for the reason [`StackObject::targets`] is: the choice was made
+        /// on announcement and the object on the stack is the complete record of it.
+        /// Resolution reads its effects through this and can reach no other mode.
+        mode: Option<u8>,
+        /// The value announced for **X** (CR 601.2b). `None` for every spell whose cost
+        /// prints none.
+        ///
+        /// **This is where X is locked.** It was fixed before the cost was paid, and
+        /// from here it is the only X anything reads: the resolving effect
+        /// ([`DerivedAmount::AnnouncedX`](crate::DerivedAmount)), the threshold a
+        /// [`SpellTrait`](crate::SpellTrait) is measured against, and the text a caller
+        /// generates for the object on the stack. Nothing re-derives it from the cost,
+        /// because by the time the spell is here the cost is already paid and gone.
+        x: Option<u32>,
     },
     /// A triggered or activated (non-mana) ability; resolving it applies its
     /// effects.
@@ -137,4 +154,59 @@ pub enum AbilityOrigin {
     Activated,
     /// A trigger condition was met and the game put it on the stack (CR 603.3).
     Triggered,
+}
+
+impl StackObject {
+    /// Whether `trait_kind` is in force for this object right now — a
+    /// [`SpellTrait`](crate::SpellTrait) its card declares, measured against the X this
+    /// object announced (CR 601.2b).
+    ///
+    /// `false` for an ability: a trait is printed on a card and an ability on the stack
+    /// is not one. `false` for a spell whose card carries no such trait, and for one
+    /// whose threshold the announced value does not reach — which is the whole of
+    /// "if X is 5 or more", asked in one place so the counter check and the damage seam
+    /// can never disagree about the same spell.
+    #[must_use]
+    pub fn has_trait(&self, db: &crate::CardDatabase, trait_kind: SpellTraitKind) -> bool {
+        let StackObjectKind::Spell { card, x, .. } = self.kind else {
+            return false;
+        };
+        db.card(card.card).is_some_and(|data| {
+            data.spell_traits
+                .iter()
+                .filter(|declared| trait_kind.names(**declared))
+                .any(|declared| declared.applies(x))
+        })
+    }
+}
+
+/// Which [`SpellTrait`](crate::SpellTrait) a caller is asking
+/// [`StackObject::has_trait`] about, without naming the threshold that trait carries.
+///
+/// The two are separate types because the question and the declaration are separate
+/// things: a card declares `can\'t be countered **if X is 5 or more**`, and a
+/// counterspell asks only `can this be countered`. Folding the threshold into the
+/// question would make every asker restate a number it has no business knowing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SpellTraitKind {
+    /// CR 701.5a — the spell cannot be removed from the stack by a counter.
+    CantBeCountered,
+    /// CR 615.1 — no prevention shield applies to damage this spell deals.
+    DamageCantBePrevented,
+}
+
+impl SpellTraitKind {
+    /// Whether `declared` is this kind of trait, whatever threshold it carries.
+    fn names(self, declared: crate::card::SpellTrait) -> bool {
+        matches!(
+            (self, declared),
+            (
+                Self::CantBeCountered,
+                crate::card::SpellTrait::CantBeCountered { .. }
+            ) | (
+                Self::DamageCantBePrevented,
+                crate::card::SpellTrait::DamageCantBePrevented { .. }
+            )
+        )
+    }
 }

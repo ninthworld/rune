@@ -83,12 +83,13 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         // that came in, with nothing tapped. That is the rules' own rewind, for free.
         Action::CastSpell {
             card,
+            mode,
+            x,
             targets,
             payment,
-            ..
         } => {
             crate::actions::apply_payment(&mut next, db, payment);
-            apply_cast_spell(&mut next, *card, targets, payment, db);
+            apply_cast_spell(&mut next, *card, *mode, *x, targets, payment, db);
         }
         Action::ChooseTriggerTargets { ability, targets } => {
             apply_choose_trigger_targets(&mut next, *ability, targets);

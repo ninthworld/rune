@@ -78,9 +78,10 @@ pub(crate) fn payment_covers_cast(
     state: &GameState,
     db: &CardDatabase,
     card: CardInstance,
+    x: Option<u32>,
     payment: &[CostPayment],
 ) -> bool {
-    let Some((cost, purpose_subtypes)) = cast_cost(state, db, card) else {
+    let Some((cost, purpose_subtypes)) = cast_cost(state, db, card, x) else {
         return false;
     };
     if !discards_pay_the_additional_cost(state, db, card, &discards_of(payment)) {
@@ -254,6 +255,8 @@ mod tests {
         let (state, database, lands, spell) = board(2);
         let cast = Action::CastSpell {
             card: spell,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: tap_all(&lands),
         };
@@ -279,6 +282,8 @@ mod tests {
         // One Forest against {1}{G}: short by one.
         let short = Action::CastSpell {
             card: spell,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: vec![CostPayment::Mana(ManaSource {
                 permanent: lands[0],
@@ -308,6 +313,8 @@ mod tests {
         let (state, database, lands, spell) = board(2);
         let doubled = Action::CastSpell {
             card: spell,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: vec![
                 CostPayment::Mana(ManaSource {
@@ -354,6 +361,8 @@ mod tests {
             &state,
             &Action::CastSpell {
                 card: spell,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment: indices
                     .into_iter()
@@ -391,6 +400,8 @@ mod tests {
             &state,
             &Action::CastSpell {
                 card: spell,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment: tap_all(&lands),
             },
@@ -418,6 +429,8 @@ mod tests {
             &state,
             &Action::CastSpell {
                 card: spell,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment: Vec::new(),
             },
@@ -436,6 +449,8 @@ mod tests {
         assert!(
             valid_actions(&state, &database).contains(&Action::CastSpell {
                 card: spell,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment: Vec::new(),
             }),
@@ -452,6 +467,8 @@ mod tests {
             &state,
             &Action::CastSpell {
                 card: spell,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment: Vec::new(),
             },

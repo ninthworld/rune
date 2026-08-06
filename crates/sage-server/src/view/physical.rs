@@ -92,6 +92,8 @@ mod tests {
             &state,
             &Action::CastSpell {
                 card,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment: Vec::new(),
             },
@@ -167,6 +169,8 @@ mod tests {
                 state,
                 &Action::CastSpell {
                     card,
+                    mode: None,
+                    x: None,
                     targets: Vec::new(),
                     payment: Vec::new(),
                 },
@@ -320,6 +324,8 @@ mod tests {
             &state,
             &Action::CastSpell {
                 card,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment: Vec::new(),
             },

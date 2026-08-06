@@ -147,7 +147,7 @@ fn permanents_matching<'a>(
 }
 
 /// The number a [`DerivedAmount`] names, for an object controlled by `controller`
-/// resolving in a window that began at log sequence `resolution_start`.
+/// resolving as described by `resolution` — its log window, and the X it announced.
 ///
 /// Taken **once**, where it is called (CR 608.2): every caller turns the answer into a
 /// fixed number — cards drawn, or a timestamped power/toughness modifier — and nothing
@@ -157,17 +157,21 @@ pub(crate) fn derived_amount(
     state: &GameState,
     amount: &DerivedAmount,
     controller: PlayerId,
-    resolution_start: u64,
+    resolution: crate::resolve::Resolution,
     db: &CardDatabase,
 ) -> u32 {
     match amount {
+        // CR 601.2b: the value its controller announced, already fixed. Zero for an
+        // object that announced none — an effect asking for an X it never had should do
+        // nothing rather than guess at one.
+        DerivedAmount::AnnouncedX => resolution.announced_x.unwrap_or(0),
         DerivedAmount::LifeGainedThisTurn => life_gained_this_turn(state, controller),
         // Every card this resolution milled, whoever's library it came from — see
         // [`DerivedAmount::MilledThisWay`] for why the seat is not a field. A resolution
         // that milled nothing counts nothing, which is the zero a card that draws "for
         // each land milled this way" wants off an empty library.
         DerivedAmount::MilledThisWay { filter } => {
-            let milled = events_since(state, resolution_start)
+            let milled = events_since(state, resolution.start)
                 .filter_map(|event| match event {
                     GameEvent::CardsMilled { cards, .. } => Some(cards),
                     _ => None,

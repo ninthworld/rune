@@ -2,6 +2,10 @@
 
 use super::*;
 
+mod announcement;
+
+pub(crate) use announcement::*;
+
 /// How a returned answer for a projected wire action is bound back onto a concrete
 /// engine [`Action`]. Most wire actions are a 1:1 [`Bind::Standard`] projection of a
 /// single engine action; two are *collapsed* projections that fold a combinatorial
@@ -392,7 +396,17 @@ fn valid_action_view(
         // — none at all when the pool already covers it. This is what lets a client offer
         // the card first and the payment second, and take the payment back apart without
         // having sent anything.
-        Action::CastSpell { card, .. } => cast_payment_prompts(state, db, *card),
+        // A cast poses its announcement choices (CR 601.2b) **before** its cost, in the
+        // order the rules make them: the mode first, because it decides which target
+        // slots exist, then X, because it decides what the spell costs. The pips come
+        // last and are posed for the base cost — a value of X above zero adds generic
+        // mana the server pays on the player's behalf (ADR 0010), exactly as it pays for
+        // any slot a client leaves unanswered.
+        Action::CastSpell { card, .. } => {
+            let mut prompts = announcement_prompts(state, db, action);
+            prompts.extend(cast_payment_prompts(state, db, *card, None));
+            prompts
+        }
         // An activation carries the parts of its cost the player *picks* the payment for
         // (CR 601.2b) — a sacrifice or a discard — on the same select-from-zone slots a
         // cast poses them on. No pips: an activation's mana comes from the pool, floated by

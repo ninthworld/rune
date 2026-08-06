@@ -81,6 +81,8 @@ fn cast(state: &GameState, db: &CardDatabase, slug: &str, targets: Vec<Target>) 
     assert!(
         valid_actions(&state, db).contains(&Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         }),
@@ -90,6 +92,8 @@ fn cast(state: &GameState, db: &CardDatabase, slug: &str, targets: Vec<Target>) 
         &state,
         &Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets,
             payment: Vec::new(),
         },
@@ -257,6 +261,8 @@ fn stitchers_supplier_mills_on_entering_and_again_on_dying() {
         &state,
         &Action::CastSpell {
             card: supplier,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -395,6 +401,8 @@ fn resolve_creature(state: &GameState, db: &CardDatabase, slug: &str) -> GameSta
         &state,
         &Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -457,6 +465,8 @@ fn cavalry_drillmaster_pumps_and_grants_first_strike_to_one_creature() {
         &state,
         &Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },

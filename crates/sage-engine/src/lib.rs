@@ -47,28 +47,29 @@ pub use ability::{
     activation_taps, group_target_counts, is_emblem_ability, is_equip_ability,
     is_graveyard_ability, is_loyalty_ability, is_mana_ability, maximum_targets, minimum_targets,
     target_counts, Ability, ActivatorScope, CardFilter, Chooser, Condition, Cost, CountScope,
-    DamageSubject, DerivedAmount, Effect, FoundDestination, GraveyardCardClass, GraveyardScope,
-    ManaRestriction, MassAffects, ObservedActivation, ObservedPermanent, ObservedSpell,
-    PermanentCount, PlayerModification, PlayerRef, StaticAffects, StaticCondition,
+    DamageSubject, DerivedAmount, DestroyAffects, Effect, FoundDestination, GraveyardCardClass,
+    GraveyardScope, ManaRestriction, MassAffects, ObservedActivation, ObservedPermanent,
+    ObservedSpell, PermanentCount, PlayerModification, PlayerRef, StaticAffects, StaticCondition,
     StaticModification, Target, TargetCount, TargetGroup, TargetSpec, TriggerCondition,
     TriggerStep, TurnScope,
 };
 pub use actions::{
     activation_discard_cost, activation_sacrifice_candidates, auto_activation_payment,
-    auto_payment, discard_cost, is_plain_mana_source, mana_ability_pips, payment_pips,
-    payment_sources, remaining_cost_pips, sacrifice_cost, target_requirements, valid_actions,
-    Action, Attack, Block, CostPayment, DamageOrder, DiscardCost, ManaSource, PaymentPip,
-    SacrificeCost, TargetRequirement,
+    auto_payment, discard_cost, is_plain_mana_source, mana_ability_pips, mode_options,
+    payment_pips, payment_sources, remaining_cost_pips, sacrifice_cost, target_requirements,
+    valid_actions, x_options, Action, Attack, Block, CostPayment, DamageOrder, DiscardCost,
+    ManaSource, ModeOption, PaymentPip, SacrificeCost, TargetRequirement, XOption,
 };
 pub use apply::apply_action;
 pub use automation::{forced_declaration_without_choice, priority_has_no_meaningful_action};
 pub use card::{
     abilities_of, abilities_of_permanent, equip_ability, AdditionalCost, Attachment,
     AttachmentKind, CardData, CardDatabase, CatalogError, CombatRestriction, DamageCharacteristic,
-    Keyword, Printing, PrintingDatabase, Rarity, RuleModification, SCHEMA_VERSION,
+    Keyword, Printing, PrintingDatabase, Rarity, RuleModification, SpellMode, SpellTrait,
+    SCHEMA_VERSION,
 };
 pub use card_type::{CardType, Supertype};
-pub use catalog::Violation;
+pub use catalog::{Violation, MAX_MODES};
 pub use characteristics::{
     assigns_combat_damage_by, attacks_as_though_no_defender, characteristics, controller_of,
     controller_of_id, loses_all_abilities, Characteristics,
@@ -94,7 +95,9 @@ pub use id::{
     CardId, CardInstance, CardInstanceId, FunctionalId, FunctionalIdError, OracleId, PermanentId,
     PlayerId,
 };
-pub use mana::{parse_mana_cost, Color, ManaCost, ManaPool, RestrictedMana, SpendPurpose};
+pub use mana::{
+    parse_mana_cost, x_pip_count, Color, ManaCost, ManaPool, RestrictedMana, SpendPurpose,
+};
 pub use mulligan::{bottom_requirement, BottomRequirement, MulliganState, PlayerMulligan};
 pub use phase::Step;
 pub use player::{
@@ -106,11 +109,14 @@ pub use replacement::{
     OfferedReplacement, PendingDamage, PendingEntry, PendingReplacement, ReplacementEffect,
     ReplacementOption,
 };
+pub use resolve::Resolution;
 pub use scripted::scripted_rules_text;
 pub use setup::{
     GameSetup, PlayerSetup, SetupError, DEFAULT_STARTING_HAND_SIZE, DEFAULT_STARTING_LIFE,
 };
-pub use stack::{AbilityOrigin, AbilitySource, StackId, StackObject, StackObjectKind};
+pub use stack::{
+    AbilityOrigin, AbilitySource, SpellTraitKind, StackId, StackObject, StackObjectKind,
+};
 pub use state::{
     CommanderDamage, CounterKind, DamageTarget, Duration, EffectAffects, Emblem, GameEvent,
     GameLogEntry, GameResult, GameState, GraveyardCasting, IgnoringHexproof, LoggedIdentity,

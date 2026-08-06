@@ -532,7 +532,11 @@ fn issue_333_aura_attachment_projects_into_the_view() {
     state.stack.push(StackObject {
         id: StackId(sid),
         controller: PlayerId(0),
-        kind: StackObjectKind::Spell { card: aura },
+        kind: StackObjectKind::Spell {
+            card: aura,
+            mode: None,
+            x: None,
+        },
         targets: vec![Target::Permanent(host)],
     });
     let state = sage_engine::apply_action(&state, &Action::PassPriority, &db);

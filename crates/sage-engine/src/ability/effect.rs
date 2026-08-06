@@ -142,6 +142,20 @@ pub enum Effect {
         /// What this effect is allowed to target (typically a creature).
         target: TargetSpec,
     },
+    /// Destroy **every permanent in a named class** (CR 701.7) — `Destroy all
+    /// creatures.`, `Destroy all artifacts and enchantments.` — the mass, non-targeting
+    /// counterpart of [`Effect::Destroy`].
+    ///
+    /// Chooses no target, so it can never fizzle and never asks a question; the affected
+    /// set is enumerated **on resolution** (CR 611.2c) and every member goes to its
+    /// owner's graveyard through the same battlefield-departure seam a single destroy
+    /// uses, so a token ceases to exist (CR 111.7) and a death trigger sees each one.
+    ///
+    /// Indestructible and regeneration are unmodeled, so nothing survives this.
+    DestroyAll {
+        /// The class of permanents destroyed.
+        affects: DestroyAffects,
+    },
     /// Exile the single permanent this effect targets (CR 406.2 / CR 701.19): it is
     /// moved from the battlefield to its owner's exile zone through the one
     /// battlefield→exile seam ([`crate::GameState::move_permanent_to_exile`]), the
@@ -900,6 +914,26 @@ pub enum Effect {
         /// Which permanents are counted, relative to the effect's controller.
         count_of: PermanentCount,
     },
+    /// Deal damage equal to a number the card does not print to what [`DamageSubject`]
+    /// names — `deals X damage to any target`, where X is the value announced as the
+    /// spell was cast (CR 601.2b).
+    ///
+    /// The [`DerivedAmount`] counterpart of [`Effect::DealDamage`], and the sibling of
+    /// [`Effect::DealDamageByCount`] for every X that is not a count of permanents,
+    /// exactly as [`Effect::PumpByAmount`] is [`Effect::PumpByCount`]'s. The subject
+    /// decides on its own whether a target is chosen, like every other damage verb.
+    ///
+    /// The amount is read **once**, where the effect applies (CR 608.2), and for an
+    /// announced X that reading is a lookup of a number already fixed — which is the
+    /// whole point of announcing it: payment and resolution cannot disagree about a
+    /// value neither of them computed.
+    DealDamageByAmount {
+        /// Who or what takes the damage — one chosen target, or a class.
+        #[serde(flatten)]
+        subject: DamageSubject,
+        /// Where the amount comes from.
+        amount: DerivedAmount,
+    },
     /// **Exile the referenced player's whole graveyard** (`Exile target player's
     /// graveyard.`) — the graveyard-hate verb.
     ///
@@ -1192,13 +1226,13 @@ impl Effect {
                 .collect(),
             // Damage asks its subject the same question: "any target" fills a slot,
             // "each opponent" and "each creature" fill none (CR 115.1).
-            Effect::DealDamage { subject, .. } | Effect::DealDamageByCount { subject, .. } => {
-                subject
-                    .target_spec()
-                    .map(TargetGroup::single)
-                    .into_iter()
-                    .collect()
-            }
+            Effect::DealDamage { subject, .. }
+            | Effect::DealDamageByCount { subject, .. }
+            | Effect::DealDamageByAmount { subject, .. } => subject
+                .target_spec()
+                .map(TargetGroup::single)
+                .into_iter()
+                .collect(),
             Effect::AddMana { .. }
             | Effect::AddColorlessMana { .. }
             | Effect::AddRestrictedMana { .. }
@@ -1233,6 +1267,7 @@ impl Effect {
             | Effect::Conditional { .. }
             // A class of permanents is not a target (CR 115.1), and neither is the
             // ability's own source.
+            | Effect::DestroyAll { .. }
             | Effect::PumpAll { .. }
             | Effect::GrantKeywordAll { .. }
             | Effect::RestrictAll { .. }

@@ -57,7 +57,11 @@ fn push_spell(
     state.stack.push(StackObject {
         id,
         controller,
-        kind: StackObjectKind::Spell { card },
+        kind: StackObjectKind::Spell {
+            card,
+            mode: None,
+            x: None,
+        },
         targets,
     });
     id
@@ -103,6 +107,8 @@ fn a_creature_cast_logs_spell_cast_then_spell_resolved_in_order() {
         &state,
         &Action::CastSpell {
             card: scout,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },

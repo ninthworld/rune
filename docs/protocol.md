@@ -739,7 +739,7 @@ Non-target choices use tagged `prompts`:
 | `option` | `slot`, `prompt`, `options[{id,label,requires}]` | One option id |
 | `select_from_zone` | `slot`, `prompt`, `zone`, `owner`, `count`, `min?`, `candidates` | Between `min` and `count` candidate ids, in the chosen order |
 | `order` | `slot`, `prompt`, `items` | A permutation of all item ids |
-| `number` | `slot`, `prompt`, `min`, `max` | The chosen number as a decimal string |
+| `number` | `slot`, `prompt`, `min`, `max`, `values?[{value,cost?}]` | The chosen number as a decimal string |
 | `pay_mana` | `slot`, `prompt`, `pip`, `candidates[{id,source,label?,taps?}]` | One candidate `id` |
 
 `option` is used for choices such as keep or mulligan. An option's `requires` (issue #451)
@@ -790,14 +790,43 @@ of X, how many counters to remove, one share of a divided effect. It is answered
 the chosen number rendered as a **decimal string** in the slot’s `chosen` array (e.g.
 `["3"]`), sharing `TargetChoice` with every other slot kind so one atomic
 `choose_action` still answers a whole action and the content `token` still binds every
-slot (the bounds are folded into it, so an answer bound to a range the server no longer
-offers is rejected like any other stale binding). **The bounds are the server’s**,
-computed from available mana, the source’s text, and the game state; the client offers a
-control over exactly that range and computes no affordability of its own. Both `min` and
-`max` are always present — a zero `min` is not elided — so the range reads completely
-rather than by inference. A *divided* value is posed as one `number` slot per recipient,
-each with its own bounds, and the server validates the total on resolution; the client
-never enforces a sum.
+slot (the bounds *and the enumerated values* are folded into it, so an answer bound to a
+range or a price the server no longer offers is rejected like any other stale binding).
+**The bounds are the server’s**, computed from available mana, the source’s text, and the
+game state; the client offers a control over exactly that range and computes no
+affordability of its own. Both `min` and `max` are always present — a zero `min` is not
+elided — so the range reads completely rather than by inference. A *divided* value is
+posed as one `number` slot per recipient, each with its own bounds, and the server
+validates the total on resolution; the client never enforces a sum.
+
+`values` (issue #733) is present exactly when the number is **the X of a mana cost**, and
+it lists every legal value together with what announcing it costs:
+
+```json
+{
+  "kind": "number",
+  "slot": "x",
+  "prompt": "Choose a value for X",
+  "min": 0,
+  "max": 3,
+  "values": [
+    { "value": 0, "cost": "{R}" },
+    { "value": 1, "cost": "{1}{R}" },
+    { "value": 2, "cost": "{2}{R}" },
+    { "value": 3, "cost": "{3}{R}" }
+  ]
+}
+```
+
+A range alone is enough for a number that costs nothing. It is not enough for X, because
+**choosing X changes what the spell costs**, and a client that worked the new cost out
+would be deciding what a spell costs — the one thing it must never do. So the server
+never sends `{X}{R}` and leaves a multiplication to whoever draws the bar; it sends the
+values and their prices, and the stepper walks exactly that list (`client-design.md`
+§6.7). Each `cost` is the **whole** cost at that value, in printed `{...}` notation, with
+no `X` left in it and never a delta. Where the list is present it and the range agree;
+`values` is omitted entirely for every other `number` slot, which therefore serializes
+exactly as it did before this field existed.
 
 `pay_mana` pays **one pip** of a cost by tapping something (CR 601.2f–g). A cast poses one
 of these slots per unit of its cost — `{1}{W}` is two of them — and a cast covered by mana
@@ -832,6 +861,40 @@ is confirmed, so a client drawing them as tapped is drawing a board the server h
 told about yet. It must be told which ones turn, because a mana ability that sacrifices its
 source or pays life taps nothing and no client can tell those apart without reading the cost.
 Omitted when `false`.
+
+### Announcing a spell: the mode and X
+
+A cast makes up to two choices **before** it chooses targets and before it pays
+(CR 601.2b, issue #733), and both ride the prompt kinds above rather than a new shape:
+
+| Choice | Slot | Prompt kind |
+| --- | --- | --- |
+| The mode of a modal spell (CR 700.2) | `mode` | `option`, one option per mode |
+| The value of X | `x` | `number`, carrying `values` |
+
+The order is not decoration. **A mode decides which target slots the spell has**, so the
+mode is asked first and the targets cannot be asked at all until it is answered; X is
+asked next because it decides what the spell costs. A spell with neither — every other
+card in the catalog — is unchanged and simply starts at its targets.
+
+A mode option's `label` is the mode's own generated sentence, so a player picks between
+the words the card prints, and its `requires` names the target slots **that mode** owes.
+That is the existing `option` coupling doing exactly what it was built for: a modal cast
+advertises every mode's slots side by side, named `m<mode>t<index>` rather than
+`t<index>`, all marked `optional` because at most one mode's are ever filled, and
+`requires` is how a client tells which belong to which. The server binds the answer
+against the chosen mode's requirements and the engine re-derives the whole thing again;
+`requires` changes no legality.
+
+Both choices are **re-validated independently at apply**. A mode index the card does not
+print is rejected, an announcement that skipped the mode question is rejected, a value of
+X the offer did not enumerate is rejected, and an X the payment cannot cover is rejected —
+each of them at the engine's own gate, not merely left off the offer. The offer is
+computed before the player has chosen anything; what they chose is a separate question.
+
+The stack entry for an announced spell states what was chosen: its `description` carries
+the mode's sentence and the value of X (`Banefire (X=5)`), because two casts of one card
+at different values are two different things to everyone deciding whether to respond.
 
 `choose_targets` aims a **triggered ability already on the stack** (CR 603.3d). A trigger
 is put there by the game rather than by a player, so it arrives unaimed and its controller
