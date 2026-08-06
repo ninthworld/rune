@@ -194,6 +194,7 @@ fn issue_152_aura_boosted_host_projects_current_pt() {
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
+        chosen_color: None,
     });
     let aura = PermanentId(state.mint_id());
     state.battlefield.push(sage_engine::Permanent {
@@ -209,6 +210,7 @@ fn issue_152_aura_boosted_host_projects_current_pt() {
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: Some(host),
+        chosen_color: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -257,6 +259,7 @@ fn issue_68_permanent_counters_project_into_the_view() {
         .into_iter()
         .collect(),
         attached_to: None,
+        chosen_color: None,
     });
     let without_counters = PermanentId(state.mint_id());
     state.battlefield.push(sage_engine::Permanent {
@@ -272,6 +275,7 @@ fn issue_68_permanent_counters_project_into_the_view() {
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
+        chosen_color: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -343,6 +347,7 @@ fn issue_117_attack_and_block_state_project_into_the_view() {
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
+        chosen_color: None,
     });
     let blocker = PermanentId(state.mint_id());
     state.battlefield.push(sage_engine::Permanent {
@@ -358,6 +363,7 @@ fn issue_117_attack_and_block_state_project_into_the_view() {
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
+        chosen_color: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -402,6 +408,7 @@ fn issue_739_a_blocker_on_two_attackers_projects_both_in_order() {
             damage: 0,
             counters: std::collections::BTreeMap::new(),
             attached_to: None,
+            chosen_color: None,
         });
         id
     };
@@ -422,6 +429,7 @@ fn issue_739_a_blocker_on_two_attackers_projects_both_in_order() {
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
+        chosen_color: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -459,6 +467,7 @@ fn issue_118_marked_damage_projects_into_the_view() {
         damage: 2,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
+        chosen_color: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -512,6 +521,7 @@ fn issue_333_aura_attachment_projects_into_the_view() {
         damage: 0,
         counters: BTreeMap::new(),
         attached_to: None,
+        chosen_color: None,
     });
 
     // The Aura spell resolves off the stack attached to the host (CR 303.4d),
@@ -575,6 +585,7 @@ fn issue_153_keywords_project_onto_the_card_view() {
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
+        chosen_color: None,
     });
     let vanilla = PermanentId(state.mint_id());
     state.battlefield.push(sage_engine::Permanent {
@@ -590,6 +601,7 @@ fn issue_153_keywords_project_onto_the_card_view() {
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
+        chosen_color: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -644,6 +656,7 @@ fn issue_374_granted_keyword_projects_onto_the_card_view() {
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
+        chosen_color: None,
     });
     let bystander = PermanentId(state.mint_id());
     state.battlefield.push(sage_engine::Permanent {
@@ -659,6 +672,7 @@ fn issue_374_granted_keyword_projects_onto_the_card_view() {
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
+        chosen_color: None,
     });
     // A keyword-only Aura granting flying, attached to the host. M19 prints no
     // such Aura (Prodigious Growth grants trample alongside +7/+7), so the shape
@@ -677,6 +691,7 @@ fn issue_374_granted_keyword_projects_onto_the_card_view() {
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: Some(host),
+        chosen_color: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -693,6 +708,45 @@ fn issue_374_granted_keyword_projects_onto_the_card_view() {
         .find(|p| p.id == permanent_entity_id(bystander))
         .expect("bystander in view");
     assert!(bystander_view.card.keywords.is_empty());
+}
+
+/// The colour a permanent named as it entered (CR 614.12) is projected on the permanent,
+/// to **both** seats and to a spectator: it was announced as the permanent arrived, and
+/// the abilities that read it are read by everyone. Nothing about it is inferable —
+/// Diamond Mare is a colourless artifact whose printed cost has no coloured pip at all.
+#[test]
+fn a_chosen_colour_is_stated_on_the_permanent_for_every_seat() {
+    let db = CardDatabase::bundled().unwrap();
+    let mut state = GameState::new_two_player();
+    let mare = put_permanent(
+        &mut state,
+        fixture("diamond_mare"),
+        PlayerId(0),
+        false,
+        false,
+    );
+    if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == mare) {
+        perm.chosen_color = Some(sage_engine::Color::Red);
+    }
+    // A second permanent that named nothing, so "omitted" keeps meaning "none".
+    let plain = put_permanent(&mut state, fixture("manalith"), PlayerId(0), false, false);
+
+    for seat in [PlayerId(0), PlayerId(1)] {
+        let view = personalized_view(&state, &db, seat);
+        let of = |id| {
+            view.battlefield
+                .iter()
+                .find(|perm| perm.id == permanent_entity_id(id))
+                .expect("on the projected battlefield")
+                .chosen_color
+        };
+        assert_eq!(
+            of(mare),
+            Some(sage_protocol::Color::Red),
+            "the chosen colour is public board state, from either seat"
+        );
+        assert_eq!(of(plain), None);
+    }
 }
 
 /// The ability-target `requirements` projection (ADR 0004 deferral #73, folded

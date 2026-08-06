@@ -82,12 +82,36 @@ follows from that.
    number, take up to one, fail to find). An exact prompt omits it and serializes exactly
    as it did before.
 
+8. **A question that is not mid-resolution still belongs in this queue** (issue #738). The
+   colour a permanent names *as it enters* (CR 614.12) is not part of a resolution at all —
+   it is part of an arrival — and it is queued here anyway, because everything around the
+   asking is identical: one queue, one chooser, one action, the same priority hand-off, the
+   same freeze on every other seat.
+
+   What differs is only what the answer *does*, so `ColorRequest` carries a `ColorOutcome`
+   the way `ChoiceRequest` carries a `ChoiceOutcome`: add a point of mana, or complete a
+   battlefield entry. The entry itself — the card, its controller, whether an effect said
+   "tapped", an Aura's chosen host — rides on the question as a `PendingEntry`, the direct
+   analogue of the `SuspendedSpell` a `Resume` carries.
+
+   That placement is what makes "the permanent is never briefly on the battlefield without
+   its colour" true **by construction rather than by ordering**: while the question is owed
+   the card is in no zone, so there is no permanent for a state-based action, a trigger
+   diff, or a projection to catch mid-decision. It also needs no `Resume` — the entry is the
+   last step of a resolution rather than one of its effects — which is why the resume slot
+   is simply `None` there rather than special-cased.
+
 ## Consequences
 
 Four exclusions collapse to one mechanism, and the next choice-shaped effect — a modal
 spell, naming a card, an optional sacrifice — has a queue, a routing rule, a
 no-legal-answer rule, and a hidden-information channel already built. Adding one is a
 `ChoiceOutcome` variant and a `choices_for_effect` arm.
+
+The queue turned out to be reusable beyond resolution (§8), which is the strongest evidence
+the shape was right — but it also means "a choice is owed" no longer implies "something is
+mid-resolution". A `PendingChoice` with no `Resume` is now an ordinary state of affairs, and
+code that reads one must not assume the other.
 
 The cost is a second kind of thing that can be "owed" alongside a trigger's targets, and
 a `GameState` that can now be *mid-resolution* rather than only between actions. Any

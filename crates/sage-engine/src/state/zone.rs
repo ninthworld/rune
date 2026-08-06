@@ -170,7 +170,17 @@ impl GameState {
     /// `tapped` is the entry state the *effect* dictates ("onto the battlefield
     /// tapped"); a card's own "enters tapped" replacement is applied on top and can only
     /// add to it. `attached_to` is the host an entering Aura was cast at (CR 303.4d),
-    /// `None` for everything else. Returns the new permanent's id.
+    /// `None` for everything else.
+    ///
+    /// Returns the new permanent's id, or **`None` when the entry was deferred** on a
+    /// choice its controller makes as the permanent enters (CR 614.12 — today, a colour,
+    /// [`Ability::EntersChoosingColor`](crate::Ability)). Such a card is put on the
+    /// choice queue rather than on the battlefield, and arrives the instant the question
+    /// is answered ([`ColorOutcome::RecordOnEntry`](crate::ColorOutcome)) — which,
+    /// because a pending choice takes priority away from every other seat, is before any
+    /// player acts again. It is deliberately not a value a caller has to handle: every
+    /// one of them puts a card somewhere and moves on, so "there is no permanent yet" is
+    /// simply the absence of an id.
     pub(crate) fn put_card_onto_battlefield(
         &mut self,
         card: crate::id::CardInstance,
@@ -178,22 +188,60 @@ impl GameState {
         tapped: bool,
         attached_to: Option<PermanentId>,
         db: &CardDatabase,
+    ) -> Option<PermanentId> {
+        let entry = crate::choice::PendingEntry {
+            card,
+            controller,
+            tapped,
+            attached_to,
+        };
+        if crate::card::chooses_color_on_entry(db, card.card) {
+            // CR 614.12: the choice is made *as* the permanent enters, so the card waits
+            // here — in no zone, exactly as a spell's card waits while its resolution is
+            // suspended — rather than entering and being amended afterwards.
+            self.pending_choices.push(crate::choice::PendingChoice {
+                chooser: controller,
+                question: crate::choice::ChoiceQuestion::Color(crate::choice::ColorRequest {
+                    outcome: crate::choice::ColorOutcome::RecordOnEntry(entry),
+                }),
+                resume: None,
+            });
+            return None;
+        }
+        Some(self.complete_battlefield_entry(&entry, None, db))
+    }
+
+    /// Build the permanent `entry` describes, give it `chosen_color`, and put it on the
+    /// battlefield — the half of [`Self::put_card_onto_battlefield`] that actually
+    /// arrives.
+    ///
+    /// Split out because it happens at two different moments: immediately, for the cards
+    /// that ask nothing, and one action later for a card whose colour had to be named
+    /// first. Everything else about the entry is identical between them — the same fresh
+    /// [`PermanentId`], the same CR 614.1c self-replacements applied before the
+    /// battlefield ever sees the object — which is the whole reason it is one function.
+    pub(crate) fn complete_battlefield_entry(
+        &mut self,
+        entry: &crate::choice::PendingEntry,
+        chosen_color: Option<crate::mana::Color>,
+        db: &CardDatabase,
     ) -> PermanentId {
         let id = PermanentId(self.mint_id());
         let entered_turn = self.turn;
         let mut permanent = Permanent {
             id,
-            instance: card.id,
-            printed: Printed::Card(card.card),
-            controller,
-            tapped,
+            instance: entry.card.id,
+            printed: Printed::Card(entry.card.card),
+            controller: entry.controller,
+            tapped: entry.tapped,
             entered_turn,
             attacking: None,
             blocking: Vec::new(),
             skips_untap: false,
             damage: 0,
             counters: Default::default(),
-            attached_to,
+            attached_to: entry.attached_to,
+            chosen_color,
         };
         crate::card::apply_enters_replacements(self, db, &mut permanent);
         self.battlefield.push(permanent);
@@ -249,6 +297,7 @@ impl GameState {
             damage: 0,
             counters: Default::default(),
             attached_to: None,
+            chosen_color: None,
         };
         crate::card::apply_enters_replacements(self, db, &mut permanent);
         self.battlefield.push(permanent);

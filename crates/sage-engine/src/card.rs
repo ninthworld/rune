@@ -42,5 +42,5 @@ pub use printing::{Printing, PrintingDatabase};
 pub use rarity::Rarity;
 pub use restriction::CombatRestriction;
 
-// Re-export for internal use: spell_effects_of and apply_enters_replacements are crate-visible only
-pub(crate) use helpers::{apply_enters_replacements, spell_effects_of};
+// Re-export for internal use: these three are crate-visible only
+pub(crate) use helpers::{apply_enters_replacements, chooses_color_on_entry, spell_effects_of};

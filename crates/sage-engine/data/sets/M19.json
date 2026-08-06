@@ -765,6 +765,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "diamond_mare",
+    "collector_number": "231",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "dragon_s_hoard",
     "collector_number": "232",
     "rarity": "rare"

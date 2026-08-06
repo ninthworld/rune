@@ -63,6 +63,7 @@ fn place(state: &mut GameState, card: CardId) -> PermanentId {
         damage: 0,
         counters: Default::default(),
         attached_to: None,
+        chosen_color: None,
     });
     id
 }

@@ -36,7 +36,7 @@
 
 use crate::ability::{CardFilter, Effect, FoundDestination, Target};
 use crate::card_type::CardType;
-use crate::id::{CardId, CardInstance, CardInstanceId, PlayerId};
+use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::mana::Color;
 use crate::rng::SplitMix64;
 use crate::state::{GameEvent, GameState};
@@ -81,9 +81,9 @@ pub enum ChoiceQuestion {
     /// [`Effect::May`] ([`ConfirmRequest`]). Answered with
     /// [`Action::AnswerConfirm`](crate::Action).
     Confirm(ConfirmRequest),
-    /// Which **color** of mana to add — one point's worth of `Add two mana in any
-    /// combination of colors` ([`ColorRequest`]). Answered with
-    /// [`Action::AnswerColor`](crate::Action).
+    /// Which **color**? — one point's worth of `Add two mana in any combination of
+    /// colors`, or the colour a permanent is given as it enters ([`ColorRequest`]).
+    /// Answered with [`Action::AnswerColor`](crate::Action).
     ///
     /// The third shape rather than a special case of the first two because the answer
     /// is neither a set of cards nor a yes-or-no: it names one of the five colors
@@ -124,20 +124,70 @@ impl ChoiceQuestion {
     }
 }
 
-/// The question one point of "mana in any combination of colors" asks: *which color?*
+/// A colour question ([`ChoiceQuestion::Color`]): *which color?*, and what the answer
+/// is then used for.
 ///
-/// Carries nothing about *who* — the chooser is [`PendingChoice::chooser`], and the
-/// mana goes into that same seat's pool, because an effect that adds mana adds it to
-/// its controller's pool (CR 106.4) and the controller is who is asked.
+/// Carries nothing about *who* — the chooser is [`PendingChoice::chooser`], which for
+/// both of today's uses is the seat the answer belongs to: mana is added to the pool of
+/// the controller of the effect producing it (CR 106.4), and an "as this enters" choice
+/// is made by the entering permanent's controller (CR 614.12).
 ///
 /// It carries no candidate list either, for the reason [`ChoiceRequest`] carries none:
 /// the answer set is the five colors (CR 105.1) and is the same at every table in every
 /// game, so there is nothing to compute or to keep fresh.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ColorRequest {
-    /// What the produced mana may be spent on (CR 106.6), or `None` for ordinary mana.
-    /// Copied from the effect so the restriction rides each point as it is chosen.
-    pub restriction: Option<crate::ability::ManaRestriction>,
+    /// What becomes of the colour once it is named.
+    pub outcome: ColorOutcome,
+}
+
+/// What a named colour is *for* — the counterpart of [`ChoiceOutcome`] for the colour
+/// question, and the whole of the difference between its two uses.
+///
+/// One question with two outcomes rather than two questions, because the *asking* is
+/// identical: five answers, all of them always legal, none of them derived from state.
+/// Splitting on the outcome instead keeps the queue, the routing, the action, and the
+/// priority hand-off single, which is the rule [`ChoiceQuestion`] is built on.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ColorOutcome {
+    /// Put one mana of the chosen colour into the chooser's pool (CR 106.4).
+    AddMana {
+        /// What the produced mana may be spent on (CR 106.6), or `None` for ordinary
+        /// mana. Copied from the effect so the restriction rides each point as it is
+        /// chosen.
+        restriction: Option<crate::ability::ManaRestriction>,
+    },
+    /// Record the chosen colour on a permanent that is **entering the battlefield**
+    /// (CR 614.12), and complete that entry.
+    ///
+    /// While this is owed the card is on the battlefield's doorstep and in no zone at
+    /// all — the same place a spell's card is while its resolution is suspended
+    /// ([`SuspendedSpell`]). That is what makes "the permanent is never briefly on the
+    /// battlefield without its colour" true by construction rather than by ordering: it
+    /// is not there yet. Answering puts it there with the colour already on it, so the
+    /// state-based-action loop, the trigger diff, and every projection see one arrival,
+    /// complete.
+    RecordOnEntry(PendingEntry),
+}
+
+/// A permanent's entry onto the battlefield, held until the colour chosen as it enters
+/// has been named (CR 614.12).
+///
+/// Every argument [`GameState::put_card_onto_battlefield`](crate::GameState) was called
+/// with, kept together so the deferred entry is the *same* entry rather than a
+/// reconstruction of one: the effect's own "enters tapped" and an Aura's chosen host are
+/// decided before the question is asked and must survive it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PendingEntry {
+    /// The physical card that will become the permanent.
+    pub card: CardInstance,
+    /// The player it enters under — and, being its controller, the one who answers.
+    pub controller: PlayerId,
+    /// Whether the *effect* putting it there said "tapped". The card's own `enters
+    /// tapped` replacement is applied on top at the entry seam, as always.
+    pub tapped: bool,
+    /// The host an entering Aura was cast at (CR 303.4d), `None` for everything else.
+    pub attached_to: Option<PermanentId>,
 }
 
 /// The question an optional effect asks: *do you want this, and will you pay for it?*
@@ -732,6 +782,9 @@ fn place_card(
                 player.hand.push(card);
             }
         }
+        // Both battlefield arms discard the seam's answer: a found card that names a
+        // colour as it enters has its entry deferred onto the choice queue, and nothing
+        // here needs the id of a permanent that does not exist yet.
         FoundDestination::Battlefield => {
             state.put_card_onto_battlefield(card, subject, false, None, db);
         }
@@ -854,7 +907,9 @@ pub(crate) fn choices_for_effect(
                     (
                         controller,
                         ChoiceQuestion::Color(ColorRequest {
-                            restriction: restriction.clone(),
+                            outcome: ColorOutcome::AddMana {
+                                restriction: restriction.clone(),
+                            },
                         }),
                     )
                 })
@@ -874,26 +929,36 @@ pub(crate) fn choices_for_effect(
     }
 }
 
-/// Answer a pending color question: put one mana of `color` into the chooser's pool,
-/// carrying whatever restriction the effect attached to it (CR 106.6).
+/// Carry out `request` for the colour just named — the colour counterpart of
+/// [`apply_choice_outcome`], and the only place a colour answer has a consequence.
 ///
-/// The whole of the answer's consequence — the queue entry is popped by the caller,
-/// exactly as a card selection's is, and the rest of the resolution rides on the
-/// [`Resume`] attached to the last question of the effect.
-pub(crate) fn add_chosen_color(
+/// The queue entry is popped by the caller, exactly as a card selection's is, and the
+/// rest of a suspended resolution rides on the [`Resume`] attached to the last question
+/// of the effect.
+pub(crate) fn apply_color_outcome(
     state: &mut GameState,
     chooser: PlayerId,
     request: &ColorRequest,
     color: Color,
+    db: &CardDatabase,
 ) {
-    let Some(player) = state.players.get_mut(chooser.0) else {
-        return;
-    };
-    match &request.restriction {
-        Some(restriction) => player
-            .mana_pool
-            .add_restricted(color, 1, restriction.clone()),
-        None => player.mana_pool.add(color, 1),
+    match &request.outcome {
+        ColorOutcome::AddMana { restriction } => {
+            let Some(player) = state.players.get_mut(chooser.0) else {
+                return;
+            };
+            match restriction {
+                Some(restriction) => player
+                    .mana_pool
+                    .add_restricted(color, 1, restriction.clone()),
+                None => player.mana_pool.add(color, 1),
+            }
+        }
+        // The deferred half of a battlefield entry (CR 614.12): the permanent arrives
+        // now, with the colour already on it.
+        ColorOutcome::RecordOnEntry(entry) => {
+            state.complete_battlefield_entry(entry, Some(color), db);
+        }
     }
 }
 

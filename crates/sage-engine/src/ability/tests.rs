@@ -164,6 +164,33 @@ fn issue_155_enters_tapped_replacement_round_trips() {
 }
 
 #[test]
+fn issue_738_an_entry_colour_choice_round_trips_and_reads_back_by_name() {
+    // The choice made as a permanent enters (CR 614.12) authors as a bare type tag, like
+    // the other two entry declarations, and carries no answer: the answer belongs to the
+    // permanent, not to the printed card.
+    let json = r#"{"type":"enters_choosing_color"}"#;
+    let ability: Ability = serde_json::from_str(json).unwrap();
+    assert_eq!(ability, Ability::EntersChoosingColor);
+    assert!(!is_mana_ability(&ability));
+
+    // The trigger that reads it back names the class rather than a colour, for the same
+    // reason: a printed card cannot know what a permanent will choose.
+    let json = r#"{"type":"triggered","event":{"you_cast_spell":"chosen_color"},
+        "effects":[{"kind":"gain_life","player_ref":"controller","amount":1}]}"#;
+    let ability: Ability = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        ability,
+        Ability::Triggered {
+            event: TriggerCondition::YouCastSpell(crate::ability::ObservedSpell::ChosenColor),
+            effects: vec![Effect::GainLife {
+                player_ref: crate::ability::PlayerRef::Controller,
+                amount: 1,
+            }],
+        }
+    );
+}
+
+#[test]
 fn issue_155_enters_with_counters_replacement_round_trips() {
     // The "enters with N counters" self-replacement (CR 614.12) authors its
     // counter kind under `counter` (the enum reserves `type` for its tag) and

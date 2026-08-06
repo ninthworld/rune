@@ -108,6 +108,26 @@ pub(crate) fn spell_effects_of(db: &CardDatabase, card: CardId) -> Vec<Effect> {
         .unwrap_or_default()
 }
 
+/// Whether the card `card` names a **colour as it enters** the battlefield
+/// (CR 614.12) — whether it declares [`Ability::EntersChoosingColor`].
+///
+/// Read at the battlefield-entry seam ([`crate::GameState::put_card_onto_battlefield`])
+/// to decide whether the entry can happen now or has to wait for an answer, and read
+/// there off the *card* rather than off a built [`Permanent`] because at that moment
+/// there is no permanent: the whole point is that none exists until the question is
+/// answered.
+///
+/// Both authoring tiers are honoured via [`abilities_of`], and a **token** is never
+/// asked: `create_token` does not consult this, because a token's abilities are whatever
+/// the creating effect wrote down (ADR 0015) and no effect can write down a question that
+/// a resolving effect has no way to stop and ask.
+#[must_use]
+pub(crate) fn chooses_color_on_entry(db: &CardDatabase, card: CardId) -> bool {
+    abilities_of(db, card)
+        .iter()
+        .any(|ability| matches!(ability, Ability::EntersChoosingColor))
+}
+
 /// Apply `perm`'s own **enters-the-battlefield self-replacement effects**
 /// (CR 614.1c) to the freshly built [`Permanent`] as it enters, *before* it is
 /// placed on the battlefield.
@@ -159,7 +179,15 @@ pub(crate) fn apply_enters_replacements(
             // here (`characteristics::static_ability_effects`).
             // A player-subject static is the same: read where the question is asked
             // (`player::maximum_hand_size`), never applied to the permanent entering.
-            crate::ability::Ability::Activated { .. }
+            //
+            // An "as this enters, choose a colour" is the one replacement that is
+            // already *done* by the time this runs. It cannot be applied here — this
+            // function has no way to ask anyone anything, and a pure function over one
+            // permanent never will — so the seam that calls it defers the whole entry
+            // until the answer is in and hands the answer to the permanent it then
+            // builds ([`chooses_color_on_entry`]). Nothing is left to do here.
+            crate::ability::Ability::EntersChoosingColor
+            | crate::ability::Ability::Activated { .. }
             | crate::ability::Ability::Triggered { .. }
             | crate::ability::Ability::Static { .. }
             | crate::ability::Ability::PlayerStatic { .. } => {}

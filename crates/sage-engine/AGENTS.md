@@ -133,6 +133,17 @@ never-stall guarantee. Priority goes to the chooser and returns via the one
 `interrupted_priority` slot shared with trigger aiming — a third interrupting choice must
 join that check rather than add a second slot.
 
+**A choice a permanent makes as it enters is the same queue, and the permanent waits off the
+battlefield for it** (ADR 0013 §8). `Ability::EntersChoosingColor` is a card's declaration
+that its controller names a colour as it arrives (CR 614.12); `put_card_onto_battlefield`
+reads it, and when it is there the entry is *deferred* — the card is put on the choice queue
+as a `ColorOutcome::RecordOnEntry(PendingEntry)` and returns no `PermanentId`, so nothing is
+on the battlefield to be caught mid-decision. Answering completes the entry through
+`complete_battlefield_entry`, the one function both roads take, and the answer lives on
+`Permanent::chosen_color` — stored, written once, and read back by
+`ObservedSpell::ChosenColor`. Naming a **type** or a **card** is still unwritable, and nothing
+records a choice on a spell.
+
 A choice asks one of two **questions** (`ChoiceQuestion`, ADR 0014): pick cards, or answer
 a `you may` yes-or-no. Everything around them is single — one queue, one chooser, one
 `Resume` — and only the answer branches, so a new question shape is a variant plus its own

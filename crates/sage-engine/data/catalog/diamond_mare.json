@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "functional_id": "diamond_mare",
+  "name": "Diamond Mare",
+  "types": [
+    "artifact",
+    "creature"
+  ],
+  "subtypes": [
+    "Horse"
+  ],
+  "mana_cost": "{2}",
+  "colors": [],
+  "power": 1,
+  "toughness": 3,
+  "abilities": [
+    {
+      "type": "enters_choosing_color"
+    },
+    {
+      "type": "triggered",
+      "event": {
+        "you_cast_spell": "chosen_color"
+      },
+      "effects": [
+        {
+          "kind": "gain_life",
+          "player_ref": "controller",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

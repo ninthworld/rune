@@ -296,6 +296,18 @@ export const Permanent = z.object({
    * a permanent whose abilities are all printed.
    */
   granted_keywords: z.array(z.string()).optional(),
+  /**
+   * The colour this permanent's controller **named as it entered** the battlefield
+   * (CR 614.12) — the "chosen color" its own rules text refers to. Absent for every
+   * permanent that named none, which is almost all of them.
+   *
+   * Stated because there is nothing to infer it from: it is a decision a player made,
+   * recorded on this one object. It is not the permanent's colour (a colourless artifact
+   * may have named red), it is not in `card.color_identity`, and it does not follow from
+   * the printed cost — two copies of one card side by side may have chosen differently.
+   * Render it; never derive it, and never let it stand in for a colour of the card.
+   */
+  chosen_color: Color.optional(),
 })
 export type Permanent = z.infer<typeof Permanent>
 

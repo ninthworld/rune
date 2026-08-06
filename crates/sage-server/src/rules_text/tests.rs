@@ -1307,3 +1307,17 @@ fn issue_723_a_graveyard_ability_names_its_own_card_and_the_zone_it_works_in() {
         "{3}{G}: Return Test Recurring Charm from your graveyard to your hand."
     );
 }
+
+/// A colour named as a permanent enters reads as an "As …" statement about entering
+/// (CR 614.12) — never "When …", which would describe a trigger that goes on the stack —
+/// and the ability that reads the answer back calls it "the chosen color" rather than
+/// naming a colour the printed card cannot know.
+#[test]
+fn issue_738_an_entry_choice_and_the_ability_that_reads_it_back() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "diamond_mare"),
+        "As Diamond Mare enters the battlefield, choose a color.\n\
+         Whenever you cast a spell of the chosen color, you gain 1 life."
+    );
+}

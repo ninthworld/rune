@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (203)
+## Supported cards (204)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -51,6 +51,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `death_baron` | Death Baron | functional definition |
 | `demon_of_catastrophes` | Demon of Catastrophes | functional definition |
 | `detection_tower` | Detection Tower | functional definition |
+| `diamond_mare` | Diamond Mare | functional definition |
 | `diregraf_ghoul` | Diregraf Ghoul | functional definition |
 | `disperse` | Disperse | functional definition |
 | `divination` | Divination | functional definition |
@@ -232,7 +233,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Conditions other than a permanent count, a mill, a discard, or life gained this turn | a permanent count cannot require distinct names, and no condition asks what one permanent has done — on the intervening-if side or the continuous one |
 | Cost reduction and cost increase effects | no cost-modification layer |
 | Damage prevention | no prevention shield or damage-replacement layer |
-| Effects that ask a player to name a colour, type, or card | no player choice recorded on a permanent or spell |
+| Effects that ask a player to name a type or a card | a permanent records the colour its controller named as it entered; a card name and a creature type have no recorded identity, and nothing on a spell records a choice at all |
 | Effects that let a player choose the order of cards put back on a library | a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random |
 | Effects that return a card from a graveyard to a zone other than a hand or the battlefield | a targeted card returns from a graveyard to a hand or to the battlefield, and a whole graveyard can be exiled; nothing else moves a card out of one |
 | Effects that untap a permanent it did not just take | untapping rides on the control change that steals a creature, because one effect names one target; nothing else brings an untap forward |

@@ -131,6 +131,7 @@ pub(crate) fn place_permanent(
         damage,
         counters: Default::default(),
         attached_to: None,
+        chosen_color: None,
     });
     PermanentId(id)
 }
@@ -443,6 +444,7 @@ pub(crate) fn place_commander_permanent(
         damage: 0,
         counters: Default::default(),
         attached_to: None,
+        chosen_color: None,
     });
     id
 }

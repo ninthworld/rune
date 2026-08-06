@@ -472,7 +472,15 @@ A `Permanent` contains:
   generated prose against keyword names, which is a client reading rules text to learn a rules
   fact. Carried as the **words a card prints them with** — `"Trample"`, `"First strike"` —
   because they are drawn as text beside text. Omitted when empty, which is every permanent
-  whose abilities are all printed.
+  whose abilities are all printed; and
+- optional `chosen_color` (issue #738), the colour this permanent's controller **named as it
+  entered** the battlefield (CR 614.12) — the "chosen color" its own rules text refers to.
+  One of the wire's colour letters, omitted for every permanent that named none. Stated
+  because there is nothing to infer it from: it is a decision a player made, recorded on this
+  one object. It is *not* the permanent's colour — a colourless artifact may have named red —
+  it is nowhere in `card.color_identity`, and it does not follow from the printed cost, since
+  two copies of one card side by side may have chosen differently. Public: it was announced as
+  the permanent entered, so every seat and every spectator receives it.
 
 These fields describe server-computed state. They do not authorize interaction.
 
@@ -861,12 +869,23 @@ distinguish it from a card selection:
 - Nothing is revealed: a yes-or-no is about an effect, not a zone, so `revealed` stays
   empty.
 
-The same `player_choice` action carries a third question: **which colour of mana**, for an
-effect that adds mana in any combination of colours. It adds no wire shape either — it is
-the `option` prompt on the same `choice` slot, listing the five colours, and every one of
-them is always a legal answer, so unlike the yes-or-no it never withholds an option. An
-effect producing more than one mana poses **one question per point**, so the client answers
-this action once per mana and may name a different colour each time. Nothing is revealed.
+The same `player_choice` action carries a third question: **which colour?** It adds no wire
+shape either — it is the `option` prompt on the same `choice` slot, listing the five colours,
+and every one of them is always a legal answer, so unlike the yes-or-no it never withholds an
+option. Nothing is revealed.
+
+Two things ask it, and the prompt's own sentence is what tells them apart:
+
+- **Which colour of mana**, for an effect that adds mana in any combination of colours. Such
+  an effect poses **one question per point**, so the client answers this action once per mana
+  and may name a different colour each time.
+- **Which colour a permanent enters with** (CR 614.12, issue #738) — the choice a card makes
+  as it arrives, which the prompt names the card in: *"Choose a color as Diamond Mare enters
+  the battlefield"*. While it is owed the permanent is **not yet on the battlefield**: the
+  spell has left the stack and its card is in no zone, exactly as a spell's card is while a
+  mid-resolution choice suspends it, so a client that renders the board it is sent is never
+  showing a permanent whose colour has not been named. Answering makes it appear, with
+  `chosen_color` already set on it.
 
 Combat declarations also use requirements. The `attackers` slot lists creatures eligible to
 attack; blocker slots list eligible blockers for each attacker. When there is more than one

@@ -272,6 +272,14 @@ pub(crate) fn validate_definition(
         validate_token(&functional_id, effect.get("token"))?;
     }
 
+    // "A spell of the chosen color" is the one trigger selector whose meaning comes from
+    // elsewhere on the same card (CR 614.12). A card that watches it without naming a
+    // colour as it enters has written a trigger that can never fire, and the engine's
+    // answer to it — notice nothing — is silent by design, so it is caught here instead.
+    if watches_the_chosen_color(object) && !object_chooses_a_color(object) {
+        return Err(Violation::ChosenColorIsNeverNamed { functional_id });
+    }
+
     // An `attachment` block is the Aura ability (CR 303.4) or the Equipment's equip
     // ability (CR 301.5), so the card must actually bear the subtype it claims — and, for
     // an Equipment, must name the cost its derived equip ability charges (CR 702.6a).

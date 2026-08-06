@@ -70,8 +70,8 @@ pub use characteristics::{
 };
 pub use choice::{
     choice_bounds, choice_candidates, confirm_is_payable, pending_player_choice, ChoiceOutcome,
-    ChoiceQuestion, ChoiceRequest, ChoiceZone, ColorRequest, ConfirmRequest, PendingChoice, Resume,
-    SuspendedSpell,
+    ChoiceQuestion, ChoiceRequest, ChoiceZone, ColorOutcome, ColorRequest, ConfirmRequest,
+    PendingChoice, PendingEntry, Resume, SuspendedSpell,
 };
 pub use combat::{
     attack_target_of, attacked_players, attacker_candidates, attackers_needing_damage_order,

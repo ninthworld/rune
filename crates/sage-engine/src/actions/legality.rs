@@ -513,6 +513,7 @@ mod tests {
             damage: 0,
             counters: Default::default(),
             attached_to: None,
+            chosen_color: None,
         });
         let action = Action::ActivateAbility {
             permanent: id,
@@ -549,6 +550,7 @@ mod tests {
                 damage: 0,
                 counters: Default::default(),
                 attached_to: None,
+                chosen_color: None,
             });
             id
         };

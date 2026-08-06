@@ -36,6 +36,7 @@ pub(crate) fn apply_play_land(state: &mut GameState, card: CardInstance, db: &Ca
         counters: Default::default(),
         // A land is played directly, never attached to anything (CR 305).
         attached_to: None,
+        chosen_color: None,
     };
     // CR 614.1c/614.12: apply the land's own enters-the-battlefield replacements
     // (e.g. a tapland's "enters tapped") as it enters, so it is tapped the instant

@@ -346,6 +346,7 @@ mod tests {
             blocking: Vec::new(),
             damage: 0,
             attached_to: None,
+            chosen_color: None,
             is_commander: false,
             counters: vec![],
             summoning_sick: false,

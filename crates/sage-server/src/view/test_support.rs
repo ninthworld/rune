@@ -58,6 +58,7 @@ pub(crate) fn put_permanent(
         damage: 0,
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
+        chosen_color: None,
     });
     id
 }

@@ -514,6 +514,7 @@ mod tests {
             damage,
             counters: Default::default(),
             attached_to: None,
+            chosen_color: None,
         });
         id
     }

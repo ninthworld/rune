@@ -445,6 +445,25 @@ pub struct Permanent {
     /// printed, and a client that ignores it renders exactly as it did.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub granted_keywords: Vec<String>,
+    /// The colour this permanent's controller **named as it entered** the battlefield
+    /// (CR 614.12) — the "chosen color" its own rules text refers to. `None`/omitted for
+    /// every permanent that named none, which is almost all of them.
+    ///
+    /// Stated rather than inferable, and there is nothing to infer it from: the answer
+    /// is a decision a player made, recorded on this one object. It is not the
+    /// permanent's colour (a colourless artifact may have named red), it is nowhere in
+    /// [`CardView::color_identity`], and it does not follow from the printed cost — two
+    /// copies of the same card side by side may have chosen differently, which is
+    /// exactly why the choice is worth showing.
+    ///
+    /// **Public information.** Every seat and every spectator sees it, because it was
+    /// announced as the permanent entered and the abilities that read it are read by
+    /// everyone.
+    ///
+    /// Additive: omitted (and defaults to `None`), so every existing view is unchanged
+    /// on the wire and a client that ignores it renders exactly as it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chosen_color: Option<crate::Color>,
 }
 
 /// An **emblem** in the game (CR 114, issue #620): a marker one player has, whose only

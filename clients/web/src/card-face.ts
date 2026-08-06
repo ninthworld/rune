@@ -122,6 +122,19 @@ export interface CardFace {
   skipsNextUntap: boolean
 }
 
+/**
+ * The word for a colour letter the server states — the wire carries `"R"`, a player reads
+ * "Red". Naming a stated value is not deriving one: nothing here works out what colour
+ * anything is, and a letter this build has never seen is set as itself rather than dropped.
+ */
+const COLOR_WORDS: Record<string, string> = {
+  W: 'White',
+  U: 'Blue',
+  B: 'Black',
+  R: 'Red',
+  G: 'Green',
+}
+
 /** Display wording for the stack kinds the server states (`docs/protocol.md`). */
 const STACK_KIND_LABELS: Record<string, string> = {
   spell: 'Spell',
@@ -236,7 +249,18 @@ export function permanentFace(permanent: Permanent): CardFace {
     // creature given trample for the turn says trample, on the card, while it has it.
     grantedKeywords: list(permanent.granted_keywords),
     damage: permanent.damage !== undefined && permanent.damage > 0 ? permanent.damage : undefined,
-    markers: [...base.markers, ...(permanent.is_commander ? ['Commander'] : [])],
+    // The colour named as this permanent entered (CR 614.12), stated by the server. It wears
+    // the same pill a counter and a marker do because it is the same kind of fact — something
+    // true of *this object* that its printed card never said — and the card's own text says
+    // "the chosen color", so the board has to answer which one. Nothing is inferred: the
+    // permanent may be colourless and the choice is one player's, made once, on entry.
+    markers: [
+      ...base.markers,
+      ...(permanent.is_commander ? ['Commander'] : []),
+      ...(permanent.chosen_color
+        ? [`Chose ${COLOR_WORDS[permanent.chosen_color] ?? permanent.chosen_color}`]
+        : []),
+    ],
     tapped: permanent.tapped === true,
     // CR 302.6, stated. Nothing here concludes it from `entered_turn` (which is not on the
     // wire) or from the absence of an attack action (which means nothing outside one step).
