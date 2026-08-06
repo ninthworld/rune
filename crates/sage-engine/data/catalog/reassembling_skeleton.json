@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "functional_id": "reassembling_skeleton",
+  "name": "Reassembling Skeleton",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Skeleton",
+    "Warrior"
+  ],
+  "mana_cost": "{1}{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 1,
+  "toughness": 1,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{1}{B}"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "return_self_from_graveyard",
+          "destination": "battlefield_tapped"
+        }
+      ]
+    }
+  ]
+}

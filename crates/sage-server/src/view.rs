@@ -11,17 +11,17 @@
 //! already depends on, and adds nothing to the wire contract in `sage-protocol`.
 
 use sage_engine::{
-    abilities_of_permanent, activation_taps, attacker_candidates, attackers_needing_damage_order,
-    attacking_defender_of, attacking_taps, blocker_can_block_attacker, blocker_candidates_for,
-    bottom_requirement, characteristics, choice_bounds, choice_candidates, confirm_is_payable,
-    declared_attackers, defender_candidates, is_mana_ability, mana_ability_pips,
-    pending_blocker_declarer, pending_player_choice, scripted_rules_text,
-    summoning_sickness_restricts, target_requirements, valid_actions, AbilityOrigin, Action,
-    Attack, AttackTarget, Block, CardData, CardDatabase, CardId, CardInstance, CardInstanceId,
-    ChoiceOutcome, ChoiceQuestion, ChoiceRequest, ChoiceZone, Color, ColorRequest, ConfirmRequest,
-    CostPayment, CounterKind, DamageOrder, DamageTarget, GameEvent, GameResult, GameState, Keyword,
-    LoggedIdentity, LoggedPermanent, LossReason, PermanentId, Player, PlayerId, PrintedFace,
-    StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
+    abilities_of, abilities_of_permanent, activation_taps, attacker_candidates,
+    attackers_needing_damage_order, attacking_defender_of, attacking_taps,
+    blocker_can_block_attacker, blocker_candidates_for, bottom_requirement, characteristics,
+    choice_bounds, choice_candidates, confirm_is_payable, declared_attackers, defender_candidates,
+    is_mana_ability, mana_ability_pips, pending_blocker_declarer, pending_player_choice,
+    scripted_rules_text, summoning_sickness_restricts, target_requirements, valid_actions,
+    AbilityOrigin, Action, Attack, AttackTarget, Block, CardData, CardDatabase, CardId,
+    CardInstance, CardInstanceId, ChoiceOutcome, ChoiceQuestion, ChoiceRequest, ChoiceZone, Color,
+    ColorRequest, ConfirmRequest, CostPayment, CounterKind, DamageOrder, DamageTarget, GameEvent,
+    GameResult, GameState, Keyword, LoggedIdentity, LoggedPermanent, LossReason, PermanentId,
+    Player, PlayerId, PrintedFace, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
 };
 
 use crate::rules_text::{
@@ -539,6 +539,7 @@ pub(crate) fn resolve_action(
             Action::DeclareBlockers { .. } => bind_blockers(state, db, &choice.targets),
             Action::OrderCombatDamage { .. } => bind_order_combat_damage(state, &choice.targets),
             Action::ActivateAbility { .. }
+            | Action::ActivateAbilityFromGraveyard { .. }
             | Action::CastSpell { .. }
             | Action::ChooseTriggerTargets { .. } => {
                 if !targets_fill_requirements(

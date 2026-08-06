@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (202)
+## Supported cards (203)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -148,6 +148,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `prodigious_growth` | Prodigious Growth | functional definition |
 | `psychic_corrosion` | Psychic Corrosion | functional definition |
 | `psychic_symbiont` | Psychic Symbiont | functional definition |
+| `reassembling_skeleton` | Reassembling Skeleton | functional definition |
 | `reclamation_sage` | Reclamation Sage | functional definition |
 | `recollect` | Recollect | functional definition |
 | `regal_bloodlord` | Regal Bloodlord | functional definition |
@@ -227,7 +228,6 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Activation costs paid by sacrificing another permanent, or by discarding | a cast carries its chosen sacrifices and discards on the action, but an activation names only its source, its ability, and its targets |
 | Attack and block requirements | a declaration can be restricted but never required, and CR 509.1c makes validating one a search rather than a per-pair check |
 | Auras that enchant a player or land, or move between hosts | only enchant-creature Auras granting P/T, keywords, or combat restrictions are modeled |
-| Casting from a zone other than the hand, the command zone, or a one-turn graveyard permission | no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure) |
 | Combat damage assigned by a value other than power | every attacker and blocker assigns damage equal to its current power |
 | Conditions other than a permanent count, a mill, a discard, or life gained this turn | a permanent count cannot require distinct names, and no condition asks what one permanent has done — on the intervening-if side or the continuous one |
 | Cost reduction and cost increase effects | no cost-modification layer |
@@ -247,6 +247,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Modal spells that choose one | no mode choice on announcement |
 | Multi-face cards (transform, modal double-faced) | the card model has a single face |
 | Optional costs paid with anything but mana | an optional effect's cost is a mana payment; sacrificing, discarding, or exiling to pay is unwritable |
+| Playing a card from a zone other than the hand, the command zone, or a one-turn graveyard permission | an activated ability may function from a graveyard and return its own card from there, but nothing else works outside the battlefield: no triggered ability, no per-turn exile permission, no land played under a permission, no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure), and no way to cast without paying a mana cost |
 | Protection | there is no protection layer: nothing stops a spell, a block, an aura, or damage by a quality the way CR 702.16 does |
 | Reflexive triggers, and conditional branches that choose a target | an optional effect declares the target group of the one effect it wraps, but a conditional's branches, a wrapper over two targeting effects, and a "when you do" aimed after a cost is paid have no group one announcement could fill |
 | Replacement effects | no replacement-effect layer in the rules engine |

@@ -199,6 +199,35 @@ pub fn is_equip_ability(ability: &Ability) -> bool {
     )
 }
 
+/// Whether an ability **functions from its owner's graveyard** (CR 113.6): an activated
+/// ability that returns its own card from there
+/// ([`Effect::ReturnSelfFromGraveyard`]).
+///
+/// Derived from what the ability *does*, never stored and never a flag on the card — the
+/// shape [`is_loyalty_ability`] and [`is_equip_ability`] use, and here it is more than a
+/// convention. An ability that moves its own card out of a graveyard could function
+/// nowhere else: on the battlefield its source is a permanent and there is no card in a
+/// graveyard for it to move. So "where it works from" is not a second fact an author
+/// could get out of step with the text; it is the text.
+///
+/// This is the predicate the whole zone seam hangs off. It decides that the ability is
+/// **not** offered on a permanent ([`crate::valid_actions`]), that it *is* offered on a
+/// card sitting in its controller's graveyard, and — re-derived rather than trusted — that
+/// an activation naming a graveyard card is legal at all
+/// ([`crate::apply_action`]). A graveyard ability is never a mana ability:
+/// [`is_mana_ability`] requires every effect to be a mana verb and this one is not, so no
+/// exclusion has to be written there.
+#[must_use]
+pub fn is_graveyard_ability(ability: &Ability) -> bool {
+    matches!(
+        ability,
+        Ability::Activated { effects, .. }
+            if effects
+                .iter()
+                .any(|e| matches!(e, Effect::ReturnSelfFromGraveyard { .. }))
+    )
+}
+
 /// Whether an ability is a mana ability (CR 605.1a, simplified): an activated
 /// ability whose every effect adds mana, **and which is not a loyalty ability**. Mana
 /// abilities resolve immediately and do not use the stack (see `crate::apply_action`).

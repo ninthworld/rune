@@ -36,7 +36,7 @@
 
 use crate::ability::{CardFilter, Effect, FoundDestination, Target};
 use crate::card_type::CardType;
-use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
+use crate::id::{CardId, CardInstance, CardInstanceId, PlayerId};
 use crate::mana::Color;
 use crate::rng::SplitMix64;
 use crate::state::{GameEvent, GameState};
@@ -247,9 +247,9 @@ pub struct Resume {
     /// The suspended object's controller, the frame of reference every remaining
     /// effect is applied in.
     pub controller: PlayerId,
-    /// The ability's source permanent, for a self-referential remaining effect.
-    /// `None` for a spell.
-    pub source: Option<PermanentId>,
+    /// What the suspended ability came from (CR 113.3), for a self-referential remaining
+    /// effect. `None` for a spell, which has no source object of its own.
+    pub source: Option<crate::stack::AbilitySource>,
     /// The effects not yet applied, in order.
     pub effects: Vec<Effect>,
     /// The stored targets those effects have not yet consumed, in slot order.

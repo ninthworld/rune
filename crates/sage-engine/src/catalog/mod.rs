@@ -245,6 +245,14 @@ pub(crate) fn validate_definition(
         return Err(Violation::AbilityChangeIsEmpty { functional_id });
     }
 
+    // CR 113.6: an ability functions from a graveyard *because* it returns its own card
+    // from there, so the effect belongs on an activated ability and nowhere else — and
+    // that ability may charge only mana, a card in a zone having nothing to tap,
+    // sacrifice, or spend counters from.
+    if graveyard_ability_is_bad(object) {
+        return Err(Violation::GraveyardAbilityCannotFunction { functional_id });
+    }
+
     // At most one "up to N" target group per ability or spell, so the flat stored target
     // list pairs back onto effects unambiguously.
     if effect_lists(object)

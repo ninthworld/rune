@@ -1280,3 +1280,30 @@ fn a_layer_six_change_says_what_is_lost_before_what_is_gained() {
         "Flying, vigilance\n{1}: Test Grounded loses flying and vigilance until end of turn."
     );
 }
+
+#[test]
+fn issue_723_a_graveyard_ability_names_its_own_card_and_the_zone_it_works_in() {
+    // Reassembling Skeleton (bundled). Both halves of the sentence are facts about the
+    // source rather than anything an author chose: the card names itself, and the zone is
+    // the one the ability functions in (CR 113.6). The same string labels the dock button
+    // the player clicks, so the card and the offer cannot describe it differently.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "reassembling_skeleton"),
+        "{1}{B}: Return Reassembling Skeleton from your graveyard to the battlefield tapped."
+    );
+
+    // The graveyard→hand destination has no bundled representative yet, so it is
+    // exercised inline (ADR 0009) — the same sentence, ending in the other zone.
+    let inline = CardDatabase::from_json(
+        r#"[{"schema_version":1,"functional_id":"test_recurring_charm","name":"Test Recurring Charm",
+            "types":["enchantment"],"mana_cost":"{2}{G}","colors":["green"],
+            "abilities":[{"type":"activated","cost":[{"kind":"mana","mana":"{3}{G}"}],
+              "effects":[{"kind":"return_self_from_graveyard","destination":"hand"}]}]}]"#,
+    )
+    .unwrap();
+    assert_eq!(
+        text_of(&inline, "test_recurring_charm"),
+        "{3}{G}: Return Test Recurring Charm from your graveyard to your hand."
+    );
+}

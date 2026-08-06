@@ -134,6 +134,35 @@ pub enum Action {
         /// is validated slot-by-slot in [`crate::apply_action`].
         targets: Vec<Target>,
     },
+    /// Activate an ability of a card in the priority holder's **graveyard** that
+    /// functions from there (CR 113.6 — [`crate::is_graveyard_ability`]).
+    ///
+    /// A separate variant from [`Self::ActivateAbility`] because it names a separate
+    /// kind of object: a card in a zone has a [`CardInstance`] and no
+    /// [`PermanentId`], and every read of the source — its abilities, its cost, its
+    /// controller, the effect it resolves — has to go through a path that answers for
+    /// a card rather than one that assumes the battlefield. Folding it into the
+    /// permanent variant would mean a sentinel id, and a sentinel id is how a stale
+    /// lookup becomes a silent no-op instead of an illegal action.
+    ///
+    /// Everything downstream of the announcement is the ordinary path: the ability goes
+    /// on the stack as an ordinary [`crate::StackObject`] with an
+    /// [`AbilitySource::GraveyardCard`](crate::AbilitySource), any player may respond,
+    /// and it resolves through [`crate::resolve`]. Only where the source *is* differs.
+    ActivateAbilityFromGraveyard {
+        /// The specific card in the priority holder's graveyard whose ability is
+        /// activated. Names the physical copy, so two identical cards in one graveyard
+        /// stay individually addressable — and so the one that comes back is the one
+        /// that was paid for.
+        card: CardInstance,
+        /// Index into the card's abilities (see [`crate::abilities_of`]).
+        index: usize,
+        /// The targets chosen for this activation, in slot order — the same
+        /// parameterized representation [`Self::ActivateAbility`] uses, advertised
+        /// empty and validated in [`crate::apply_action`]. Empty for an ability that
+        /// targets nothing, which today is every graveyard ability the catalog holds.
+        targets: Vec<Target>,
+    },
     /// Choose the targets of a **triggered ability already on the stack** (CR 603.3d).
     ///
     /// A trigger is put on the stack by the game, not by a player, so its controller
@@ -398,6 +427,7 @@ impl Action {
     pub(super) fn targets(&self) -> &[Target] {
         match self {
             Action::ActivateAbility { targets, .. }
+            | Action::ActivateAbilityFromGraveyard { targets, .. }
             | Action::CastSpell { targets, .. }
             | Action::ChooseTriggerTargets { targets, .. } => targets,
             // `Keep::bottom` is a mulligan sub-choice and `AnswerChoice::chosen` a
@@ -437,6 +467,13 @@ impl Action {
                 index: *index,
                 targets: Vec::new(),
             },
+            Action::ActivateAbilityFromGraveyard { card, index, .. } => {
+                Action::ActivateAbilityFromGraveyard {
+                    card: *card,
+                    index: *index,
+                    targets: Vec::new(),
+                }
+            }
             // A cast drops its target selection *and its payment* to its requirement
             // form, the shape `valid_actions` advertises. Both are filled in later and
             // by the same rule (CR 601.2): the process announces the spell first, and

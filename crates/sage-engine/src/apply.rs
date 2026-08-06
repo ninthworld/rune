@@ -65,6 +65,16 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         } => {
             apply_activate_ability(&mut next, *permanent, *index, targets, db);
         }
+        // CR 113.6: the same announcement over a card in a graveyard. Only the source
+        // differs — it is a card in a zone, not a permanent — so this is its own helper
+        // rather than a branch inside one that assumes the battlefield.
+        Action::ActivateAbilityFromGraveyard {
+            card,
+            index,
+            targets,
+        } => {
+            apply_activate_ability_from_graveyard(&mut next, *card, *index, targets, db);
+        }
         // CR 601.2, in order and in one step: the payment's mana abilities are activated
         // first, then the cost is paid and the spell goes on the stack. Both halves have
         // already been found legal together above, and `next` is a copy — so a cast that

@@ -697,3 +697,43 @@ fn issue_149_life_effects_round_trip_and_target_nothing() {
     assert_eq!(gain.target_spec(), None);
     assert_eq!(lose.target_spec(), None);
 }
+
+#[test]
+fn issue_723_a_graveyard_ability_is_derived_from_the_effect_that_moves_its_own_card() {
+    // CR 113.6: where an ability functions is not a field an author sets — it follows
+    // from the one effect that could only work in a graveyard. Reassembling Skeleton's
+    // `{1}{B}: return this card from your graveyard to the battlefield tapped`.
+    let json = r#"{"type":"activated","cost":[{"kind":"mana","mana":"{1}{B}"}],
+        "effects":[{"kind":"return_self_from_graveyard","destination":"battlefield_tapped"}]}"#;
+    let ability: Ability = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        ability,
+        Ability::Activated {
+            cost: vec![Cost::Mana {
+                mana: "{1}{B}".to_string()
+            }],
+            effects: vec![Effect::ReturnSelfFromGraveyard {
+                destination: FoundDestination::BattlefieldTapped,
+            }],
+        }
+    );
+    assert!(is_graveyard_ability(&ability));
+    // Its subject is its own source, so it fills no slot and can never fizzle.
+    assert_eq!(
+        Effect::ReturnSelfFromGraveyard {
+            destination: FoundDestination::Hand,
+        }
+        .target_group(),
+        None
+    );
+    // And it is not a mana ability, so it uses the stack like any other activation.
+    assert!(!is_mana_ability(&ability));
+
+    // Every other activated ability answers no — the predicate reads the effects, not a
+    // flag, so a land's `{T}: Add {G}` could not claim to work from a graveyard.
+    let mana = r#"{"type":"activated","cost":[{"kind":"tap"}],
+        "effects":[{"kind":"add_mana","color":"green","amount":1}]}"#;
+    assert!(!is_graveyard_ability(
+        &serde_json::from_str::<Ability>(mana).unwrap()
+    ));
+}

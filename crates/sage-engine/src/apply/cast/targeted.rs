@@ -17,20 +17,22 @@ mod removal_tests;
 /// implicit subject never reach this function — they route through
 /// [`apply_effect`].
 ///
-/// `source` is the permanent the resolving object came from, or `None` for a spell (which
-/// has no permanent on the battlefield while it resolves) and for an emblem's ability — the
-/// same reference [`apply_effect`] takes. Two effects here read it, both because they name
-/// an object no player chose: an effect that says "attacking" is asking about the attack its
-/// own source is making, and [`Effect::Attach`] names *two* objects, the host it targets and
-/// the source it moves.
+/// `source` is what the resolving object came from (CR 113.3) — the same reference
+/// [`apply_effect`] takes — and `None` for a spell, which has no source object of its own.
+/// Two effects here read it, both because they name an object no player chose: an effect
+/// that says "attacking" is asking about the attack its own source is making, and
+/// [`Effect::Attach`] names *two* objects, the host it targets and the source it moves.
+/// Both want a permanent, so both go through [`AbilitySource::permanent`](crate::AbilitySource),
+/// which answers `None` for an emblem and for a card in a graveyard — neither is one.
 pub(crate) fn apply_targeted_effect(
     state: &mut GameState,
     effect: &Effect,
     target: Target,
     controller: PlayerId,
-    source: Option<PermanentId>,
+    source: Option<crate::stack::AbilitySource>,
     db: &CardDatabase,
 ) {
+    let source = source.and_then(crate::stack::AbilitySource::permanent);
     match effect {
         Effect::Tap { .. } => {
             if let Target::Permanent(id) = target {
@@ -415,6 +417,9 @@ pub(crate) fn apply_targeted_effect(
         | Effect::RestrictSelf { .. }
         | Effect::AlterAbilitiesSelf { .. }
         | Effect::GainLifeByCount { .. }
+        // A card returning itself out of a graveyard names its own source, never a
+        // chosen one (CR 115.1), so it too is applied by [`apply_effect`].
+        | Effect::ReturnSelfFromGraveyard { .. }
         | Effect::PutCountersOnSelf { .. } => {}
         // "Target player's graveyard": the targeting form of the same verb, routed here
         // for the reason a targeted mill is — the reference chose a seat, and this is
@@ -473,7 +478,7 @@ fn take_from_a_graveyard(
 
 /// [`take_from_a_graveyard`], paired with the seat it came out of — the card's owner
 /// (CR 400.7), and therefore whose hand it goes back to.
-fn take_from_a_graveyard_with_owner(
+pub(super) fn take_from_a_graveyard_with_owner(
     state: &mut GameState,
     instance: crate::id::CardInstanceId,
 ) -> Option<(PlayerId, crate::id::CardInstance)> {

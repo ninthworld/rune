@@ -566,3 +566,48 @@ fn issue_726_a_layer_six_change_that_changes_nothing_is_rejected() {
         assert!(validate_definition(None, &definition(&ability)).is_ok());
     }
 }
+
+#[test]
+fn a_return_self_from_graveyard_must_sit_on_an_activated_ability_it_can_pay_for() {
+    // CR 113.6: the effect is what makes an ability function from a graveyard, so it is
+    // only honest where such an ability can actually be activated. The shape
+    // Reassembling Skeleton prints — an activated ability whose cost is mana — is the
+    // one that validates.
+    let good = r#", "abilities": [{"type": "activated",
+        "cost": [{"kind": "mana", "mana": "{1}{B}"}],
+        "effects": [{"kind": "return_self_from_graveyard",
+                     "destination": "battlefield_tapped"}]}]"#;
+    assert!(validate_definition(None, &definition(good)).is_ok());
+
+    // A card in a graveyard is not a permanent: there is nothing to tap. An ability
+    // authored this way would simply never be offered — a dead ability, caught here.
+    let tapped = r#", "abilities": [{"type": "activated", "cost": [{"kind": "tap"}],
+        "effects": [{"kind": "return_self_from_graveyard", "destination": "hand"}]}]"#;
+    assert_eq!(
+        validate_definition(None, &definition(tapped)),
+        Err(Violation::GraveyardAbilityCannotFunction {
+            functional_id: "test_card".to_string(),
+        }),
+    );
+
+    // And on anything but an activated ability there is no activation to offer at all —
+    // a trigger, a spell effect, or an effect nested inside a wrapper.
+    for elsewhere in [
+        r#", "abilities": [{"type": "triggered", "event": "self_enters_battlefield",
+             "effects": [{"kind": "return_self_from_graveyard", "destination": "hand"}]}]"#,
+        r#", "spell_effects": [{"kind": "return_self_from_graveyard",
+             "destination": "hand"}]"#,
+        r#", "abilities": [{"type": "activated",
+             "cost": [{"kind": "mana", "mana": "{B}"}],
+             "effects": [{"kind": "may", "effects": [
+                 {"kind": "return_self_from_graveyard", "destination": "hand"}]}]}]"#,
+    ] {
+        assert_eq!(
+            validate_definition(None, &definition(elsewhere)),
+            Err(Violation::GraveyardAbilityCannotFunction {
+                functional_id: "test_card".to_string(),
+            }),
+            "expected `{elsewhere}` to be rejected"
+        );
+    }
+}

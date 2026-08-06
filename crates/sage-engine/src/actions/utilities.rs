@@ -59,6 +59,68 @@ pub(crate) fn cost_payable(state: &GameState, cost: &[Cost], permanent: &Permane
     })
 }
 
+/// The activated ability `index` of `card`, if that card is in `seat`'s graveyard right
+/// now **and** the ability functions from there (CR 113.6,
+/// [`is_graveyard_ability`]).
+///
+/// The one lookup every part of the graveyard-activation seam goes through — the offer,
+/// the apply-time re-check, the target-group enumeration, and the announcement — so
+/// "which ability is this action naming" is answered once and the four can never disagree
+/// about it. Three separate `None`s, each of which is a way an action can be stale rather
+/// than merely unpayable: the card has left the graveyard, the index names nothing (or
+/// names a non-activated ability), or the ability is an ordinary one that only works on
+/// the battlefield.
+///
+/// It reads the *graveyard*, never the battlefield: a card in a zone has no
+/// [`Permanent`] to look up, and asking for one is the mistake this exists to make
+/// impossible.
+pub(crate) fn graveyard_ability(
+    state: &GameState,
+    db: &CardDatabase,
+    seat: PlayerId,
+    card: crate::id::CardInstance,
+    index: usize,
+) -> Option<Ability> {
+    let player = state.players.get(seat.0)?;
+    if !player.graveyard.iter().any(|c| c.id == card.id) {
+        return None;
+    }
+    let ability = crate::card::abilities_of(db, card.card)
+        .into_iter()
+        .nth(index)?;
+    if !matches!(ability, Ability::Activated { .. })
+        || !crate::ability::is_graveyard_ability(&ability)
+    {
+        return None;
+    }
+    Some(ability)
+}
+
+/// Whether `seat` can pay `cost` for an ability activated from their graveyard.
+///
+/// The graveyard counterpart of [`cost_payable`], and deliberately narrower: a card in a
+/// graveyard is not a permanent, so there is nothing to tap, nothing to sacrifice, and no
+/// counters to remove. Mana is the only component such a cost can have, and **every other
+/// component is unpayable** rather than ignored — an ability authored with a `{T}` it
+/// cannot pay is not offered at all, instead of being offered for free. The catalog
+/// validator rejects that authoring outright ([`crate::Violation`]); this is the second,
+/// independent gate that holds for a database assembled in a test.
+///
+/// Mana affordability goes through the same [`ManaPool::can_pay`] the battlefield path
+/// uses over the same `{...}` notation, so the offer and the charge cannot disagree.
+pub(crate) fn graveyard_cost_payable(state: &GameState, seat: PlayerId, cost: &[Cost]) -> bool {
+    cost.iter().all(|c| match c {
+        Cost::Mana { mana } => state.players.get(seat.0).is_some_and(|player| {
+            player
+                .mana_pool
+                .can_pay(&crate::mana::parse_mana_cost(mana))
+        }),
+        Cost::Tap | Cost::Loyalty { .. } | Cost::SacrificeThis | Cost::RemoveCounters { .. } => {
+            false
+        }
+    })
+}
+
 /// Whether `permanent` currently has enough loyalty counters to pay a loyalty cost of
 /// `amount` (CR 606.3). Trivially true for a zero or positive amount; for a negative
 /// one the permanent must have at least that many counters.
