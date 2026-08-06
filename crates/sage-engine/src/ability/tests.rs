@@ -406,6 +406,7 @@ fn issue_150_pump_round_trips_with_its_target_spec() {
             power: 3,
             toughness: 3,
             keywords: Vec::new(),
+            restrictions: Vec::new(),
         }
     );
     assert_eq!(effect.target_spec(), Some(TargetSpec::AnyCreature));
@@ -423,12 +424,34 @@ fn issue_150_pump_round_trips_with_its_target_spec() {
             power: 2,
             toughness: 2,
             keywords: vec![crate::card::Keyword::Flying],
+            restrictions: Vec::new(),
         }
     );
     assert_eq!(
         effect.target_group().map(|group| (group.min, group.max)),
         Some((1, 1)),
         "one slot, however many keywords ride along"
+    );
+
+    // And a pump that imposes a combat restriction — including the one *requirement* in
+    // that vocabulary (CR 509.1c, issue #739) — rides in the same effect for the same
+    // reason, on the same single slot.
+    let json = r#"{"kind":"pump","target":"any_creature","power":3,"toughness":3,
+                   "restrictions":["must_be_blocked_by_all_able"]}"#;
+    let effect: Effect = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        effect,
+        Effect::Pump {
+            target: TargetSpec::AnyCreature,
+            power: 3,
+            toughness: 3,
+            keywords: Vec::new(),
+            restrictions: vec![crate::card::CombatRestriction::MustBeBlockedByAllAble],
+        }
+    );
+    assert_eq!(
+        effect.target_group().map(|group| (group.min, group.max)),
+        Some((1, 1))
     );
 }
 

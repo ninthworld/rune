@@ -231,6 +231,18 @@ pub enum Effect {
         /// the ordinary pump that only changes numbers.
         #[serde(default)]
         keywords: Vec<Keyword>,
+        /// Combat restrictions imposed on the same target until end of turn, applied at
+        /// CR 613 layer 6 exactly as [`Effect::Restrict`] imposes one — including the
+        /// one *requirement* in that vocabulary, `all creatures able to block it do so`.
+        /// Empty for the ordinary pump.
+        ///
+        /// Beside [`keywords`](Self::Pump::keywords) rather than in a second effect for
+        /// exactly the reason the keywords are: one effect declares one target group, so
+        /// a combat trick printed as *target creature gets +3/+3 **and** every creature
+        /// able to block it does so* has to be one effect, or the engine would offer two
+        /// independent slots and let a player pump one creature while another was bound.
+        #[serde(default)]
+        restrictions: Vec<CombatRestriction>,
     },
     /// Grant the single creature this effect targets a keyword ability **until end
     /// of turn** — the pump-spell analogue of [`Effect::Pump`] for keywords (e.g.

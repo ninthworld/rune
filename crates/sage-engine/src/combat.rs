@@ -25,14 +25,19 @@
 //! (CR 702.2b / 510.1e), and lifelink (CR 702.15e) shape the assignment within a
 //! step. Double strike (CR 702.4, issue #373): a double striker deals in *both* the
 //! first-strike and the regular step, and the player-chosen damage-assignment order
-//! (issue #346) applies in each. Every function here is a pure predicate/enumeration
-//! over an immutable [`GameState`] — no I/O, no mutation — consistent with the
-//! engine's rules.
+//! (issue #346) applies in each. Block **requirements** (CR 509.1c, issue #739): an
+//! attacker every creature able to block it must block turns validating a declaration
+//! into a search over the declarations that were not submitted, which is why the
+//! maximisation lives in its own module ([`max_block_requirements_met`]) rather than
+//! beside the per-pair and per-count gates it must not be confused with. Every function
+//! here is a pure predicate/enumeration over an immutable [`GameState`] — no I/O, no
+//! mutation — consistent with the engine's rules.
 
 mod damage;
 mod declaration;
 mod eligibility;
 mod helpers;
+mod requirements;
 
 pub(crate) use damage::{
     blocked_attackers, combat_damage, combat_has_first_strike, CombatDamage, DamageStep,
@@ -51,4 +56,7 @@ pub use helpers::{
     attacking_taps, blocked_by_at_most_one, blocker_can_block_attacker, blocks_allowed,
     permanent_has_menace, permanent_has_restriction, permanent_restrictions,
     summoning_sickness_restricts,
+};
+pub use requirements::{
+    block_requirements, max_block_requirements_met, must_be_blocked_by_all_able,
 };

@@ -265,6 +265,13 @@ pub(super) fn restriction_predicate(restriction: &CombatRestriction) -> String {
         CombatRestriction::CanBlockAdditional(count) => {
             format!("can block up to {count} additional creatures each combat")
         }
+        // The one *requirement* in the vocabulary, and so the one predicate here that is
+        // neither a "can't" nor a "can". "Able to do so" rather than "able to block it"
+        // for the same reason the rest avoid a subject: a class is a legitimate subject
+        // here, and a pronoun would have to agree with it.
+        CombatRestriction::MustBeBlockedByAllAble => {
+            "must be blocked by every creature able to do so".to_string()
+        }
     }
 }
 

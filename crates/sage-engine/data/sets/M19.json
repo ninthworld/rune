@@ -620,6 +620,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "declare_dominance",
+    "collector_number": "175",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "druid_of_the_cowl",
     "collector_number": "177",
     "rarity": "common"

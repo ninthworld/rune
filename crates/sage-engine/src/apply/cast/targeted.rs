@@ -161,6 +161,7 @@ pub(crate) fn apply_targeted_effect(
             power,
             toughness,
             keywords,
+            restrictions,
             ..
         } => {
             if let Target::Permanent(id) = target {
@@ -181,6 +182,18 @@ pub(crate) fn apply_targeted_effect(
                             source,
                             affects: EffectAffects::SpecificPermanent(id),
                             modification: Modification::GrantKeyword(*keyword),
+                            duration: Duration::UntilEndOfTurn,
+                        });
+                    }
+                    // The same creature, in the same breath — a CR 613 layer-6
+                    // imposition the cleanup step removes (CR 514.2), exactly as the
+                    // standalone restrict verb adds one.
+                    for restriction in restrictions {
+                        let source = state.mint_id();
+                        state.static_effects.push(StaticEffect {
+                            source,
+                            affects: EffectAffects::SpecificPermanent(id),
+                            modification: Modification::GrantRestriction(restriction.clone()),
                             duration: Duration::UntilEndOfTurn,
                         });
                     }
