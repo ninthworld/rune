@@ -221,9 +221,13 @@ pub(crate) fn validate_definition(
     }
 
     // A power bound is the one selector field read from computed characteristics, which
-    // the layer system cannot ask for from inside itself without recursing.
+    // the layer system cannot ask for from inside itself without recursing. Two sites are
+    // evaluated there: a static ability's condition, and an attachment's counted grant.
     if static_condition_counts_by_power(object) {
         return Err(Violation::PowerInStaticCondition { functional_id });
+    }
+    if attachment_counts_by_power(object) {
+        return Err(Violation::PowerInAttachmentCount { functional_id });
     }
 
     // CR 114.1: an emblem has no characteristics but its abilities, and only the two

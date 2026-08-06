@@ -191,18 +191,44 @@ fn static_condition_holds(
 /// own object id — a strictly increasing, replayable timestamp (CR 613.7) — and it
 /// is keyed to the specific host permanent, so it folds in exactly like a pump
 /// keyed to that permanent, and disappears when the attachment leaves *or moves*.
+///
+/// A grant with an [`Attachment::count_of`](crate::Attachment::count_of) multiplies by
+/// that count **here, on every read** rather than at the moment the Aura resolved. This is
+/// a static ability (CR 604.3), not a one-shot effect, so CR 608.2 does not apply to it:
+/// `+1/+1 for each Forest you control` grows when a Forest arrives and shrinks when one
+/// leaves, which is what separates it from the fixed modifier
+/// [`Effect::PumpByCount`](crate::Effect::PumpByCount) leaves behind. Counting is safe
+/// from inside the layer system for the same two reasons a static ability's condition is:
+/// [`count_permanents`](crate::condition::count_permanents) reads printed characteristics,
+/// and the one field that would read a computed power is refused at build time
+/// ([`Violation::PowerInAttachmentCount`](crate::Violation::PowerInAttachmentCount)).
+///
+/// The count is relative to the **attachment's** controller, which is who "you control"
+/// means on the card that printed the grant — not the host's controller, who may be an
+/// opponent that stole the creature.
 pub(super) fn attachment_pt_effect(
+    state: &GameState,
     attachment: &Permanent,
     db: &CardDatabase,
 ) -> Option<StaticEffect> {
     let host = attachment.attached_to?;
     let grant = attachment.printed.face(db)?.attachment()?;
+    let scale = match &grant.count_of {
+        None => 1,
+        Some(wanted) => i32::try_from(crate::condition::count_permanents(
+            state,
+            wanted,
+            controller_of(state, attachment),
+            db,
+        ))
+        .unwrap_or(i32::MAX),
+    };
     Some(StaticEffect {
         source: attachment.id.0,
         affects: EffectAffects::SpecificPermanent(host),
         modification: Modification::PowerToughness {
-            power: grant.power,
-            toughness: grant.toughness,
+            power: grant.power.saturating_mul(scale),
+            toughness: grant.toughness.saturating_mul(scale),
         },
         duration: Duration::WhileOnBattlefield,
     })

@@ -30,6 +30,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `aven_wind_mage` | Aven Wind Mage | functional definition |
 | `aviation_pioneer` | Aviation Pioneer | functional definition |
 | `befuddle` | Befuddle | functional definition |
+| `blanchwood_armor` | Blanchwood Armor | functional definition |
 | `blood_divination` | Blood Divination | functional definition |
 | `boggart_brute` | Boggart Brute | functional definition |
 | `bogstomper` | Bogstomper | functional definition |
@@ -234,7 +235,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Effects that let a player choose the order of cards put back on a library | a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random |
 | Effects that return a card from a graveyard to a zone other than a hand or the battlefield | a targeted card returns from a graveyard to a hand or to the battlefield, and a whole graveyard can be exiled; nothing else moves a card out of one |
 | Effects that untap a permanent it did not just take | untapping rides on the control change that steals a creature, because one effect names one target; nothing else brings an untap forward |
-| Effects whose amount is derived from anything but a count of permanents | an amount may scale with a count of permanents — power/toughness, life, or damage; cards in a zone, life totals, and mana values feed nothing |
+| Effects whose amount is derived from anything but a count of permanents | a count of permanents may feed power/toughness, life, damage, a token count, and an attachment's static grant; nothing else may — not cards in a zone, a life total, a mana value, another object's power, life gained this turn, half of a total, or a count of what this resolution milled or sacrificed |
 | Emblems with an activated ability | an emblem carries static and triggered abilities only; nothing offers a way to activate one |
 | Equipment that grants an ability or a type, and cards that ask whether a creature is equipped | an attachment grants power/toughness, keywords, and combat restrictions at CR 613 layers 6 and 7c; it adds no triggered ability and no type, and nothing asks whether a permanent is attached |
 | Fight, and other effects taking two differently-specified targets | one effect's target slots all share a single spec, so two differently-specified slots are unwritable |

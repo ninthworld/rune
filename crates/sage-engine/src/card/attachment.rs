@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use super::keyword::Keyword;
 use super::restriction::CombatRestriction;
-use crate::ability::TargetSpec;
+use crate::ability::{PermanentCount, TargetSpec};
 
 /// Which kind of attachment a card is — the one field that is *not* shared between an
 /// Aura and an Equipment (CR 303.4, CR 301.5).
@@ -93,13 +93,41 @@ pub struct Attachment {
     pub equip: Option<String>,
     /// The signed amount this adds to the attached object's power at CR 613 layer 7c.
     /// Negative shrinks (e.g. a `-2/-2` Aura). Defaults to `0`.
+    ///
+    /// With [`count_of`](Self::count_of) present this is the amount contributed **per
+    /// counted permanent** rather than a flat one.
     #[serde(default)]
     pub power: i32,
     /// The signed amount this adds to the attached object's toughness at CR 613 layer 7c.
     /// Negative shrinks — enough can drop toughness to 0 or less and let the CR 704.5f
     /// state-based action put the host into its graveyard. Defaults to `0`.
+    ///
+    /// Per counted permanent when [`count_of`](Self::count_of) is present, exactly as
+    /// [`Self::power`] is.
     #[serde(default)]
     pub toughness: i32,
+    /// Which permanents [`power`](Self::power) and [`toughness`](Self::toughness) are
+    /// multiplied by, if any — the `+1/+1 for each Forest you control` of a counted Aura.
+    /// Absent is the ordinary flat grant.
+    ///
+    /// **This one is not fixed on resolution**, and that is the whole difference between
+    /// it and [`Effect::PumpByCount`](crate::Effect::PumpByCount). A pump is a one-shot
+    /// effect, so CR 608.2 takes its X once and the layer system folds a *fixed* modifier
+    /// in forever after. This is a **static ability** (CR 604.3) whose continuous effect
+    /// exists only while the attachment is attached, so its value is recalculated on every
+    /// read of the host's characteristics: playing another Forest grows the grant, and
+    /// losing one shrinks it. Deriving rather than storing is what the layer system
+    /// already does with the flat grant — the count simply rides along.
+    ///
+    /// Because it *is* evaluated from inside the computation of a permanent's
+    /// characteristics, it may not count by
+    /// [`PermanentCount::min_power`](crate::PermanentCount::min_power): that field reads a
+    /// computed power, which would ask the layer system for an answer it is in the middle
+    /// of producing. The catalog validator refuses it
+    /// ([`Violation::PowerInAttachmentCount`](crate::Violation::PowerInAttachmentCount)),
+    /// as it refuses the same field in a static ability's condition.
+    #[serde(default)]
+    pub count_of: Option<PermanentCount>,
     /// The keyword abilities this grants the attached object at CR 613 layer 6
     /// (CR 613.1f) — e.g. an Aura granting flying, or an Equipment granting trample. Empty
     /// for a P/T-only attachment. Each granted keyword is folded into the host's computed
@@ -154,6 +182,7 @@ mod tests {
                 equip: None,
                 power: 2,
                 toughness: 2,
+                count_of: None,
                 keywords: vec![],
                 restrictions: vec![],
             })
@@ -171,6 +200,7 @@ mod tests {
                 equip: None,
                 power: -2,
                 toughness: -2,
+                count_of: None,
                 keywords: vec![],
                 restrictions: vec![],
             })
@@ -204,6 +234,7 @@ mod tests {
                 equip: Some("{2}".to_string()),
                 power: 2,
                 toughness: 1,
+                count_of: None,
                 keywords: vec![],
                 restrictions: vec![],
             })
