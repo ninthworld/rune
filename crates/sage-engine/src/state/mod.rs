@@ -84,6 +84,14 @@ pub struct GameState {
     /// shape as [`Self::graveyard_casting`], empty in almost every state, and cleared
     /// at the same turn boundary.
     pub ignoring_hexproof: Vec<IgnoringHexproof>,
+    /// One-shot **replacement effects** created this turn (CR 614.1b) — see
+    /// [`PendingReplacement`](crate::PendingReplacement).
+    ///
+    /// The same per-turn shape as [`Self::graveyard_casting`], empty in almost every
+    /// state, and cleared at the same turn boundary. It is the *second* source list the
+    /// replacement layer walks; the first is the entering object's own abilities, which
+    /// are read off the card and never stored (see [`crate::replacement`]).
+    pub replacements: Vec<crate::replacement::PendingReplacement>,
     /// The stack of spells and abilities, bottom first (the last element is the
     /// top and resolves first). Mana abilities never appear here.
     pub stack: Vec<StackObject>,

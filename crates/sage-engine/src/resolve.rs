@@ -437,11 +437,13 @@ pub(crate) fn put_resolved_spell_in_its_final_zone(
         } else {
             None
         };
-        // CR 614.1c/614.12: the battlefield-entry seam applies the permanent's own
-        // enters-the-battlefield replacements ("enters tapped", "enters with N +1/+1
-        // counters") as it enters — before the SBA loop and before ETB triggers are
-        // collected — so a 0/0 that enters with two +1/+1 counters is a 2/2 and lives.
-        state.put_card_onto_battlefield(card, controller, false, attached_to, db);
+        // CR 614: the battlefield-entry seam runs the arrival through the replacement
+        // layer — the permanent's own "enters tapped" / "enters with counters", plus any
+        // replacement an ability created — before the SBA loop and before ETB triggers
+        // are collected, so a 0/0 that enters with two +1/+1 counters is a 2/2 and lives.
+        // This is the one seam that records the entry as a **cast** one, which is what a
+        // replacement saying `without being cast` reads.
+        state.resolve_permanent_spell_onto_battlefield(card, controller, attached_to, db);
     } else if let Some(player) = state.players.get_mut(controller.0) {
         player.graveyard.push(card);
     }

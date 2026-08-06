@@ -95,7 +95,7 @@ pub(super) fn colorless_pips(amount: u8) -> String {
 }
 
 /// `count` counters of `kind`, e.g. `a +1/+1 counter` or `two -1/-1 counters`.
-pub(super) fn counters(kind: CounterKind, count: u32) -> String {
+pub(crate) fn counters(kind: CounterKind, count: u32) -> String {
     let symbol = match kind {
         CounterKind::PlusOnePlusOne => "+1/+1",
         CounterKind::MinusOneMinusOne => "-1/-1",
@@ -268,6 +268,7 @@ pub(super) fn keyword_word(keyword: Keyword) -> &'static str {
         Keyword::DoubleStrike => "double strike",
         Keyword::Hexproof => "hexproof",
         Keyword::Indestructible => "indestructible",
+        Keyword::Flash => "flash",
     }
 }
 
@@ -407,7 +408,7 @@ pub(super) fn finish(clause: &str) -> String {
 
 /// The clause with its first character uppercased. ASCII-only by construction — every
 /// clause above starts with an English word or a card's name.
-pub(super) fn sentence_case(clause: &str) -> String {
+pub(crate) fn sentence_case(clause: &str) -> String {
     let mut chars = clause.chars();
     match chars.next() {
         Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),

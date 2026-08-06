@@ -59,7 +59,58 @@ pub(crate) fn player_choice_prompts(state: &GameState, db: &CardDatabase) -> Vec
         ChoiceQuestion::Cards(request) => vec![card_choice_prompt(state, db, request)],
         ChoiceQuestion::Confirm(request) => vec![confirm_prompt(state, request)],
         ChoiceQuestion::Color(request) => vec![color_prompt(request, db)],
+        ChoiceQuestion::Replacement(_) => vec![replacement_prompt(state, db)],
     }
+}
+
+/// The CR 616.1 ordering question, as the same `option` slot the yes-or-no and the
+/// colour choice already ride on.
+///
+/// One option per applicable replacement, in the order the engine derived them, labelled
+/// with the words the card itself is written in. The option **id is the position** —
+/// which is what the engine's answer names ([`Action::AnswerReplacement`]) — so the list
+/// the player is shown and the list the answer indexes into are the same list by
+/// construction.
+fn replacement_prompt(state: &GameState, db: &CardDatabase) -> Prompt {
+    let options = pending_replacement_options(state, db)
+        .iter()
+        .enumerate()
+        .map(|(index, offered)| PromptOption {
+            id: index.to_string(),
+            label: offered_replacement_label(offered),
+            requires: Vec::new(),
+        })
+        .collect();
+    Prompt::Option {
+        slot: CHOICE_SLOT.to_string(),
+        prompt: replacement_question(),
+        options,
+    }
+}
+
+/// The words the ordering question is asked in. It names no card: what the player is
+/// deciding between is *the effects*, and those are the option labels.
+fn replacement_question() -> String {
+    "Choose which replacement effect applies first".to_string()
+}
+
+/// One offered replacement as a label, drawn from the same formatter the card's rules
+/// text uses so the option and the card read the same way.
+fn offered_replacement_label(offered: &OfferedReplacement) -> String {
+    let clause = match offered {
+        OfferedReplacement::SelfReplacement(ability) => match ability {
+            Ability::EntersTapped => "it enters tapped".to_string(),
+            Ability::EntersWithCounters { counter, count } => format!(
+                "it enters with {} on it",
+                crate::rules_text::counters(*counter, *count)
+            ),
+            // Every other ability shape is filtered out before it reaches here; a
+            // generic label is the right amount of damage for one that somehow did.
+            _ => "a replacement effect".to_string(),
+        },
+        OfferedReplacement::Created(effect) => crate::rules_text::replacement_phrase(effect),
+    };
+    crate::rules_text::sentence_case(&clause)
 }
 
 /// The color question, as the same `option` slot the yes-or-no already rides on.
@@ -101,10 +152,15 @@ fn color_question(request: &ColorRequest, db: &CardDatabase) -> String {
             crate::rules_text::restriction_phrase(restriction)
         ),
         ColorOutcome::AddMana { restriction: None } => "Choose a color of mana to add".to_string(),
-        ColorOutcome::RecordOnEntry(entry) => format!(
-            "Choose a color as {} enters the battlefield",
-            card_name(entry.card.card, db)
-        ),
+        ColorOutcome::RecordOnEntry(entry) => match entry.object.card() {
+            Some(card) => format!(
+                "Choose a color as {} enters the battlefield",
+                card_name(card.card, db)
+            ),
+            // A token is never asked (`create_token` consults no colour question), so
+            // this arm is unreachable in play; naming no card is the honest rendering.
+            None => "Choose a color as this permanent enters the battlefield".to_string(),
+        },
     }
 }
 
@@ -214,8 +270,35 @@ pub(crate) fn player_choice_label(state: &GameState, db: &CardDatabase) -> Strin
             optional_effect_question(request.cost.as_deref(), &request.effects)
         }
         Some(ChoiceQuestion::Color(request)) => color_question(request, db),
+        Some(ChoiceQuestion::Replacement(_)) => replacement_question(),
         None => "Make a choice".to_string(),
     }
+}
+
+/// Map a returned answer to the CR 616.1 ordering choice onto
+/// [`Action::AnswerReplacement`].
+///
+/// The same reject-stale discipline the other three answers follow: only an option id
+/// the offer itself listed counts, and the engine is asked whether an ordering choice is
+/// owed at all before one is built. The id *is* the index, so the parse is the binding;
+/// the engine independently re-derives the option list and rejects an index past its end.
+pub(crate) fn bind_player_replacement(
+    state: &GameState,
+    offered: &ValidAction,
+    targets: &[TargetChoice],
+) -> Option<Action> {
+    let options = offered.prompts.iter().find_map(|prompt| match prompt {
+        Prompt::Option { slot, options, .. } if slot == CHOICE_SLOT => Some(options),
+        _ => None,
+    })?;
+    pending_player_choice(state)?.question.replacement()?;
+    let answer = chosen_for(targets, CHOICE_SLOT).first()?;
+    if !options.iter().any(|option| &option.id == answer) {
+        return None;
+    }
+    Some(Action::AnswerReplacement {
+        index: answer.parse().ok()?,
+    })
 }
 
 /// Map a returned answer to the `player_choice` action onto the concrete
@@ -764,6 +847,99 @@ mod tests {
         );
 
         // The opponent is offered nothing: the game is frozen on someone else's answer.
+        assert!(choice_action(&personalized_view(&state, &db, PlayerId(1))).is_none());
+    }
+
+    #[test]
+    fn issue_731_the_replacement_ordering_projects_as_an_option_whose_id_is_the_position() {
+        // CR 616.1 reaches the client as the `option` prompt it already knows: one entry
+        // per applicable replacement, labelled with what it would do, and answered with
+        // the position the engine indexes into. No new wire shape, and no seat but the
+        // affected permanent's controller is asked.
+        let db = CardDatabase::from_json(
+            r#"[
+            {"schema_version":1,"functional_id":"test_ward","name":"Test Ward",
+             "types":["instant"],"mana_cost":"{U}","colors":["blue"],
+             "spell_effects":[{"kind":"create_replacement","replacement":{
+               "kind":"exile_entering",
+               "entering":{"card_type":"creature","nontoken":true,"not_cast":true}}}]},
+            {"schema_version":1,"functional_id":"test_wraith","name":"Test Wraith",
+             "types":["creature"],"subtypes":["Spirit"],"mana_cost":"{1}{B}","colors":["black"],
+             "power":1,"toughness":1,
+             "abilities":[
+               {"type":"enters_tapped"},
+               {"type":"activated","cost":[{"kind":"mana","mana":"{1}"}],
+                "effects":[{"kind":"return_self_from_graveyard","destination":"battlefield"}]}]}
+        ]"#,
+        )
+        .unwrap();
+        let ward = db
+            .card_id(&sage_engine::FunctionalId::try_from("test_ward".to_string()).unwrap())
+            .unwrap();
+        let wraith = db
+            .card_id(&sage_engine::FunctionalId::try_from("test_wraith".to_string()).unwrap())
+            .unwrap();
+
+        // Seat 1 arms the replacement; seat 0 brings a wraith back, which is both a
+        // creature entering without being cast and a creature that enters tapped.
+        let mut state = main_phase();
+        state.priority = PlayerId(1);
+        let ward_card = state.new_instance(ward);
+        state.players[1].hand.push(ward_card);
+        let state = sage_engine::apply_action(
+            &state,
+            &Action::CastSpell {
+                card: ward_card,
+                targets: Vec::new(),
+                payment: Vec::new(),
+            },
+            &db,
+        );
+        let state = sage_engine::apply_action(&state, &Action::PassPriority, &db);
+        let mut state = sage_engine::apply_action(&state, &Action::PassPriority, &db);
+        assert_eq!(state.replacements.len(), 1);
+
+        let wraith_card = state.new_instance(wraith);
+        state.players[0].graveyard.push(wraith_card);
+        state.priority = PlayerId(0);
+        state.consecutive_passes = 0;
+        let state = sage_engine::apply_action(
+            &state,
+            &Action::ActivateAbilityFromGraveyard {
+                card: wraith_card,
+                index: 1,
+                targets: Vec::new(),
+            },
+            &db,
+        );
+        let state = sage_engine::apply_action(&state, &Action::PassPriority, &db);
+        let state = sage_engine::apply_action(&state, &Action::PassPriority, &db);
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let action = choice_action(&view).expect("the affected controller is asked");
+        let (prompt, options) = option_prompt(action);
+        assert_eq!(prompt, "Choose which replacement effect applies first");
+        assert_eq!(options, vec!["0", "1"], "the option id is the position");
+        let Prompt::Option { options, .. } = &action.prompts[0] else {
+            panic!("an option prompt");
+        };
+        let labels: Vec<&str> = options.iter().map(|o| o.label.as_str()).collect();
+        assert_eq!(labels, vec!["It enters tapped", "Exile it instead"]);
+
+        let answer = ChooseAction {
+            action_id: action.id.clone(),
+            token: action.token.clone(),
+            targets: vec![TargetChoice {
+                slot: CHOICE_SLOT.to_string(),
+                chosen: vec!["1".to_string()],
+            }],
+            ..Default::default()
+        };
+        assert_eq!(
+            resolve_action(&state, &db, PlayerId(0), &answer),
+            Some(Action::AnswerReplacement { index: 1 }),
+        );
+        // The seat whose ability created the replacement is not the one asked.
         assert!(choice_action(&personalized_view(&state, &db, PlayerId(1))).is_none());
     }
 }

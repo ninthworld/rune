@@ -37,11 +37,14 @@ asset. It owns zones, turns, priority, the stack, combat, legal-action generatio
 effects, triggers, computed characteristics, state-based actions, deterministic randomness,
 and the embedded card catalog.
 
-**There is no replacement-effect layer.** The one replacement the engine applies is a card's
-own enters-the-battlefield self-replacement (CR 614.1c/614.12 — "enters tapped", "enters with
-counters"), applied at the battlefield-entry seam rather than as a general shield anything can
-register against. Damage prevention, regeneration, cost modification, and every other
-replacement remain out of scope, and the compatibility report says so as an exclusion.
+**The replacement-effect layer covers one event: a permanent entering the battlefield**
+([ADR 0019](decisions/0019-replacement-effects.md)). That entry is a *value* every road onto
+the battlefield builds and hands to one function, which collects the replacements that apply
+to it — the entering object's own (CR 614.1c: "enters tapped", "enters with counters") and any
+an ability created for the turn — has the affected permanent's controller order them when more
+than one does (CR 616.1), and applies each at most once (CR 614.5). No other event can be
+replaced: damage prevention, regeneration, cost modification, and a permanent *leaving* the
+battlefield are all out of scope, and the compatibility report says so as an exclusion.
 
 It performs **no runtime I/O** — no sockets, rooms, clocks, threads, or ambient randomness.
 Runtime dependencies are `serde`/`serde_json`, for parsing compile-time-embedded card data

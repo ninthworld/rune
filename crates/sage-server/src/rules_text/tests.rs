@@ -1424,3 +1424,17 @@ fn issue_721_an_activation_cost_states_what_the_player_must_spend() {
          target creature."
     );
 }
+
+/// A created replacement reads as the sentence a card prints it in: the event, the turn
+/// it lasts, the qualifier on the event, and what happens instead (CR 614.1b). The
+/// keyword line above it is the flash the card is held up with (CR 702.8).
+#[test]
+fn issue_731_a_created_replacement_reads_as_the_next_time_this_turn() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "mistcaller"),
+        "Flash\n\
+         Sacrifice this permanent: The next time a nontoken creature would enter the \
+         battlefield this turn without being cast, exile it instead."
+    );
+}

@@ -70,8 +70,8 @@ pub enum Ability {
     /// nothing after the fact — it modifies the enters-the-battlefield event itself,
     /// so the permanent is tapped the instant it is on the battlefield, before any
     /// state-based action or enters-the-battlefield trigger is observed (CR 614.12).
-    /// Applied at the battlefield-entry seam ([`crate::card::apply_enters_replacements`]),
-    /// not as a post-action pipeline stage. Deserialized as `{"type":"enters_tapped"}`.
+    /// Applied by the CR 614 replacement layer at the battlefield-entry seam, not as a
+    /// post-action pipeline stage. Deserialized as `{"type":"enters_tapped"}`.
     EntersTapped,
     /// A **self-replacement** (CR 614.1c): this permanent enters the battlefield
     /// with `count` counters of `counter` already on it (CR 614.12) — e.g. a 0/0 that

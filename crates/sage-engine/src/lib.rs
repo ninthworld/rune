@@ -8,7 +8,8 @@
 //! The pipeline is split along its natural seams: [`actions`] is the legality
 //! authority ([`Action`], [`valid_actions`]); [`apply`] is the [`apply_action`]
 //! transition and its per-action helpers; [`resolve`] resolves stack objects;
-//! [`sba`] runs state-based actions; [`triggers`] collects triggers by diffing.
+//! [`sba`] runs state-based actions; [`triggers`] collects triggers by diffing;
+//! [`replacement`] modifies an event before it happens (CR 614).
 
 mod ability;
 mod actions;
@@ -30,6 +31,7 @@ mod mana;
 mod mulligan;
 mod phase;
 mod player;
+mod replacement;
 mod resolve;
 mod rng;
 mod sba;
@@ -73,7 +75,7 @@ pub use characteristics::{
 pub use choice::{
     choice_bounds, choice_candidates, confirm_is_payable, pending_player_choice, ChoiceOutcome,
     ChoiceQuestion, ChoiceRequest, ChoiceZone, ColorOutcome, ColorRequest, ConfirmRequest,
-    PendingChoice, PendingEntry, Resume, SuspendedSpell,
+    PendingChoice, ReplacementRequest, Resume, SuspendedSpell,
 };
 pub use combat::{
     attack_target_of, attacked_players, attacker_candidates, attackers_needing_damage_order,
@@ -97,6 +99,10 @@ pub use phase::Step;
 pub use player::{
     maximum_hand_size, over_hand_size, plays_lands_from_graveyard, LossReason, Player,
     MAX_HAND_SIZE, STARTING_LIFE,
+};
+pub use replacement::{
+    pending_replacement_options, EnteringFilter, EnteringObject, OfferedReplacement, PendingEntry,
+    PendingReplacement, ReplacementEffect, ReplacementOption,
 };
 pub use scripted::scripted_rules_text;
 pub use setup::{

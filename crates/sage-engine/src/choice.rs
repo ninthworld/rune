@@ -36,7 +36,7 @@
 
 use crate::ability::{CardFilter, Effect, FoundDestination, Target};
 use crate::card_type::CardType;
-use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
+use crate::id::{CardId, CardInstance, CardInstanceId, PlayerId};
 use crate::mana::Color;
 use crate::rng::SplitMix64;
 use crate::state::{GameEvent, GameState};
@@ -91,6 +91,16 @@ pub enum ChoiceQuestion {
     /// more than one mana poses one of these per point, so the player really is asked
     /// "and the second one?" rather than being made to spend all of it on one color.
     Color(ColorRequest),
+    /// Which **replacement effect applies first**? — the CR 616.1 ordering choice, posed
+    /// to the affected object's controller when more than one replacement would modify
+    /// the same event ([`ReplacementRequest`]). Answered with
+    /// [`Action::AnswerReplacement`](crate::Action).
+    ///
+    /// The fourth shape because the answer is a fourth thing: a *position in a list the
+    /// engine derived*, rather than cards, a yes-or-no, or a colour. Everything around
+    /// it is the same as the other three — one queue, one chooser, one [`Resume`] — which
+    /// is the rule this enum is built on.
+    Replacement(ReplacementRequest),
 }
 
 impl ChoiceQuestion {
@@ -101,7 +111,9 @@ impl ChoiceQuestion {
     pub fn cards(&self) -> Option<&ChoiceRequest> {
         match self {
             ChoiceQuestion::Cards(request) => Some(request),
-            ChoiceQuestion::Confirm(_) | ChoiceQuestion::Color(_) => None,
+            ChoiceQuestion::Confirm(_)
+            | ChoiceQuestion::Color(_)
+            | ChoiceQuestion::Replacement(_) => None,
         }
     }
 
@@ -110,7 +122,9 @@ impl ChoiceQuestion {
     pub fn confirm(&self) -> Option<&ConfirmRequest> {
         match self {
             ChoiceQuestion::Confirm(request) => Some(request),
-            ChoiceQuestion::Cards(_) | ChoiceQuestion::Color(_) => None,
+            ChoiceQuestion::Cards(_)
+            | ChoiceQuestion::Color(_)
+            | ChoiceQuestion::Replacement(_) => None,
         }
     }
 
@@ -119,9 +133,41 @@ impl ChoiceQuestion {
     pub fn color(&self) -> Option<&ColorRequest> {
         match self {
             ChoiceQuestion::Color(request) => Some(request),
-            ChoiceQuestion::Cards(_) | ChoiceQuestion::Confirm(_) => None,
+            ChoiceQuestion::Cards(_)
+            | ChoiceQuestion::Confirm(_)
+            | ChoiceQuestion::Replacement(_) => None,
         }
     }
+
+    /// The replacement-ordering request this question asks, or `None` when it is not one.
+    #[must_use]
+    pub fn replacement(&self) -> Option<&ReplacementRequest> {
+        match self {
+            ChoiceQuestion::Replacement(request) => Some(request),
+            ChoiceQuestion::Cards(_) | ChoiceQuestion::Confirm(_) | ChoiceQuestion::Color(_) => {
+                None
+            }
+        }
+    }
+}
+
+/// The CR 616.1 ordering question ([`ChoiceQuestion::Replacement`]): *which of these
+/// applicable replacement effects applies first?*
+///
+/// It carries the **event** and nothing else. The options are recomputed from the event
+/// and the state on every read ([`applicable_to_entry`](crate::replacement)), in the same
+/// relationship [`ChoiceRequest`] has to [`choice_candidates`]: a snapshotted list is one
+/// more thing that can disagree with the game, and while this question is owed nothing
+/// else is legal, so the list under it cannot move.
+///
+/// The event is the whole of what is suspended. There is no [`Resume`] on a choice
+/// carrying one — the entry is the last step of a resolution rather than one of its
+/// effects — and answering simply hands the (now modified) entry back to the layer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReplacementRequest {
+    /// The battlefield entry being modified, waiting in no zone at all until the
+    /// ordering is decided.
+    pub entry: crate::replacement::PendingEntry,
 }
 
 /// A colour question ([`ChoiceQuestion::Color`]): *which color?*, and what the answer
@@ -167,27 +213,7 @@ pub enum ColorOutcome {
     /// is not there yet. Answering puts it there with the colour already on it, so the
     /// state-based-action loop, the trigger diff, and every projection see one arrival,
     /// complete.
-    RecordOnEntry(PendingEntry),
-}
-
-/// A permanent's entry onto the battlefield, held until the colour chosen as it enters
-/// has been named (CR 614.12).
-///
-/// Every argument [`GameState::put_card_onto_battlefield`](crate::GameState) was called
-/// with, kept together so the deferred entry is the *same* entry rather than a
-/// reconstruction of one: the effect's own "enters tapped" and an Aura's chosen host are
-/// decided before the question is asked and must survive it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PendingEntry {
-    /// The physical card that will become the permanent.
-    pub card: CardInstance,
-    /// The player it enters under — and, being its controller, the one who answers.
-    pub controller: PlayerId,
-    /// Whether the *effect* putting it there said "tapped". The card's own `enters
-    /// tapped` replacement is applied on top at the entry seam, as always.
-    pub tapped: bool,
-    /// The host an entering Aura was cast at (CR 303.4d), `None` for everything else.
-    pub attached_to: Option<PermanentId>,
+    RecordOnEntry(crate::replacement::PendingEntry),
 }
 
 /// The question an optional effect asks: *do you want this, and will you pay for it?*
@@ -571,7 +597,12 @@ pub(crate) fn pose_choices(
             }
             // A color question always has five legal answers, so it is always posed —
             // the one shape with no "nothing to ask" case at all.
-            ChoiceQuestion::Color(_) => {}
+            //
+            // A replacement-ordering question is never posed from here: it is not asked
+            // by an effect resolving, but by the battlefield-entry seam, which queues it
+            // directly ([`GameState::begin_battlefield_entry`](crate::GameState)) and
+            // only ever when two or more replacements really do apply.
+            ChoiceQuestion::Color(_) | ChoiceQuestion::Replacement(_) => {}
         }
         state.pending_choices.push(PendingChoice {
             chooser,

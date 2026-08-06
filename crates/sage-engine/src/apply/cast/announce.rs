@@ -31,29 +31,11 @@ pub(crate) fn apply_play_land(state: &mut GameState, card: CardInstance, db: &Ca
             return;
         }
     }
-    let id = state.mint_id();
-    let entered_turn = state.turn;
-    let mut permanent = Permanent {
-        id: PermanentId(id),
-        instance: card.id,
-        printed: card.card.into(),
-        controller,
-        tapped: false,
-        entered_turn,
-        attacking: None,
-        blocking: Vec::new(),
-        skips_untap: false,
-        damage: 0,
-        counters: Default::default(),
-        // A land is played directly, never attached to anything (CR 305).
-        attached_to: None,
-        chosen_color: None,
-    };
-    // CR 614.1c/614.12: apply the land's own enters-the-battlefield replacements
-    // (e.g. a tapland's "enters tapped") as it enters, so it is tapped the instant
-    // it is on the battlefield — no untapped window to tap for mana this turn.
-    apply_enters_replacements(state, db, &mut permanent);
-    state.battlefield.push(permanent);
+    // CR 305.1: playing a land puts it onto the battlefield, which is a battlefield
+    // entry like any other — so it goes through the one entry seam and its CR 614
+    // replacement layer (a tapland's "enters tapped" among them), rather than building a
+    // permanent here where a replacement could never see it.
+    state.put_card_onto_battlefield(card, controller, false, None, db);
     state.land_played = true;
 }
 

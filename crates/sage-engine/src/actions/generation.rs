@@ -1,7 +1,6 @@
 //! Action generation — enumeration of legal actions from game state.
 
 use crate::ability::{is_equip_ability, is_loyalty_ability, is_mana_ability, Ability, Effect};
-use crate::card_type::CardType;
 use crate::choice::ChoiceQuestion;
 use crate::commander::commander_tax_cost;
 use crate::mana::parse_mana_cost;
@@ -12,8 +11,9 @@ use crate::CardDatabase;
 use super::definition::Action;
 use super::targeting::legal_targets_for_spec;
 use super::utilities::{
-    cost_payable, equip_timing_allows, graveyard_ability, graveyard_cost_payable,
-    is_castable_spell, is_land, loyalty_timing_allows, tap_cost_is_summoning_sick,
+    castable_at_instant_speed, cost_payable, equip_timing_allows, graveyard_ability,
+    graveyard_cost_payable, is_castable_spell, is_land, loyalty_timing_allows,
+    tap_cost_is_summoning_sick,
 };
 
 /// Enumerate the actions legal for the player who currently holds priority.
@@ -69,6 +69,11 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 ChoiceQuestion::Color(_) => vec![Action::AnswerColor {
                     color: crate::mana::Color::White,
                 }],
+                // CR 616.1: the affected object's controller orders the applicable
+                // replacements. Advertised as the bare question, exactly as the two
+                // above; the answer names a position in the freshly derived option list
+                // ([`crate::pending_replacement_options`]).
+                ChoiceQuestion::Replacement(_) => vec![Action::AnswerReplacement { index: 0 }],
             };
             // CR 605.3a: a player asked to pay a cost while something resolves may
             // activate mana abilities to pay it — the one thing the freeze lets
@@ -262,9 +267,9 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             if !is_castable_spell(data) {
                 continue;
             }
-            // CR 117.1a: an instant ignores the sorcery-speed gate; every other
-            // spell is bound by it.
-            let timing_ok = data.has_type(CardType::Instant) || sorcery_speed;
+            // CR 117.1a: an instant — or a card with flash (CR 702.8) — ignores the
+            // sorcery-speed gate; every other spell is bound by it.
+            let timing_ok = castable_at_instant_speed(data) || sorcery_speed;
             if timing_ok
                 && payable.covers(&parse_mana_cost(&data.mana_cost), spend_purpose(data))
                 && additional_cost_is_payable(state, priority, data, card.id, db)
@@ -300,7 +305,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             if !graveyard_casting_allows(state, priority, card.card, db) {
                 continue;
             }
-            let timing_ok = data.has_type(CardType::Instant) || sorcery_speed;
+            let timing_ok = castable_at_instant_speed(data) || sorcery_speed;
             if timing_ok
                 && payable.covers(&parse_mana_cost(&data.mana_cost), spend_purpose(data))
                 && additional_cost_is_payable(state, priority, data, card.id, db)
@@ -329,7 +334,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 if !is_castable_spell(data) {
                     continue;
                 }
-                let timing_ok = data.has_type(CardType::Instant) || sorcery_speed;
+                let timing_ok = castable_at_instant_speed(data) || sorcery_speed;
                 let cost = commander_tax_cost(&parse_mana_cost(&data.mana_cost), commander.casts);
                 if timing_ok
                     && payable.covers(&cost, spend_purpose(data))

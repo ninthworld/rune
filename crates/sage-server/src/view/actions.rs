@@ -274,14 +274,15 @@ fn valid_action_view(
         // client's side they are one thing — the question the game is waiting on — and
         // the prompt below says which shape it is. A color choice reuses the same
         // `option` prompt the yes-or-no does, so no client learns a new wire shape.
-        Action::AnswerChoice { .. } | Action::AnswerConfirm { .. } | Action::AnswerColor { .. } => {
-            (
-                "player_choice".to_string(),
-                player_choice_label(state, db),
-                Vec::new(),
-                Vec::new(),
-            )
-        }
+        Action::AnswerChoice { .. }
+        | Action::AnswerConfirm { .. }
+        | Action::AnswerColor { .. }
+        | Action::AnswerReplacement { .. } => (
+            "player_choice".to_string(),
+            player_choice_label(state, db),
+            Vec::new(),
+            Vec::new(),
+        ),
         // Labeled with the ability's own rules sentence ("{T}: Add {G}.", ADR 0008
         // text generation), so a permanent offering several activations renders
         // *distinguishable* dock buttons — a generic "Activate ability" collapses
@@ -383,9 +384,10 @@ fn valid_action_view(
     let prompts: Vec<Prompt> = match action {
         Action::OrderCombatDamage { .. } => damage_order_prompts(state, db),
         Action::Keep { .. } => keep_prompts(state, action),
-        Action::AnswerChoice { .. } | Action::AnswerConfirm { .. } | Action::AnswerColor { .. } => {
-            player_choice_prompts(state, db)
-        }
+        Action::AnswerChoice { .. }
+        | Action::AnswerConfirm { .. }
+        | Action::AnswerColor { .. }
+        | Action::AnswerReplacement { .. } => player_choice_prompts(state, db),
         // A cast carries one `pay_mana` slot per unit of cost it still owes (CR 601.2f–g)
         // — none at all when the pool already covers it. This is what lets a client offer
         // the card first and the payment second, and take the payment back apart without

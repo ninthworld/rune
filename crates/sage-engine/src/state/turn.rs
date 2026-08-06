@@ -92,6 +92,11 @@ impl GameState {
         // The same for a "this turn" permission to ignore hexproof: one boundary drops
         // every per-turn permission, so neither can outlive its turn.
         self.ignoring_hexproof.clear();
+        // And the same for a one-shot replacement effect created this turn (CR 614.1b):
+        // `the next time … this turn` lapses unused if the event never came. Clearing it
+        // here rather than comparing the turn at every read is what stops a stale
+        // replacement from modifying an event a turn later.
+        self.replacements.clear();
     }
 
     /// Empty every player's mana pool on this owned state (CR 500.4). Applies to

@@ -998,6 +998,23 @@ pub enum Effect {
         #[serde(default = "PlayerRef::controller")]
         player_ref: PlayerRef,
     },
+    /// Create a **one-shot replacement effect** for the rest of the turn (CR 614.1b) —
+    /// the `The next time a … would … this turn, … instead` of a printed card.
+    ///
+    /// The third per-turn thing an ability can put into the state, and recorded exactly
+    /// like the two permissions above: on a list carrying the turn it was created on
+    /// ([`PendingReplacement`](crate::PendingReplacement)), dropped at the turn boundary.
+    /// It differs from them in one way, and it is the `next time`: applying it *removes*
+    /// it, so a replacement that has done its job cannot do it twice.
+    ///
+    /// It names no target and no player. A replacement watches an **event**, and which
+    /// events it watches is [`ReplacementEffect`](crate::ReplacementEffect)'s own filter
+    /// — a class of thing that might happen, chosen when the card was written rather than
+    /// aimed when the ability was activated.
+    CreateReplacement {
+        /// The replacement effect to create: what it watches, and what happens instead.
+        replacement: crate::replacement::ReplacementEffect,
+    },
     /// Move **this ability's own card** out of the graveyard it is in
     /// (`Return this card from your graveyard to the battlefield tapped.`).
     ///
@@ -1165,6 +1182,9 @@ impl Effect {
             // A hexproof-ignoring permission names its player the same way, and for the
             // same reason: it is a fact about a seat, not about an object.
             | Effect::IgnoreHexproof { .. }
+            // A replacement effect names an *event*, which is not an object and so
+            // cannot be targeted (CR 115.1).
+            | Effect::CreateReplacement { .. }
             // A choice over the controller's own library names no target: the library
             // is theirs by definition (CR 115.1).
             | Effect::Scry { .. }

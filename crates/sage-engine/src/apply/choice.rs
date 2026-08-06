@@ -78,6 +78,44 @@ pub(crate) fn apply_answer_color(
     }
 }
 
+/// Answer the pending **CR 616.1 ordering choice**: apply the named replacement to the
+/// suspended battlefield entry, then hand the entry back to the layer.
+///
+/// The same three steps [`apply_answer_choice`] takes, over a different kind of
+/// suspended thing. What was suspended here is not a resolution but an *event* — the
+/// entry is waiting in no zone at all — so there is no [`Resume`](crate::Resume) to run
+/// and the continuation is [`GameState::begin_battlefield_entry`], the one function the
+/// entry seam itself calls. That is the whole point of routing it back rather than
+/// finishing here: if two replacements still apply the question is asked again, if one
+/// does it is applied, and if none does the permanent arrives — by exactly the code an
+/// unreplaced entry goes through.
+///
+/// The option is re-derived from the state and the event, never read back from a list
+/// snapshotted when the question was posed, and `index` has already been bounds-checked
+/// by [`crate::apply_action`]'s gate. An answer with no ordering choice pending is a
+/// no-op.
+pub(crate) fn apply_answer_replacement(state: &mut GameState, index: u8, db: &CardDatabase) {
+    let Some(ChoiceQuestion::Replacement(_)) = pending_player_choice(state).map(|p| &p.question)
+    else {
+        return;
+    };
+    let answered = state.pending_choices.remove(0);
+    let ChoiceQuestion::Replacement(request) = answered.question else {
+        return;
+    };
+    let mut entry = request.entry;
+    let options = crate::replacement::applicable_to_entry(state, db, &entry);
+    let Some(&option) = options.get(usize::from(index)) else {
+        return;
+    };
+    if crate::replacement::apply_to_entry(state, &mut entry, option, db)
+        == crate::replacement::EntryOutcome::Replaced
+    {
+        return;
+    }
+    state.begin_battlefield_entry(entry, db);
+}
+
 /// Answer the pending **yes-or-no** with `accept`, then let the suspended resolution
 /// continue (CR 608.2 — see [`crate::Effect::May`]).
 ///

@@ -72,7 +72,7 @@ pub struct CardData {
     /// validated the same way: a planeswalker must carry one and nothing else may
     /// ([`Violation::LoyaltyMismatch`](crate::Violation)). It is the number of loyalty
     /// counters the permanent *enters with* — applied at the battlefield-entry seam as
-    /// a self-replacement (CR 614.1c, [`crate::card::apply_enters_replacements`]), so
+    /// a self-replacement (CR 614.1c, applied by the replacement layer as it enters), so
     /// a planeswalker is never on the battlefield at zero loyalty and immediately dead
     /// to CR 704.5i. Current loyalty is the counter count, never this field.
     #[serde(default)]

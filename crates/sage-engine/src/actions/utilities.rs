@@ -26,6 +26,18 @@ pub(crate) fn is_castable_spell(data: &crate::CardData) -> bool {
     !data.has_type(CardType::Land)
 }
 
+/// Whether `data` may be cast **any time its controller has priority** rather than only
+/// at sorcery speed — an instant (CR 117.1a), or a card with flash (CR 702.8).
+///
+/// The single timing predicate every casting road asks: from hand, from a graveyard
+/// under a one-turn permission, and from the command zone. Flash says exactly one thing
+/// — "cast this as though it were an instant" — so saying it here, once, is what keeps a
+/// card with flash from being castable on one road and not another.
+#[must_use]
+pub(crate) fn castable_at_instant_speed(data: &crate::CardData) -> bool {
+    data.has_type(CardType::Instant) || data.keywords.contains(&crate::card::Keyword::Flash)
+}
+
 /// Whether every cost in `cost` is payable right now, given the source
 /// `permanent`'s state, its controller's mana pool, and — for a cost the player picks
 /// what pays it with — whether the board and hand hold anything that could.

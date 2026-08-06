@@ -5,7 +5,7 @@
 //! runs state-based actions, and collects triggers, and returns the new state.
 //! Enters-the-battlefield self-replacements (CR 614.1c/614.12) are not a stage of
 //! this pipeline — they modify the entry event itself and so run at the
-//! battlefield-entry seam ([`crate::card::apply_enters_replacements`]). Pure over
+//! battlefield-entry seam (the CR 614 replacement layer). Pure over
 //! an immutable [`crate::GameState`].
 
 use crate::ability::Effect;
@@ -96,6 +96,7 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         Action::AnswerChoice { chosen } => apply_answer_choice(&mut next, chosen, db),
         Action::AnswerConfirm { accept } => apply_answer_confirm(&mut next, *accept, db),
         Action::AnswerColor { color } => apply_answer_color(&mut next, *color, db),
+        Action::AnswerReplacement { index } => apply_answer_replacement(&mut next, *index, db),
         Action::Discard { card } => apply_discard(&mut next, *card, db),
         Action::Mulligan => apply_mulligan(&mut next),
         Action::Keep { bottom } => apply_keep(&mut next, bottom),
@@ -114,7 +115,7 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
     // Enters-the-battlefield self-replacements (CR 614.1c/614.12 — "enters tapped",
     // "enters with counters") are NOT a stage here: a replacement modifies the entry
     // event itself, so it is applied at the battlefield-entry seam inside step 3
-    // (`apply_enters_replacements`), before the state-based-action loop and before any
+    // (the CR 614 replacement layer), before the state-based-action loop and before any
     // ETB trigger below. That ordering is load-bearing — a 0/0 entering with two +1/+1
     // counters must already be a 2/2 when the SBA loop runs (CR 704.5f).
 

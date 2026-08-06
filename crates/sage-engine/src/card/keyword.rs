@@ -8,16 +8,18 @@ use serde::Deserialize;
 /// This is the printed keyword representation the layer system seeds from; a
 /// permanent's *current* keywords are the printed [`super::CardData::keywords`] unioned
 /// with any granted by continuous effects at CR 613 layer 6 (see
-/// [`characteristics`](crate::characteristics::characteristics)). All twelve variants are
-/// enforced: [`Flying`](Keyword::Flying), [`Reach`](Keyword::Reach),
+/// [`characteristics`](crate::characteristics::characteristics)). All fourteen variants
+/// are enforced: [`Flying`](Keyword::Flying), [`Reach`](Keyword::Reach),
 /// [`Vigilance`](Keyword::Vigilance), [`Haste`](Keyword::Haste),
 /// [`Defender`](Keyword::Defender), and [`Menace`](Keyword::Menace) at
 /// combat-declaration time (keywords I),
 /// [`FirstStrike`](Keyword::FirstStrike), [`Trample`](Keyword::Trample),
 /// [`Deathtouch`](Keyword::Deathtouch), [`Lifelink`](Keyword::Lifelink), and
 /// [`DoubleStrike`](Keyword::DoubleStrike) at combat-damage time (keywords II — see
-/// [`crate::combat::combat_damage`]), and [`Hexproof`](Keyword::Hexproof) at
-/// targeting time, which is not a combat gate at all.
+/// [`crate::combat::combat_damage`]), [`Hexproof`](Keyword::Hexproof) at targeting time
+/// and [`Indestructible`](Keyword::Indestructible) at destruction — neither of which is a
+/// combat gate — and [`Flash`](Keyword::Flash), which is not about a permanent at all but
+/// about when the card may be cast.
 ///
 /// Restrictions that are **not** keyword abilities — "can't be blocked", "can't be
 /// blocked by black creatures" — live in [`CombatRestriction`](super::CombatRestriction)
@@ -82,6 +84,21 @@ pub enum Keyword {
     /// planeswalker at zero loyalty still leaves under CR 704.5i for the same reason.
     /// Sacrifice, exile, and bounce are likewise untouched.
     Indestructible,
+    /// Flash (CR 702.8): this card may be cast any time its controller could cast an
+    /// instant.
+    ///
+    /// The only keyword here that is not about a permanent at all — it is a static
+    /// ability of a **card**, and it stops mattering the instant that card becomes one.
+    /// It is therefore enforced nowhere in combat, targeting, or destruction, but in the
+    /// single timing gate that decides whether a card in a zone may be cast right now
+    /// (`actions::castable_at_instant_speed`), which
+    /// both the offer and [`apply_action`](crate::apply_action)'s independent re-check
+    /// run.
+    ///
+    /// Its consequence is one line — a card with flash is offered wherever an instant
+    /// would be — and that is the whole of it: nothing about paying for the spell, what
+    /// it resolves into, or what the permanent then does changes.
+    Flash,
 }
 
 #[cfg(test)]
@@ -91,15 +108,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn all_twelve_keyword_variants_deserialize_from_snake_case() {
+    fn every_keyword_variant_deserializes_from_snake_case() {
         // The closed keyword set round-trips from its wire names, including the
         // five combat-damage variants keywords II enforces (CR 702), the two
-        // declaration-time restrictions defender and menace, and hexproof, which
-        // gates targeting rather than combat.
+        // declaration-time restrictions defender and menace, hexproof and
+        // indestructible, which gate targeting and destruction rather than combat, and
+        // flash, which gates when the card may be cast (CR 702.8).
         let json = r#"[{"schema_version":1,"functional_id":"every_keyword","name":"Every Keyword","types":["creature"],
             "mana_cost":"","power":1,"toughness":1,
             "keywords":["flying","reach","vigilance","haste","defender","menace","first_strike",
-                        "trample","deathtouch","lifelink","double_strike","hexproof"]}]"#;
+                        "trample","deathtouch","lifelink","double_strike","hexproof",
+                        "indestructible","flash"]}]"#;
         let db = crate::card::CardDatabase::from_json(json).unwrap();
         let card = crate::card::tests::card_named(&db, "every_keyword");
         for kw in [
@@ -115,6 +134,8 @@ mod tests {
             Keyword::Lifelink,
             Keyword::DoubleStrike,
             Keyword::Hexproof,
+            Keyword::Indestructible,
+            Keyword::Flash,
         ] {
             assert!(card.has_keyword(kw), "expected keyword {kw:?}");
         }

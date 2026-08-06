@@ -58,6 +58,15 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         return !accept || crate::confirm_is_payable(state);
     }
 
+    // 1a-ter. A CR 616.1 ordering answer names a *position* in the option list the
+    //     engine derives from the pending event, so it is validated against that list
+    //     recomputed now ([`crate::pending_replacement_options`]) rather than against the
+    //     one the client was shown. An index past its end is an answer to a question
+    //     nobody asked.
+    if let Action::AnswerReplacement { index } = action {
+        return usize::from(*index) < crate::pending_replacement_options(state, db).len();
+    }
+
     // 1b. A mulligan keep validates its bottoming selection (CR 103.5) rather than
     //     the target-slot machinery: exactly one distinct hand card per mulligan
     //     taken (see [`crate::mulligan::keep_bottom_is_legal`]).
