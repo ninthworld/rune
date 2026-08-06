@@ -1144,6 +1144,12 @@ fn a_player_subject_static_says_what_is_true_of_you() {
         text_of(&db, "reliquary_tower"),
         "You have no maximum hand size.\n{T}: Add {C}."
     );
+    // The second of the shape, and the one that is a permission rather than a limit
+    // lifted — still one sentence about a person, with no source name in it.
+    assert_eq!(
+        text_of(&db, "crucible_of_worlds"),
+        "You may play lands from your graveyard."
+    );
 }
 
 #[test]
@@ -1315,18 +1321,15 @@ fn issue_723_a_graveyard_ability_names_its_own_card_and_the_zone_it_works_in() {
         "{1}{B}: Return Reassembling Skeleton from your graveyard to the battlefield tapped."
     );
 
-    // The graveyard→hand destination has no bundled representative yet, so it is
-    // exercised inline (ADR 0009) — the same sentence, ending in the other zone.
-    let inline = CardDatabase::from_json(
-        r#"[{"schema_version":1,"functional_id":"test_recurring_charm","name":"Test Recurring Charm",
-            "types":["enchantment"],"mana_cost":"{2}{G}","colors":["green"],
-            "abilities":[{"type":"activated","cost":[{"kind":"mana","mana":"{3}{G}"}],
-              "effects":[{"kind":"return_self_from_graveyard","destination":"hand"}]}]}]"#,
-    )
-    .unwrap();
+    // The graveyard→hand destination, on an Aura whose grant is stated beneath it: the
+    // ability is about the card in the graveyard, the attachment about the creature it
+    // enchants once the card is back and cast.
     assert_eq!(
-        text_of(&inline, "test_recurring_charm"),
-        "{3}{G}: Return Test Recurring Charm from your graveyard to your hand."
+        text_of(&db, "talons_of_wildwood"),
+        "{2}{G}: Return Talons of Wildwood from your graveyard to your hand.\n\
+         Enchant creature.\n\
+         Enchanted creature gets +1/+1.\n\
+         Enchanted creature has trample."
     );
 }
 
@@ -1341,5 +1344,20 @@ fn issue_738_an_entry_choice_and_the_ability_that_reads_it_back() {
         text_of(&db, "diamond_mare"),
         "As Diamond Mare enters the battlefield, choose a color.\n\
          Whenever you cast a spell of the chosen color, you gain 1 life."
+    );
+}
+
+#[test]
+fn issue_723_a_spell_states_what_it_does_before_the_ability_it_carries() {
+    // The one card that prints both an instant's own effect and an ability — a trigger
+    // that functions from the graveyard the instant lands in. Casting it is what happens
+    // first, so it is said first, and the ability that watches from the graveyard reads
+    // as the rider it is.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "spit_flame"),
+        "Spit Flame deals 4 damage to target creature.\n\
+         Whenever a Dragon you control enters the battlefield, you may pay {R}. \
+         If you do, return Spit Flame from your graveyard to your hand."
     );
 }

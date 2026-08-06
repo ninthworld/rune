@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "functional_id": "crucible_of_worlds",
+  "name": "Crucible of Worlds",
+  "types": [
+    "artifact"
+  ],
+  "subtypes": [],
+  "mana_cost": "{3}",
+  "colors": [],
+  "abilities": [
+    {
+      "type": "player_static",
+      "modification": {
+        "kind": "play_lands_from_graveyard"
+      }
+    }
+  ]
+}

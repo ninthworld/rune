@@ -171,12 +171,63 @@ pub fn maximum_hand_size(
     player: crate::PlayerId,
     db: &crate::CardDatabase,
 ) -> Option<usize> {
-    let removed = |ability: &crate::ability::Ability| {
+    if has_player_static(
+        state,
+        player,
+        db,
+        crate::ability::PlayerModification::NoMaximumHandSize,
+    ) {
+        return None;
+    }
+    Some(MAX_HAND_SIZE)
+}
+
+/// Whether `player` may **play lands from their graveyard** (CR 305.9), the permission
+/// [`PlayerModification::PlayLandsFromGraveyard`](crate::ability::PlayerModification)
+/// grants — Crucible of Worlds.
+///
+/// Derived on every read exactly as [`maximum_hand_size`] is, and for the same reason:
+/// the permission begins when its source reaches the battlefield and ends when it
+/// leaves, so there is nothing to store and nothing to prune (ADR 0005 §1). A land
+/// already played this turn stays played if the Crucible is destroyed in response — the
+/// permission decides what may be *offered*, never what has already happened.
+///
+/// It changes the zone a land may be played from and nothing else: the one-land-per-turn
+/// rule (CR 305.2), the sorcery-speed window, and the active-player restriction are all
+/// asked of the play itself, in [`valid_actions`](crate::valid_actions), and none of them
+/// consults this.
+#[must_use]
+pub fn plays_lands_from_graveyard(
+    state: &crate::GameState,
+    player: crate::PlayerId,
+    db: &crate::CardDatabase,
+) -> bool {
+    has_player_static(
+        state,
+        player,
+        db,
+        crate::ability::PlayerModification::PlayLandsFromGraveyard,
+    )
+}
+
+/// Whether any object `player` controls carries the player-subject static ability
+/// `modification` (CR 604.3).
+///
+/// The one walk both player-static questions ask, so they cannot disagree about which
+/// objects are looked at. Both ability sources are covered: the battlefield, and the
+/// **emblems** (CR 114.1), which carry static abilities and belong to a player rather
+/// than to a zone. That is the same second source list the computed-characteristics loop
+/// already walks, for the same reason.
+fn has_player_static(
+    state: &crate::GameState,
+    player: crate::PlayerId,
+    db: &crate::CardDatabase,
+    modification: crate::ability::PlayerModification,
+) -> bool {
+    let grants = |ability: &crate::ability::Ability| {
         matches!(
             ability,
-            crate::ability::Ability::PlayerStatic {
-                modification: crate::ability::PlayerModification::NoMaximumHandSize,
-            }
+            crate::ability::Ability::PlayerStatic { modification: printed } if *printed == modification
         )
     };
     let from_battlefield = state
@@ -189,10 +240,7 @@ pub fn maximum_hand_size(
         .iter()
         .filter(|emblem| emblem.controller == player)
         .flat_map(|emblem| emblem.abilities.clone());
-    if from_battlefield.chain(from_emblems).any(|a| removed(&a)) {
-        return None;
-    }
-    Some(MAX_HAND_SIZE)
+    from_battlefield.chain(from_emblems).any(|a| grants(&a))
 }
 
 /// Whether `player` holds more cards than their maximum hand size allows, and so owes

@@ -135,9 +135,9 @@ pub enum Ability {
         condition: Option<StaticCondition>,
     },
     /// A continuous ability whose subject is a **player** rather than a permanent —
-    /// `You have no maximum hand size.`
+    /// `You have no maximum hand size.`, `You may play lands from your graveyard.`
     ///
-    /// The first of its kind, and a separate variant rather than a widening of
+    /// A separate variant rather than a widening of
     /// [`Self::Static`] because the two share nothing but the word "continuous".
     /// A [`StaticAffects`] names a class of permanents and a [`StaticModification`]
     /// names a CR 613 layer; neither has anything to say about a player, and a single
@@ -162,9 +162,9 @@ pub enum Ability {
 
 /// What an [`Ability::PlayerStatic`] does to its controller.
 ///
-/// A closed, plain-data enum with one variant, which is the one M19 prints. It grows by
-/// adding variants — a card that *raises* a maximum hand size rather than removing it is
-/// a different thing to say, and would say it here.
+/// A closed, plain-data enum of the rules a permanent can change *about a person*. It
+/// grows by adding variants — a card that *raises* a maximum hand size rather than
+/// removing it is a different thing to say, and would say it here.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PlayerModification {
@@ -175,6 +175,26 @@ pub enum PlayerModification {
     /// big number: a sentinel would compare, print, and project as a number nobody
     /// printed, and every call site would have to know which number meant "none".
     NoMaximumHandSize,
+    /// CR 305.9 / CR 116.2a: the controller may **play lands from their graveyard**,
+    /// as though those cards were in their hand.
+    ///
+    /// A *permission about a zone*, and the second of the two independent primitives
+    /// this rule needs — the other being that a land is **played**, never cast, so it
+    /// reaches the battlefield through [`Action::PlayLand`](crate::Action) and never
+    /// through the stack. Nothing else about the land play changes: it is still one per
+    /// turn (CR 305.2), still the active player's, still at sorcery speed, because those
+    /// gates are asked of the *play* rather than of the zone it came from.
+    ///
+    /// Not the same thing as [`Effect::AllowCastingFromGraveyard`] and deliberately not
+    /// folded into it. That one is a permission granted *for a turn* by a resolved
+    /// effect, so it is recorded in [`GameState`](crate::GameState) with the turn it was
+    /// granted on; this one is a continuous ability of a permanent, so it is read where
+    /// the question is asked and lasts exactly as long as its source is on the
+    /// battlefield — and a permission to *cast* could never authorise a land, which is
+    /// not cast at all.
+    ///
+    /// Read by [`plays_lands_from_graveyard`](crate::plays_lands_from_graveyard).
+    PlayLandsFromGraveyard,
 }
 
 /// Whether an ability is a **loyalty ability** (CR 606.1): an activated ability whose
@@ -218,7 +238,7 @@ pub fn is_equip_ability(ability: &Ability) -> bool {
 }
 
 /// Whether an ability **functions from its owner's graveyard** (CR 113.6): an activated
-/// ability that returns its own card from there
+/// or triggered ability that returns its own card from there
 /// ([`Effect::ReturnSelfFromGraveyard`]).
 ///
 /// Derived from what the ability *does*, never stored and never a flag on the card — the
@@ -229,21 +249,43 @@ pub fn is_equip_ability(ability: &Ability) -> bool {
 /// could get out of step with the text; it is the text.
 ///
 /// This is the predicate the whole zone seam hangs off. It decides that the ability is
-/// **not** offered on a permanent ([`crate::valid_actions`]), that it *is* offered on a
-/// card sitting in its controller's graveyard, and — re-derived rather than trusted — that
-/// an activation naming a graveyard card is legal at all
-/// ([`crate::apply_action`]). A graveyard ability is never a mana ability:
-/// [`is_mana_ability`] requires every effect to be a mana verb and this one is not, so no
-/// exclusion has to be written there.
+/// **not** read off a permanent ([`crate::valid_actions`] for an activation,
+/// [`crate::collect_triggers`] for a trigger), that it *is* read off a card sitting in a
+/// graveyard, and — re-derived rather than trusted — that an activation naming a
+/// graveyard card is legal at all ([`crate::apply_action`]). A graveyard ability is never
+/// a mana ability: [`is_mana_ability`] requires every effect to be a mana verb and this
+/// one is not, so no exclusion has to be written there.
+///
+/// The search is over the whole effect **tree**, not the top-level list, because the
+/// return is frequently the payoff of an optional cost: `you may pay {R}. If you do,
+/// return this card from your graveyard to your hand` says it inside an [`Effect::May`],
+/// and an ability that functions in a graveyard only when the player pays still functions
+/// in a graveyard.
 #[must_use]
 pub fn is_graveyard_ability(ability: &Ability) -> bool {
-    matches!(
-        ability,
-        Ability::Activated { effects, .. }
-            if effects
-                .iter()
-                .any(|e| matches!(e, Effect::ReturnSelfFromGraveyard { .. }))
-    )
+    match ability {
+        Ability::Activated { effects, .. } | Ability::Triggered { effects, .. } => {
+            returns_self_from_graveyard(effects)
+        }
+        _ => false,
+    }
+}
+
+/// Whether `effects`, or anything nested inside them, is an
+/// [`Effect::ReturnSelfFromGraveyard`].
+///
+/// Walks the two wrappers that carry effect lists — the optional [`Effect::May`] and the
+/// branching [`Effect::Conditional`] — so where the return sits in the tree never changes
+/// the answer to "where does this ability function".
+fn returns_self_from_graveyard(effects: &[Effect]) -> bool {
+    effects.iter().any(|effect| match effect {
+        Effect::ReturnSelfFromGraveyard { .. } => true,
+        Effect::May { effects, .. } => returns_self_from_graveyard(effects),
+        Effect::Conditional {
+            then, otherwise, ..
+        } => returns_self_from_graveyard(then) || returns_self_from_graveyard(otherwise),
+        _ => false,
+    })
 }
 
 /// Whether an ability is a mana ability (CR 605.1a, simplified): an activated

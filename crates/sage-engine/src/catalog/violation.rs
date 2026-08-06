@@ -232,15 +232,16 @@ pub enum Violation {
         functional_id: String,
     },
     /// A `return_self_from_graveyard` effect is authored where the ability carrying it
-    /// could never function (CR 113.6): anywhere but directly on an activated ability, or
-    /// on one whose cost a card in a graveyard could not pay.
+    /// could never function (CR 113.6): anywhere but an activated or triggered ability,
+    /// or on an activated one whose cost a card in a graveyard could not pay.
     ///
     /// The effect is what *makes* an ability function from a graveyard
     /// ([`is_graveyard_ability`](crate::is_graveyard_ability)), so the derivation is only
-    /// honest where the ability can actually be activated from there. On a spell, a
-    /// trigger, or a nested branch there is no activation to offer; beside a `{T}` there
-    /// is no permanent to tap. Either way the card reads as recursive and never is, which
-    /// is worth failing the build over rather than shipping.
+    /// honest where the ability can actually be reached from there. On a spell's own
+    /// effects or on an ability handed to an emblem there is no card in a graveyard at
+    /// all; beside a `{T}` there is no permanent to tap. Either way the card reads as
+    /// recursive and never is, which is worth failing the build over rather than
+    /// shipping.
     GraveyardAbilityCannotFunction {
         /// The definition at fault.
         functional_id: String,
@@ -402,9 +403,10 @@ impl fmt::Display for Violation {
             ),
             Self::GraveyardAbilityCannotFunction { functional_id } => write!(
                 f,
-                "{functional_id}: `return_self_from_graveyard` must sit on an activated \
-                 ability whose cost is mana only; a card in a graveyard is not a \
-                 permanent and has nothing else to pay with (CR 113.6)"
+                "{functional_id}: `return_self_from_graveyard` must sit inside an \
+                 activated or triggered ability, and an activated one may charge only \
+                 mana; a card in a graveyard is not a permanent and has nothing else to \
+                 pay with (CR 113.6)"
             ),
             Self::DuplicatePrinting {
                 set_code,

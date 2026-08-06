@@ -214,8 +214,20 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
 
     if let Some(player) = state.players.get(priority.0) {
         // Play a land: at sorcery speed, one per turn.
+        //
+        // From the hand always, and from the **graveyard** while a permission says so
+        // (CR 305.9 — Crucible of Worlds). A land is *played*, never cast (CR 116.2a),
+        // so the permission that reaches it is not the one that lets a spell be cast
+        // from a graveyard: it is read here, off the permanent that grants it, and the
+        // action it produces is the same [`Action::PlayLand`] a hand play produces.
+        // Every other gate is asked of the play rather than of the zone — the
+        // one-per-turn allowance and the sorcery-speed window above are shared, which is
+        // why a Crucible play still costs a seat its land drop for the turn.
         if sorcery_speed && !state.land_played {
-            for &card in &player.hand {
+            let from_graveyard = crate::player::plays_lands_from_graveyard(state, priority, db);
+            let piles =
+                std::iter::once(&player.hand).chain(from_graveyard.then_some(&player.graveyard));
+            for &card in piles.flatten() {
                 if is_land(db, card.card) {
                     actions.push(Action::PlayLand { card });
                 }

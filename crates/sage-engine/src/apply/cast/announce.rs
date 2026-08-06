@@ -6,19 +6,30 @@ use super::*;
 #[cfg(test)]
 mod tests;
 
-/// Play a land from the active player's hand onto the battlefield. Not via the
-/// stack (CR 116.2a); a fresh [`PermanentId`] is minted on entry while the
-/// card's [`crate::CardInstanceId`] carries over unchanged.
+/// Play a land from the active player's hand — or, under a permission
+/// ([`PlayerModification::PlayLandsFromGraveyard`](crate::ability::PlayerModification)),
+/// from their graveyard — onto the battlefield. Not via the stack (CR 116.2a); a fresh
+/// [`PermanentId`] is minted on entry while the card's [`crate::CardInstanceId`] carries
+/// over unchanged.
+///
+/// The zone is *discovered* here rather than carried on the action, exactly as a cast
+/// discovers whether its card is in a hand, a graveyard, or the command zone: one
+/// instance is in one zone, so naming it is naming where it is. Whether it was allowed to
+/// come from there was settled by [`crate::valid_actions`], which is the only thing that
+/// offers this action and the gate `action_is_legal` re-runs.
 pub(crate) fn apply_play_land(state: &mut GameState, card: CardInstance, db: &CardDatabase) {
     let controller = state.priority;
     {
         let Some(player) = state.players.get_mut(controller.0) else {
             return;
         };
-        let Some(pos) = player.hand.iter().position(|&c| c.id == card.id) else {
+        if let Some(pos) = player.hand.iter().position(|&c| c.id == card.id) {
+            player.hand.remove(pos);
+        } else if let Some(pos) = player.graveyard.iter().position(|&c| c.id == card.id) {
+            player.graveyard.remove(pos);
+        } else {
             return;
-        };
-        player.hand.remove(pos);
+        }
     }
     let id = state.mint_id();
     let entered_turn = state.turn;
