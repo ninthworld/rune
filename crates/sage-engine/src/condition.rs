@@ -147,11 +147,16 @@ fn permanents_matching<'a>(
 }
 
 /// The number a [`DerivedAmount`] names, for an object controlled by `controller`
-/// resolving as described by `resolution` — its log window, and the X it announced.
+/// resolving as described by `resolution` — its log window, the X it announced, and what
+/// its cost payment recorded.
 ///
 /// Taken **once**, where it is called (CR 608.2): every caller turns the answer into a
-/// fixed number — cards drawn, or a timestamped power/toughness modifier — and nothing
-/// re-reads the source afterwards.
+/// fixed number — cards drawn, damage dealt, or a timestamped power/toughness modifier —
+/// and nothing re-reads the source afterwards.
+///
+/// Three of the sources read the game: the board, or the events a window recorded. The
+/// two that read the object's own [`PaidCost`](crate::PaidCost) read neither, and could
+/// not: their answer was settled at announcement and the objects it was about are gone.
 #[must_use]
 pub(crate) fn derived_amount(
     state: &GameState,
@@ -192,6 +197,17 @@ pub(crate) fn derived_amount(
                 .max()
                 .unwrap_or(0)
         }
+        // Read off the payment, not off the game (CR 601.2h). Zero when the cost took
+        // nothing, which is what makes `Sacrifice any number of lands` a legal cast on an
+        // empty board and a search for nothing.
+        DerivedAmount::SacrificedToCost => resolution.paid.sacrificed,
+        // CR 608.2h last-known information, and clamped at zero because damage is never
+        // negative (CR 120.1): a creature sacrificed at −1/−1 throws nothing.
+        DerivedAmount::SacrificedCreaturePower => resolution
+            .paid
+            .sacrificed_power
+            .and_then(|power| u32::try_from(power).ok())
+            .unwrap_or(0),
     }
 }
 

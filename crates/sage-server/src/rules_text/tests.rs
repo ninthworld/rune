@@ -1429,6 +1429,42 @@ fn issue_721_an_activation_cost_states_what_the_player_must_spend() {
     );
 }
 
+/// The three cost shapes issue #721 finishes each state what they take, in the card's own
+/// words — and the two amounts that read a payment name it where a card names it.
+#[test]
+fn issue_721_a_costs_size_and_the_amount_that_reads_it_are_both_stated() {
+    let db = bundled();
+    // Exiling from a graveyard is a cost like any other, written in the cost line beside
+    // the mana symbols.
+    assert_eq!(
+        text_of(&db, "graveyard_marshal"),
+        "{2}{B}, Exile a creature card from your graveyard: \
+         You create a tapped 2/2 black Zombie creature token."
+    );
+    // A count greater than one reads as the card writes it — "two artifacts", not two
+    // sentences each taking one — and the trigger names the class of spell it watches.
+    assert_eq!(
+        text_of(&db, "sai_master_thopterist"),
+        "Whenever you cast an artifact spell, you create a 1/1 Thopter artifact creature \
+         token with flying.\n\
+         {1}{U}, Sacrifice two artifacts: Draw a card."
+    );
+    // The open count, and the amount that reads it back: "any number", then "that many".
+    assert_eq!(
+        text_of(&db, "scapeshift"),
+        "As an additional cost to cast this spell, sacrifice any number of lands.\n\
+         Search your library for up to that many land cards, put them onto the \
+         battlefield tapped, then shuffle."
+    );
+    // And the other payment amount, named as a possessive about a creature that is gone
+    // by the time the sentence takes effect.
+    assert_eq!(
+        text_of(&db, "thud"),
+        "As an additional cost to cast this spell, sacrifice a creature.\n\
+         Thud deals damage equal to the sacrificed creature's power to any target."
+    );
+}
+
 /// A created replacement reads as the sentence a card prints it in: the event, the turn
 /// it lasts, the qualifier on the event, and what happens instead (CR 614.1b). The
 /// keyword line above it is the flash the card is held up with (CR 702.8).

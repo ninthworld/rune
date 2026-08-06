@@ -1864,6 +1864,7 @@ fn essence_scatter_counters_a_creature_spell_but_not_an_instant() {
     let creature = to_hand(&mut state, &db, "sun_sentinel", PlayerId(1));
     let creature_spell = StackId(state.mint_id());
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: creature_spell,
         controller: PlayerId(1),
         kind: StackObjectKind::Spell {
@@ -1877,6 +1878,7 @@ fn essence_scatter_counters_a_creature_spell_but_not_an_instant() {
     let burn = to_hand(&mut state, &db, "shock", PlayerId(1));
     let burn_spell = StackId(state.mint_id());
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: burn_spell,
         controller: PlayerId(1),
         kind: StackObjectKind::Spell {
@@ -1943,6 +1945,7 @@ fn bone_to_ash_counters_a_creature_spell_and_replaces_itself() {
     let creature = to_hand(&mut state, &db, "sun_sentinel", PlayerId(1));
     let spell = StackId(state.mint_id());
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: spell,
         controller: PlayerId(1),
         kind: StackObjectKind::Spell {

@@ -18,9 +18,11 @@ use crate::state::GameState;
 /// the cast rather than something the stack could interrupt.
 ///
 /// Deliberately small and closed, deserialized with an internal `kind` tag:
-/// `{"kind": "discard", "count": 1}`, `{"kind": "sacrifice", "card_type": "creature"}`.
-/// It grows by adding variants as cards need them; exiling as a cost is not modeled
-/// (`data/exclusions.json`).
+/// `{"kind": "discard", "count": 1}`, `{"kind": "sacrifice", "card_type": "creature"}`,
+/// `{"kind": "sacrifice", "card_type": "land", "count": "any"}`. It grows by adding
+/// variants as cards need them; exiling as a *cast* cost is not modeled
+/// (`data/exclusions.json`) — that shape exists only on an activation
+/// ([`Cost::ExileFromGraveyard`](crate::Cost)).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AdditionalCost {
@@ -36,21 +38,24 @@ pub enum AdditionalCost {
         /// zero-count cost is no cost and the catalog validator rejects it.
         count: u8,
     },
-    /// Sacrifice one permanent of `card_type` as the spell is cast (CR 701.17).
+    /// Sacrifice permanents of `card_type` as the spell is cast (CR 701.17).
     ///
-    /// The permanent is chosen by the caster and named in the action's payment, exactly
+    /// The permanents are chosen by the caster and named in the action's payment, exactly
     /// as a discarded card is: a cost paid at announcement has to carry its choice on
     /// the action, because there is no resolution yet to ask during and nothing to take
     /// back once the spell is on the stack.
     ///
     /// **You may only sacrifice a permanent you control** (CR 701.17b), so whose
     /// permanent it is stays a rule rather than a field — there is no authoring of it to
-    /// get wrong. Which *one* is always exactly one: no card in this set sacrifices two,
-    /// and a count would be a number every reader had to carry for no card.
+    /// get wrong. How *many* is a field, because a printed card varies it in both
+    /// directions: one creature, or *any number* of lands.
     Sacrifice {
-        /// The card type the sacrificed permanent must have — the "creature" of
+        /// The card type each sacrificed permanent must have — the "creature" of
         /// `As an additional cost to cast this spell, sacrifice a creature.`
         card_type: crate::card_type::CardType,
+        /// How many are sacrificed. Defaults to exactly one.
+        #[serde(default)]
+        count: crate::ability::SacrificeCount,
     },
 }
 
@@ -64,7 +69,7 @@ impl AdditionalCost {
         }
     }
 
-    /// The card type this cost sacrifices a permanent of, or `None` for a cost that
+    /// The card type this cost sacrifices permanents of, or `None` for a cost that
     /// sacrifices nothing.
     ///
     /// The sibling of [`Self::discard_count`], and a named accessor for the same reason:
@@ -73,7 +78,17 @@ impl AdditionalCost {
     #[must_use]
     pub fn sacrifice_type(self) -> Option<crate::card_type::CardType> {
         match self {
-            AdditionalCost::Sacrifice { card_type } => Some(card_type),
+            AdditionalCost::Sacrifice { card_type, .. } => Some(card_type),
+            AdditionalCost::Discard { .. } => None,
+        }
+    }
+
+    /// How many permanents this cost sacrifices, or `None` for a cost that sacrifices
+    /// none.
+    #[must_use]
+    pub fn sacrifice_count(self) -> Option<crate::ability::SacrificeCount> {
+        match self {
+            AdditionalCost::Sacrifice { count, .. } => Some(count),
             AdditionalCost::Discard { .. } => None,
         }
     }
@@ -105,13 +120,40 @@ impl GameState {
             // A permanent on the battlefield is never the card being cast — that one is
             // in hand, on its way to the stack — so unlike the discard above there is
             // nothing to exclude here.
-            AdditionalCost::Sacrifice { card_type } => self.battlefield.iter().any(|perm| {
+            //
+            // A cost taking *any number* is payable on an empty board (CR 601.2b: zero is
+            // a number), so it never withholds an offer. A fixed one needs that many.
+            AdditionalCost::Sacrifice { card_type, count } => {
+                self.sacrifice_candidates_for_cast(player, card_type, db)
+                    .len()
+                    >= usize::from(count.min())
+            }
+        }
+    }
+
+    /// The permanents `player` could sacrifice to an additional cost naming `card_type`
+    /// (CR 701.17b — only what you control).
+    ///
+    /// The one enumeration behind the offer gate, the slot the server poses, and the
+    /// payment check, so a cast is offered exactly when it can be paid and the list a
+    /// player picks from is the list the engine will accept.
+    #[must_use]
+    pub(crate) fn sacrifice_candidates_for_cast(
+        &self,
+        player: PlayerId,
+        card_type: crate::card_type::CardType,
+        db: &crate::card::CardDatabase,
+    ) -> Vec<crate::id::PermanentId> {
+        self.battlefield
+            .iter()
+            .filter(|perm| {
                 crate::characteristics::controller_of(self, perm) == player
                     && perm
                         .printed
                         .face(db)
                         .is_some_and(|face| face.has_type(card_type))
-            }),
-        }
+            })
+            .map(|perm| perm.id)
+            .collect()
     }
 }

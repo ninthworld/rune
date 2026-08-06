@@ -251,11 +251,68 @@ fn an_additional_cost_that_could_never_be_paid_is_rejected() {
     let card = serde_json::from_str(json).unwrap();
     assert!(validate_definition(None, &card).is_err());
 
+    // A sacrifice states its count as a structure, and zero of them is no cost either.
+    let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                   "types": ["sorcery"], "mana_cost": "{R}",
+                   "additional_cost": {"kind": "sacrifice", "card_type": "creature",
+                                       "count": {"exactly": 0}}}"#;
+    let card = serde_json::from_str(json).unwrap();
+    assert!(validate_definition(None, &card).is_err());
+
+    // "Any number" is a real cost even though a payment of none is legal: the player may
+    // pay more, and that decision is the whole of what the card asks.
+    let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                   "types": ["sorcery"], "mana_cost": "{2}{G}{G}",
+                   "additional_cost": {"kind": "sacrifice", "card_type": "land",
+                                       "count": "any"},
+                   "spell_effects": [{"kind": "draw_card", "count": 1}]}"#;
+    let card = serde_json::from_str(json).unwrap();
+    assert!(validate_definition(None, &card).is_ok());
+
     // The shape a real card is authored in passes.
     let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
                    "types": ["sorcery"], "mana_cost": "{1}{R}",
                    "additional_cost": {"kind": "discard", "count": 1},
                    "spell_effects": [{"kind": "draw_card", "count": 2}]}"#;
+    let card = serde_json::from_str(json).unwrap();
+    assert!(validate_definition(None, &card).is_ok());
+}
+
+/// An amount read off a cost payment needs a cost that pays it. The engine's honest
+/// answer to "how many did the payment sacrifice" when nothing was sacrificed is zero, so
+/// a card that reads as throwing a creature and always deals zero damage is caught here
+/// rather than shipped (issue #721).
+#[test]
+fn an_amount_read_off_a_payment_no_cost_makes_is_rejected() {
+    let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                   "types": ["sorcery"], "mana_cost": "{R}",
+                   "spell_effects": [{"kind": "deal_damage_by_amount", "target": "any_target",
+                                      "amount": {"source": "sacrificed_creature_power"}}]}"#;
+    let card = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        validate_definition(None, &card).unwrap_err(),
+        Violation::PaymentAmountIsNeverPaid {
+            functional_id: "test_card".to_string()
+        }
+    );
+
+    // With the cost that pays it, the same card is exactly what Thud authors.
+    let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                   "types": ["sorcery"], "mana_cost": "{R}",
+                   "additional_cost": {"kind": "sacrifice", "card_type": "creature"},
+                   "spell_effects": [{"kind": "deal_damage_by_amount", "target": "any_target",
+                                      "amount": {"source": "sacrificed_creature_power"}}]}"#;
+    let card = serde_json::from_str(json).unwrap();
+    assert!(validate_definition(None, &card).is_ok());
+
+    // An activation cost pays it too, and the amount may sit anywhere in the tree — a
+    // search's size is the other place it is read.
+    let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                   "types": ["creature"], "mana_cost": "{G}", "power": 1, "toughness": 1,
+                   "abilities": [{"type": "activated",
+                     "cost": [{"kind": "sacrifice", "card_type": "land", "count": "any"}],
+                     "effects": [{"kind": "search_library", "take": 0,
+                                  "take_amount": {"source": "sacrificed_to_cost"}}]}]}"#;
     let card = serde_json::from_str(json).unwrap();
     assert!(validate_definition(None, &card).is_ok());
 }

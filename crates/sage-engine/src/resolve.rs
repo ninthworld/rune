@@ -18,19 +18,20 @@ use crate::stack::{AbilitySource, StackObject, StackObjectKind};
 use crate::state::{GameEvent, GameState, Permanent};
 use crate::CardDatabase;
 
-/// What a resolution knows **about itself** — the three facts every effect it applies
-/// may need and none of them can look up.
+/// What a resolution knows **about itself** — the facts every effect it applies may need
+/// and none of them can look up.
 ///
-/// One value rather than three parameters because they travel together everywhere,
+/// One value rather than four parameters because they travel together everywhere,
 /// including through a suspension: an effect that stops to ask a question resumes with
-/// the same window, the same announced X, and the same declaration about its damage as
-/// it started with. Adding a fourth fact is then a field, not another argument on nine
-/// functions.
+/// the same window, the same announced X, the same declaration about its damage, and the
+/// same record of what its cost ate as it started with. Adding a fifth fact is then a
+/// field, not another argument on nine functions.
 ///
-/// All three come from the object being resolved, and every one of them is fixed before
-/// the first effect runs — which is the point. A resolution does not re-read the cost to
-/// find its X or re-read the card to find out whether its damage is preventable; those
-/// were settled at announcement (CR 601.2b) and are carried, not derived.
+/// All of them come from the object being resolved, and every one is fixed before the
+/// first effect runs — which is the point. A resolution does not re-read the cost to find
+/// its X, re-read the card to find out whether its damage is preventable, or re-scan the
+/// board for the creature its cost sacrificed; those were settled at announcement
+/// (CR 601.2b/601.2h) and are carried, not derived.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Resolution {
     /// The log sequence this resolution began at — the window a "…this way" question
@@ -45,6 +46,14 @@ pub struct Resolution {
     /// [`SpellTrait::DamageCantBePrevented`](crate::SpellTrait) *and* the announced X
     /// meets whatever threshold that declaration names.
     pub damage_unpreventable: bool,
+    /// What this object's cost payment recorded (CR 601.2h) — read by
+    /// [`DerivedAmount::SacrificedToCost`](crate::DerivedAmount) and
+    /// [`DerivedAmount::SacrificedCreaturePower`](crate::DerivedAmount).
+    ///
+    /// The one fact here that could not be recovered from anywhere at all: a cost is paid
+    /// as the object goes on the stack, so the permanents it ate are gone by the time it
+    /// resolves.
+    pub paid: crate::stack::PaidCost,
 }
 
 impl Resolution {
@@ -452,8 +461,9 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
     };
     // What this resolution knows about itself, settled once, before any effect runs, and
     // carried through a suspension — so a mill that stops to ask a question still answers
-    // the question about itself correctly when it resumes, and a spell that stops to ask
-    // one resumes with the X it was cast for.
+    // the question about itself correctly when it resumes, a spell that stops to ask one
+    // resumes with the X it was cast for, and a spell that suspends still knows what its
+    // cost ate.
     let resolution = Resolution {
         start: state.next_log_sequence,
         announced_x,
@@ -462,6 +472,10 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         // verb, and never re-derived from a cost that has already been paid.
         damage_unpreventable: object
             .has_trait(db, crate::stack::SpellTraitKind::DamageCantBePrevented),
+        // What paying for the object recorded back at announcement (CR 601.2h); the
+        // permanents it names have left, which is why it was written down rather than
+        // looked up.
+        paid: object.paid,
     };
     let suspended = apply_effects_with_targets(
         state,
@@ -623,9 +637,15 @@ pub(crate) fn apply_effects_with_targets(
         // A choice-posing effect (CR 701.8 discard, 701.17 scry, 701.19 search) stops
         // here. Choices whose clamped maximum is zero are applied outright inside
         // `pose_choices`, so an empty hand or an empty library never suspends anything.
-        if let Some(choices) =
-            crate::choice::choices_for_effect(state, &effect, controller, source_card, &taken)
-        {
+        if let Some(choices) = crate::choice::choices_for_effect(
+            state,
+            &effect,
+            controller,
+            source_card,
+            &taken,
+            resolution,
+            db,
+        ) {
             if crate::choice::pose_choices(state, choices, db) {
                 crate::choice::attach_resume(
                     state,

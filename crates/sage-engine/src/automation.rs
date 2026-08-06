@@ -406,6 +406,7 @@ mod tests {
         let boar = state.new_instance(fixture("onakke_ogre"));
         let sid = crate::stack::StackId(state.mint_id());
         state.stack.push(crate::stack::StackObject {
+            paid: Default::default(),
             id: sid,
             controller: PlayerId(0),
             kind: crate::stack::StackObjectKind::Spell {

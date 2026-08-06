@@ -530,6 +530,7 @@ fn issue_333_aura_attachment_projects_into_the_view() {
     let aura = state.new_instance(id_in(&db, "test_aegis"));
     let sid = state.mint_id();
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: StackId(sid),
         controller: PlayerId(0),
         kind: StackObjectKind::Spell {

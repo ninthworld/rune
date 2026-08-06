@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (225)
+## Supported cards (229)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -100,6 +100,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `grasping_scoundrel` | Grasping Scoundrel | functional definition |
 | `gravedigger` | Gravedigger | functional definition |
 | `gravewaker` | Gravewaker | functional definition |
+| `graveyard_marshal` | Graveyard Marshal | functional definition |
 | `greenwood_sentinel` | Greenwood Sentinel | functional definition |
 | `guttersnipe` | Guttersnipe | functional definition |
 | `havoc_devils` | Havoc Devils | functional definition |
@@ -179,10 +180,12 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `root_snare` | Root Snare | functional definition |
 | `runic_armasaur` | Runic Armasaur | functional definition |
 | `rustwing_falcon` | Rustwing Falcon | functional definition |
+| `sai_master_thopterist` | Sai, Master Thopterist | functional definition |
 | `salvager_of_secrets` | Salvager of Secrets | functional definition |
 | `sarkhan_fireblood` | Sarkhan, Fireblood | functional definition |
 | `sarkhan_s_dragonfire` | Sarkhan's Dragonfire | functional definition |
 | `satyr_enchanter` | Satyr Enchanter | functional definition |
+| `scapeshift` | Scapeshift | functional definition |
 | `scholar_of_stars` | Scholar of Stars | functional definition |
 | `serra_s_guardian` | Serra's Guardian | functional definition |
 | `shivan_dragon` | Shivan Dragon | functional definition |
@@ -215,6 +218,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `tezzeret_artifice_master` | Tezzeret, Artifice Master | functional definition |
 | `tezzeret_s_strider` | Tezzeret's Strider | functional definition |
 | `thornhide_wolves` | Thornhide Wolves | functional definition |
+| `thud` | Thud | functional definition |
 | `timber_gorge` | Timber Gorge | functional definition |
 | `titanic_growth` | Titanic Growth | functional definition |
 | `tolarian_scholar` | Tolarian Scholar | functional definition |
@@ -252,13 +256,13 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Combat damage assigned by anything but the assigning creature's own power or toughness | an attacker or blocker assigns its current power, or its current toughness while a continuous effect names that one instead, read at the single place the combat-damage step asks how much a creature assigns; no other characteristic can be named, nothing assigns a fixed amount or a count, and nothing reads another object's characteristic |
 | Conditions other than a permanent count, a mill, a discard, or life gained this turn | a permanent count cannot require distinct names, and no condition asks what one permanent has done — on the intervening-if side or the continuous one |
 | Cost modification of another player's spells, or of an ability's activation cost | a permanent continuously takes generic mana off, or puts it on, the cost of a class of spell its own controller casts (CR 601.2f), read wherever a cast's cost is read; nothing reaches a spell another player casts, no modification applies to an activated ability's cost, and a coloured or colourless requirement is never changed |
-| Costs paid by exiling a card, by sacrificing more than one permanent, or by choosing to pay at all | a cast and an activation each carry the sacrifices and discards their cost names on the action, one permanent per sacrifice and always the caster's or activator's own; nothing exiles a card as a cost, no cost takes two permanents or any number of them, and every non-mana cost is mandatory rather than an option the player may decline |
+| Costs paid by exiling from anywhere but a graveyard, or by choosing to pay at all | a cast and an activation each carry the sacrifices, discards, and graveyard exiles their cost names on the action — a fixed number of permanents or any number of them, and always the payer's own — but a cost exiles only out of the payer's own graveyard, never from a hand, a library, or the battlefield, and every non-mana cost is mandatory rather than an option the player may decline |
 | Damage prevention beyond a blanket shield for the turn | a shield prevents all damage — or all combat damage — for the rest of the turn, consulted at the one seam damage is dealt, and a spell may declare its own damage unpreventable to defeat it; nothing prevents a fixed amount, names a recipient or a source, redirects damage, or lasts anything but the turn |
 | Effects that ask a player to name a type or a card | a permanent records the colour its controller named as it entered; a card name and a creature type have no recorded identity, and nothing on a spell records a choice at all |
 | Effects that let a player choose the order of cards put back on a library | a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random |
 | Effects that return a card from a graveyard to a zone other than a hand or the battlefield | a targeted card returns from a graveyard to a hand or to the battlefield, and a whole graveyard can be exiled; nothing else moves a card out of one |
 | Effects that untap a permanent it did not just take | untapping rides on the control change that steals a creature, because one effect names one target; nothing else brings an untap forward |
-| Effects whose amount is derived from a source outside the four the IR names | an amount may be a count of permanents (feeding power/toughness, life, damage, a token count, and an attachment's static grant), the life gained this turn, a count of what this resolution milled, or the greatest mana value among a class of permanents — the last three feeding power/toughness and a draw; nothing else may — not cards in a zone, a life total, one named object's mana value, another object's power, half of a total, a count of what this resolution sacrificed, or the permanent an effect just put onto the battlefield |
+| Effects whose amount is derived from a source outside the six the IR names | an amount may be a count of permanents (feeding power/toughness, life, damage, a token count, and an attachment's static grant), the life gained this turn, a count of what this resolution milled, the greatest mana value among a class of permanents, how many permanents this object's own cost sacrificed, or the power the creature that cost sacrificed had — the last five feeding power/toughness, a draw, damage, and a search's size; nothing else may — not cards in a zone, a life total, one named object's mana value, a surviving object's power, half of a total, or the permanent an effect just put onto the battlefield |
 | Emblems with an activated ability | an emblem carries static and triggered abilities only; nothing offers a way to activate one |
 | Equipment that grants an ability or a type, and cards that ask whether a creature is equipped | an attachment grants power/toughness, keywords, and combat restrictions at CR 613 layers 6 and 7c; it adds no triggered ability and no type, and nothing asks whether a permanent is attached |
 | Gaining control of a permanent for longer than a turn, and exchanging control | a control change is a targeted layer-2 effect the cleanup step ends; no duration outlives the turn and nothing swaps two permanents' controllers |
@@ -268,7 +272,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Modes beyond one chosen from a spell's printed list | a spell chooses exactly one of between two and four printed modes as it is announced, and the chosen mode alone decides which effects resolve and which targets are asked for; no ability is modal, nothing chooses two modes or repeats one, and a mode carries no cost of its own |
 | Multi-face cards (transform, modal double-faced) | the card model has a single face |
 | Optional costs paid with anything but mana | an optional effect's cost is a mana payment; sacrificing, discarding, or exiling to pay is unwritable |
-| Playing a card from a zone other than the hand, the command zone, or a permitted graveyard | a graveyard is reached three ways — a one-turn permission to cast from it, a continuous permission to play lands from it, and an activated or triggered ability that returns its own card out of it — but no other zone is reached at all: no per-turn exile permission, nothing played off the top of a library, no way to cast without paying a mana cost, no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure), and no activation cost that exiles other cards from a graveyard |
+| Playing a card from a zone other than the hand, the command zone, or a permitted graveyard | a graveyard is reached three ways — a one-turn permission to cast from it, a continuous permission to play lands from it, and an activated or triggered ability that returns its own card out of it — but no other zone is reached at all: no per-turn exile permission, nothing played off the top of a library, no way to cast without paying a mana cost, and no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure) |
 | Protection | there is no protection layer: nothing stops a spell, a block, an aura, or damage by a quality the way CR 702.16 does |
 | Reflexive triggers, and conditional branches that choose a target | an optional effect declares the target group of the one effect it wraps, but a conditional's branches, a wrapper over two targeting effects, and a "when you do" aimed after a cost is paid have no group one announcement could fill |
 | Replacement effects other than one modifying a permanent entering the battlefield | the entering object's own self-replacements and a one-shot replacement an ability created for the turn are collected, ordered by the affected permanent's controller (CR 616.1), and applied once each (CR 614.5); damage is reached only by a prevention shield, and no other event can be replaced — not a permanent leaving the battlefield, a draw, or life gained — no permanent carries a static replacement ability, and the only substitution an entry can be given is exile |

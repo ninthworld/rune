@@ -334,6 +334,7 @@ async fn issue_264_a_castable_instant_is_never_auto_passed() {
     let boar = state.new_instance(fixture("onakke_ogre"));
     let sid = sage_engine::StackId(state.mint_id());
     state.stack.push(sage_engine::StackObject {
+        paid: Default::default(),
         id: sid,
         controller: PlayerId(0),
         kind: sage_engine::StackObjectKind::Spell {

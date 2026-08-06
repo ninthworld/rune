@@ -193,11 +193,21 @@ The kinds today are `discard` and `sacrifice`:
 "additional_cost": { "kind": "sacrifice", "card_type": "creature" }
 ```
 
-A sacrifice takes exactly one permanent of the named type. **Whose permanent stays a rule
+A sacrifice takes permanents of the named type. **Whose permanent stays a rule
 rather than a field** — CR 701.17b lets a player sacrifice only what they control, so
-there is no scope to author and none to get wrong. There is no count either: no card in
-this set sacrifices two, and a number every reader had to carry for no card is a number
-that will be wrong the first time one prints.
+there is no scope to author and none to get wrong. How *many* is a field, because a printed
+card varies it in both directions:
+
+```json
+"additional_cost": { "kind": "sacrifice", "card_type": "land", "count": "any" }
+```
+
+`count` is `{"exactly": n}` or `"any"`, and defaults to exactly one. **`"any"` is the one
+cost whose size is a decision**: a payment of none is legal, so such a cost never withholds
+the offer and never makes a cast unplayable — and the number the player settles on is
+recorded as the cost is paid, for an amount that reads it back (see *Amounts derived from
+something else*). A fixed count is exact in both directions: two artifacts is paid by two
+and refused by one, because over-paying a cost is not something a player may choose to do.
 
 Both kinds carry their choice on the **action**, in its `payment` list, beside the mana
 sources. A cost paid at announcement has no resolution to ask during, and once the spell
@@ -210,8 +220,9 @@ A sacrifice is a **real death**: it goes down the one leaves-battlefield seam, s
 trigger — including the sacrificed permanent's own — sees it, exactly as `sacrifice_this`
 already does for an activation cost.
 
-A `count` of zero, or an `additional_cost` on a land (which is played, not cast —
-CR 116.2a), fails the catalog validator.
+A `count` of zero (bare, or `{"exactly": 0}`), or an `additional_cost` on a land (which is
+played, not cast — CR 116.2a), fails the catalog validator. Exiling as a *cast* cost is not
+modeled; that shape exists only on an activation (`exile_from_graveyard`, below).
 
 ### Modal spells (CR 700.2)
 
@@ -651,9 +662,10 @@ version of it. If *every* target is illegal the spell never resolves at all (CR 
 `cost` entries are `{"kind":"tap"}` (the `{T}` symbol),
 `{"kind":"mana","mana":"{1}{R}"}` — written in the same curly-brace notation a card's
 `mana_cost` uses — `{"kind":"loyalty","amount":-2}` (below), `{"kind":"sacrifice_this"}`,
-`{"kind":"remove_counters","counter":"charge","count":1}`, and the two the player picks
-the payment for, `{"kind":"sacrifice","card_type":"creature","another":true}` and
-`{"kind":"discard","count":1}`. Mana is paid from the
+`{"kind":"remove_counters","counter":"charge","count":1}`, and the three the player picks
+the payment for: `{"kind":"sacrifice","card_type":"creature","another":true}`,
+`{"kind":"discard","count":1}`, and
+`{"kind":"exile_from_graveyard","class":"creature"}`. Mana is paid from the
 activating player's pool through the same seam a cast uses, and the whole cost is paid all
 or nothing — a failed mana payment never leaves the source tapped. CR 302.6 still forbids
 a summoning-sick creature paying `{T}`, including for a mana ability.
@@ -674,24 +686,36 @@ choice to ride on the action.
   is not a loyalty cost: that one is signed, may *add*, and carries CR 606.3's two
   timing rules, and collapsing the two would make a charge counter a loyalty ability.
 
-The other two are the ones the **player picks the payment for**, and everything about them
+The other three are the ones the **player picks the payment for**, and everything about them
 follows from that. The choice arrives on the action, in the same `payment` list a cast
 carries (`docs/protocol.md`), because a cost is paid as the ability is activated (CR
 602.2b): there is no resolution to ask during, and once the ability is on the stack there is
-nothing left to take back. Neither is offered without something to pay it, so an ability
+nothing left to take back. None is offered without enough to pay it, so an ability
 with nothing to feed it is simply not activatable rather than activatable and then free.
 
-- `sacrifice` takes **one** permanent the activator controls (CR 701.17b — whose permanent
+- `sacrifice` takes permanents the activator controls (CR 701.17b — whose permanent
   it is stays a rule rather than a field). `card_type` and `subtype` narrow what qualifies
   and both default to any, so `{"kind":"sacrifice","subtype":"Goblin"}` is exactly
   `Sacrifice a Goblin`: a Goblin is a Goblin whatever else it is, and a Goblin token counts
   because the subtype is read off the printed face. `another` excludes the source — the
   *another* of `Sacrifice another creature` — and without it an ability may eat its own
-  source, which is legal and still resolves (CR 113.7a). Paying it is a real death down the
+  source, which is legal and still resolves (CR 113.7a). `count` is the same
+  `{"exactly": n}` / `"any"` field a cast's additional cost takes and defaults to exactly
+  one, so `{"kind":"sacrifice","card_type":"artifact","count":{"exactly":2}}` is
+  `Sacrifice two artifacts` — one cost taking a pair, refused by one, rather than two costs
+  a player could half-pay. Paying it is a real death down the
   same leaves-battlefield seam `sacrifice_this` uses, so a dies trigger sees it.
 - `discard` takes `count` cards from the activator's hand (CR 701.8). Unlike the cast-side
   additional cost there is no card to exclude: the source is a permanent, not a card in the
   hand paying for itself.
+- `exile_from_graveyard` takes `count` cards out of the activator's **own** graveyard
+  (CR 701.19), narrowed by `class` — the same `any` / `creature` / `instant_or_sorcery` /
+  `artifact` / `land` set a graveyard target spec uses, read off the printed face because a
+  card in a graveyard has no computed characteristics. Whose graveyard stays a rule rather
+  than a field: every printed cost of this shape says *your graveyard*. It is **not** a
+  sacrifice with a different destination — nothing leaves the battlefield, so nothing dies
+  and no dies trigger fires — and the ability stops being offered when the pile runs out,
+  which is the whole of what such a card does.
 
 Mana is **not** named on an activation's payment. It is paid from the pool, floated by
 activating mana abilities as actions in their own right, exactly as it always was.
@@ -914,6 +938,8 @@ another. A card that needs a new phrase adds a source.
 | `life_gained_this_turn` | how much life **you** have gained this turn (CR 118.3) | `where X is the amount of life you gained this turn` |
 | `milled_this_way` | how many cards **this resolution** milled matching `filter` | `for each land card put into their graveyard this way` |
 | `greatest_mana_value` | the greatest mana value among the permanents `among` names (CR 202.3) | `equal to the greatest mana value among artifacts you control` |
+| `sacrificed_to_cost` | how many permanents **this object's own cost** sacrificed | `Sacrifice any number of lands. Search your library for up to that many land cards` |
+| `sacrificed_creature_power` | the power the creature that cost sacrificed **had** (CR 608.2h) | `deals damage equal to the sacrificed creature's power` |
 
 `announced_x` is the odd one out and worth stating plainly: it reads neither the board
 nor the event log, because there is nothing to read. X was **chosen**, at announcement,
@@ -922,7 +948,7 @@ the stack object from there, so the mana that was charged, the effect that resol
 the text the stack entry shows are all the same number by construction. It is zero for an
 object that announced none.
 
-Three effects read one:
+Five effects read one:
 
 ```json
 { "kind": "pump_by_amount", "target": "any_creature",
@@ -935,10 +961,29 @@ Three effects read one:
   "amount": { "source": "milled_this_way", "filter": { "kind": "land" } } }
 { "kind": "deal_damage_by_amount", "target": "any_target",
   "amount": { "source": "announced_x" } }
+{ "kind": "deal_damage_by_amount", "target": "any_target",
+  "amount": { "source": "sacrificed_creature_power" } }
+{ "kind": "search_library", "take": 0, "filter": { "kind": "land" },
+  "destination": "battlefield_tapped",
+  "take_amount": { "source": "sacrificed_to_cost" } }
 ```
 
-`deal_damage_by_amount` is `deal_damage`'s sibling in the same way, and its subject
-decides whether a target is chosen exactly as every other damage verb's does.
+**The last two read the payment, not the game, and that is the whole reason they are
+stored.** A cost is paid as the object goes on the stack (CR 601.2h), so by the time it
+resolves the permanents it ate are in a graveyard with no identity of their own — or, for a
+token, nowhere at all. Both numbers are therefore captured *as the cost is paid* and carried
+on the stack object beside its targets; reading them at resolution reads what was written
+down, which is exactly CR 608.2h's last-known information. A card that names one but whose
+own cost sacrifices nothing fails the catalog validator
+(`Violation::PaymentAmountIsNeverPaid`), because the honest answer would be a silent zero.
+
+`deal_damage_by_amount` is `deal_damage`'s and `deal_damage_by_count`'s sibling in the same
+way, and its subject decides whether a target is chosen exactly as every other damage verb's
+does. `search_library`'s `take_amount` is a **field** rather than a twin verb for the reason
+`create_token`'s `count_of` is one: a second variant would duplicate the filter and the
+destination, and the number is the same number the effect already carries. When
+`take_amount` is present `take` is ignored. An amount of zero is a search that shuffles and
+finds nothing (CR 701.19c), not a stall.
 
 `pump_by_amount` is `pump_by_count`'s sibling for every X that is not a count, and freezes
 X into a fixed modifier in exactly the same way: life gained later in the turn does not
@@ -1688,8 +1733,10 @@ it, "whenever a creature **with flying** attacks". Both are read through the com
 characteristics of the state the event happened in, so a creature that entered pumped is
 judged by what it was then, one that died shrunk by what it was as it died, and one that was
 *granted* flying is a flier for exactly as long as the grant lasts.
-`you_cast_spell` takes a **class of spell**: the bare strings `enchantment`,
+`you_cast_spell` takes a **class of spell**: the bare strings `enchantment`, `artifact`,
 `instant_or_sorcery`, and `chosen_color`, or the wrapped `{"creature": {"min_power": 4}}`.
+The classes are read off the printed types and do not exclude each other — an artifact
+creature spell is an `artifact` spell *and* a `creature` spell (CR 205.2b).
 `chosen_color` is the one whose meaning comes from elsewhere on the same card, and is
 described under [a colour named as a permanent enters](#a-colour-named-as-a-permanent-enters-cr-61412);
 `creature` takes an optional `min_power`, and `{"creature": {}}` is every creature spell.

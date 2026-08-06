@@ -772,13 +772,24 @@ the server-enumerated `candidates` like any other selection. A client that rende
 from this list" already renders both; one that ignores the slots leaves the cost unpaid,
 and the server pays it (ADR 0010).
 
-**An `activate_ability` carries the same two slots** when its cost asks the player to pick
+**An `activate_ability` carries the same slots** when its cost asks the player to pick
 what pays it — `{B}, Sacrifice another creature:` poses `cost_sacrifice` over the
-battlefield, `{T}, Discard a card:` poses `cost_discard` over the hand — with the same slot
-ids, the same exactness (`count` and no `min`), and the same server fallback. The slot's
+battlefield, `{T}, Discard a card:` poses `cost_discard` over the hand, and
+`{2}{B}, Exile a creature card from your graveyard:` poses `cost_exile` over `"graveyard"`
+(CR 701.19) — with the same slot
+ids, the same server fallback, and no new prompt kind for the third zone, which is the
+whole point of `zone` being free-form. The slot's
 `prompt` is the cost as the card writes it, so a player is asked the question printed on the
-permanent. Nothing about either slot is action-kind-specific on the wire, and a client that
+permanent. Nothing about any of them is action-kind-specific on the wire, and a client that
 already answers them on a cast answers them here without learning anything new.
+
+**A cost the player *sizes* is bounds, not a new shape.** `Sacrifice two artifacts` is
+`cost_sacrifice` with `count: 2` and no `min` — exact, like every cost slot before it — and
+`Sacrifice any number of lands` is the same slot with `min: 0` and a `count` of every
+candidate the board holds. So "how many" reaches the client as the range it already knows
+from a scry, and no client computes what a legal number is. The number the player settles on
+is recorded by the engine as the cost is paid, which is what an effect reading `that many`
+later reads back.
 
 An activation poses **no `pay_mana` slots**: an activated ability's mana comes from its
 controller's pool (CR 602.2b), floated by activating mana abilities as actions in their own

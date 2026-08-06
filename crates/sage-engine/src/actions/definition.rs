@@ -50,6 +50,15 @@ pub enum CostPayment {
     /// left to take back. The permanent must be one the caster controls (CR 701.17b) and
     /// of the type the cost names.
     Sacrifice(PermanentId),
+    /// One card exiled from the payer's **graveyard** to pay a cost
+    /// (CR 601.2b / 701.19).
+    ///
+    /// Named on the action for the reason a sacrifice is, and distinct from it for the
+    /// reason the cost is: a card in a graveyard has a [`CardInstanceId`] and no
+    /// [`PermanentId`], so naming one with the other would be naming a different kind of
+    /// object. Nothing dies here — the card moves graveyard→exile — which is why it is not
+    /// a sacrifice with a different destination.
+    Exile(CardInstanceId),
 }
 
 impl CostPayment {
@@ -58,7 +67,7 @@ impl CostPayment {
     pub fn mana(self) -> Option<ManaSource> {
         match self {
             CostPayment::Mana(source) => Some(source),
-            CostPayment::Discard(_) | CostPayment::Sacrifice(_) => None,
+            CostPayment::Discard(_) | CostPayment::Sacrifice(_) | CostPayment::Exile(_) => None,
         }
     }
 
@@ -67,7 +76,7 @@ impl CostPayment {
     pub fn discard(self) -> Option<CardInstanceId> {
         match self {
             CostPayment::Discard(card) => Some(card),
-            CostPayment::Mana(_) | CostPayment::Sacrifice(_) => None,
+            CostPayment::Mana(_) | CostPayment::Sacrifice(_) | CostPayment::Exile(_) => None,
         }
     }
 
@@ -76,7 +85,16 @@ impl CostPayment {
     pub fn sacrifice(self) -> Option<PermanentId> {
         match self {
             CostPayment::Sacrifice(permanent) => Some(permanent),
-            CostPayment::Mana(_) | CostPayment::Discard(_) => None,
+            CostPayment::Mana(_) | CostPayment::Discard(_) | CostPayment::Exile(_) => None,
+        }
+    }
+
+    /// The exiled graveyard card this entry names, if it names one.
+    #[must_use]
+    pub fn exile(self) -> Option<CardInstanceId> {
+        match self {
+            CostPayment::Exile(card) => Some(card),
+            CostPayment::Mana(_) | CostPayment::Discard(_) | CostPayment::Sacrifice(_) => None,
         }
     }
 }
@@ -100,6 +118,12 @@ pub(crate) fn sacrifices_of(payment: &[CostPayment]) -> Vec<PermanentId> {
         .iter()
         .filter_map(|entry| entry.sacrifice())
         .collect()
+}
+
+/// The graveyard cards a payment exiles, in the order the player chose them.
+#[must_use]
+pub(crate) fn exiles_of(payment: &[CostPayment]) -> Vec<CardInstanceId> {
+    payment.iter().filter_map(|entry| entry.exile()).collect()
 }
 
 /// An action a player may take. The engine generates the legal set with
@@ -134,8 +158,9 @@ pub enum Action {
         /// is validated slot-by-slot in [`crate::apply_action`].
         targets: Vec<Target>,
         /// The parts of the activation cost the player **chose** (CR 601.2b): the
-        /// permanents sacrificed to a `Sacrifice another creature`, and the cards
-        /// discarded to a `Discard a card`. Empty for every ability whose cost is
+        /// permanents sacrificed to a `Sacrifice another creature`, the cards
+        /// discarded to a `Discard a card`, and the cards exiled to an `Exile a creature
+        /// card from your graveyard`. Empty for every ability whose cost is
         /// entirely about its own source and the pool, which is almost all of them.
         ///
         /// Carried here for the reason [`Self::CastSpell::payment`] is: a cost is paid as

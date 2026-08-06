@@ -516,6 +516,49 @@ pub(super) fn watches_the_chosen_color(
     })
 }
 
+/// The two [`DerivedAmount`](crate::DerivedAmount) sources that read an object's own cost
+/// payment rather than the game (CR 601.2h).
+const PAYMENT_AMOUNTS: [&str; 2] = ["sacrificed_to_cost", "sacrificed_creature_power"];
+
+/// Whether `object` reads an amount off a cost payment its own cost never makes — see
+/// [`Violation::PaymentAmountIsNeverPaid`](super::Violation::PaymentAmountIsNeverPaid).
+///
+/// The pair rule that matches [`watches_the_chosen_color`]'s: one half of the card names a
+/// number, the other half has to be the thing that produces it. Reads the authored JSON,
+/// because `build.rs` validates a definition before the typed IR exists (ADR 0008 §5).
+pub(super) fn reads_an_unpaid_amount(object: &serde_json::Map<String, serde_json::Value>) -> bool {
+    let reads = every_effect(object).into_iter().any(|effect| {
+        ["amount", "take_amount"].into_iter().any(|key| {
+            effect
+                .get(key)
+                .and_then(|amount| amount.get("source"))
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|source| PAYMENT_AMOUNTS.contains(&source))
+        })
+    });
+    reads && !sacrifices_something(object)
+}
+
+/// Whether any cost of `object` sacrifices a permanent the payer picks — an additional
+/// cast cost, or a component of an activation cost.
+fn sacrifices_something(object: &serde_json::Map<String, serde_json::Value>) -> bool {
+    let kind_is_sacrifice = |value: &serde_json::Value| {
+        value.get("kind").and_then(serde_json::Value::as_str) == Some("sacrifice")
+    };
+    if object.get("additional_cost").is_some_and(kind_is_sacrifice) {
+        return true;
+    }
+    abilities_of(object).iter().any(|ability| {
+        ability
+            .get("cost")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+            .iter()
+            .any(kind_is_sacrifice)
+    })
+}
+
 /// Whether `object` declares the `enters_choosing_color` ability — whether it names a
 /// colour as it enters (CR 614.12), and so whether "the chosen color" refers to anything.
 pub(super) fn object_chooses_a_color(object: &serde_json::Map<String, serde_json::Value>) -> bool {

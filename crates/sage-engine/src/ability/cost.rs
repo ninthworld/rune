@@ -1,7 +1,67 @@
 //! What an activated ability charges to activate (CR 118): tapping, mana, loyalty, and
-//! the two costs whose payment the activating player **chooses**.
+//! the three costs whose payment the activating player **chooses**.
 
 use super::*;
+
+/// How many permanents a sacrifice cost takes (CR 601.2b).
+///
+/// One vocabulary for both places a cost sacrifices something the player picks — an
+/// activation's [`Cost::Sacrifice`] and a cast's
+/// [`AdditionalCost::Sacrifice`](crate::AdditionalCost) — because "how many" is the same
+/// question of both and a second spelling would be a second thing to get wrong.
+///
+/// Authored the way [`ObservedSpell`] is, externally tagged: `{"exactly": 2}` for a fixed
+/// number and `"any"` for the open one. Absent defaults to exactly one, which is what
+/// every card written before this existed says.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SacrificeCount {
+    /// Exactly this many, never fewer and never more — the `two artifacts` of an
+    /// activation that eats a pair. Over-paying a cost is not something a player may
+    /// choose to do, so this is exact in both directions.
+    Exactly(u8),
+    /// **Any number the payer chooses, including none** — the `Sacrifice any number of
+    /// lands` of a spell that trades a board for a search.
+    ///
+    /// Zero is a legal payment, which is what makes such a cost never a reason to
+    /// withhold the offer: there is always something to pay it with, even on an empty
+    /// board. It is also the only cost in the IR whose *size* is a decision, which is why
+    /// the number it settled on has to be recorded as it is paid
+    /// ([`PaidCost`](crate::PaidCost)) rather than counted again later.
+    Any,
+}
+
+impl Default for SacrificeCount {
+    fn default() -> Self {
+        Self::Exactly(1)
+    }
+}
+
+impl SacrificeCount {
+    /// The fewest permanents this count accepts.
+    #[must_use]
+    pub fn min(self) -> u8 {
+        match self {
+            Self::Exactly(count) => count,
+            Self::Any => 0,
+        }
+    }
+
+    /// Whether `paid` permanents is exactly what this count asks for, given that
+    /// `available` could have been sacrificed.
+    ///
+    /// The one place the two shapes differ, so no caller has to match the enum itself: a
+    /// fixed count is met by that many, and an open one by anything up to what the board
+    /// held. An open count can never be over-paid either — there is nothing left to name
+    /// once every candidate has been named.
+    #[must_use]
+    pub fn is_paid_by(self, paid: usize, available: usize) -> bool {
+        match self {
+            Self::Exactly(count) => paid == usize::from(count),
+            Self::Any => paid <= available,
+        }
+    }
+}
 
 /// A cost paid to activate an ability.
 ///
@@ -104,12 +164,12 @@ pub enum Cost {
     ///
     /// **Whose permanent stays a rule rather than a field**: CR 701.17b lets a player
     /// sacrifice only what they control, so there is nothing to author and nothing to get
-    /// wrong. Exactly **one** permanent per such cost, for the reason the cast side takes
-    /// one: no card in this set sacrifices two to an activation, and a count every reader
-    /// had to carry for no card is a count that will be wrong the first time one prints.
+    /// wrong. How *many* is a field ([`count`](Self::Sacrifice::count)) because a printed
+    /// card really does vary it — `Sacrifice two artifacts` is one cost taking a pair, not
+    /// two costs taking one each, and writing it as two would let a player pay half of it.
     ///
-    /// Payable only while a matching permanent exists, so an ability with nothing to feed
-    /// it is simply not offered (CR 602.2b) rather than offered and then found free.
+    /// Payable only while enough matching permanents exist, so an ability with nothing to
+    /// feed it is simply not offered (CR 602.2b) rather than offered and then found free.
     /// Paying it is a **real death** down the one leaves-battlefield seam, exactly as
     /// [`Self::SacrificeThis`] is.
     Sacrifice {
@@ -127,6 +187,39 @@ pub enum Cost {
         /// `Sacrifice a Goblin` on a Goblin means and is a legal (if final) activation.
         #[serde(default)]
         another: bool,
+        /// How many permanents it takes. Defaults to exactly one, which is what every
+        /// card written before the count existed says.
+        #[serde(default)]
+        count: SacrificeCount,
+    },
+    /// **Exile `count` cards the activating player picks from their own graveyard**
+    /// (CR 601.2b / 701.19) — the `Exile a creature card from your graveyard:` of a
+    /// permanent that eats the pile, authored as
+    /// `{"kind":"exile_from_graveyard","class":"creature"}`.
+    ///
+    /// The third cost whose payment is a *choice*, and the first that spends an object
+    /// which is not on the battlefield. It is not a [`Self::Sacrifice`] with a different
+    /// destination: a card in a graveyard has no [`PermanentId`](crate::PermanentId), no
+    /// controller, and no computed characteristics, so what may pay it is read off the
+    /// **printed** face exactly as a graveyard target's is
+    /// ([`GraveyardCardClass`]).
+    ///
+    /// **Whose graveyard stays a rule rather than a field**, as whose permanent does for a
+    /// sacrifice: every printed cost of this shape says *your graveyard*, and a cost that
+    /// reached across the table would be a different card.
+    ///
+    /// Payable only while enough matching cards are there, so the ability stops being
+    /// offered when the pile runs out — which is the whole of what a card like this does.
+    /// Paying it moves the card to its owner's exile zone; it is not a death and fires no
+    /// dies trigger, because nothing died.
+    ExileFromGraveyard {
+        /// The class of card that may pay it — the `creature` of `Exile a creature card
+        /// from your graveyard`. Defaults to any card.
+        #[serde(default)]
+        class: GraveyardCardClass,
+        /// How many cards are exiled. At least one on every printed card.
+        #[serde(default = "one")]
+        count: u8,
     },
     /// **Discard `count` cards** from the activating player's hand (CR 601.2b / 701.8) —
     /// the `{T}, Discard a card:` of a rummaging creature, authored as
@@ -158,7 +251,62 @@ impl Cost {
             | Cost::Loyalty { .. }
             | Cost::SacrificeThis
             | Cost::RemoveCounters { .. }
+            | Cost::ExileFromGraveyard { .. }
             | Cost::Sacrifice { .. } => 0,
+        }
+    }
+
+    /// How many cards this component exiles from its payer's graveyard, or `0` for a
+    /// component that exiles none.
+    ///
+    /// The graveyard counterpart of [`Self::discard_count`], and a named accessor for the
+    /// same reason: the offer gate, the candidate list, and the payment check each ask one
+    /// question in one place rather than matching the enum for themselves.
+    #[must_use]
+    pub fn exile_count(&self) -> u8 {
+        match self {
+            Cost::ExileFromGraveyard { count, .. } => *count,
+            Cost::Tap
+            | Cost::Mana { .. }
+            | Cost::Loyalty { .. }
+            | Cost::SacrificeThis
+            | Cost::RemoveCounters { .. }
+            | Cost::Discard { .. }
+            | Cost::Sacrifice { .. } => 0,
+        }
+    }
+
+    /// How many permanents this component sacrifices, or `None` for a component that
+    /// sacrifices none the player picks.
+    ///
+    /// `None` for [`Cost::SacrificeThis`] too, and deliberately: that one names its own
+    /// source and carries no choice, so it is answered where the source is rather than out
+    /// of a payment.
+    #[must_use]
+    pub fn sacrifice_count(&self) -> Option<SacrificeCount> {
+        match self {
+            Cost::Sacrifice { count, .. } => Some(*count),
+            Cost::Tap
+            | Cost::Mana { .. }
+            | Cost::Loyalty { .. }
+            | Cost::SacrificeThis
+            | Cost::RemoveCounters { .. }
+            | Cost::ExileFromGraveyard { .. }
+            | Cost::Discard { .. } => None,
+        }
+    }
+
+    /// Whether `data` is a card this component would accept as its exile payment —
+    /// everything about a candidate that is a question about the *card*, with whose
+    /// graveyard it is in left to the caller that knows the zones.
+    ///
+    /// `false` for every component that exiles nothing, so a caller may ask it of a whole
+    /// cost list without first sorting out which entry is which.
+    #[must_use]
+    pub fn accepts_exile(&self, data: &crate::CardData) -> bool {
+        match self {
+            Cost::ExileFromGraveyard { class, .. } => class.matches(data),
+            _ => false,
         }
     }
 

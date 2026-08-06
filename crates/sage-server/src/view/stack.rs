@@ -206,6 +206,7 @@ mod tests {
     ) -> StackId {
         let id = StackId(state.mint_id());
         state.stack.push(StackObject {
+            paid: Default::default(),
             id,
             controller,
             kind,

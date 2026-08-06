@@ -138,6 +138,25 @@ pub enum DerivedAmount {
     /// the honest one: such an effect has no X, and an effect that reads one it never
     /// had should do nothing rather than guess.
     AnnouncedX,
+    /// How many permanents were **sacrificed to this object's own cost** (CR 601.2h) —
+    /// the `that many` of `Sacrifice any number of lands. Search your library for up to
+    /// that many land cards`.
+    ///
+    /// One of the two amounts here that read neither the board nor the event log but the
+    /// object's own [`PaidCost`](crate::PaidCost). It has to: the number is a decision the
+    /// player made while paying, and by the time the spell resolves the lands are in a
+    /// graveyard among every other land that ever went there.
+    SacrificedToCost,
+    /// The **power the creature sacrificed to this object's cost had** as it left
+    /// (CR 608.2h) — the `equal to the sacrificed creature's power` of a spell that throws
+    /// it at something.
+    ///
+    /// Last-known information, read off the same [`PaidCost`](crate::PaidCost) and fixed
+    /// at the same moment, for the reason that rule exists: the creature is gone before
+    /// the spell resolves, so there is nothing on the battlefield left to ask. Zero when
+    /// the cost sacrificed no creature, and zero for a power that was negative — damage is
+    /// never negative (CR 120.1).
+    SacrificedCreaturePower,
 }
 
 /// The class of permanents a **mass destruction** puts into their owners' graveyards

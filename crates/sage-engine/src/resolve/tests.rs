@@ -82,6 +82,7 @@ fn issue_47_non_permanent_spell_resolves_to_graveyard_not_battlefield() {
     let bolt = state.new_instance(id_in(&db, "test_bolt"));
     let sid = state.mint_id();
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: StackId(sid),
         controller: PlayerId(0),
         kind: StackObjectKind::Spell {
@@ -128,6 +129,7 @@ fn creature_on_battlefield(state: &mut GameState) -> PermanentId {
 fn tap_ability_targeting(state: &mut GameState, source: PermanentId, target: Target) {
     let sid = state.mint_id();
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: StackId(sid),
         controller: PlayerId(0),
         kind: StackObjectKind::Ability {
@@ -266,6 +268,7 @@ fn issue_148_spell_on_stack_target_is_legal_only_while_the_spell_is_on_the_stack
     let spell = state.new_instance(fixture("onakke_ogre"));
     let sid = StackId(state.mint_id());
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: sid,
         controller: PlayerId(0),
         kind: StackObjectKind::Spell {
@@ -278,6 +281,7 @@ fn issue_148_spell_on_stack_target_is_legal_only_while_the_spell_is_on_the_stack
     // An ability sharing the stack is not a spell target.
     let aid = StackId(state.mint_id());
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: aid,
         controller: PlayerId(0),
         kind: StackObjectKind::Ability {
@@ -388,6 +392,7 @@ fn issue_149_put_counters_ability_lands_on_its_target_cr_122() {
     let creature = creature_on_battlefield(&mut state);
     let sid = state.mint_id();
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: StackId(sid),
         controller: PlayerId(0),
         kind: StackObjectKind::Ability {
@@ -785,6 +790,7 @@ fn issue_155_etb_trigger_observes_the_replaced_counters_state_cr_614_12() {
     state.players[0].library = vec![draw];
     let sid = state.mint_id();
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: StackId(sid),
         controller: PlayerId(0),
         kind: StackObjectKind::Spell {

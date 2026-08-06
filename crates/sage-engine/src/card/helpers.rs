@@ -169,6 +169,9 @@ pub(crate) fn spell_matches_class(
     };
     match observes {
         ObservedSpell::Enchantment => data.has_type(CardType::Enchantment),
+        // CR 205.2b: an artifact creature is both, so it satisfies this class and the
+        // creature one. Nothing here excludes a card for the other types it also has.
+        ObservedSpell::Artifact => data.has_type(CardType::Artifact),
         ObservedSpell::InstantOrSorcery => {
             data.has_type(CardType::Instant) || data.has_type(CardType::Sorcery)
         }

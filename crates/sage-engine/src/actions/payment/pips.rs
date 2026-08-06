@@ -63,16 +63,35 @@ pub struct DiscardCost {
     pub candidates: Vec<CardInstanceId>,
 }
 
-/// The sacrifice an additional cost demands, and the permanents that could pay it
-/// (CR 601.2b / 701.17).
+/// The sacrifice a cost demands, and the permanents that could pay it
+/// (CR 601.2b / 701.17) — a cast's additional cost ([`sacrifice_cost`]) and an
+/// activation's ([`activation_sacrifice_cost`](super::activation_sacrifice_cost)) alike,
+/// because it is the same question about the same zone.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SacrificeCost {
-    /// The card type the sacrificed permanent must have.
-    pub card_type: crate::card_type::CardType,
-    /// The permanents the caster controls that could pay it. May be empty in a state the
-    /// cast was never offered from; the offer gate refuses such a cast, so nothing
-    /// downstream has to treat an empty list as payable.
+    /// How many permanents it takes — a fixed number, or **any number** the payer picks
+    /// (CR 601.2b). The open form is the one a caller must pose with a minimum of zero.
+    pub count: crate::ability::SacrificeCount,
+    /// The permanents the payer controls that could pay it. May be empty in a state the
+    /// action was never offered from; the offer gate refuses such an action, so nothing
+    /// downstream has to treat an empty list as payable — except for an open count, where
+    /// an empty list really is a legal payment of none.
     pub candidates: Vec<crate::id::PermanentId>,
+}
+
+/// The exile a cost demands, and the cards in the payer's own graveyard that could pay it
+/// (CR 601.2b / 701.19).
+///
+/// The graveyard counterpart of [`DiscardCost`], and stated the same way: a count, and the
+/// only ids an answer may name. Whose graveyard is not a field — every printed cost of
+/// this shape says *your graveyard* — so the candidates are always the payer's own.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExileCost {
+    /// How many cards must be exiled. Never zero — a card with no such cost has no
+    /// [`ExileCost`] at all.
+    pub count: u8,
+    /// The cards in the paying player's graveyard that could pay it.
+    pub candidates: Vec<CardInstanceId>,
 }
 
 /// The discard `card`'s additional cost demands, or `None` when it has none — which is
@@ -116,20 +135,11 @@ pub fn sacrifice_cost(
     db: &CardDatabase,
     card: CardInstance,
 ) -> Option<SacrificeCost> {
-    let card_type = db.card(card.card)?.additional_cost?.sacrifice_type()?;
+    let cost = db.card(card.card)?.additional_cost?;
+    let card_type = cost.sacrifice_type()?;
     Some(SacrificeCost {
-        card_type,
-        candidates: state
-            .battlefield
-            .iter()
-            .filter(|perm| crate::characteristics::controller_of(state, perm) == state.priority)
-            .filter(|perm| {
-                perm.printed
-                    .face(db)
-                    .is_some_and(|face| face.has_type(card_type))
-            })
-            .map(|perm| perm.id)
-            .collect(),
+        count: cost.sacrifice_count().unwrap_or_default(),
+        candidates: state.sacrifice_candidates_for_cast(state.priority, card_type, db),
     })
 }
 

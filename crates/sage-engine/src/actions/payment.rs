@@ -59,13 +59,14 @@ mod solve;
 mod sources;
 
 pub use activation::{
-    activation_discard_cost, activation_sacrifice_candidates, auto_activation_payment,
+    activation_discard_cost, activation_exile_cost, activation_sacrifice_cost,
+    auto_activation_payment,
 };
 pub(crate) use activation::{chosen_costs_are_payable, payment_covers_activation};
 pub(crate) use apply::{apply_payment, payment_covers_cast};
 pub use pips::{
-    discard_cost, payment_pips, remaining_cost_pips, sacrifice_cost, DiscardCost, PaymentPip,
-    SacrificeCost,
+    discard_cost, payment_pips, remaining_cost_pips, sacrifice_cost, DiscardCost, ExileCost,
+    PaymentPip, SacrificeCost,
 };
 pub use solve::auto_payment;
 pub(crate) use solve::ManaOptions;

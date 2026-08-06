@@ -391,6 +391,10 @@ pub enum ActivatorScope {
 pub enum ObservedSpell {
     /// An enchantment spell.
     Enchantment,
+    /// An **artifact spell** — including an artifact creature, which is an artifact spell
+    /// and a creature spell at once (CR 205.2b). Read off the printed types like every
+    /// other class here, so a card that is both satisfies both.
+    Artifact,
     /// A **creature spell**, optionally only one whose power is at least `min_power` —
     /// the "creature spell with power 4 or greater" a cost reducer names.
     ///

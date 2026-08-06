@@ -27,9 +27,9 @@ use sage_engine::{
     CountScope, CounterKind, DamageCharacteristic, DamageSubject, DerivedAmount, DestroyAffects,
     Effect, EnteringFilter, FoundDestination, GraveyardCardClass, GraveyardScope, Keyword,
     ManaRestriction, MassAffects, ObservedPermanent, ObservedSpell, PermanentCount,
-    PlayerModification, PlayerRef, ReplacementEffect, SpellMode, SpellTrait, StaticAffects,
-    StaticCondition, StaticModification, TargetCount, TargetSpec, TokenData, TriggerCondition,
-    TriggerStep, TurnScope,
+    PlayerModification, PlayerRef, ReplacementEffect, SacrificeCount, SpellMode, SpellTrait,
+    StaticAffects, StaticCondition, StaticModification, TargetCount, TargetSpec, TokenData,
+    TriggerCondition, TriggerStep, TurnScope,
 };
 
 mod effects;
@@ -417,6 +417,7 @@ fn step_phrase(step: TriggerStep, whose_turn: TurnScope) -> String {
 fn observed_spell_noun(spell: ObservedSpell) -> String {
     match spell {
         ObservedSpell::Enchantment => "an enchantment spell".to_string(),
+        ObservedSpell::Artifact => "an artifact spell".to_string(),
         ObservedSpell::InstantOrSorcery => "an instant or sorcery spell".to_string(),
         ObservedSpell::Creature { min_power } => {
             format!("a creature spell{}", spell_power_clause(min_power))
@@ -439,6 +440,7 @@ fn observed_spell_noun(spell: ObservedSpell) -> String {
 fn observed_spell_class(spell: ObservedSpell) -> String {
     match spell {
         ObservedSpell::Enchantment => "enchantment spells".to_string(),
+        ObservedSpell::Artifact => "artifact spells".to_string(),
         ObservedSpell::InstantOrSorcery => "instant and sorcery spells".to_string(),
         ObservedSpell::Creature { min_power } => {
             format!("creature spells{}", spell_power_clause(min_power))

@@ -20,6 +20,7 @@ fn issue_148_counterspell_counters_a_creature_spell_end_to_end_cr_701_5() {
     let boar = state.new_instance(fixture("onakke_ogre"));
     let boar_sid = StackId(state.mint_id());
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: boar_sid,
         controller: PlayerId(1),
         kind: StackObjectKind::Spell {
@@ -105,6 +106,7 @@ fn issue_148_counterspell_fizzles_when_its_target_resolves_first_cr_608_2b() {
     let boar = state.new_instance(fixture("onakke_ogre"));
     let boar_sid = StackId(state.mint_id());
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: neg_sid,
         controller: PlayerId(0),
         kind: StackObjectKind::Spell {
@@ -116,6 +118,7 @@ fn issue_148_counterspell_fizzles_when_its_target_resolves_first_cr_608_2b() {
     });
     // Top of the stack: player 1's vanilla creature spell, resolves first.
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: boar_sid,
         controller: PlayerId(1),
         kind: StackObjectKind::Spell {

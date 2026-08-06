@@ -26,6 +26,7 @@ fn a_trigger_awaiting_targets_is_reachable_from_the_stack_and_from_its_source() 
     );
     let ability = StackId(state.mint_id());
     state.stack.push(sage_engine::StackObject {
+        paid: Default::default(),
         id: ability,
         controller: PlayerId(0),
         kind: StackObjectKind::Ability {

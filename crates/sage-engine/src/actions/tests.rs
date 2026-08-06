@@ -375,6 +375,7 @@ fn issue_147_instant_castable_with_a_nonempty_stack_and_off_turn_cr_117_1a() {
     let sid = mid_stack.mint_id();
     let other = mid_stack.new_instance(instant_id(&db));
     mid_stack.stack.push(StackObject {
+        paid: Default::default(),
         id: StackId(sid),
         controller: PlayerId(0),
         kind: StackObjectKind::Spell {
@@ -422,6 +423,7 @@ fn issue_147_sorcery_not_offered_off_turn_or_mid_stack_cr_304_1() {
     let sid = mid_stack.mint_id();
     let other = mid_stack.new_instance(instant_id(&db));
     mid_stack.stack.push(StackObject {
+        paid: Default::default(),
         id: StackId(sid),
         controller: PlayerId(0),
         kind: StackObjectKind::Spell {
@@ -452,6 +454,7 @@ fn issue_147_artifact_and_enchantment_cast_at_sorcery_speed_and_enter_battlefiel
         let sid = mid_stack.mint_id();
         let other = mid_stack.new_instance(instant_id(&db));
         mid_stack.stack.push(StackObject {
+            paid: Default::default(),
             id: StackId(sid),
             controller: PlayerId(0),
             kind: StackObjectKind::Spell {
@@ -647,6 +650,7 @@ fn counterspell_over_a_creature_spell() -> (GameState, CardInstance, StackId) {
     let boar = state.new_instance(creature_id());
     let sid = StackId(state.mint_id());
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: sid,
         controller: PlayerId(1),
         kind: StackObjectKind::Spell {
@@ -717,6 +721,7 @@ fn issue_148_counterspell_cannot_target_an_ability_on_the_stack_cr_605_3() {
     state.step = Step::PrecombatMain;
     let sid = StackId(state.mint_id());
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: sid,
         controller: PlayerId(1),
         kind: StackObjectKind::Ability {

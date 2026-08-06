@@ -145,6 +145,18 @@ pub enum Violation {
         /// The definition at fault.
         functional_id: String,
     },
+    /// An effect reads an amount off **this object's own cost payment** —
+    /// `sacrificed_to_cost`, `sacrificed_creature_power` — on a card whose cost
+    /// sacrifices nothing.
+    ///
+    /// Caught here for the reason [`Self::ChosenColorIsNeverNamed`] is: the engine's
+    /// honest answer to "how many did the payment sacrifice" when nothing was paid is
+    /// zero, and a card that reads as throwing a creature and always deals zero damage is
+    /// the hardest kind of wrong to notice.
+    PaymentAmountIsNeverPaid {
+        /// The definition at fault.
+        functional_id: String,
+    },
     /// A printed `restrictions` list appears on a card that is not a creature. Every
     /// combat restriction is about attacking or blocking (CR 506.3, CR 509.1b), so on
     /// a non-creature it could only ever be inert — which makes it an authoring
@@ -393,6 +405,11 @@ impl fmt::Display for Violation {
                 f,
                 "{functional_id} declares a spell trait conditional on X, but its mana \
                  cost prints no `{{X}}` to announce"
+            ),
+            Self::PaymentAmountIsNeverPaid { functional_id } => write!(
+                f,
+                "{functional_id} reads an amount off a cost payment but no cost of it \
+                 sacrifices anything; the amount could only ever be zero"
             ),
             Self::RestrictionsOnNonCreature { functional_id } => write!(
                 f,

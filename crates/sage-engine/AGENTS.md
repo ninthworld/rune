@@ -35,12 +35,18 @@
 
 Catalog coverage is limited by what the ability IR can *express*, not by authoring
 throughput. Today `Cost` says tapping, mana, loyalty, spending the source itself, removing
-counters from it, and the two whose payment the **player picks** — sacrificing one permanent
-they control (filtered by card type, by subtype, and optionally excluding the source) and
-discarding cards. A picked payment rides on the action, in `Action::ActivateAbility`'s
+counters from it, and the three whose payment the **player picks** — sacrificing permanents
+they control (filtered by card type, by subtype, optionally excluding the source, and a fixed
+count *or any number*), discarding cards, and exiling cards from their own graveyard. A
+picked payment rides on the action, in `Action::ActivateAbility`'s
 `payment` list, exactly as a cast's additional cost rides on `Action::CastSpell`'s; mana
-never does, because an activation pays it from the pool. Exiling a card as a cost,
-sacrificing two permanents, and *optional* non-mana costs are all still unwritable.
+never does, because an activation pays it from the pool. **What a payment settled is
+recorded as it is paid**, on `StackObject::paid` beside the targets: how many permanents it
+sacrificed, and the power the sacrificed creature had. A cost is paid as the object goes on
+the stack (CR 601.2h), so by resolution those permanents are gone and the numbers could not
+be recovered from anywhere — CR 608.2h's last-known information, written down while it was
+still current. Exiling from any zone but a graveyard, and *optional* non-mana costs, are
+still unwritable.
 `TriggerCondition` observes zone changes and attack
 declarations (its own source's and, through `ObservedPermanent`, another permanent's), a
 draw by its controller, an activation that uses the stack — never a mana ability, which
@@ -54,13 +60,17 @@ the resolution, or the turn — because none of them can be answered from a snap
 A count of permanents (`count_of`) may feed an effect's amount, the number of tokens it
 creates, and an attachment's static grant — the last recalculated on every read, because a
 static ability is not a resolution. Every *other* X is a `DerivedAmount`, a closed set of
-four phrases with no arithmetic over them — the life gained this turn, a count of what
-this resolution milled, the greatest mana value among a class, and the **X its controller
-announced** — read once where the effect applies and feeding three verbs, a pump, a draw,
-and a damage. The count keeps its own spelling because it is the one source a static grant
-may also name; nothing windowed over events could stand there. Cards in a zone, a life
-total, one named object's mana value, another object's power, and half of anything still
-feed nothing.
+six phrases with no arithmetic over them — the life gained this turn, a count of what
+this resolution milled, the greatest mana value among a class, the **X its controller
+announced**, and the two read off the object's **own cost payment**: how many permanents it
+sacrificed and the power the creature it sacrificed had. Each is read once where the effect
+applies, and between them they feed four verbs: a pump, a draw, a damage, and a search's
+size. The announced X and the two payment amounts are the ones that read neither the board
+nor the event log, because their answer was settled at announcement and — for the payment —
+the objects it was about have left. The count keeps its own spelling because it is the one
+source a static grant may also name; nothing windowed over events could stand there. Cards
+in a zone, a life total, one named object's mana value, a *surviving* object's power, and
+half of anything still feed nothing.
 
 **A choice made at announcement rides the action, and the mode is made first** (CR
 601.2b). `Action::CastSpell` carries a `mode` and an `x`, both cleared to build the
@@ -78,7 +88,8 @@ than merely unoffered. A `SpellTrait` is what is true of a spell *on the stack* 
 what it does, which is why it is not an `Effect`: both members are read by somebody else's
 resolution — a counterspell (CR 701.5a) and the damage seam (CR 615.1,
 `PendingDamage::unpreventable`). What a resolution knows about itself now travels as one
-`Resolution` value: its log window, its announced X, and that declaration.
+`Resolution` value: its log window, its announced X, that declaration, and what its cost
+payment recorded.
 
 **`data/exclusions.json` is the maintained list, and it is the one that has to stay
 right.** Every exclusion names a single blocker; `make compat` regenerates

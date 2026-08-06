@@ -334,6 +334,7 @@ pub(crate) fn push_ability(
 ) {
     let id = state.mint_id();
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: StackId(id),
         controller: PlayerId(0),
         kind: StackObjectKind::Ability {

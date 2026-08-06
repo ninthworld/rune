@@ -43,28 +43,82 @@ pub(crate) fn cost_symbol(cost: &Cost) -> String {
         Cost::RemoveCounters { counter, count } => {
             format!("Remove {} from this permanent", counters(*counter, *count))
         }
-        // The two costs the *player* picks the payment for read as the card writes them:
-        // "Sacrifice another creature", "Sacrifice a Goblin", "Discard a card". The same
-        // phrase labels the slot the choice is answered on, so what a player is asked and
-        // what the card says are one string.
+        // The three costs the *player* picks the payment for read as the card writes them:
+        // "Sacrifice another creature", "Sacrifice two artifacts", "Discard a card",
+        // "Exile a creature card from your graveyard". The same phrase labels the slot the
+        // choice is answered on, so what a player is asked and what the card says are one
+        // string.
         Cost::Sacrifice {
             card_type,
             subtype,
             another,
+            count,
         } => {
             let noun = sacrifice_noun(*card_type, subtype.as_deref());
-            let article = if *another {
-                "another".to_string()
-            } else {
-                indefinite_article(&noun).to_string()
-            };
-            format!("Sacrifice {article} {noun}")
+            sacrifice_clause(&noun, *count, *another)
         }
         Cost::Discard { count: 1 } => "Discard a card".to_string(),
         Cost::Discard { count } => {
             format!("Discard {} cards", number(u32::from(*count)))
         }
+        Cost::ExileFromGraveyard { class, count } => {
+            // "a card", "a creature card", "two creature cards" — the class is an
+            // adjective before the noun, and an unrestricted cost simply has none.
+            let noun = match graveyard_class_noun(*class) {
+                Some(class) => format!("{class} card"),
+                None => "card".to_string(),
+            };
+            let subject = if *count == 1 {
+                format!("{} {noun}", indefinite_article(&noun))
+            } else {
+                format!("{} {}", number(u32::from(*count)), plural(&noun))
+            };
+            format!("Exile {subject} from your graveyard")
+        }
     }
+}
+
+/// A sacrifice cost as the imperative clause a card prints: `"Sacrifice a creature"`,
+/// `"Sacrifice another creature"`, `"Sacrifice two artifacts"`, `"Sacrifice any number of
+/// lands"`.
+///
+/// Shared by an activation's cost line ([`cost_symbol`]) and a cast's additional cost
+/// ([`additional_cost_text`]), because a card writes the clause the same way in both
+/// places and two renderings of one cost would be two things to keep in step.
+pub(super) fn sacrifice_clause(noun: &str, count: SacrificeCount, another: bool) -> String {
+    match count {
+        SacrificeCount::Any => format!("Sacrifice any number of {}", plural(noun)),
+        SacrificeCount::Exactly(1) => {
+            let article = if another {
+                "another"
+            } else {
+                indefinite_article(noun)
+            };
+            format!("Sacrifice {article} {noun}")
+        }
+        SacrificeCount::Exactly(n) => {
+            format!("Sacrifice {} {}", number(u32::from(n)), plural(noun))
+        }
+    }
+}
+
+/// The class of card an exile cost takes, as the adjective a card writes before "card":
+/// the `creature` of `Exile a creature card from your graveyard`. `None` for the
+/// unrestricted class, which a card writes as plain "a card" with no adjective at all.
+fn graveyard_class_noun(class: GraveyardCardClass) -> Option<&'static str> {
+    match class {
+        GraveyardCardClass::Any => None,
+        GraveyardCardClass::Creature => Some("creature"),
+        GraveyardCardClass::InstantOrSorcery => Some("instant or sorcery"),
+        GraveyardCardClass::Artifact => Some("artifact"),
+        GraveyardCardClass::Land => Some("land"),
+    }
+}
+
+/// A class noun in the plural, the naive English way — every noun this vocabulary can
+/// produce is a card type or a printed subtype, and none of them is irregular.
+fn plural(noun: &str) -> String {
+    format!("{noun}s")
 }
 
 /// The class of permanent a sacrifice cost takes, as the noun a card writes: the
@@ -389,11 +443,28 @@ pub(super) fn additional_cost_text(cost: AdditionalCost) -> String {
             "As an additional cost to cast this spell, discard {} cards.",
             number(u32::from(count))
         ),
-        AdditionalCost::Sacrifice { card_type } => format!(
-            "As an additional cost to cast this spell, sacrifice {} {}.",
-            indefinite_article(card_type_word(card_type)),
-            card_type_word(card_type)
+        AdditionalCost::Sacrifice { card_type, count } => format!(
+            "As an additional cost to cast this spell, {}.",
+            sacrifice_clause(card_type_word(card_type), count, false).to_lowercase()
         ),
+    }
+}
+
+/// An additional cast cost as the bare imperative clause, for the slot a player answers
+/// it on — `"Discard a card"`, `"Sacrifice any number of lands"`.
+///
+/// The prompt half of [`additional_cost_text`], which wraps the same clause in its
+/// sentence: what a player is asked and what the card says are one string, exactly as they
+/// are for an activation's [`cost_symbol`].
+pub(crate) fn additional_cost_prompt(cost: AdditionalCost) -> String {
+    match cost {
+        AdditionalCost::Discard { count: 1 } => "Discard a card".to_string(),
+        AdditionalCost::Discard { count } => {
+            format!("Discard {} cards", number(u32::from(count)))
+        }
+        AdditionalCost::Sacrifice { card_type, count } => {
+            sacrifice_clause(card_type_word(card_type), count, false)
+        }
     }
 }
 

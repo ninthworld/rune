@@ -55,15 +55,27 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         }
         Effect::Destroy { target } => format!("destroy {}", target_noun(*target)),
         Effect::DestroyAll { affects } => format!("destroy all {}", destroy_class(*affects)),
-        // The announced-X damage verb reads the way a printed card writes it: the letter
-        // itself, not the number it turned out to be. What a *particular* cast announced
-        // is a fact about that object on the stack, and the stack entry says so; the card
-        // says `X`.
-        Effect::DealDamageByAmount { subject, amount } => format!(
-            "{source} deals {} damage to {}",
-            amount_symbol(amount),
-            damage_recipient(subject)
-        ),
+        // The derived-amount damage verb, in the two shapes English gives it. An
+        // announced X reads the way a printed card writes it: the letter itself, in
+        // quantity position, not the number it turned out to be — what a *particular*
+        // cast announced is a fact about that object on the stack, and the stack entry
+        // says so. Every other source has no letter of its own, so the sentence names it
+        // after "damage equal to". Spelled out rather than wildcarded, so a new amount
+        // has to be put in one shape or the other here.
+        Effect::DealDamageByAmount { subject, amount } => match amount {
+            DerivedAmount::AnnouncedX => {
+                format!("{source} deals X damage to {}", damage_recipient(subject))
+            }
+            DerivedAmount::LifeGainedThisTurn
+            | DerivedAmount::MilledThisWay { .. }
+            | DerivedAmount::GreatestManaValue { .. }
+            | DerivedAmount::SacrificedToCost
+            | DerivedAmount::SacrificedCreaturePower => format!(
+                "{source} deals damage equal to {} to {}",
+                amount_noun(amount),
+                damage_recipient(subject),
+            ),
+        },
         Effect::Exile { target } => format!("exile {}", target_noun(*target)),
         // The one clause with two target nouns in it (CR 701.12). The mutual form is the
         // printed verb *fights*, which says the power reading on its own; the one-sided
@@ -318,14 +330,25 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         ),
         Effect::SearchLibrary {
             take,
+            take_amount,
             filter,
             destination,
-        } => format!(
-            "search your library for {}, put {} {}, then shuffle",
-            up_to(u32::from(*take), filter),
-            if *take == 1 { "it" } else { "them" },
-            destination_phrase(*destination),
-        ),
+        } => match take_amount {
+            // A card whose search size is a derived number says "up to that many" and
+            // never a figure, so the phrase names the amount rather than a count.
+            Some(amount) => format!(
+                "search your library for up to {} {}, put them {}, then shuffle",
+                amount_noun(amount),
+                filter_noun(filter, true),
+                destination_phrase(*destination),
+            ),
+            None => format!(
+                "search your library for {}, put {} {}, then shuffle",
+                up_to(u32::from(*take), filter),
+                if *take == 1 { "it" } else { "them" },
+                destination_phrase(*destination),
+            ),
+        },
         // An optional effect reads as the card prints it. The costed form is two
         // sentences even inside a larger clause — "you may pay {1}. If you do, draw a
         // card" — because that is how the condition is written on every card that has
@@ -635,20 +658,11 @@ fn amount_noun(amount: &DerivedAmount) -> String {
         // the player supplies the value as they cast it (CR 601.2b). Reaching this
         // position would mean a card said "where X is X", so it says the plain letter.
         DerivedAmount::AnnouncedX => "X".to_string(),
-    }
-}
-
-/// A [`DerivedAmount`] where a card prints it **as a quantity in the sentence** — the
-/// `X` of "deals X damage" — rather than after "where X is".
-///
-/// An announced X is simply the letter; every other source has no letter of its own, so
-/// it is written out in the words [`amount_noun`] gives it. Two positions, two functions,
-/// for the reason the class nouns come in pairs: English does not put the same phrase in
-/// both.
-fn amount_symbol(amount: &DerivedAmount) -> String {
-    match amount {
-        DerivedAmount::AnnouncedX => "X".to_string(),
-        other => amount_noun(other),
+        // The two amounts read off the object's own cost payment. A card writes the first
+        // as the "that many" of a sentence whose previous clause was the cost, and the
+        // second as a possessive naming the creature that paid.
+        DerivedAmount::SacrificedToCost => "that many".to_string(),
+        DerivedAmount::SacrificedCreaturePower => "the sacrificed creature's power".to_string(),
     }
 }
 

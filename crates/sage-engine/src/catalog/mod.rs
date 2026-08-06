@@ -201,7 +201,12 @@ pub(crate) fn validate_definition(
     // would ever consult the cost; a zero-count discard is a cost in name only.
     if let Some(cost) = object.get("additional_cost") {
         let is_land = types.iter().any(|t| t.as_str() == Some(LAND_TYPE));
-        let count = cost.get("count").and_then(serde_json::Value::as_u64);
+        // A discard states its count as a bare number; a sacrifice states it as
+        // `{"exactly": n}` or `"any"`. Zero is no cost either way, and `"any"` — whose
+        // legal payments *include* zero — is a real cost because the player may pay more.
+        let count = cost
+            .get("count")
+            .and_then(|count| count.as_u64().or_else(|| count.get("exactly")?.as_u64()));
         if is_land || count == Some(0) {
             return Err(Violation::AdditionalCostIsUnpayable { functional_id });
         }
@@ -246,6 +251,12 @@ pub(crate) fn validate_definition(
     // is a clause that can never be true.
     if spell_trait_needs_x(object) && !mana_cost_has_x(object) {
         return Err(Violation::SpellTraitNeedsX { functional_id });
+    }
+
+    // An amount read off a cost payment needs a cost that pays it, or the card reads as
+    // doing something and always does nothing.
+    if reads_an_unpaid_amount(object) {
+        return Err(Violation::PaymentAmountIsNeverPaid { functional_id });
     }
 
     // A printed combat restriction only ever restricts attacking or blocking, so it

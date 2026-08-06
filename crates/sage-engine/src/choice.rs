@@ -333,14 +333,17 @@ pub struct Resume {
     /// The spell whose card still has to reach its final zone, `None` for an ability.
     pub spell: Option<SuspendedSpell>,
     /// What the suspended resolution knows about itself — the window an intervening
-    /// condition reads over, the X its object announced, and whether its damage can be
-    /// prevented (see [`Resolution`](crate::Resolution)).
+    /// condition reads over, the X its object announced, whether its damage can be
+    /// prevented, and what paying for the object recorded (see
+    /// [`Resolution`](crate::Resolution)).
     ///
     /// Carried through the suspension for the same reason the remaining effects are: a
     /// discard-then-draw asks its question, and the `if a card is discarded this way`
     /// that follows must still be measured from where the resolution started, not from
     /// where it woke up. The same is true of an announced X — a spell that stops to ask
-    /// something resumes with the value it was cast for, not with none.
+    /// something resumes with the value it was cast for, not with none — and the payment
+    /// travels for a stronger version of the same reason: it could not be recovered from
+    /// anywhere at all once the question is answered.
     pub resolution: crate::resolve::Resolution,
 }
 
@@ -833,12 +836,19 @@ fn place_card(
 /// order, so a "target player discards" reaches the seat the caster aimed at rather
 /// than a seat derived here — and an optional effect's chosen target is carried into
 /// the question it poses.
+///
+/// `resolution` is the frame the question is asked in, and one question reads it: a search
+/// whose size is a [`DerivedAmount`](crate::DerivedAmount) takes that number here
+/// (CR 608.2), before the choice is posed, because the *bounds* of the question are what
+/// the amount decides.
 pub(crate) fn choices_for_effect(
     state: &GameState,
     effect: &Effect,
     controller: PlayerId,
     source_card: Option<CardId>,
     targets: &[Target],
+    resolution: crate::resolve::Resolution,
+    db: &crate::card::CardDatabase,
 ) -> Option<Vec<(PlayerId, ChoiceQuestion)>> {
     let target = targets.first().copied();
     match effect {
@@ -910,6 +920,7 @@ pub(crate) fn choices_for_effect(
         )]),
         Effect::SearchLibrary {
             take,
+            take_amount,
             filter,
             destination,
         } => Some(vec![(
@@ -921,7 +932,15 @@ pub(crate) fn choices_for_effect(
                 source_card,
                 // A player may always fail to find (CR 701.19c).
                 min: 0,
-                max: u32::from(*take),
+                // The printed number, or the one the card takes off the game — read once,
+                // here, because it is the size of the question rather than something the
+                // answer could still change (CR 608.2).
+                max: match take_amount {
+                    Some(amount) => {
+                        crate::condition::derived_amount(state, amount, controller, resolution, db)
+                    }
+                    None => u32::from(*take),
+                },
                 outcome: ChoiceOutcome::TakeAndShuffle(*destination),
             }),
         )]),

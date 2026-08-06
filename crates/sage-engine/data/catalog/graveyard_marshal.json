@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "functional_id": "graveyard_marshal",
+  "name": "Graveyard Marshal",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Zombie",
+    "Soldier"
+  ],
+  "mana_cost": "{B}{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 3,
+  "toughness": 2,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{2}{B}"
+        },
+        {
+          "kind": "exile_from_graveyard",
+          "class": "creature"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "create_token",
+          "tapped": true,
+          "token": {
+            "name": "Zombie",
+            "types": [
+              "creature"
+            ],
+            "subtypes": [
+              "Zombie"
+            ],
+            "colors": [
+              "black"
+            ],
+            "power": 2,
+            "toughness": 2
+          }
+        }
+      ]
+    }
+  ]
+}

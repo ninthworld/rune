@@ -432,6 +432,7 @@ async fn issue_455_a_resolved_removal_spell_and_its_death_reach_the_skipped_seat
     let shock = state.new_instance(fixture("shock"));
     let sid = sage_engine::StackId(state.mint_id());
     state.stack.push(sage_engine::StackObject {
+        paid: Default::default(),
         id: sid,
         controller: PlayerId(1),
         kind: sage_engine::StackObjectKind::Spell {

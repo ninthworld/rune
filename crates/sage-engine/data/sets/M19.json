@@ -270,6 +270,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "sai_master_thopterist",
+    "collector_number": "69",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "salvager_of_secrets",
     "collector_number": "70",
     "rarity": "common"
@@ -373,6 +378,11 @@
     "functional_id": "gravedigger",
     "collector_number": "98",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "graveyard_marshal",
+    "collector_number": "99",
+    "rarity": "rare"
   },
   {
     "functional_id": "hired_blade",
@@ -615,6 +625,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "thud",
+    "collector_number": "163",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "tormenting_voice",
     "collector_number": "164",
     "rarity": "common"
@@ -783,6 +798,11 @@
     "functional_id": "runic_armasaur",
     "collector_number": "200",
     "rarity": "rare"
+  },
+  {
+    "functional_id": "scapeshift",
+    "collector_number": "201",
+    "rarity": "mythic"
   },
   {
     "functional_id": "talons_of_wildwood",

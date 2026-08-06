@@ -31,8 +31,9 @@ mod removal_tests;
 /// `resolution` is what the resolving object knows about itself, carried for the same
 /// reason [`apply_effect`] carries it: an amount that says "this way" is a question about
 /// what this resolution has already done, an amount that says "X" is a question about
-/// what it announced, and whether its damage can be prevented is a fact about the object
-/// rather than about the recipient.
+/// what it announced, one that says "the sacrificed creature" is a question about what its
+/// cost ate, and whether its damage can be prevented is a fact about the object rather
+/// than about the recipient.
 pub(crate) fn apply_targeted_effect(
     state: &mut GameState,
     effect: &Effect,
@@ -107,9 +108,12 @@ pub(crate) fn apply_targeted_effect(
         Effect::DealDamage { amount, .. } => {
             deal_damage_to_target(state, target, *amount, resolution, db);
         }
-        // The announced-amount damage verb: X was fixed at announcement (CR 601.2b), so
-        // reading it here is a lookup rather than a computation, and it is the same
-        // number the cast was charged for.
+        // The derived-amount damage verb: for an announced X the value was fixed at
+        // announcement (CR 601.2b), so reading it here is a lookup rather than a
+        // computation and it is the same number the cast was charged for; for an amount
+        // read off the object's own cost payment this is where the *stored* number is read
+        // — the creature that paid was gone before this resolution began, which is the
+        // whole reason it was written down at announcement (CR 601.2h).
         Effect::DealDamageByAmount { amount, .. } => {
             let value = crate::condition::derived_amount(state, amount, controller, resolution, db);
             deal_damage_to_target(state, target, value, resolution, db);
@@ -400,11 +404,7 @@ pub(crate) fn apply_targeted_effect(
             ..
         } => {
             let count = i32::try_from(crate::condition::derived_amount(
-                state,
-                amount,
-                controller,
-                resolution,
-                db,
+                state, amount, controller, resolution, db,
             ))
             .unwrap_or(i32::MAX);
             pump_by(state, target, *power_per, *toughness_per, count);

@@ -7,13 +7,15 @@ use super::*;
 mod tests;
 
 /// Apply a single [`Effect`] to `state` on behalf of `controller`, resolving in a window
-/// described by `resolution` (its log window, its announced X, and whether its damage
-/// can be prevented).
+/// described by `resolution` (its log window, its announced X, whether its damage can be
+/// prevented, and what its cost payment recorded).
 ///
-/// The window is the same one an intervening condition is judged over, and it is here for
-/// the same reason: an amount that says "this way" ([`DerivedAmount::MilledThisWay`]) is
-/// a question about what *this* resolution has already done, which no snapshot of the
-/// game can answer.
+/// The frame carries the window an intervening condition is judged over, and it is here
+/// for the same reason: an amount that says "this way"
+/// ([`DerivedAmount::MilledThisWay`]) is a question about what *this* resolution has
+/// already done, which no snapshot of the game can answer. It also carries what paying for
+/// the object recorded (CR 601.2h), which no snapshot can answer either — by now the
+/// permanents that paid are gone.
 pub(crate) fn apply_effect(
     state: &mut GameState,
     effect: &Effect,

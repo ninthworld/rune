@@ -158,6 +158,9 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
             // controller has had no chance to choose. When it declares target slots,
             // step 6 hands them priority to fill them before anyone else acts.
             targets: Vec::new(),
+            // And unpaid for: a trigger has no cost (CR 603.3), so there is no payment to
+            // record and nothing for an amount read off one to find.
+            paid: crate::PaidCost::default(),
         });
     }
 

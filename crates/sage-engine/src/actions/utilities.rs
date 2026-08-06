@@ -74,12 +74,12 @@ pub(crate) fn cost_payable(
         // permanent actually has, which is what makes a three-charge artifact offer its
         // ability three times and then stop.
         Cost::RemoveCounters { counter, count } => permanent.counter_count(*counter) >= *count,
-        // CR 601.2b: the two costs whose payment the player *picks* are payable only while
-        // there is something to pick, so an ability with nothing to feed it is not offered
+        // CR 601.2b: the costs whose payment the player *picks* are payable only while
+        // there is enough to pick, so an ability with nothing to feed it is not offered
         // rather than offered and then found free. The candidate enumeration is the one
         // the action's own slot is posed from, so the offer, the question, and the charge
         // are one answer.
-        Cost::Sacrifice { .. } | Cost::Discard { .. } => {
+        Cost::Sacrifice { .. } | Cost::Discard { .. } | Cost::ExileFromGraveyard { .. } => {
             crate::actions::chosen_costs_are_payable(state, db, permanent, c)
         }
     })
@@ -145,11 +145,12 @@ pub(crate) fn graveyard_cost_payable(state: &GameState, seat: PlayerId, cost: &[
         | Cost::Loyalty { .. }
         | Cost::SacrificeThis
         | Cost::RemoveCounters { .. }
-        // A chosen sacrifice or discard is refused here for the same reason as the rest:
-        // the catalog validator lets a graveyard ability charge mana and nothing else, and
-        // this is the second, independent gate that holds for a database assembled in a
-        // test.
+        // A chosen sacrifice, discard, or graveyard exile is refused here for the same
+        // reason as the rest: the catalog validator lets a graveyard ability charge mana
+        // and nothing else, and this is the second, independent gate that holds for a
+        // database assembled in a test.
         | Cost::Sacrifice { .. }
+        | Cost::ExileFromGraveyard { .. }
         | Cost::Discard { .. } => false,
     })
 }

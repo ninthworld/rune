@@ -11,6 +11,37 @@ use crate::id::{CardInstance, PermanentId, PlayerId};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct StackId(pub u64);
 
+/// What paying an object's cost recorded, for the effects that read a number off the
+/// payment rather than off the game (CR 601.2h).
+///
+/// **Captured as the cost is paid, never re-derived.** That is the whole reason this
+/// exists rather than a scan at resolution: a cost is paid as the spell goes on the stack,
+/// so by the time the spell resolves the permanents it ate are in a graveyard, have lost
+/// their [`PermanentId`], and — for a token — do not exist at all. `Thud deals damage
+/// equal to the sacrificed creature's power` is a question with no answer left on the
+/// board, and CR 608.2h says the answer is the one that *was* true: last-known information
+/// about an object that has left.
+///
+/// Default is the empty payment, which is what every object whose cost took nothing the
+/// player picked carries — almost all of them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PaidCost {
+    /// How many permanents were sacrificed paying this object's cost.
+    ///
+    /// The `that many` of `Sacrifice any number of lands. Search your library for up to
+    /// that many land cards` — a number the *player* settled on while paying, which is why
+    /// nothing later in the game could recover it.
+    pub sacrificed: u32,
+    /// The power the sacrificed creature had as it left (CR 608.2h), or `None` when the
+    /// cost sacrificed no creature.
+    ///
+    /// The **first** creature the payment named, because the phrase that reads it — *the
+    /// sacrificed creature's power* — is printed only on a card whose cost sacrifices
+    /// exactly one. A cost that took several would make the phrase ambiguous on the card
+    /// before it made it ambiguous here.
+    pub sacrificed_power: Option<i32>,
+}
+
 /// One object on the stack.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StackObject {
@@ -30,6 +61,17 @@ pub struct StackObject {
     /// current state without any side lookup. Enumerating and choosing these
     /// values from `valid_actions` is issue #71; this field only stores them.
     pub targets: Vec<Target>,
+    /// What paying for this object recorded (CR 601.2h) — the sibling of
+    /// [`targets`](Self::targets), and here for the same reason.
+    ///
+    /// A target is chosen at announcement and stored because resolution has to know what
+    /// was aimed at; a cost is *paid* at announcement and its payment stored because
+    /// resolution has to know what was spent. Both questions have an answer only at the
+    /// moment the object went on the stack, and neither could be reconstructed from the
+    /// board afterwards.
+    ///
+    /// Empty for the overwhelming majority of objects — see [`PaidCost`].
+    pub paid: PaidCost,
 }
 
 /// The two things that can be on the stack: a spell or an ability.

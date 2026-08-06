@@ -19,16 +19,17 @@ mod tests;
 
 pub(crate) use announcement::announcement_is_legal;
 pub use announcement::{mode_options, x_options, ModeOption, XOption};
-pub(crate) use definition::{discards_of, sacrifices_of};
+pub(crate) use definition::{discards_of, exiles_of, sacrifices_of};
 pub use definition::{
     Action, Attack, Block, CostPayment, DamageOrder, ManaSource, TargetRequirement,
 };
 pub use generation::valid_actions;
 pub(crate) use legality::action_is_legal;
 pub use payment::{
-    activation_discard_cost, activation_sacrifice_candidates, auto_activation_payment,
-    auto_payment, discard_cost, is_plain_mana_source, mana_ability_pips, payment_pips,
-    payment_sources, remaining_cost_pips, sacrifice_cost, DiscardCost, PaymentPip, SacrificeCost,
+    activation_discard_cost, activation_exile_cost, activation_sacrifice_cost,
+    auto_activation_payment, auto_payment, discard_cost, is_plain_mana_source, mana_ability_pips,
+    payment_pips, payment_sources, remaining_cost_pips, sacrifice_cost, DiscardCost, ExileCost,
+    PaymentPip, SacrificeCost,
 };
 pub(crate) use payment::{
     apply_payment, chosen_costs_are_payable, payment_covers_activation, payment_covers_cast,

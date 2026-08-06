@@ -50,16 +50,17 @@ pub use ability::{
     target_counts, Ability, ActivatorScope, CardFilter, Chooser, Condition, Cost, CostModification,
     CountScope, DamageSubject, DerivedAmount, DestroyAffects, Effect, FoundDestination,
     GraveyardCardClass, GraveyardScope, ManaRestriction, MassAffects, ObservedActivation,
-    ObservedPermanent, ObservedSpell, PermanentCount, PlayerModification, PlayerRef, StaticAffects,
-    StaticCondition, StaticModification, Target, TargetCount, TargetGroup, TargetSpec,
-    TriggerCondition, TriggerStep, TurnScope,
+    ObservedPermanent, ObservedSpell, PermanentCount, PlayerModification, PlayerRef,
+    SacrificeCount, StaticAffects, StaticCondition, StaticModification, Target, TargetCount,
+    TargetGroup, TargetSpec, TriggerCondition, TriggerStep, TurnScope,
 };
 pub use actions::{
-    activation_discard_cost, activation_sacrifice_candidates, auto_activation_payment,
-    auto_payment, discard_cost, is_plain_mana_source, mana_ability_pips, mode_options,
-    payment_pips, payment_sources, remaining_cost_pips, sacrifice_cost, target_requirements,
-    total_cast_cost, valid_actions, x_options, Action, Attack, Block, CostPayment, DamageOrder,
-    DiscardCost, ManaSource, ModeOption, PaymentPip, SacrificeCost, TargetRequirement, XOption,
+    activation_discard_cost, activation_exile_cost, activation_sacrifice_cost,
+    auto_activation_payment, auto_payment, discard_cost, is_plain_mana_source, mana_ability_pips,
+    mode_options, payment_pips, payment_sources, remaining_cost_pips, sacrifice_cost,
+    target_requirements, total_cast_cost, valid_actions, x_options, Action, Attack, Block,
+    CostPayment, DamageOrder, DiscardCost, ExileCost, ManaSource, ModeOption, PaymentPip,
+    SacrificeCost, TargetRequirement, XOption,
 };
 pub use apply::apply_action;
 pub use automation::{forced_declaration_without_choice, priority_has_no_meaningful_action};
@@ -116,7 +117,7 @@ pub use setup::{
     GameSetup, PlayerSetup, SetupError, DEFAULT_STARTING_HAND_SIZE, DEFAULT_STARTING_LIFE,
 };
 pub use stack::{
-    AbilityOrigin, AbilitySource, SpellTraitKind, StackId, StackObject, StackObjectKind,
+    AbilityOrigin, AbilitySource, PaidCost, SpellTraitKind, StackId, StackObject, StackObjectKind,
 };
 pub use state::{
     CommanderDamage, CounterKind, DamageTarget, Duration, EffectAffects, Emblem, GameEvent,

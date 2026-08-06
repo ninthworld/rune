@@ -180,6 +180,7 @@ fn put_permanent_on_battlefield(state: &mut GameState, instance: CardInstance) -
 fn exile_ability_targeting(state: &mut GameState, target: PermanentId) {
     let sid = state.mint_id();
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: StackId(sid),
         controller: PlayerId(0),
         kind: StackObjectKind::Ability {

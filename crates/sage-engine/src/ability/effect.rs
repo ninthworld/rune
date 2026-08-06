@@ -598,7 +598,25 @@ pub enum Effect {
     /// post-search order replays identically.
     SearchLibrary {
         /// How many matching cards may be found.
+        ///
+        /// Ignored when [`take_amount`](Self::SearchLibrary::take_amount) is present,
+        /// which is where the number comes from then.
         take: u8,
+        /// Where the number of cards comes from, when the card does not print one — the
+        /// `up to that many` of `Sacrifice any number of lands. Search your library for
+        /// up to that many land cards`.
+        ///
+        /// A field rather than a `search_library_by_amount` twin, for the reason
+        /// [`Effect::CreateToken`]'s `count_of` is one: a second variant would duplicate
+        /// the filter and the destination, and the number is the *same* number this effect
+        /// already carries. The field says where it comes from; it does not add a verb.
+        ///
+        /// Taken **once**, as the effect is reached (CR 608.2), and the search that
+        /// follows is the ordinary one — a player may always fail to find (CR 701.19c), so
+        /// an amount of zero is a search that shuffles and finds nothing rather than a
+        /// stall.
+        #[serde(default)]
+        take_amount: Option<DerivedAmount>,
         /// Which cards of the library may be found. Defaults to any of them.
         #[serde(default)]
         filter: CardFilter,
@@ -914,19 +932,25 @@ pub enum Effect {
         /// Which permanents are counted, relative to the effect's controller.
         count_of: PermanentCount,
     },
-    /// Deal damage equal to a number the card does not print to what [`DamageSubject`]
-    /// names — `deals X damage to any target`, where X is the value announced as the
-    /// spell was cast (CR 601.2b).
+    /// Deal damage equal to a [`DerivedAmount`] to what [`DamageSubject`] names —
+    /// `deals X damage to any target`, where X is the value announced as the spell was
+    /// cast (CR 601.2b), and `Thud deals damage equal to the sacrificed creature's power
+    /// to any target.`
     ///
     /// The [`DerivedAmount`] counterpart of [`Effect::DealDamage`], and the sibling of
     /// [`Effect::DealDamageByCount`] for every X that is not a count of permanents,
-    /// exactly as [`Effect::PumpByAmount`] is [`Effect::PumpByCount`]'s. The subject
-    /// decides on its own whether a target is chosen, like every other damage verb.
+    /// exactly as [`Effect::PumpByAmount`] is [`Effect::PumpByCount`]'s — a separate
+    /// variant for the same reason: a card names one source or the other, never both, and
+    /// two optional fields would make "neither" and "both" authorable shapes that mean
+    /// nothing. The subject decides on its own whether a target is chosen, like every
+    /// other damage verb.
     ///
-    /// The amount is read **once**, where the effect applies (CR 608.2), and for an
-    /// announced X that reading is a lookup of a number already fixed — which is the
-    /// whole point of announcing it: payment and resolution cannot disagree about a
-    /// value neither of them computed.
+    /// The amount is read **once**, where the effect applies (CR 608.2). For an announced
+    /// X that reading is a lookup of a number already fixed — which is the whole point of
+    /// announcing it: payment and resolution cannot disagree about a value neither of them
+    /// computed. For an amount read off the object's own cost payment it is the moment the
+    /// *stored* number is read, not the moment it was decided — the payment happened at
+    /// announcement, and the creature it spent is already gone.
     DealDamageByAmount {
         /// Who or what takes the damage — one chosen target, or a class.
         #[serde(flatten)]

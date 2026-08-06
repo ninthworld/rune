@@ -6,6 +6,61 @@ use super::*;
 #[cfg(test)]
 mod tests;
 
+/// What `payment` records about itself, read **before** any of it is charged
+/// (CR 601.2h).
+///
+/// The one moment these numbers exist. A cost is paid as the object goes on the stack, so
+/// by the time it resolves the permanents the payment named are in a graveyard with no
+/// [`PermanentId`] — or, for a token, nowhere at all (CR 111.7). Asking then would be
+/// asking about objects that have gone; asking here is CR 608.2h's last-known
+/// information, taken while it is still merely current information.
+///
+/// The power is the **computed** one (CR 613), so a creature sacrificed while pumped was
+/// worth its pumped power, which is what a player watching the board would expect.
+pub(crate) fn paid_cost(
+    state: &GameState,
+    db: &CardDatabase,
+    payment: &[crate::CostPayment],
+) -> crate::PaidCost {
+    let sacrificed = crate::actions::sacrifices_of(payment);
+    crate::PaidCost {
+        sacrificed: u32::try_from(sacrificed.len()).unwrap_or(u32::MAX),
+        // The first creature the payment named — see [`PaidCost::sacrificed_power`] for
+        // why "the sacrificed creature" is a phrase only a one-creature cost prints.
+        sacrificed_power: sacrificed
+            .iter()
+            .find_map(|id| crate::characteristics::characteristics(state, *id, db).power),
+    }
+}
+
+/// Move the cards a cost exiled out of `payer`'s graveyard and into their exile zone
+/// (CR 601.2b / 701.19).
+///
+/// The graveyard counterpart of [`crate::choice::discard_to_cost`], and deliberately not a
+/// death: nothing leaves the battlefield, so no dies trigger sees it and no state-based
+/// action is owed. Both zones are public, so the movement needs no log entry of its own —
+/// the card is simply in the other pile.
+///
+/// [`action_is_legal`](crate::apply_action) has already established that each named card
+/// is in that graveyard and of the class the cost accepts, so this moves rather than
+/// re-deciding; a card that is somehow not there is skipped rather than fabricated.
+pub(crate) fn exile_to_cost(
+    state: &mut GameState,
+    payer: PlayerId,
+    cards: &[crate::id::CardInstanceId],
+) {
+    for id in cards {
+        let Some(player) = state.players.get_mut(payer.0) else {
+            return;
+        };
+        let Some(pos) = player.graveyard.iter().position(|card| card.id == *id) else {
+            continue;
+        };
+        let card = player.graveyard.remove(pos);
+        player.exile.push(card);
+    }
+}
+
 /// Play a land from the active player's hand — or, under a permission
 /// ([`PlayerModification::PlayLandsFromGraveyard`](crate::ability::PlayerModification)),
 /// from their graveyard — onto the battlefield. Not via the stack (CR 116.2a); a fresh
@@ -74,6 +129,7 @@ pub(crate) fn apply_activate_ability(
             | Cost::SacrificeThis
             | Cost::RemoveCounters { .. }
             | Cost::Sacrifice { .. }
+            | Cost::ExileFromGraveyard { .. }
             | Cost::Discard { .. } => None,
         })
         .collect();
@@ -137,16 +193,23 @@ pub(crate) fn apply_activate_ability(
             // Paid from what the action named, below — for the same ordering reason, and
             // because nothing here re-decides what may pay a cost: `action_is_legal` has
             // already established that the payment is exactly what this demands.
-            Cost::Sacrifice { .. } | Cost::Discard { .. } => {}
+            Cost::Sacrifice { .. } | Cost::ExileFromGraveyard { .. } | Cost::Discard { .. } => {}
         }
     }
 
+    // CR 601.2h: what the payment recorded, read **before** anything it names leaves.
+    // Nothing downstream could recover it — the permanents are about to stop being
+    // permanents — so this is the one moment the numbers exist.
+    let paid = crate::apply::paid_cost(state, db, payment);
+
     // CR 601.2b: the components of the cost the *player* chose, charged from what the
     // action carried. A discard is the same move a discard made any other way performs
-    // (CR 701.8) and a sacrifice the same move any other sacrifice makes (CR 701.17) —
-    // down one path each, so what they trigger is collected by `apply_action` diffing the
-    // whole action and needs no trigger pass of its own.
+    // (CR 701.8), a sacrifice the same move any other sacrifice makes (CR 701.17), and an
+    // exile the same graveyard→exile move — down one path each, so what they trigger is
+    // collected by `apply_action` diffing the whole action and needs no trigger pass of
+    // its own.
     crate::choice::discard_to_cost(state, controller, &crate::actions::discards_of(payment));
+    crate::apply::exile_to_cost(state, controller, &crate::actions::exiles_of(payment));
     for sacrificed in crate::actions::sacrifices_of(payment) {
         state.move_permanent_to_graveyard(sacrificed);
     }
@@ -168,7 +231,15 @@ pub(crate) fn apply_activate_ability(
         // verb, and mana verbs commute — the pool ends up the same whether the fixed
         // points land before or after the chosen ones.
         for effect in effects {
-            match crate::choice::choices_for_effect(state, effect, controller, None, &[]) {
+            match crate::choice::choices_for_effect(
+                state,
+                effect,
+                controller,
+                None,
+                &[],
+                crate::Resolution::default(),
+                db,
+            ) {
                 Some(choices) => {
                     crate::choice::pose_choices(state, choices, db);
                 }
@@ -205,6 +276,7 @@ pub(crate) fn apply_activate_ability(
             // and re-checked once more on resolution (CR 608.2b, the resolve
             // path). Empty for a non-targeting ability.
             targets: targets.to_vec(),
+            paid,
         });
         state.consecutive_passes = 0;
     }
@@ -254,6 +326,7 @@ pub(crate) fn apply_activate_ability_from_graveyard(
         | Cost::SacrificeThis
         | Cost::RemoveCounters { .. }
         | Cost::Sacrifice { .. }
+        | Cost::ExileFromGraveyard { .. }
         | Cost::Discard { .. } => None,
     }) {
         let Some(player) = state.players.get_mut(controller.0) else {
@@ -275,6 +348,9 @@ pub(crate) fn apply_activate_ability_from_graveyard(
             effects: effects.clone(),
         },
         targets: targets.to_vec(),
+        // A graveyard activation's cost is mana and only mana, so its payment records
+        // nothing (`graveyard_cost_payable`).
+        paid: crate::PaidCost::default(),
     });
     state.consecutive_passes = 0;
 }
@@ -370,6 +446,11 @@ pub(crate) fn apply_cast_spell(
         }
         player.mana_pool = new_pool;
     }
+    // CR 601.2h: what the payment records, read while the permanents it names are still
+    // permanents. The card is on the stack a line below and the sacrifices happen a few
+    // lines after that; by then the creature whose power `Thud` reads has left, which is
+    // exactly why the number is taken here and stored rather than asked for later.
+    let paid = crate::apply::paid_cost(state, db, payment);
     let id = state.mint_id();
     state.stack.push(StackObject {
         id: StackId(id),
@@ -383,6 +464,7 @@ pub(crate) fn apply_cast_spell(
         // re-checked once more on resolution (CR 608.2b). Empty for a spell that
         // targets nothing.
         targets: targets.to_vec(),
+        paid,
     });
     state.record_event(GameEvent::SpellCast {
         player: controller,
@@ -416,6 +498,9 @@ fn pay_additional_cost(
     if data.additional_cost.is_none() {
         return;
     }
+    // A cast's additional cost never exiles — that shape exists only on an activation —
+    // and `payment_covers_cast` refuses a payment that names one, so there is nothing to
+    // charge here beyond the two below.
     // The same move a discard made any other way performs (CR 701.8), so a card
     // discarded to a cost lands in the graveyard, logs as a count rather than a name,
     // and fires what a discard fires — down one path, not two.
