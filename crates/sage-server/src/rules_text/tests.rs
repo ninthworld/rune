@@ -382,6 +382,36 @@ fn an_aura_states_its_restriction_and_its_grant() {
 }
 
 #[test]
+fn issue_722_a_counted_grant_and_a_counted_token_state_the_class_they_scale_with() {
+    // Blanchwood Armor (bundled): the grant sentence names the rule rather than a number,
+    // because the number does not exist until someone reads the board.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "blanchwood_armor"),
+        "Enchant creature.\nEnchanted creature gets +1/+1 for each Forest you control."
+    );
+
+    // The token count has no bundled card yet (see the exclusions), so it is exercised
+    // inline (ADR 0009). It reads with the same "for each …" clause every other
+    // count-derived amount uses.
+    let inline = CardDatabase::from_json(
+        r#"[{"schema_version":1,"functional_id":"test_marshal","name":"Test Marshal",
+            "types":["creature"],"subtypes":["Human"],"mana_cost":"{1}{W}","colors":["white"],
+            "power":1,"toughness":1,
+            "abilities":[{"type":"triggered","event":"self_enters_battlefield","effects":[
+              {"kind":"create_token","count_of":{"card_type":"creature"},
+               "token":{"name":"Soldier","types":["creature"],"subtypes":["Soldier"],
+                        "colors":["white"],"power":1,"toughness":1}}]}]}]"#,
+    )
+    .unwrap();
+    assert_eq!(
+        text_of(&inline, "test_marshal"),
+        "When Test Marshal enters the battlefield, you create a 1/1 white Soldier \
+         creature token for each creature you control."
+    );
+}
+
+#[test]
 fn issue_728_an_equipment_states_its_grant_and_its_equip_ability() {
     // Marauder's Axe (bundled). The grant sentence names "equipped creature" rather than
     // repeating the equip ability's restriction — an Equipment is only ever on a creature

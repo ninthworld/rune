@@ -503,3 +503,30 @@ fn a_static_condition_may_not_count_by_power() {
         "then": [{"kind": "draw_card", "count": 1}]}]"#;
     assert!(validate_definition(None, &definition(intervening_if)).is_ok());
 }
+
+#[test]
+fn an_attachment_s_counted_grant_may_not_count_by_power() {
+    // The second site evaluated from inside the layer system, refused for the reason a
+    // static ability's condition is: an Aura's grant is read while its host's
+    // characteristics are being computed, so a *computed* power there would ask the layer
+    // system for the answer it is producing — and two mutually enchanted creatures would
+    // ask each other forever.
+    let aura = |count_of: &str| {
+        let json = format!(
+            r#"{{"schema_version": 1, "functional_id": "test_aura", "name": "Test Aura",
+                 "types": ["enchantment"], "subtypes": ["Aura"], "mana_cost": "{{G}}",
+                 "attachment": {{"kind": "aura", "attach_to": "any_creature",
+                                 "power": 1, "toughness": 1, "count_of": {count_of}}}}}"#
+        );
+        serde_json::from_str::<serde_json::Value>(&json).unwrap()
+    };
+    assert_eq!(
+        validate_definition(None, &aura(r#"{"subtype": "Forest", "min_power": 4}"#)),
+        Err(Violation::PowerInAttachmentCount {
+            functional_id: "test_aura".to_string(),
+        }),
+    );
+    // The same count without the power bound reads printed characteristics only, which is
+    // safe from inside the layer system and is what a counted Aura actually needs.
+    assert!(validate_definition(None, &aura(r#"{"subtype": "Forest"}"#)).is_ok());
+}

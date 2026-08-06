@@ -314,6 +314,7 @@ pub(crate) fn apply_targeted_effect(
         Effect::CreateToken {
             token,
             count,
+            count_of,
             tapped,
             attacking,
             ..
@@ -321,7 +322,16 @@ pub(crate) fn apply_targeted_effect(
             if let Target::Player(seat) = target {
                 let joins =
                     super::effects::attack_a_created_token_joins(state, *attacking, source, seat);
-                for _ in 0..*count {
+                // Counted by the same function the non-targeting spelling uses, and
+                // relative to the effect's controller rather than to the chosen creator.
+                let made = super::effects::tokens_created(
+                    state,
+                    *count,
+                    count_of.as_ref(),
+                    controller,
+                    db,
+                );
+                for _ in 0..made {
                     state.create_token(token.clone(), seat, *tapped, joins, db);
                 }
             }

@@ -215,6 +215,21 @@ pub(super) fn static_condition_counts_by_power(
         })
 }
 
+/// Whether `object`'s `attachment` block scales its grant by a power bound.
+///
+/// The attachment counterpart of [`static_condition_counts_by_power`], and refused for
+/// exactly the same reason — see
+/// [`Violation::PowerInAttachmentCount`](super::Violation::PowerInAttachmentCount).
+pub(super) fn attachment_counts_by_power(
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> bool {
+    object
+        .get("attachment")
+        .and_then(|attachment| attachment.get("count_of"))
+        .and_then(|count_of| count_of.get("min_power"))
+        .is_some()
+}
+
 /// Whether `effect` is a `create_emblem` handing out an ability an emblem cannot carry
 /// (CR 114.1) — anything but `static` or `triggered`.
 pub(super) fn emblem_ability_is_bad(effect: &serde_json::Value) -> bool {

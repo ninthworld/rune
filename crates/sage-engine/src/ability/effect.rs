@@ -506,8 +506,29 @@ pub enum Effect {
         /// The characteristics of each token created (CR 111.3).
         token: TokenData,
         /// How many tokens are created. Defaults to one.
+        ///
+        /// With [`count_of`](Self::CreateToken::count_of) present this is how many are
+        /// created **per counted permanent** rather than the total, exactly as
+        /// [`Effect::GainLifeByCount`]'s `amount_per` is the life per counted permanent.
         #[serde(default = "one")]
         count: u8,
+        /// Which permanents [`count`](Self::CreateToken::count) is multiplied by, if any
+        /// — the `for each nontoken creature you control` of a token-making
+        /// enters-the-battlefield trigger. Absent is the ordinary fixed count.
+        ///
+        /// A field rather than a `create_token_by_count` twin, which is where this
+        /// departs from [`Effect::PumpByCount`] and its two siblings: a second variant
+        /// would duplicate the four other fields here — the token's whole face, its
+        /// creator, tapped, attacking — and the count is the *same* number this effect
+        /// already carries. The field says where that number comes from; it does not add
+        /// a second verb.
+        ///
+        /// X is taken **once, on resolution** (CR 608.2), from the board as it stands
+        /// then: a creature that arrived while the ability was on the stack is counted
+        /// and one that has died is not. Afterwards the tokens simply exist — nothing
+        /// later in the turn adds one or takes one back.
+        #[serde(default)]
+        count_of: Option<PermanentCount>,
         /// Who creates them, and therefore who controls them. Defaults to the
         /// effect's controller ("you create …").
         #[serde(default = "PlayerRef::controller")]

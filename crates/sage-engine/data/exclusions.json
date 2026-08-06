@@ -57,7 +57,7 @@
   },
   {
     "name": "Effects whose amount is derived from anything but a count of permanents",
-    "blocker": "an amount may scale with a count of permanents — power/toughness, life, or damage; cards in a zone, life totals, and mana values feed nothing"
+    "blocker": "a count of permanents may feed power/toughness, life, damage, a token count, and an attachment's static grant; nothing else may — not cards in a zone, a life total, a mana value, another object's power, life gained this turn, half of a total, or a count of what this resolution milled or sacrificed"
   },
   {
     "name": "Emblems with an activated ability",

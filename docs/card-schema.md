@@ -280,8 +280,14 @@ permanent unattaches it first (CR 701.3c), and because the grant is derived from
 attachment on every read, the old host loses it and the new host gains it with nothing to
 migrate. Aura *movement* remains out of scope, and is listed in the exclusions.
 
+The grant may also **scale with a count of permanents** (`+1/+1 for each Forest you
+control`) through a `count_of` — see *Amounts derived from a count*, which is also where
+the one way it differs from every other counted amount is stated: it is recalculated on
+every read rather than fixed once.
+
 The validator rejects an `attachment` whose `kind` names a subtype the card does not bear
-(`Aura`, `Equipment`), an Equipment with no `equip` cost, and an `equip` cost on an Aura.
+(`Aura`, `Equipment`), an Equipment with no `equip` cost, an `equip` cost on an Aura, and a
+`count_of` that counts by `min_power`.
 
 ### Targets (CR 115.1)
 
@@ -603,6 +609,38 @@ subject vocabulary its fixed sibling has — a `player_ref` for life, and the sa
 target/`player_ref`/`affects` choice for damage. The count is relative to the effect's
 *controller* even when the life or the damage goes elsewhere, because "each creature you
 control" says "you" and the subject clause does not change who that is.
+
+Two other numbers take the same `count_of`, and neither gets a `_by_count` verb of its own
+— they are a field on the thing that already carries the number:
+
+```json
+{ "kind": "create_token", "count_of": { "card_type": "creature" },
+  "token": { "name": "Soldier", "types": ["creature"], "subtypes": ["Soldier"],
+             "colors": ["white"], "power": 1, "toughness": 1 } }
+"attachment": { "kind": "aura", "attach_to": "any_creature", "power": 1, "toughness": 1,
+                "count_of": { "scope": "you_control", "subtype": "Forest" } }
+```
+
+- On `create_token`, `count_of` makes `count` (default `1`) the number created **per
+  counted permanent**. A second variant would have duplicated the token's whole face, its
+  creator, `tapped`, and `attacking`, and the count is the same number the effect already
+  had; the field says where that number comes from. X is taken once, on resolution, before
+  the first token arrives, so a token never counts towards its own number.
+- On an `attachment`, `count_of` makes `power`/`toughness` the grant **per counted
+  permanent** — `+1/+1 for each Forest you control`.
+
+**The attachment one is the exception to "once, on resolution", and deliberately.** It is a
+static ability (CR 604.3), not a one-shot effect, so CR 608.2 never applies to it: the
+grant exists only while the attachment is attached, and its value is recalculated on every
+read of the host's characteristics. A Forest played after the Aura resolved makes the Aura
+bigger, and one that leaves makes it smaller — which is what the printed card means, and
+the opposite of what `pump_by_count`'s frozen modifier does.
+
+Because it is evaluated from *inside* the computation of a permanent's characteristics, an
+attachment's `count_of` may not carry `min_power` (`Violation::PowerInAttachmentCount`) —
+the same recursion, and the same refusal, as `min_power` inside a static ability's
+`condition`. The count is relative to the **attachment's** controller, which is who "you
+control" means on the card that printed the grant, not the host's controller.
 
 ### Emptying a graveyard, and the top of a library
 
@@ -934,9 +972,10 @@ whole printed face is authored inline, because the effect that creates it *is* i
              "keywords": ["lifelink"] } }
 ```
 
-- `count` is how many are created (default `1`). Each is a **separate object** with its
-  own battlefield identity, so an "enters the battlefield" watcher sees two entries for
-  two tokens.
+- `count` is how many are created (default `1`), or how many **per counted permanent**
+  when `count_of` is present (see *Amounts derived from a count*). Each is a **separate
+  object** with its own battlefield identity, so an "enters the battlefield" watcher sees
+  two entries for two tokens.
 - `tapped` (default `false`) is the entry state the creating effect dictates.
 - `attacking` (default `false`) puts each token into the combat already in progress
   (CR 506.3c), and is a **sibling** of `tapped` rather than a mode of it — Leonin

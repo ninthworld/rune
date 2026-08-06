@@ -479,8 +479,14 @@ fn attachment_text(data: &CardData, attachment: &Attachment) -> Vec<String> {
         AttachmentKind::Equipment => ("equipped creature".to_string(), Vec::new()),
     };
     if attachment.power != 0 || attachment.toughness != 0 {
+        // A counted grant states the class it scales with, exactly where the card prints
+        // it: "enchanted creature gets +1/+1 for each Forest you control".
+        let each = match &attachment.count_of {
+            None => String::new(),
+            Some(count_of) => format!(" for each {}", count_noun(count_of)),
+        };
         lines.push(sentence_case(&format!(
-            "{host} gets {:+}/{:+}.",
+            "{host} gets {:+}/{:+}{each}.",
             attachment.power, attachment.toughness
         )));
     }

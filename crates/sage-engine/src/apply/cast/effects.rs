@@ -158,16 +158,21 @@ pub(crate) fn apply_effect(
         Effect::CreateToken {
             token,
             count,
+            count_of,
             player_ref,
             tapped,
             attacking,
         } => {
+            // X, if the effect has one, is taken once here — before the first token
+            // arrives, so a token this effect creates never counts towards its own
+            // number.
+            let made = tokens_created(state, *count, count_of.as_ref(), controller, db);
             for seat in non_targeting_subjects(state, *player_ref, controller) {
                 // Every token this seat creates joins the same attack, answered once:
                 // the tokens are created simultaneously and there is one declaration
                 // for them to join.
                 let joins = attack_a_created_token_joins(state, *attacking, source, seat);
-                for _ in 0..*count {
+                for _ in 0..made {
                     state.create_token(token.clone(), seat, *tapped, joins, db);
                 }
             }
@@ -440,6 +445,35 @@ pub(super) fn attack_a_created_token_joins(
         return None;
     }
     source.attacking
+}
+
+/// How many tokens one [`Effect::CreateToken`] creates for one creator: `count`, or
+/// `count` **per permanent** matching `count_of` when the effect derives its number from
+/// a count (CR 608.2).
+///
+/// Taken here, at the moment the effect is applied, which is what makes X the board as it
+/// stands on resolution rather than at announcement. The multiplication saturates rather
+/// than wrapping; no realistic game reaches a count that needs it.
+///
+/// The count is relative to the effect's *controller* even when a targeting `player_ref`
+/// hands the tokens to someone else, for the reason [`Effect::GainLifeByCount`]'s is:
+/// "each creature you control" says "you", and naming a different creator does not change
+/// who that is. One function so the targeting and non-targeting spellings cannot disagree
+/// about how many tokens the effect makes.
+pub(super) fn tokens_created(
+    state: &GameState,
+    count: u8,
+    count_of: Option<&crate::ability::PermanentCount>,
+    controller: PlayerId,
+    db: &CardDatabase,
+) -> u32 {
+    let count = u32::from(count);
+    match count_of {
+        None => count,
+        Some(wanted) => count.saturating_mul(crate::condition::count_permanents(
+            state, wanted, controller, db,
+        )),
+    }
 }
 
 /// The permanents a [`MassAffects`] class names, in battlefield order, for an object
