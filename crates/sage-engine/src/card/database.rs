@@ -270,7 +270,13 @@ mod tests {
                 entry.functional_id
             );
         }
-        assert_eq!(catalog::CATALOG.len(), crate::card::tests::CATALOG_SIZE);
+        // ADR 0008 §3: an entry's handle *is* its index in the manifest, so `CardId(0..n)`
+        // covers the catalog exactly. Asserted here rather than against a written-down
+        // count, which would only restate how `CATALOG_SIZE` is now derived.
+        assert!(!catalog::CATALOG.is_empty());
+        for (index, entry) in catalog::CATALOG.iter().enumerate() {
+            assert_eq!(entry.id, CardId(index as u64));
+        }
     }
 
     #[test]
