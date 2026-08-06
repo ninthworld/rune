@@ -141,16 +141,32 @@ describe('what the dock carries, and what the board answers', () => {
     expect(dockCandidates(slot, new Set())).toEqual(['perm_0', 'perm_1', 'perm_2'])
   })
 
+  const ordering = (): ValidAction => ({
+    id: 'ord',
+    type: 'order_combat_damage',
+    label: 'Order blockers',
+    prompts: [{ kind: 'order', slot: 'order', prompt: 'Order them', items: ['perm_a', 'perm_b'] }],
+  })
+
   it('keeps every item of an ordering, because a position is only readable on a control', () => {
-    const order = slotOf({
-      id: 'ord',
-      type: 'order_combat_damage',
-      label: 'Order blockers',
-      prompts: [
-        { kind: 'order', slot: 'order', prompt: 'Order them', items: ['perm_a', 'perm_b'] },
-      ],
-    })
+    const order = slotOf(ordering())
     expect(dockCandidates(order, new Set(['perm_a', 'perm_b']))).toEqual(['perm_a', 'perm_b'])
+  })
+
+  it('drops the items a surface is drawing with their positions on them', () => {
+    // The pile a library ordering is answered in badges each card as it is clicked
+    // (`docs/client-design.md` §6.7), so the control the dock was holding as the only place a
+    // position could be read is now the second copy of one — and §6.5 rule 1 says the question
+    // is drawn once.
+    const order = slotOf(ordering())
+    expect(
+      dockCandidates(order, new Set(['perm_a', 'perm_b']), new Set(['perm_a', 'perm_b'])),
+    ).toEqual([])
+    // Merely being drawn is not enough: a permanent on the board wears no ordinal, so its item
+    // stays here.
+    expect(dockCandidates(order, new Set(['perm_a', 'perm_b']), new Set(['perm_a']))).toEqual([
+      'perm_b',
+    ])
   })
 
   it('carries no control at all for a slot no object answers', () => {

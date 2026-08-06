@@ -5,6 +5,16 @@
    back in `index.css`, so the cascade is byte-for-byte what it was: `board.css` (here),
    then `panel.css`, then `dock.css`. Nothing was reordered — in CSS, order is behavior. */
 .layout {
+  /* The dock's band, and it is a constant: it responds neither to how much there is to
+     ask about nor to whether anything is being asked at all (§6.5 rule 5). The number is
+     the tallest question the design admits, which is three mode rows (§6.7): a 22px row
+     (a 16px numeral, 2px of padding either side, 1px of border either side), a 3px gap
+     between them, the bar's own 8px above and below, and the 1px lit edge along its top —
+     3×22 + 2×3 + 16 + 1 = 89, inside 90. (The gap is 3px rather than 4 for exactly that
+     pixel: the bar's lit edge is part of its height and the band is the round number.)
+     Nothing larger can arrive: the catalog validator refuses a fourth mode, because no
+     *choose one* card prints one. */
+  --dock-band: 90px;
   height: 100%;
   display: grid;
   grid-template-columns: 1fr 300px;

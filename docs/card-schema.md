@@ -293,10 +293,13 @@ The validator enforces four things, and the last one is not a rules rule:
   would resolve whichever mode was chosen;
 - every mode does something;
 - there are at least **two** modes, since one is a question with a single answer;
-- there are at most **four** (`sage_engine::MAX_MODES`). A mode is a numbered row in a
+- there are at most **three** (`sage_engine::MAX_MODES`). A mode is a numbered row in a
   dock band of fixed height (`client-design.md` §6.7), and the alternative to refusing a
-  fifth is truncating a sentence a player has to read *before* choosing it. So the limit
-  lands on whoever authors the card rather than on whoever plays it.
+  fourth is truncating a sentence a player has to read *before* choosing it. So the limit
+  lands on whoever authors the card rather than on whoever plays it. Three is where the
+  printed cards sit: the Charm cycle prints three, and the four-mode cards are the
+  Commands, which choose **two** of their four — a question this schema cannot write at
+  all, and one that will bring its own surface when it can.
 
 Choosing more than one mode, repeating one, a mode with a cost of its own, and a modal
 *ability* are all still unwritable.
@@ -2445,8 +2448,9 @@ The ordering is structural rather than remembered: `target_requirements` reads t
 the action, and a modal cast that has not chosen one declares **no slots at all** — which is
 why `announcement_is_legal` refuses that announcement explicitly instead of letting it pass
 as a spell that happened to target nothing. A modal card's effects live in `CardData::modes`,
-held between two and `MAX_MODES` (four, because a mode is a numbered dock row and a fifth
-would have to be truncated).
+held between two and `MAX_MODES` (three, because a mode is a numbered dock row and a fourth
+would have to be truncated — and no *choose one* card prints four; the Commands choose two
+of four and are a different question).
 
 **X is announced, then locked**: `cast_cost` is the one place it becomes generic mana,
 `StackObjectKind::Spell::x` is the only X anything reads afterwards, and `x_options`

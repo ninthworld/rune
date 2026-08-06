@@ -884,13 +884,17 @@ fn modal(count: usize) -> serde_json::Value {
     })
 }
 
-/// **The dock's band is four rows wide, so a fifth mode is a card the catalog refuses**
+/// **The dock's band is three rows wide, so a fourth mode is a card the catalog refuses**
 /// (`docs/client-design.md` §6.7). The alternative is truncating a mode a player has to
 /// read before they can choose it, which §6 forbids outright — so the limit lands on the
 /// person authoring the card rather than on the person playing it.
+///
+/// Three is where the printed cards already sit: the Charm cycle is three modes, and the
+/// four-mode cards are the Commands, which choose *two* of their four and are a different
+/// question with a surface of its own.
 #[test]
-fn a_fifth_mode_is_refused() {
-    for count in [2, 3, 4] {
+fn a_fourth_mode_is_refused() {
+    for count in [2, 3] {
         assert!(
             validate_definition(Some("test_card"), &modal(count)).is_ok(),
             "{count} modes fit the band"

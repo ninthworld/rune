@@ -43,6 +43,7 @@ import { barTone, dockTone, dockWording } from './../../dock'
 import {
   IDLE,
   actionsFor,
+  answer,
   arm,
   ask,
   clear,
@@ -56,6 +57,7 @@ import {
   manaSubjects,
   needsChoices,
   needsConfirmation,
+  ordinalIn,
   payFor,
   release,
   reset,
@@ -66,6 +68,7 @@ import {
   tappedByDraft,
   unask,
   type Interaction,
+  type Slot,
 } from './../../interaction'
 import { claims, intentFor, type KeyPress } from './../../keys'
 import { objectMenu } from './../../menu'
@@ -95,7 +98,7 @@ import { ObjectMenu } from './ObjectMenu'
 import { PhaseBar } from './PhaseBar'
 import { PlayerBar } from './PlayerBar'
 import { SidePanel, type StackEntry } from './SidePanel'
-import { ZoneView, type OpenZone } from './ZoneView'
+import { ZoneView, type OpenZone, type ZoneQuestion } from './ZoneView'
 import type { Surface } from './surface'
 
 // Opaque and client-generated: the server echoes it back verbatim and derives nothing from it.
@@ -411,6 +414,16 @@ export function Board({
         case 'cancel':
           back()
           return
+        case 'pick': {
+          // The numeral on a mode row is its key (§6.7), so the nth row is the nth option the
+          // server listed. Nothing is decided here: with no numbered question on screen, or no
+          // nth option in it, the press finds nothing and does nothing.
+          if (interaction.pending) return
+          const rows = current.slots.find((slot) => slot.numbered === true)
+          const option = rows?.options[intent.index - 1]
+          if (rows && option) setInteraction(answer(interaction, rows.slot, [option.id]))
+          return
+        }
         case 'stops':
           setPace(intent.preset)
           return
@@ -479,10 +492,42 @@ export function Board({
   // what is in it now. A pile the view no longer carries stops resolving, which closes it.
   const openSeat = table.find((seat) => seat.id === browsing?.seat)
   const openPile = openSeat?.piles.find((pile) => pile.zone === browsing?.zone)
-  const zone: OpenZone | undefined =
+  const browsed: OpenZone | undefined =
     openSeat && openPile
       ? { title: `${openSeat.name} — ${openPile.label}`, faces: openPile.faces }
       : undefined
+  // A pile the game is asking about opens as the dialog §6.6 already specifies, because that is
+  // what the question is about: a run of cards from a hidden zone this seat alone is being shown
+  // (`revealed`). Which slot that is, is the shape of the question and not a reading of it —
+  // every candidate is one of the cards on screen — and the ordering is the second question the
+  // same dialog carries (§6.7).
+  const asked = askedPile(current.slots, revealedFaces)
+  const badged = new Set(asked?.slot.kind === 'order' ? asked.slot.candidates : [])
+  const question: ZoneQuestion | undefined =
+    asked === undefined
+      ? undefined
+      : {
+          note:
+            asked.slot.kind === 'order'
+              ? 'The first you pick goes deepest.'
+              : `${asked.slot.prompt}.`,
+          tally:
+            asked.slot.kind === 'order'
+              ? `${asked.slot.chosen.length} of ${asked.slot.candidates.length}, in order`
+              : `${asked.slot.chosen.length} of ${asked.slot.max ?? asked.slot.candidates.length}`,
+          ordinals: new Map(
+            asked.slot.kind === 'order'
+              ? asked.slot.candidates.flatMap((id) => {
+                  const at = ordinalIn(asked.slot, id)
+                  return at === undefined ? [] : [[id, at] as const]
+                })
+              : [],
+          ),
+          ready: current.ready && !interaction.pending,
+          commit: () => confirm(),
+        }
+  const zone: OpenZone | undefined =
+    asked === undefined ? browsed : { title: 'Shown to you', faces: asked.faces, question }
 
   const looking = pinned ?? hovering
   const preview = looking === undefined ? undefined : faces.get(looking)
@@ -493,6 +538,15 @@ export function Board({
     interaction.paying === undefined
       ? undefined
       : handFaces.find((face) => face.id === interaction.paying)
+
+  // The cost the bar carries: the drafted cast's, or — while a card is being paid for and the
+  // server has begun offering it — that offer's. Both are the server's `ActionCost`, and where
+  // there is none the bar falls back to the card's own printed cost, which is all there is.
+  const castCost =
+    current.action?.cost ??
+    (interaction.paying === undefined
+      ? undefined
+      : actionsFor(actions, interaction.paying).find((offer) => offer.cost !== undefined)?.cost)
 
   const tone = dockTone(actions, interaction, view.result)
   const globals = globalActions(actions)
@@ -635,8 +689,13 @@ export function Board({
         blocked={interaction.pending !== undefined}
         interaction={interaction}
         drawn={drawn}
+        badged={badged}
         buttons={barButtons}
         {...(payingFace ? { paying: payingFace } : {})}
+        // What the cast in question costs, as the server stated it — the action being drafted,
+        // or the one it is now offering for the card the player named. Absent until there is a
+        // cast to state a cost for, which is the only moment either number exists.
+        {...(castCost ? { cost: castCost } : {})}
         pool={local?.manaPool ?? []}
         labelFor={surface.labelFor}
         update={setInteraction}
@@ -671,7 +730,9 @@ export function Board({
         <ZoneView
           zone={zone}
           asking={interaction.armed !== undefined}
-          onClose={() => setBrowsing(undefined)}
+          // The way out of a pile you opened is closing it; the way out of one the game opened
+          // to ask something is Cancel, which is what Escape means everywhere else (§6.5).
+          onClose={() => (asked ? setInteraction(disarm(interaction)) : setBrowsing(undefined))}
           surface={surface}
         />
       )}
@@ -699,6 +760,38 @@ export function Board({
       )}
     </div>
   )
+}
+
+/**
+ * The question being asked *about a pile*, and the cards it is about.
+ *
+ * A `select_from_zone` or an `order` whose every candidate is a card the server is currently
+ * showing this seat — the top of a library it let them look at, the results of a search — is a
+ * question about a pile, and §6.6 puts a pile in a dialog. The test is the shape of the slot
+ * against what the view drew and nothing else: a discard lists cards in a hand, a sacrifice
+ * lists permanents on the battlefield, and neither is this, because neither is in `revealed`.
+ */
+function askedPile(
+  slots: readonly Slot[],
+  revealed: readonly CardFace[],
+): { slot: Slot; faces: readonly CardFace[] } | undefined {
+  if (revealed.length === 0) return undefined
+  const shown = new Map(revealed.map((face) => [face.id, face]))
+  const slot = slots.find(
+    (candidate) =>
+      (candidate.kind === 'order' || candidate.kind === 'zone') &&
+      candidate.candidates.length > 0 &&
+      candidate.candidates.every((id) => shown.has(id)),
+  )
+  if (!slot) return undefined
+  return {
+    slot,
+    // In the server's own order, which for an ordering is the order it listed the items in.
+    faces: slot.candidates.flatMap((id) => {
+      const face = shown.get(id)
+      return face ? [face] : []
+    }),
+  }
 }
 
 /** The ids an opened pile is currently drawing, which are answerable in it. */

@@ -27,6 +27,15 @@ export type Intent =
   | { kind: 'cancel' }
   | { kind: 'stops'; preset: StopPreset }
   | { kind: 'help' }
+  /**
+   * The nth numbered row the bar is offering — a mode, counting from one
+   * (`docs/client-design.md` §6.7).
+   *
+   * A row a pointer can press has to be reachable from the keyboard (§6.5 rule 4), and the
+   * numeral on the row *is* the binding rather than a label beside one. Whether an nth row
+   * exists at all is decided where the view is, like every other intent here.
+   */
+  | { kind: 'pick'; index: number }
 
 /**
  * One keypress, reduced to what the binding depends on.
@@ -88,7 +97,10 @@ export function intentFor(press: KeyPress): Intent | undefined {
       return { kind: 'help' }
 
     default:
-      return undefined
+      // A digit picks the row that prints it. Nothing is claimed from the browser for these —
+      // a digit activates no control and scrolls nothing — and a press with no numbered row
+      // on screen simply finds none.
+      return /^[1-9]$/.test(press.key) ? { kind: 'pick', index: Number(press.key) } : undefined
   }
 }
 
@@ -110,6 +122,7 @@ export const BINDINGS: readonly { keys: string; does: string }[] = [
   { keys: 'F3', does: 'Stop at every step — the way back from any skip' },
   { keys: 'F4', does: 'Stop at your main phases, and pass' },
   { keys: 'F5', does: 'Stop only where the game must ask, and pass' },
+  { keys: '1–4', does: 'Choose the mode the bar numbers with that figure' },
   { keys: '?', does: 'This list' },
   { keys: 'Right-click', does: 'Pin any card in the preview; right-click it again to release' },
 ]

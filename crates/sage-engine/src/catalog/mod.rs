@@ -46,11 +46,16 @@ pub const SCHEMA_VERSION: u32 = 1;
 ///
 /// A rules-free bound with a presentation reason, and it is stated here rather than
 /// worked around later: a mode is a numbered row in a dock band of fixed height, sized
-/// to hold four of them at the text floor (`docs/client-design.md` §6.7). A fifth is not
-/// a layout to degrade at render time — degrading would mean truncating a mode a player
-/// has to read before choosing it — so it is a card the catalog refuses. Every modal
-/// card in the catalog has two.
-pub const MAX_MODES: usize = 4;
+/// to hold three of them at the text floor (`docs/client-design.md` §6.7). A fourth is
+/// not a layout to degrade at render time — degrading would mean truncating a mode a
+/// player has to read before choosing it — so it is a card the catalog refuses. Every
+/// modal card in the catalog has two.
+///
+/// **Three is the real ceiling, not a stopgap.** No *choose one* card prints four modes:
+/// the Charm cycle is three, and the four-mode cards are the Commands, which are "choose
+/// two" of four — a different question that needs a surface of its own with a tally of
+/// what has been picked, and which will size its own band when the engine reaches it.
+pub const MAX_MODES: usize = 3;
 
 /// The fewest a modal card may print. One mode is not a choice, and a card whose single
 /// bullet was authored as a mode would pose a question with one answer.
@@ -199,7 +204,7 @@ pub(crate) fn validate_definition(
     // CR 700.2: a modal card's effects live in its modes and nowhere else, it prints
     // between two and MAX_MODES of them, and each of its modes does something. All three
     // directions matter: loose spell effects beside modes would resolve whichever mode
-    // was chosen, one mode is a question with a single answer, and a fifth is a row the
+    // was chosen, one mode is a question with a single answer, and a fourth is a row the
     // dock has no band for.
     if let Some(modes) = object.get("modes").and_then(serde_json::Value::as_array) {
         let empty_mode = modes.iter().any(|mode| {

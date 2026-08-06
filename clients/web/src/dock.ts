@@ -148,14 +148,21 @@ export function dockNarrates(
  * so that no action is ever reachable only by finding its object. `drawn` is a fact about this
  * client's own rendering and nothing else — which ids it put a box on — never about the game.
  *
- * An ordering is the exception and it is not a policy choice: a permutation's answer is *where*
- * each item sits in it, only a control can carry that, and a board that showed the items without
- * their positions would be showing half an answer. So an `order` slot keeps every one of its
- * items here, and the count it can reach is the count the server asked to be ordered.
+ * An ordering is the exception, and `badged` is the whole of the exception: a permutation's
+ * answer is *where* each item sits in it, so an item drawn without its position is half an
+ * answer and belongs here as a control. A surface that draws the position — the pile a library
+ * ordering is answered in, where each card takes an ordinal as it is clicked
+ * (`docs/client-design.md` §6.7) — says so by naming those ids, and they leave the dock like
+ * every other drawn subject. Nothing else consults it: an item merely *drawn*, with no number
+ * on it, is still listed here.
  */
-export function dockCandidates(slot: Slot, drawn: ReadonlySet<string>): readonly string[] {
+export function dockCandidates(
+  slot: Slot,
+  drawn: ReadonlySet<string>,
+  badged: ReadonlySet<string> = new Set(),
+): readonly string[] {
   if (!slot.byEntity) return []
-  if (slot.kind === 'order') return slot.candidates
+  if (slot.kind === 'order') return slot.candidates.filter((id) => !badged.has(id))
   return slot.candidates.filter((id) => !drawn.has(id))
 }
 

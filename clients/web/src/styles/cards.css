@@ -139,13 +139,23 @@
   height: 100%;
   padding: 0.3em 0.45em 0.25em 0.4em;
   font-size: 9px;
-  line-height: 1.18;
+  /* Not tighter than the type's own content area. A line box shorter than the font's
+     ascent-plus-descent leaves every line of a paragraph overflowing its own box by a
+     fraction — invisible, because the field clips, but it is real overflow inside the
+     board and it is the kind §3 forbids. The fitting then sets the text at the size
+     that fits *this* leading, which is the honest order (`fit.ts`). */
+  line-height: 1.26;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
 }
+/* Never shrunk to fit the field: a paragraph that gave up two pixels of its last
+   line would hide that overflow from the bisection that sets the type (`fit.ts`),
+   and the card would draw a clipped line instead of a smaller one. Scale first,
+   and nothing is truncated (§3, §6). */
 .c-text p {
+  flex: none;
   margin: 0 0 0.06em;
 }
 .c-text .c-kw {

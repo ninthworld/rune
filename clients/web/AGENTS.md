@@ -211,7 +211,9 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   by bisection, so a hand card and a board card of different sizes are the same drawing. `Pips.tsx`
   draws every mana symbol from scratch in a 100×100 box (never an official symbol, never a
   downloaded one) and hands assistive technology words instead; `Symbols.tsx` does the same for a
-  sentence the server wrote. `peek.ts` is press-to-read, `scrollStrip.ts` is the pan a full row
+  sentence the server wrote. `peek.ts` is press-to-read and `Peek.tsx` is what it opens — the card
+  over a glass scrim, and **the one place a two-faced card turns over** (§6.7), because the board
+  draws the face that is up and marks only *that* there is another. `scrollStrip.ts` is the pan a full row
   and a full hand share, and `art.tsx` is the provider the whole app is wrapped in, because the
   preference and the cache belong to the *device*.
 - `src/ui/game/` — the table. `Board.tsx` composes and derives; a surface receives answers, never
@@ -260,8 +262,9 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   added to every screen that borrows the name.
 - `e2e/smoke.spec.ts` — the blocking gate: one path against the real server.
 - `e2e/*views.spec.ts` — the non-blocking tier: committed fixtures replayed over an intercepted
-  socket, no server involved. Four files sharing `e2e/frames.ts` — the board, the pre-game
-  screens, the card, and the sweep across viewports; the `views` project matches on the suffix.
+  socket, no server involved. Five files sharing `e2e/frames.ts` — the board, the pre-game
+  screens, the card, the announcement surfaces of §6.7, and the sweep across viewports; the
+  `views` project matches on the suffix.
 
 Keep logic out of components. Anything worth a test belongs in one of the modules above, which
 are pure and need neither React nor a browser.

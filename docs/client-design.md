@@ -1089,10 +1089,20 @@ They are drawn as full-width recessed rows in the bar, one per mode, each carryi
 generated text on one fitted line (§7, never truncated). The rows are **numbered, and the numeral is
 the key**: `1`, `2`, `3` choose the mode, because the keyboard already carries priority.
 
-**The bound is four.** The dock's band is fixed (§6.5 rule 5) and is computed to hold four mode rows
-at the 11px floor. A card with more modes than that is not a layout problem to solve later — it is a
-card the catalog validator should refuse, and the engine's schema is where the limit belongs. M19's
-two modal cards have two modes each.
+**The bound is three.** The dock's band is fixed (§6.5 rule 5) and is computed to hold three mode
+rows at the 11px floor. A card with more modes than that is not a layout problem to solve later — it
+is a card the catalog validator should refuse, and the engine's schema is where the limit belongs.
+M19's two modal cards have two modes each.
+
+**Three, and not four, because three is where the printed cards actually stop.** An earlier draft of
+this section said four, and a fourth row is about 25px of band at the reference size — spent on every
+board, at every size, for a card that cannot exist. No *choose one* card in the game prints four
+modes: the Charm cycle is three, it is large and it recurs, so a Charm needs no schema change and no
+revisit of this section when it arrives. The four-mode cards are the Commands, and every one of them is *choose
+two* of four — a different question, which owes a tally of what has been picked and a commit that
+knows when two is enough, and which will size its own band when the engine can ask it. Sizing this
+band for a card that would be answered by a surface that does not exist is the wrong end of the
+problem.
 
 Choosing a mode is not sending anything. It is the same held intent as naming the card (§6.5), it
 draws no arrow, and Cancel drops it with everything else.
@@ -1146,14 +1156,33 @@ printed on it.
 permanent's face is what the card says, and a cost that is cheaper this turn is not a fact about the
 card.
 
-**The bar carries the modified cost, and marks it when it differs** — green when it is less than
-printed, red when it is more. That is not a new convention: it is exactly the P/T plaque's rule for a
-creature grown by counters (§6, state marks), which prints the number you act on and colours it
-against the printed one. The same rule, in the other place a printed number is overridden.
+**The bar carries the modified cost, and marks it when it differs from the printed one.** One mark,
+in the bar's amber, saying *that* the cost changed — with `costs now` on the number a player pays and
+`card says` on the number the card still prints, both on screen together.
 
-Colour never carries it alone (§5.5). The printed cost stays on screen beside the modified one, so
-the difference is legible without the tint, and the modified cost is what a screen reader is given
-first.
+**The mark does not say which way it went, and that is a reversal.** An earlier draft asked for the
+P/T plaque's rule — green when the modified cost is less than printed, red when it is more (§6, state
+marks) — on the reasoning that this is the other place a printed number is overridden. Three things
+were wrong with carrying it across, and they are worth keeping because each of them is a rule this
+document states elsewhere:
+
+- **A P/T is a number and a cost is symbols.** The plaque compares two values the server sent as
+  values; a cost arrives as `{2}{G}`, and reading that as more than `{G}` means giving every symbol a
+  value and adding them up. Adding up a cost is deciding what a spell costs, which is the one thing
+  the client may not do — the same rule that makes X's legal values a wire fact.
+- **Green and red are already spoken for.** §6.5 gives the bar three tones and they mean *where in
+  the turn you are*: green on the bookends, blue in a main phase, red once combat is live. A green
+  "this is cheaper" inside a green band is a second meaning for a colour a player has already
+  learnt, and a red one during combat says nothing at all. Amber is the one hue in the band carrying
+  nothing else.
+- **The direction is already on screen.** Both costs are drawn, side by side, each labelled. A mark
+  that repeated what the two numbers say is decoration (§2.1 rule 5), and it is not worth a
+  permanent field on the wire to compute — which is what a green mark would have cost, since the
+  only honest way to have one is for the server to state the direction.
+
+Colour never carries a fact alone (§5.5). Here it carries no fact at all: the mark draws the eye to a
+number that is not what the card prints, the words say which number is which, and the modified cost
+is what a screen reader is given first.
 
 ### A card with two faces draws the face that is up
 

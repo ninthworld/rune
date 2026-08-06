@@ -129,10 +129,11 @@ pub enum Violation {
     ///
     /// The upper bound is the one rule here that is not a rules rule. A mode is a
     /// numbered row in a dock band of fixed height (`docs/client-design.md` §6.7), and
-    /// the alternative to refusing a fifth is truncating a sentence the player has to
+    /// the alternative to refusing a fourth is truncating a sentence the player has to
     /// read *before* choosing it — so the limit belongs in the schema, where it fails
     /// the person authoring the card, rather than in a renderer, where it fails the
-    /// person playing it.
+    /// person playing it. Three is where every *choose one* card in the game already
+    /// sits; four is the Commands, which choose **two** and are a different question.
     MalformedModes {
         /// The definition at fault.
         functional_id: String,

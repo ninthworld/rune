@@ -63,6 +63,10 @@
 /* The bar's tone says where in the turn you are — green on the turn's
    bookends, blue while you may cast at will, red once combat is live. */
 .action-bar {
+  /* fixed, whatever is being asked and whether anything is (§6.5 rule 5): the band holds
+     three mode rows at the type floor, so a modal cast changes what is *in* the bar and
+     never how much of the table it takes */
+  min-height: var(--dock-band);
   --act-bg: #14263e;
   --act-line: #2a4a72;
   --act-fg: #cfe0f4;
@@ -333,6 +337,154 @@
 .action-chosen {
   box-shadow: inset 0 1px 0 rgba(207, 224, 244, 0.18);
   color: #eaf1fa;
+}
+
+/* The announcement (§6.7): a mode as numbered rows, and X as a stepper over the
+   values the server enumerated. Both are questions with no object on the board to
+   point at, which is the case §6.5 leaves in the dock. */
+
+/* the rows take the bar's flexible middle, so the band is one row of chrome tall
+   whether there are two modes or three */
+.slot-rows {
+  flex: 1;
+}
+
+.action-modes {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  /* three of these gaps and three rows are what `--dock-band` is computed from */
+  gap: 3px;
+}
+
+/* a hole cut into the bar rather than a pane raised off it: a mode is a thing you
+   put an answer *into* (§5.5) */
+.mode-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 10px;
+  background: var(--well);
+  border: 1px solid var(--act-line);
+  border-radius: 5px;
+  box-shadow: var(--well-lit);
+  color: var(--act-fg);
+  font: inherit;
+  /* the ceiling the label is fitted down from, and what the band's height is computed
+     against: three of these rows plus their gaps and the bar's own padding */
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mode-row:hover {
+  background: color-mix(in srgb, var(--act-btn) 40%, transparent);
+}
+
+/* the chosen one wears the same lit pane every "this is the one" wears */
+.mode-chosen {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--act-btn) 84%, #ffffff) 0,
+    var(--act-btn) 100%
+  );
+  border-color: var(--act-btn-line);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  color: #f2f6fa;
+}
+
+/* the numeral is the key, so it is drawn as one */
+.mode-num {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--act-btn-line);
+  border-radius: 3px;
+  color: var(--act-sub);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.mode-chosen .mode-num {
+  border-color: rgba(255, 255, 255, 0.5);
+  color: #f2f6fa;
+}
+
+/* fitted by ActionBar between the chrome ceiling and the 11px floor, and wrapping
+   rather than cutting where a sentence will not hold one line at the floor (§7) */
+.mode-text {
+  min-width: 0;
+  overflow: hidden;
+  line-height: 1.25;
+}
+
+/* X: the current value between two controls that walk the enumerated stops, with
+   that value's stated cost beside it */
+.slot-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.step-btn {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: var(--well);
+  border: 1px solid var(--act-line);
+  border-radius: 4px;
+  box-shadow: var(--well-lit);
+  color: var(--act-fg);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.step-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--act-btn) 40%, transparent);
+}
+
+/* an end of the list, said in the material: there is no lower value to step to */
+.step-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.step-value {
+  min-width: 20px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* A cost the game has changed (§6.7). The number a player acts on is marked and the
+   printed one stays on screen beside it, labelled — the mark is never the only copy
+   of the fact (§5.5), and the two numbers side by side are what say which way it
+   went.
+
+   Amber, and deliberately neither green nor red: those two are the bar's own tones
+   for where in the turn you are (§6.5), so a green cost would read as "it is your
+   upkeep". This is the one hue in the band carrying nothing else. */
+.pay-changed {
+  border-color: #b3a06a;
+  box-shadow:
+    var(--well-lit),
+    0 0 0 1px rgba(179, 160, 106, 0.35);
+}
+
+.pay-changed .pay-label {
+  color: #c8b478;
+}
+
+.pay-printed {
+  opacity: 0.75;
 }
 
 /* the log, scannable by what a line is about */

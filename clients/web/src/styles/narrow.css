@@ -240,4 +240,37 @@
     min-height: 0;
     max-height: 44%;
   }
+
+  /* The dock's band, derived the same way at this tighter density (§3, scale first). It is
+     still fixed and it still holds three mode rows: at the 11px floor a row is 15.75px
+     (a 13.75px line plus a 1px border either side, the numeral having given up its box),
+     the gap between rows is 2px, the bar's own padding 2px above and below, and its lit
+     edge 1px — 3×15.75 + 2×2 + 2×2 + 1 = 56.25, so 57. Everything else in the band is
+     shorter than that: the prompt and its step line come to 39px. */
+  .layout {
+    --dock-band: 57px;
+  }
+
+  .action-bar {
+    padding: 2px 12px;
+  }
+
+  .action-modes {
+    gap: 2px;
+  }
+
+  .mode-row {
+    padding: 0 8px;
+    font-size: 11px;
+  }
+
+  /* the numeral gives up its box before anything gives up its words: it is still the key,
+     and it is still drawn, in the room a short window has for it */
+  .mode-num {
+    width: auto;
+    min-width: 12px;
+    height: auto;
+    border: none;
+    line-height: 1;
+  }
 }

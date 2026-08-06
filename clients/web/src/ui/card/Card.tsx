@@ -223,6 +223,12 @@ export function Card({
      the text field with the rest of the card's abilities, which is where a player reads what a
      creature can do. */
   const pills = [
+    // That there is another side (CR 712, §6.7): one glyph in the run of state marks, saying
+    // *that* a card has a second face and never what is on it. Two faces in one box is two
+    // cards' worth of text in one card's grid, so the board draws the face that is up and the
+    // pinned preview is where the card turns over. The word is in the accessible name
+    // (`faceSummary`), because a glyph is not readable.
+    ...(face.otherFace ? [{ key: 'other-face', text: '⇄', count: null }] : []),
     ...(art?.style === 'full'
       ? face.grantedKeywords.map((keyword) => ({
           key: `granted:${keyword}`,

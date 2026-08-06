@@ -119,7 +119,7 @@ pub struct CardData {
     /// modes and loose spell effects would be a spell that does something the player
     /// never chose. It also holds the count between two and
     /// [`MAX_MODES`](crate::MAX_MODES), because a mode is a numbered control in a band
-    /// of fixed height and a fifth one is a card the catalog refuses rather than a
+    /// of fixed height and a fourth one is a card the catalog refuses rather than a
     /// layout to degrade at render time (`docs/client-design.md` §6.7).
     ///
     /// **Which mode was chosen decides which target slots exist**, so the choice is made
