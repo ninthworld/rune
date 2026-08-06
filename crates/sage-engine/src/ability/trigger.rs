@@ -371,16 +371,46 @@ pub enum ActivatorScope {
     Opponents,
 }
 
-/// Which spells a [`TriggerCondition::YouCastSpell`] notices.
+/// Which spells a [`TriggerCondition::YouCastSpell`] notices, and which spells an
+/// [`Ability::CostModifier`] changes the cost of.
 ///
-/// A closed set deserialized from a bare `snake_case` tag. Deliberately named by the
-/// classes real cards ask about rather than by card type, because "instant or sorcery"
-/// is one class to a card and two types to the engine.
+/// One spell vocabulary, shared by the two abilities that name a class of spells,
+/// because they ask the same question of the same object: *is this spell one of those?*
+/// Nothing here reads the stack — a cost modification is judged while the card is still
+/// in the zone it is being cast from — so the predicate is about the **card**, which is
+/// what makes one answer serve both.
+///
+/// A closed set deserialized in serde's **externally tagged** form: the classes that
+/// carry no parameter are bare `snake_case` strings (`"enchantment"`) and one that does
+/// wraps its filter (`{"creature": {"min_power": 4}}`), exactly as
+/// [`TriggerCondition`] itself is authored. Deliberately named by the classes real cards
+/// ask about rather than by card type, because "instant or sorcery" is one class to a
+/// card and two types to the engine.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ObservedSpell {
     /// An enchantment spell.
     Enchantment,
+    /// A **creature spell**, optionally only one whose power is at least `min_power` —
+    /// the "creature spell with power 4 or greater" a cost reducer names.
+    ///
+    /// The power is the card's **printed** power, and that is the only reading available
+    /// rather than a simplification: the class is asked about a card in a hand, a
+    /// graveyard, or a command zone, which has no [`crate::PermanentId`], no controller,
+    /// and no computed characteristics of any kind. It is the same printed reading
+    /// [`CardFilter::Creature`] takes of a card in a pile, and the opposite of the
+    /// computed one [`ObservedPermanent::max_power`] takes of a permanent on the
+    /// battlefield — the difference is what the object *is*, not a choice either
+    /// selector made.
+    ///
+    /// Only a lower bound exists, because only a lower bound is printed on a card the
+    /// catalog defines; an upper one arrives with the card that needs it.
+    Creature {
+        /// The least printed power a matching creature spell may have. Absent matches
+        /// every creature spell, including one with no printed power at all.
+        #[serde(default)]
+        min_power: Option<i32>,
+    },
     /// An instant **or** sorcery spell — one class, as a card writes it.
     InstantOrSorcery,
     /// A spell of the **chosen color** — the class a card names *after* its controller

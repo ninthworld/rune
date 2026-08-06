@@ -133,6 +133,58 @@ pub(crate) fn chooses_color_on_entry(db: &CardDatabase, card: CardId) -> bool {
         .any(|ability| matches!(ability, Ability::EntersChoosingColor))
 }
 
+/// Whether the spell `card` belongs to the class `observes`, for an ability whose source
+/// named `chosen` as it entered (CR 614.12).
+///
+/// **One answer, in one place, because two abilities ask it.** A cast trigger asks it of
+/// a spell that has just gone on the stack ([`crate::collect_triggers`]) and a cost
+/// modifier asks it of a card about to be cast ([`crate::total_cast_cost`]) — and both
+/// are asking about the *card*, not about a stack object, which is why one predicate can
+/// serve both. That equality matters: a card whose class the offer and the trigger
+/// disagreed about would be reduced and then not noticed, or noticed and then charged
+/// full price.
+///
+/// Every characteristic here is read off the printed face, which is the only face a card
+/// in a hand, a graveyard, or on the stack has in this engine — CR 613's layers are
+/// applied to permanents, and no effect in the catalog changes a spell's type, colour, or
+/// power on the stack.
+///
+/// `chosen` is threaded in rather than looked up because only one class reads it, and a
+/// source that named no colour — an emblem, a token, a card that never declared the
+/// choice — passes `None` and matches nothing of that class. That is the correct answer
+/// rather than a defensive one: "a spell of the chosen color" is unsatisfiable until a
+/// colour has been chosen.
+#[must_use]
+pub(crate) fn spell_matches_class(
+    db: &CardDatabase,
+    card: CardId,
+    observes: crate::ability::ObservedSpell,
+    chosen: Option<crate::mana::Color>,
+) -> bool {
+    use crate::ability::ObservedSpell;
+    use crate::card_type::CardType;
+
+    let Some(data) = db.card(card) else {
+        return false;
+    };
+    match observes {
+        ObservedSpell::Enchantment => data.has_type(CardType::Enchantment),
+        ObservedSpell::InstantOrSorcery => {
+            data.has_type(CardType::Instant) || data.has_type(CardType::Sorcery)
+        }
+        // A power bound that no printed power can satisfy excludes the card rather than
+        // defaulting it to zero: "a creature spell with power 4 or greater" is a question
+        // about a number the card has, and a card with none is not an answer.
+        ObservedSpell::Creature { min_power } => {
+            data.has_type(CardType::Creature)
+                && min_power.is_none_or(|min| data.power.is_some_and(|power| power >= min))
+        }
+        // CR 105.2: a spell *is* each of its colours, so a gold spell satisfies a
+        // watcher of any one of them and a colourless spell satisfies none.
+        ObservedSpell::ChosenColor => chosen.is_some_and(|color| data.colors.contains(&color)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::panic)]

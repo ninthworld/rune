@@ -35,4 +35,5 @@ pub(crate) use payment::{
 };
 pub(crate) use targeting::legal_targets_for_spec;
 pub use targeting::target_requirements;
+pub use utilities::total_cast_cost;
 pub(crate) use utilities::{cast_cost, graveyard_ability, potential_mana_pool};

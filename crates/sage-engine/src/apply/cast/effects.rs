@@ -649,12 +649,23 @@ fn permanents_in(
                     // A subtype narrows the class to a lord's tribe ("Dragons you
                     // control"), read off the printed face — the same place every other
                     // subtype question is answered.
-                    MassAffects::CreaturesYouControl { subtype } => {
+                    MassAffects::CreaturesYouControl { subtype, min_power } => {
                         crate::characteristics::controller_of(state, p) == controller
                             && subtype.as_deref().is_none_or(|wanted| {
                                 p.printed
                                     .face(db)
                                     .is_some_and(|face| face.has_subtype(wanted))
+                            })
+                            // A power bound is the one field here read through the
+                            // **computed** characteristics (CR 613.1f): "each creature
+                            // you control with power 4 or greater" means the power the
+                            // creature has now, so one pumped up to 4 is in the class
+                            // and one shrunk below it is out. Safe from inside a
+                            // resolution, which is outside the layer system.
+                            && min_power.is_none_or(|min| {
+                                crate::characteristics::characteristics(state, p.id, db)
+                                    .power
+                                    .is_some_and(|power| power >= min)
                             })
                     }
                     MassAffects::EachCreature => true,

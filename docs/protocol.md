@@ -640,6 +640,18 @@ A client that does not know the field renders exactly as it did.
   (CR 605): no targets, no stack, only mana production. Server-computed so a client may
   offer a lighter gesture — one-click tap-for-mana — for exactly these actions without ever
   classifying abilities itself. Omitted when `false`.
+- `cost` (optional, issue #735) states what a **cast** costs in mana, as
+  `{ printed?, modified }` — both in `{...}` notation. `printed` is the cost on the card
+  and `modified` is what the game will charge: the printed cost plus the commander tax
+  where one applies (CR 903.8), after every cost-modification effect in force
+  (CR 601.2f). The two are equal for nearly every cast; they differ when a permanent on
+  the battlefield makes a class of spells cheaper or dearer, and then the difference is
+  the point — the card keeps its printed cost and the surface a player acts on carries
+  the modified one, marked against the printed one beside it. `modified` is `"{0}"` for a
+  cost reduced to nothing, which is a real cost and not an absent one. Present on a cast
+  and omitted for every other action, none of which has a mana cost to state. **Display
+  text**: a client draws the symbols and parses neither value — the arithmetic behind
+  `modified` is the server's, and a client that reproduced it would be computing cost.
 - `destinations` (optional, issue #554) lists the server-authoritative surfaces this
   action may be taken *to*, each `{ type, id, owner?, label? }` where `type` is
   `"zone"`, `"entity"`, or `"player"` (free form — clients ignore kinds they do not

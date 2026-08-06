@@ -363,6 +363,19 @@ pub enum MassAffects {
         /// creature its controller controls.
         #[serde(default)]
         subtype: Option<String>,
+        /// Restrict to creatures whose power is at least this — the "each creature you
+        /// control **with power 4 or greater**" of an attack trigger. Absent means
+        /// every power, including a creature that has none.
+        ///
+        /// Read through the **computed** characteristics (CR 613.1f), like the
+        /// identically-named field on [`PermanentCount`] and for the same reason: that
+        /// is the only reading a printed card means, so a creature pumped to 4 is in the
+        /// class and one shrunk out of it is not. Asking for a computed power here is
+        /// safe where it is not in a static ability's condition — a mass effect is
+        /// enumerated **during a resolution** (CR 611.2c), from outside the layer
+        /// system, so there is no computation to recurse into.
+        #[serde(default)]
+        min_power: Option<i32>,
     },
     /// Every creature on the battlefield at the moment the effect resolves,
     /// whoever controls it — the symmetric class a sweeper names.

@@ -158,6 +158,38 @@ pub enum Ability {
         /// What it does to that player.
         modification: PlayerModification,
     },
+    /// A continuous ability that changes **what a spell costs to cast** (CR 601.2f) —
+    /// `Creature spells you cast with power 4 or greater cost {2} less to cast.`
+    ///
+    /// A third continuous variant beside [`Self::Static`] and [`Self::PlayerStatic`],
+    /// and separate from both for the reason they are separate from each other: its
+    /// subject is a **spell**, which is neither a permanent nor a player. A
+    /// [`StaticAffects`] names a class of permanents and a [`StaticModification`] names
+    /// a CR 613 layer; a cost modification is not a layer at all — it applies while a
+    /// spell is being cast, before the object it produces exists — so a single variant
+    /// carrying both vocabularies could express nothing but nonsense.
+    ///
+    /// Read where the question is asked ([`crate::total_cast_cost`]) rather than applied
+    /// anywhere, exactly as the other two are: it takes effect the instant its source is
+    /// on the battlefield and stops the instant it leaves, with nothing stored and
+    /// nothing to prune (ADR 0005 §1). Every road that reads a cast's cost — the offer,
+    /// the payment, and the charge — goes through that one function, so a spell is never
+    /// advertised at one price and charged another.
+    ///
+    /// The caster is always the source's **controller** — the "you cast" every printed
+    /// ability of this shape says — so there is no selector to author and none to get
+    /// wrong. A tax on *another* player's spells is a different sentence and would name
+    /// the scope here.
+    ///
+    /// Deserialized as
+    /// `{"type":"cost_modifier","spells":{"creature":{"min_power":4}},"modification":{"kind":"reduce","generic":2}}`.
+    CostModifier {
+        /// Which of its controller's spells the modification applies to — the same
+        /// closed class vocabulary a cast trigger watches.
+        spells: ObservedSpell,
+        /// How much generic mana it adds or takes off (CR 601.2f).
+        modification: CostModification,
+    },
 }
 
 /// What an [`Ability::PlayerStatic`] does to its controller.

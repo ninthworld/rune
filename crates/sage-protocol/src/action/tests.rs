@@ -17,6 +17,7 @@ fn valid_action_serializes_type_and_omits_empty_subject() {
         subject: vec![],
         requirements: vec![],
         prompts: vec![],
+        cost: None,
         destinations: vec![],
         token: String::new(),
     };
@@ -39,6 +40,7 @@ fn cr_605_mana_ability_flag_round_trips_and_defaults_off() {
         subject: vec!["perm_1".into()],
         requirements: vec![],
         prompts: vec![],
+        cost: None,
         destinations: vec![],
         token: "h:1".into(),
     };
@@ -77,6 +79,14 @@ fn valid_action_carries_requirements_and_token() {
             subject: None,
         }],
         prompts: vec![],
+        // A cast states what it costs, printed and as the game has it (CR 601.2f). The
+        // two agree here — nothing is modifying this bolt's cost — and the field still
+        // rides the wire, because "unchanged" is an answer a client draws rather than
+        // one it infers from an absence.
+        cost: Some(ActionCost {
+            printed: "{R}".into(),
+            modified: "{R}".into(),
+        }),
         destinations: vec![],
         token: "h:9f2c".into(),
     };
@@ -93,6 +103,7 @@ fn valid_action_carries_requirements_and_token() {
                 "prompt": "target creature or player",
                 "candidates": ["perm_bear", "p1", "p2"]
             }],
+            "cost": {"printed": "{R}", "modified": "{R}"},
             "token": "h:9f2c"
         })
     );
@@ -584,6 +595,7 @@ fn valid_action_carries_prompts_and_is_answered_by_target_choice() {
                 candidates: vec!["card_1".into(), "card_2".into()],
             },
         ],
+        cost: None,
         destinations: vec![],
         token: "t0123456789abcdef".into(),
     };

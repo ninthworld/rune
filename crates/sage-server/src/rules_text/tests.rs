@@ -1521,3 +1521,18 @@ fn issue_733_x_renders_as_x_with_its_threshold_clauses() {
          If X is 5 or more, the damage Banefire deals can't be prevented."
     );
 }
+
+/// A cost modifier states the class of spell, whose casts it reaches, and which way the
+/// number goes (CR 601.2f). The power bound trails the class, where a card prints it —
+/// the same place the mass effect on the line below puts its own.
+#[test]
+fn issue_735_a_cost_modifier_states_the_class_and_the_amount() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "goreclaw_terror_of_qal_sisma"),
+        "Creature spells with power 4 or greater you cast cost {2} less to cast.\n\
+         Whenever Goreclaw, Terror of Qal Sisma attacks, creatures you control with \
+         power 4 or greater get +1/+1 until end of turn and creatures you control with \
+         power 4 or greater gain trample until end of turn."
+    );
+}

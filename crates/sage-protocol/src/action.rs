@@ -76,6 +76,20 @@ pub struct ValidAction {
     /// action stays reachable by click, keyboard, and touch.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub destinations: Vec<ActionDestination>,
+    /// What this action **costs in mana**, printed and as the game has it now (CR
+    /// 601.2f) — see [`ActionCost`]. Present on a cast; omitted for everything else.
+    ///
+    /// The client renders what a spell costs and computes no cost of its own, so a cost
+    /// the game has changed has to arrive as a number rather than as something to work
+    /// out from a reducer on the board. Both halves ride together because the
+    /// presentation is a comparison: the modified cost is what a player pays and the
+    /// printed one is what the card still says, and neither is legible as a change
+    /// without the other.
+    ///
+    /// Additive: omitted from the wire for every action that is not a cast, and a client
+    /// that ignores it renders exactly what it always did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<ActionCost>,
     /// Content-binding token: a server-issued value bound to this action's exact
     /// content (kind + subject + requirements + prompts). The client echoes it verbatim in
     /// [`ChooseAction::token`]; the server recomputes it from the freshly
@@ -85,6 +99,32 @@ pub struct ValidAction {
     /// to `""` (which no real token matches, so such an answer is safely rejected).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub token: String,
+}
+
+/// What a cast costs in mana: the cost on the card, and the cost the game will actually
+/// charge (CR 601.2f).
+///
+/// The two are the same string for nearly every cast, and a client may draw the modified
+/// one unconditionally. They differ when a cost-modification effect is in force — a
+/// permanent that makes a class of spells cheaper or dearer — and then the difference is
+/// the whole point: the card keeps its printed cost, and the surface a player acts on
+/// carries the modified one, marked against the printed one beside it.
+///
+/// Both are `{...}` notation, the same symbols [`CardView::mana_cost`](crate::CardView)
+/// uses. Display text: a client matches the symbols it can draw and never parses one for
+/// a value — the arithmetic that produced the modified cost is the server's, and a client
+/// that reproduced it would be computing cost.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActionCost {
+    /// The cost printed on the card, e.g. `"{4}{G}"`. Empty for a card with no printed
+    /// mana cost.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub printed: String,
+    /// The cost this cast is offered and charged at, e.g. `"{2}{G}"` — the printed cost
+    /// plus the commander tax where one applies (CR 903.8), after every cost
+    /// modification. `"{0}"` for a cost reduced to nothing, which is a real cost and not
+    /// an absent one.
+    pub modified: String,
 }
 
 /// One choice step of a multi-step [`ValidAction`]: a single target slot the

@@ -361,6 +361,7 @@ fn game_view_round_trips_through_json() {
             subject: vec!["perm_xyz".into()],
             requirements: vec![],
             prompts: vec![],
+            cost: None,
             destinations: vec![],
             token: "h:00ab".into(),
         }],

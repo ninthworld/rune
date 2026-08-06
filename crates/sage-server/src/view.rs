@@ -17,12 +17,13 @@ use sage_engine::{
     choice_bounds, choice_candidates, confirm_is_payable, declared_attackers, defender_candidates,
     is_mana_ability, mana_ability_pips, pending_blocker_declarer, pending_player_choice,
     pending_replacement_options, scripted_rules_text, summoning_sickness_restricts,
-    target_requirements, valid_actions, Ability, AbilityOrigin, Action, Attack, AttackTarget,
-    Block, CardData, CardDatabase, CardId, CardInstance, CardInstanceId, ChoiceOutcome,
-    ChoiceQuestion, ChoiceRequest, ChoiceZone, Color, ColorOutcome, ColorRequest, ConfirmRequest,
-    CostPayment, CounterKind, DamageOrder, DamageTarget, GameEvent, GameResult, GameState, Keyword,
-    LoggedIdentity, LoggedPermanent, LossReason, OfferedReplacement, PermanentId, Player, PlayerId,
-    PrintedFace, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
+    target_requirements, total_cast_cost, valid_actions, Ability, AbilityOrigin, Action, Attack,
+    AttackTarget, Block, CardData, CardDatabase, CardId, CardInstance, CardInstanceId,
+    ChoiceOutcome, ChoiceQuestion, ChoiceRequest, ChoiceZone, Color, ColorOutcome, ColorRequest,
+    ConfirmRequest, CostPayment, CounterKind, DamageOrder, DamageTarget, GameEvent, GameResult,
+    GameState, Keyword, LoggedIdentity, LoggedPermanent, LossReason, OfferedReplacement,
+    PermanentId, Player, PlayerId, PrintedFace, StackId, StackObject, StackObjectKind, Step,
+    Target, TargetSpec,
 };
 
 use crate::rules_text::{

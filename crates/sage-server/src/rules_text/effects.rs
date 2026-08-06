@@ -868,10 +868,13 @@ fn possessive_subject(player_ref: PlayerRef) -> &'static str {
 /// you control", which is not how a card is written.
 fn mass_subject(affects: &MassAffects) -> String {
     match affects {
-        MassAffects::CreaturesYouControl { subtype: None } => "creatures you control".to_string(),
-        MassAffects::CreaturesYouControl {
-            subtype: Some(subtype),
-        } => format!("{subtype}s you control"),
+        MassAffects::CreaturesYouControl { subtype, min_power } => {
+            let noun = match subtype {
+                Some(subtype) => format!("{subtype}s"),
+                None => "creatures".to_string(),
+            };
+            format!("{noun} you control{}", mass_power_clause(*min_power))
+        }
         MassAffects::EachCreature => "creatures".to_string(),
         MassAffects::CreaturesYourOpponentsControl => {
             "creatures your opponents control".to_string()
@@ -889,18 +892,29 @@ fn mass_subject(affects: &MassAffects) -> String {
 /// both exhaustive, so a new [`MassAffects`] variant must be given words for each.
 fn mass_recipient(affects: &MassAffects) -> String {
     match affects {
-        MassAffects::CreaturesYouControl { subtype: None } => {
-            "each creature you control".to_string()
+        MassAffects::CreaturesYouControl { subtype, min_power } => {
+            let noun = match subtype {
+                Some(subtype) => subtype.clone(),
+                None => "creature".to_string(),
+            };
+            format!("each {noun} you control{}", mass_power_clause(*min_power))
         }
-        MassAffects::CreaturesYouControl {
-            subtype: Some(subtype),
-        } => format!("each {subtype} you control"),
         MassAffects::EachCreature => "each creature".to_string(),
         MassAffects::CreaturesYourOpponentsControl => {
             "each creature your opponents control".to_string()
         }
         MassAffects::CreaturesWithoutFlying => "each creature without flying".to_string(),
         MassAffects::AttackingCreatures => "each attacking creature".to_string(),
+    }
+}
+
+/// The " with power 4 or greater" that trails a mass class, where a card prints it, or
+/// nothing when the class names no bound. Written once so the subject and the recipient
+/// phrasings cannot drift.
+fn mass_power_clause(min_power: Option<i32>) -> String {
+    match min_power {
+        None => String::new(),
+        Some(min) => format!(" with power {min} or greater"),
     }
 }
 

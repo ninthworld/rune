@@ -318,16 +318,17 @@ pub(crate) fn apply_cast_spell(
     let Some(data) = db.card(card.card) else {
         return;
     };
-    // What this cast costs, from the one function that answers that — the announced X
-    // folded in and the commander tax (CR 903.8) with it. Charging it here from a cost
-    // assembled locally is how the offer and the charge drift apart, and an X makes that
-    // drift a spell paid for at the wrong price.
+    // The one answer the offer was gated on and the payment search assembled against —
+    // the announced X folded in, plus the commander tax where it applies (CR 903.8),
+    // after every cost modification in force (CR 601.2f). Charging anything else here is
+    // how a seat gets advertised a discount and then refused, and with an X in the cost
+    // it is a spell paid for at the wrong price.
     let Some((cost, _)) = crate::actions::cast_cost(state, db, card, x) else {
         return;
     };
     // Which pile the card leaves. One instance is in one zone, so naming it is naming
     // where it is; the command zone is called out because a cast from there also raises
-    // the tax for the next one.
+    // the tax for the next one (CR 903.8).
     let from_command = state
         .players
         .get(controller.0)

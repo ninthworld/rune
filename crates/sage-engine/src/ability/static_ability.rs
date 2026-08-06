@@ -146,6 +146,35 @@ pub enum StaticModification {
     AttacksAsThoughNoDefender,
 }
 
+/// What a printed [`Ability::CostModifier`] does to the cost of casting a spell
+/// (CR 601.2f).
+///
+/// Deliberately **generic mana only**, in both directions. A cost modification changes
+/// the generic component and leaves every coloured and `{C}` requirement exactly as
+/// printed, which is what every printed reducer and tax in this set says; a card that
+/// removed a coloured pip would be saying something else, and would add a variant here.
+///
+/// Two variants rather than one signed amount, because the two are applied at different
+/// moments (CR 601.2f: the total is the printed cost *plus* every increase, *minus* every
+/// reduction, and the mana component can never fall below `{0}`). A signed amount would
+/// make that ordering an accident of summation instead of a rule.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CostModification {
+    /// The spell costs this much **less** generic mana — "costs {2} less to cast".
+    Reduce {
+        /// How much generic mana comes off. Never takes the cost below `{0}`
+        /// (CR 601.2f).
+        generic: u8,
+    },
+    /// The spell costs this much **more** generic mana — the tax half, "costs {1} more
+    /// to cast".
+    Increase {
+        /// How much generic mana goes on.
+        generic: u8,
+    },
+}
+
 impl StaticModification {
     /// The runtime [`Modification`](crate::Modification) this authored shape denotes.
     #[must_use]

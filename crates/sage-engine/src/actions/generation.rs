@@ -268,10 +268,13 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             // CR 117.1a: an instant — or a card with flash (CR 702.8) — ignores the
             // sorcery-speed gate; every other spell is bound by it.
             let timing_ok = castable_at_instant_speed(data) || sorcery_speed;
-            // The cheapest this cast can be: X = 0 (CR 202.3b), through the one
-            // function that answers what a cast costs, so the offer and the charge can
-            // never price the same spell differently. A larger X is enumerated
-            // separately, by [`crate::x_options`], against the same function.
+            // The cheapest this cast can be: X = 0 (CR 202.3b), and the cost the
+            // *charge* will take rather than the printed one — a cast made affordable by
+            // a reducer on the battlefield (CR 601.2f) is offered, and one made
+            // unaffordable by a tax is not. Read through the one function that answers
+            // what a cast costs, so the offer and the charge can never price the same
+            // spell differently. A larger X is enumerated separately, by
+            // [`crate::x_options`], against the same function.
             let base_cost = cast_cost(state, db, card, None).map(|(cost, _)| cost);
             if timing_ok
                 && base_cost
@@ -349,7 +352,8 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 let timing_ok = castable_at_instant_speed(data) || sorcery_speed;
                 // The commander tax (CR 903.8) is part of what the cast costs, not a
                 // surcharge added afterwards, so it comes out of the same function every
-                // other cost does rather than being re-applied here.
+                // other cost does rather than being re-applied here — which is also what
+                // puts a command-zone cast under any cost modification in force.
                 let Some((cost, _)) = cast_cost(state, db, card, None) else {
                     continue;
                 };

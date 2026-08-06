@@ -1243,7 +1243,20 @@ is empty outside combat. `deal_damage` takes the same set.
 
 `creatures_you_control` additionally takes a `subtype`, which narrows the class to a tribe
 and replaces the noun in the generated text — `{"scope": "creatures_you_control", "subtype":
-"Dragon"}` reads as "Dragons you control".
+"Dragon"}` reads as "Dragons you control" — and a `min_power`, the "each creature you control
+**with power 4 or greater**" of an attack trigger:
+
+```json
+{ "kind": "grant_keyword_all",
+  "affects": { "scope": "creatures_you_control", "min_power": 4 },
+  "keyword": "trample" }
+```
+
+`min_power` is read through the **computed** characteristics (CR 613.1f), so a creature pumped
+to 4 is in the class and one shrunk below it is out. Asking for a computed power is safe here
+and refused inside a static ability's condition, and the difference is *when* the question is
+asked: a mass effect enumerates its class during a resolution, from outside the layer system,
+where there is no computation to recurse into.
 
 The affected set is locked in on resolution (CR 611.2c) — a creature that arrives later in
 the turn is untouched. That is the whole difference between one of these and an
@@ -1454,6 +1467,44 @@ characteristics loop walks them.
 `Option<usize>` and the view carries `{"cards": n}` or `"unlimited"`; a sentinel would be
 a number nobody printed that every reader would have to recognise.
 
+### Cost modification (CR 601.2f)
+
+A continuous ability whose subject is a **spell** is its own ability kind for the reason
+`player_static` is: a `static`'s `affects` names a class of permanents and its `modification`
+names a CR 613 layer, and a cost modification is neither — it applies while a spell is being
+cast, before the object it produces exists.
+
+```json
+{ "type": "cost_modifier",
+  "spells": { "creature": { "min_power": 4 } },
+  "modification": { "kind": "reduce", "generic": 2 } }
+```
+
+- `spells` names the class, in the same vocabulary a
+  [cast trigger](#trigger-conditions) watches.
+- `modification` is `reduce` or `increase`, each carrying a `generic` amount.
+
+**Only the generic component moves**, in both directions. A coloured or `{C}` requirement is
+untouched, which is what every printed reducer says: `{2}` off a `{4}{G}` leaves `{2}{G}`, and
+a seat with no green source still cannot cast it. Two variants rather than one signed number
+because CR 601.2f applies them at different moments — the total is the printed cost *plus*
+every additional cost and cost increase, *minus* every cost reduction, and only the result is
+held at `{0}`. A `{1}` spell under a `{2}` tax and a `{2}` reduction therefore costs `{1}`,
+not `{2}`.
+
+The caster is always the source's **controller** — the "you cast" every printed ability of
+this shape says — so there is no scope to author and none to get wrong.
+
+Like the other two continuous kinds it is **derived on every read, never stored**: the
+discount begins the instant its source is on the battlefield and ends the instant it leaves,
+with nothing to prune. It is read by `sage_engine::total_cast_cost`, which is the single
+answer every road that touches a cast's price goes through — the offer (`valid_actions`), the
+pip enumeration, the payment search, the legality gate, the charge, and the view. The idle
+predicate joins them by construction, since it asks `valid_actions` of a board with its mana
+floated rather than reading a cost of its own. That single answer is the whole point: a
+modification applied at only one of those sites would advertise casts a seat cannot take,
+auto-pass a seat that has a play, or offer a discount the charge then refuses.
+
 ### Effects that ask a player to choose cards
 
 Four effects stop mid-resolution and hand one named player a decision (issue #604). The
@@ -1637,9 +1688,17 @@ it, "whenever a creature **with flying** attacks". Both are read through the com
 characteristics of the state the event happened in, so a creature that entered pumped is
 judged by what it was then, one that died shrunk by what it was as it died, and one that was
 *granted* flying is a flier for exactly as long as the grant lasts.
-`you_cast_spell` takes `enchantment`, `instant_or_sorcery`, or `chosen_color` — the last of
-which is the one selector whose meaning comes from elsewhere on the same card, and is
-described under [a colour named as a permanent enters](#a-colour-named-as-a-permanent-enters-cr-61412).
+`you_cast_spell` takes a **class of spell**: the bare strings `enchantment`,
+`instant_or_sorcery`, and `chosen_color`, or the wrapped `{"creature": {"min_power": 4}}`.
+`chosen_color` is the one whose meaning comes from elsewhere on the same card, and is
+described under [a colour named as a permanent enters](#a-colour-named-as-a-permanent-enters-cr-61412);
+`creature` takes an optional `min_power`, and `{"creature": {}}` is every creature spell.
+The same vocabulary names the spells a [cost modifier](#cost-modification-cr-6012f) applies
+to, because both abilities ask one question of one card. Its `min_power` is read off the
+**printed** power — unlike the mass-effect and permanent-count bounds above — and that is
+the only reading available rather than a simplification: the class is asked about a card in
+a hand, a graveyard, or on the stack, which has no permanent and no computed
+characteristics of any kind.
 
 `ability_activated` watches a player activating an ability (CR 602.2), with two optional
 filters: `activator` is `any` (the default) or `opponents`, and `source_types` names the

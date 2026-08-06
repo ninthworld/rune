@@ -46,5 +46,5 @@ pub use rarity::Rarity;
 pub use restriction::CombatRestriction;
 pub use rule_modification::{DamageCharacteristic, RuleModification};
 
-// Re-export for internal use: these three are crate-visible only
-pub(crate) use helpers::{chooses_color_on_entry, spell_effects_of};
+// Re-export for internal use: these are crate-visible only
+pub(crate) use helpers::{chooses_color_on_entry, spell_effects_of, spell_matches_class};

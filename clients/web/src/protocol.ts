@@ -520,6 +520,22 @@ export const Prompt = z.discriminatedUnion('kind', [
 ])
 export type Prompt = z.infer<typeof Prompt>
 
+/**
+ * What a cast costs in mana: the cost printed on the card, and the cost the game will
+ * actually charge (CR 601.2f).
+ *
+ * The two differ only when a cost-modification effect is in force. Both are `{...}`
+ * notation and both are display text — the client draws the symbols and parses neither
+ * for a value, because the arithmetic that produced `modified` is the server's.
+ */
+export const ActionCost = z.object({
+  /** The cost printed on the card. Absent for a card with no printed mana cost. */
+  printed: z.string().optional(),
+  /** The cost this cast is offered and charged at. `{0}` for a cost reduced to nothing. */
+  modified: z.string(),
+})
+export type ActionCost = z.infer<typeof ActionCost>
+
 export const ValidAction = z.object({
   id: z.string(),
   type: z.string(),
@@ -528,6 +544,8 @@ export const ValidAction = z.object({
   mana_ability: z.boolean().optional(),
   requirements: z.array(TargetRequirement).optional(),
   prompts: z.array(Prompt).optional(),
+  /** Present on a cast; omitted for every other action, none of which has a mana cost. */
+  cost: ActionCost.optional(),
   destinations: z.array(ActionDestination).optional(),
   token: z.string().optional(),
 })

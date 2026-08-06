@@ -173,8 +173,18 @@ its `as long as …` asks one of three questions — a permanent count, whether 
 attacking, and whether anything is attached to it. It is **derived, never stored**:
 `characteristics` reads it off the battlefield on every call, so the effect begins and ends
 with its source's presence and nothing enters `GameState::static_effects`. Extend
-`StaticAffects` when a card needs a scope it cannot name; a cost reducer still needs a
-`Modification` variant that no layer implements yet.
+`StaticAffects` when a card needs a scope it cannot name.
+
+**A continuous ability is one of three kinds, and its subject decides which**: a `Static`
+modifies permanents at a CR 613 layer, a `PlayerStatic` states something about a person, and
+a `CostModifier` changes what a class of **spell** costs its own controller to cast
+(CR 601.2f) — not a layer, since it applies before the spell's object exists. Its arithmetic
+is the rule's own (plus every increase, minus every reduction, one floor at `{0}`) and only
+the generic component moves. It is the one continuous ability with several readers, so it has
+exactly one seam: `total_cast_cost` is what the offer, the pips, the payment search, the
+legality gate, the charge, and the view all ask, and the idle predicate joins them by asking
+`valid_actions` rather than a cost. Wiring it into fewer than all of those advertises casts a
+seat cannot take, or auto-passes a seat that has a play.
 
 **A mid-resolution player choice is queued state, never a flag** (ADR 0013). An effect that
 asks a player to choose cards (discard, scry, look at the top N, search) pushes a

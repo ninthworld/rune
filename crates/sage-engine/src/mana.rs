@@ -424,6 +424,41 @@ impl ManaCost {
         }
     }
 
+    /// This cost back in `{...}` notation — `"{2}{G}"` — in printed order: the generic
+    /// requirement first, then WUBRG, then `{C}`.
+    ///
+    /// The inverse of [`parse_mana_cost`] for the one cost that has no printed string of
+    /// its own: the **modified** cost a spell is being offered and charged at
+    /// (CR 601.2f), which exists only as a computed [`ManaCost`]. A view carries it as
+    /// text so the client draws symbols it already knows how to draw and parses nothing
+    /// back out.
+    ///
+    /// A zero cost renders as `"{0}"` rather than the empty string, which is what a
+    /// printed `{0}` says and what a cost reduced to nothing has become (CR 601.2f) —
+    /// "free" and "no cost printed" are different facts and a blank would conflate them.
+    #[must_use]
+    pub fn text(&self) -> String {
+        let mut out = String::new();
+        if self.generic > 0 || (self.colored_total() == 0) {
+            out.push_str(&format!("{{{}}}", self.generic));
+        }
+        for (count, color) in [
+            (self.white, Color::White),
+            (self.blue, Color::Blue),
+            (self.black, Color::Black),
+            (self.red, Color::Red),
+            (self.green, Color::Green),
+        ] {
+            for _ in 0..count {
+                out.push_str(color.pip());
+            }
+        }
+        for _ in 0..self.colorless {
+            out.push_str("{C}");
+        }
+        out
+    }
+
     /// Total of all colored and colorless (non-generic) requirements.
     #[must_use]
     pub fn colored_total(&self) -> u16 {
@@ -615,6 +650,18 @@ mod tests {
     fn pay_returns_none_when_unaffordable() {
         let pool = ManaPool::default();
         assert!(pool.pay(&parse_mana_cost("{G}")).is_none());
+    }
+
+    #[test]
+    fn a_cost_renders_back_to_the_notation_it_was_parsed_from() {
+        // The round trip the view depends on: a computed cost has no printed string of
+        // its own, so the one it renders has to parse back to itself.
+        for text in ["{2}{G}", "{G}", "{1}{W}{W}", "{3}{C}", "{0}"] {
+            assert_eq!(parse_mana_cost(text).text(), text);
+        }
+        // A cost reduced to nothing is `{0}`, not the empty string: "free" and "no cost
+        // printed" are different facts (CR 601.2f).
+        assert_eq!(ManaCost::default().text(), "{0}");
     }
 
     #[test]

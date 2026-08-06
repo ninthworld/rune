@@ -28,8 +28,8 @@
     "blocker": "a permanent count cannot require distinct names, and no condition asks what one permanent has done — on the intervening-if side or the continuous one"
   },
   {
-    "name": "Cost reduction and cost increase effects",
-    "blocker": "no cost-modification layer"
+    "name": "Cost modification of another player's spells, or of an ability's activation cost",
+    "blocker": "a permanent continuously takes generic mana off, or puts it on, the cost of a class of spell its own controller casts (CR 601.2f), read wherever a cast's cost is read; nothing reaches a spell another player casts, no modification applies to an activated ability's cost, and a coloured or colourless requirement is never changed"
   },
   {
     "name": "Costs paid by exiling a card, by sacrificing more than one permanent, or by choosing to pay at all",
@@ -113,7 +113,7 @@
   },
   {
     "name": "Selectors that filter by toughness, or by a power relative to another permanent's",
-    "blocker": "a permanent count, an enters-or-dies trigger selector, a blocking restriction, and a card choice each name a fixed power threshold; a target spec, a mass-effect class, and a static ability's condition name none, no threshold reads toughness, and no threshold is another permanent's power"
+    "blocker": "a permanent count, an enters-or-dies trigger selector, a blocking restriction, a card choice, a mass-effect class, and the class of spell a cast trigger or a cost modifier names each carry a fixed power threshold; a target spec and a static ability's condition carry none, no threshold reads toughness, and no threshold is another permanent's power"
   },
   {
     "name": "X anywhere but a spell's own mana cost",

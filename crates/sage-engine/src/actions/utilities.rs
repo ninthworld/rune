@@ -340,11 +340,19 @@ pub(crate) fn all_unique<T: PartialEq>(ids: &[T]) -> bool {
 /// The total mana cost of casting `card` right now, and the printed subtypes a
 /// restricted-mana check reads (CR 106.6).
 ///
-/// One answer, in one place, because three call sites need it and they must not be able
-/// to disagree: the generator deciding whether to offer the cast, the legality gate
-/// deciding whether a payment covers it, and [`crate::apply_action`] charging it. The
-/// commander tax (CR 903.8) is part of the cost rather than a surcharge applied later,
-/// which is exactly why it cannot live only in the apply path.
+/// One answer, in one place, because every road that touches a cast's price goes down
+/// it and they must not be able to disagree: the generator deciding whether to offer the
+/// cast, the pip enumeration posing what is still owed, the payment search, the legality
+/// gate deciding whether a payment covers it, [`crate::apply_action`] charging it, and
+/// the view telling the client what the spell costs. The idle predicate joins them by
+/// construction — it asks [`crate::valid_actions`] of a board with its mana floated
+/// rather than reading a cost of its own.
+///
+/// Two things happen to the printed cost here, in the order CR 601.2 puts them. The
+/// commander tax (CR 903.8) is an **additional cost**, part of the total rather than a
+/// surcharge applied later, which is exactly why it cannot live only in the apply path.
+/// Cost modification (CR 601.2f) then applies to that total — see
+/// [`crate::cost_modification`].
 ///
 /// `None` for a card the database does not hold — the same defensive absence every other
 /// lookup here returns rather than a zero cost that would read as free.
@@ -370,15 +378,38 @@ pub(crate) fn cast_cost(
         let added = u8::try_from(pips.saturating_mul(announced)).unwrap_or(u8::MAX);
         base.generic = base.generic.saturating_add(added);
     }
-    let player = state.players.get(state.priority.0)?;
+    let caster = state.priority;
+    let player = state.players.get(caster.0)?;
     // A commander cast from the command zone carries the tax; the same card cast from
     // hand does not, so *where it is* decides the cost (CR 903.8).
     let from_command = player.command.iter().any(|c| c.id == card.id);
-    let cost = if from_command {
+    let total = if from_command {
         let casts = player.commander.as_ref().map_or(0, |c| c.casts);
         crate::commander::commander_tax_cost(&base, casts)
     } else {
         base
     };
+    let cost = crate::cost_modification::modified_cast_cost(state, db, caster, card.card, total);
     Some((cost, data.subtypes.clone()))
+}
+
+/// What casting `card` costs the priority holder **right now** — its printed cost, plus
+/// the commander tax where one applies, after every cost modification (CR 601.2f).
+///
+/// The public face of [`cast_cost`], and the reason it is public: the client renders what
+/// a spell costs and computes no cost of its own, so the number a view carries has to be
+/// the very one the offer was gated on and the charge will take. Asking the same function
+/// is what makes that true rather than merely likely.
+///
+/// `None` for a card the database does not hold. An unannounced X contributes nothing
+/// (CR 202.3b), so a spell with `{X}` prices here at X = 0 — the same floor the offer
+/// gate uses, with each announceable value's own price enumerated by
+/// [`crate::x_options`].
+#[must_use]
+pub fn total_cast_cost(
+    state: &GameState,
+    db: &CardDatabase,
+    card: crate::id::CardInstance,
+) -> Option<crate::mana::ManaCost> {
+    cast_cost(state, db, card, None).map(|(cost, _)| cost)
 }

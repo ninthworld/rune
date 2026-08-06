@@ -560,7 +560,10 @@ fn the_new_effect_verbs_round_trip_with_their_target_or_class() {
     assert_eq!(
         pump,
         Effect::PumpAll {
-            affects: MassAffects::CreaturesYouControl { subtype: None },
+            affects: MassAffects::CreaturesYouControl {
+                subtype: None,
+                min_power: None,
+            },
             power: 2,
             toughness: 1,
         }
@@ -573,7 +576,10 @@ fn the_new_effect_verbs_round_trip_with_their_target_or_class() {
     assert_eq!(
         grant,
         Effect::GrantKeywordAll {
-            affects: MassAffects::CreaturesYouControl { subtype: None },
+            affects: MassAffects::CreaturesYouControl {
+                subtype: None,
+                min_power: None,
+            },
             keyword: Keyword::Trample,
         }
     );
@@ -914,6 +920,65 @@ fn issue_737_a_fight_declares_two_groups_of_its_own_specs() {
             dealer: TargetSpec::AnyCreatureYouControl,
             dealt_to: TargetSpec::AnyCreatureAnOpponentControls,
             mutual: true,
+        }
+    );
+}
+
+/// The authored shapes cost modification adds: the ability, the spell class that carries
+/// a power bound, and the mass class that carries one (issue #735).
+///
+/// A parse test, and it earns its place for one reason: the spell class is **externally
+/// tagged**, so its parameterless members stay bare strings and only the one that takes a
+/// filter is wrapped. Getting that wrong makes every card already authored against it
+/// fail to load rather than making one new card fail — a schema migration nobody asked
+/// for.
+#[test]
+fn issue_735_cost_modification_round_trips_with_its_selectors() {
+    let json = r#"{"type":"cost_modifier",
+        "spells":{"creature":{"min_power":4}},
+        "modification":{"kind":"reduce","generic":2}}"#;
+    assert_eq!(
+        serde_json::from_str::<Ability>(json).unwrap(),
+        Ability::CostModifier {
+            spells: ObservedSpell::Creature { min_power: Some(4) },
+            modification: CostModification::Reduce { generic: 2 },
+        }
+    );
+
+    // The tax half, over an unbounded class.
+    assert_eq!(
+        serde_json::from_str::<Ability>(
+            r#"{"type":"cost_modifier","spells":{"creature":{}},
+                "modification":{"kind":"increase","generic":1}}"#
+        )
+        .unwrap(),
+        Ability::CostModifier {
+            spells: ObservedSpell::Creature { min_power: None },
+            modification: CostModification::Increase { generic: 1 },
+        }
+    );
+
+    // The parameterless members are still bare strings.
+    assert_eq!(
+        serde_json::from_str::<ObservedSpell>(r#""instant_or_sorcery""#).unwrap(),
+        ObservedSpell::InstantOrSorcery
+    );
+
+    // The mass class's bound is optional and defaults to absent, so every card authored
+    // before it existed parses unchanged.
+    assert_eq!(
+        serde_json::from_str::<MassAffects>(r#"{"scope":"creatures_you_control","min_power":4}"#)
+            .unwrap(),
+        MassAffects::CreaturesYouControl {
+            subtype: None,
+            min_power: Some(4),
+        }
+    );
+    assert_eq!(
+        serde_json::from_str::<MassAffects>(r#"{"scope":"creatures_you_control"}"#).unwrap(),
+        MassAffects::CreaturesYouControl {
+            subtype: None,
+            min_power: None,
         }
     );
 }

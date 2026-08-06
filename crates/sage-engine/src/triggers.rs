@@ -5,8 +5,7 @@
 //! calls [`collect_triggers`] and puts each resulting [`Trigger`] on the stack.
 
 use crate::ability::{
-    Ability, ActivatorScope, ObservedActivation, ObservedPermanent, ObservedSpell,
-    TriggerCondition, TurnScope,
+    Ability, ActivatorScope, ObservedActivation, ObservedPermanent, TriggerCondition, TurnScope,
 };
 use crate::card::abilities_of_permanent;
 use crate::card_type::CardType;
@@ -533,34 +532,6 @@ fn on_battlefield(state: &GameState, perm: &Permanent) -> bool {
     state.battlefield.iter().any(|p| p.id == perm.id)
 }
 
-/// Whether the spell `card` is one `observes` notices, for a watcher whose source named
-/// `chosen` as it entered (CR 614.12).
-///
-/// `chosen` is threaded in rather than looked up because only one class reads it, and a
-/// watcher that named no colour — an emblem, a token, a card that never declared the
-/// choice — passes `None` and notices nothing of that class. That is the correct answer
-/// rather than a defensive one: "a spell of the chosen color" is unsatisfiable until a
-/// colour has been chosen.
-fn observed_spell_matches(
-    observes: ObservedSpell,
-    card: crate::id::CardId,
-    chosen: Option<crate::mana::Color>,
-    db: &CardDatabase,
-) -> bool {
-    let Some(data) = db.card(card) else {
-        return false;
-    };
-    match observes {
-        ObservedSpell::Enchantment => data.has_type(CardType::Enchantment),
-        ObservedSpell::InstantOrSorcery => {
-            data.has_type(CardType::Instant) || data.has_type(CardType::Sorcery)
-        }
-        // CR 105.2: a spell *is* each of its colours, so a gold spell satisfies a
-        // watcher of any one of them and a colourless spell satisfies none.
-        ObservedSpell::ChosenColor => chosen.is_some_and(|color| data.colors.contains(&color)),
-    }
-}
-
 /// How many times `condition` was met across the transition, for an ability on `perm`.
 ///
 /// A pure function of the two snapshots — never an event listener. The self-conditions
@@ -720,11 +691,11 @@ fn fire_count(
                 .filter(|event| {
                     matches!(event, GameEvent::SpellCast { player, card }
                     if *player == watcher.controller
-                        && observed_spell_matches(
-                            *spell,
-                            card.card,
-                            watcher.permanent().and_then(|perm| perm.chosen_color),
+                        && crate::card::spell_matches_class(
                             db,
+                            card.card,
+                            *spell,
+                            watcher.permanent().and_then(|perm| perm.chosen_color),
                         ))
                 })
                 .count()

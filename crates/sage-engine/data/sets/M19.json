@@ -715,6 +715,11 @@
     "rarity": "rare"
   },
   {
+    "functional_id": "goreclaw_terror_of_qal_sisma",
+    "collector_number": "186",
+    "rarity": "mythic"
+  },
+  {
     "functional_id": "greenwood_sentinel",
     "collector_number": "187",
     "rarity": "common"

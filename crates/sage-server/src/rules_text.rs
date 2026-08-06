@@ -23,12 +23,13 @@
 
 use sage_engine::{
     equip_ability, Ability, ActivatorScope, AdditionalCost, Attachment, AttachmentKind, CardData,
-    CardFilter, CardType, Chooser, Color, CombatRestriction, Condition, Cost, CountScope,
-    CounterKind, DamageCharacteristic, DamageSubject, DerivedAmount, DestroyAffects, Effect,
-    EnteringFilter, FoundDestination, GraveyardCardClass, GraveyardScope, Keyword, ManaRestriction,
-    MassAffects, ObservedPermanent, ObservedSpell, PermanentCount, PlayerModification, PlayerRef,
-    ReplacementEffect, SpellMode, SpellTrait, StaticAffects, StaticCondition, StaticModification,
-    TargetCount, TargetSpec, TokenData, TriggerCondition, TriggerStep, TurnScope,
+    CardFilter, CardType, Chooser, Color, CombatRestriction, Condition, Cost, CostModification,
+    CountScope, CounterKind, DamageCharacteristic, DamageSubject, DerivedAmount, DestroyAffects,
+    Effect, EnteringFilter, FoundDestination, GraveyardCardClass, GraveyardScope, Keyword,
+    ManaRestriction, MassAffects, ObservedPermanent, ObservedSpell, PermanentCount,
+    PlayerModification, PlayerRef, ReplacementEffect, SpellMode, SpellTrait, StaticAffects,
+    StaticCondition, StaticModification, TargetCount, TargetSpec, TokenData, TriggerCondition,
+    TriggerStep, TurnScope,
 };
 
 mod effects;
@@ -273,6 +274,24 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                 "You may play lands from your graveyard.".to_string()
             }
         },
+        // A cost modifier's subject is a class of *spells*, and the sentence names the
+        // caster because the ability does: it reaches its controller's casts and nobody
+        // else's. "Cost … to cast" rather than "cost … " because the modification applies
+        // while the spell is being cast (CR 601.2f) and not to anything the card does
+        // later.
+        Ability::CostModifier {
+            spells,
+            modification,
+        } => {
+            let (direction, generic) = match modification {
+                CostModification::Reduce { generic } => ("less", generic),
+                CostModification::Increase { generic } => ("more", generic),
+            };
+            sentence_case(&format!(
+                "{} you cast cost {{{generic}}} {direction} to cast.",
+                observed_spell_class(*spells),
+            ))
+        }
         // A static ability reads as a standing statement about other objects, with no
         // trigger word and no cost — "Other Elves you control get +1/+1." The subject
         // is the affected class, not the source, which is why `source` goes unused here.
@@ -393,16 +412,47 @@ fn step_phrase(step: TriggerStep, whose_turn: TurnScope) -> String {
     }
 }
 
-/// The class of spell a cast-watching trigger notices, as a noun phrase.
-fn observed_spell_noun(spell: ObservedSpell) -> &'static str {
+/// The class of spell a cast-watching trigger notices, as a **singular** noun phrase —
+/// the object of "whenever you cast …".
+fn observed_spell_noun(spell: ObservedSpell) -> String {
     match spell {
-        ObservedSpell::Enchantment => "an enchantment spell",
-        ObservedSpell::InstantOrSorcery => "an instant or sorcery spell",
+        ObservedSpell::Enchantment => "an enchantment spell".to_string(),
+        ObservedSpell::InstantOrSorcery => "an instant or sorcery spell".to_string(),
+        ObservedSpell::Creature { min_power } => {
+            format!("a creature spell{}", spell_power_clause(min_power))
+        }
         // Named, not spelled out: the sentence is printed on a card that has not
         // entered the battlefield yet, where the colour is genuinely unknown. What the
         // *permanent* chose is on the board, in its own field, rather than baked into
         // text a hand and a battlefield would then disagree about.
-        ObservedSpell::ChosenColor => "a spell of the chosen color",
+        ObservedSpell::ChosenColor => "a spell of the chosen color".to_string(),
+    }
+}
+
+/// The same class as a **plural** noun phrase — the subject of "… you cast cost {2} less
+/// to cast".
+///
+/// One function per position, exactly as [`mass_subject`]/[`mass_recipient`] are, because
+/// English is: a class is singular where a trigger names one cast and plural where a cost
+/// modifier names all of them. Both are exhaustive, so a new [`ObservedSpell`] variant
+/// must be given words in each.
+fn observed_spell_class(spell: ObservedSpell) -> String {
+    match spell {
+        ObservedSpell::Enchantment => "enchantment spells".to_string(),
+        ObservedSpell::InstantOrSorcery => "instant and sorcery spells".to_string(),
+        ObservedSpell::Creature { min_power } => {
+            format!("creature spells{}", spell_power_clause(min_power))
+        }
+        ObservedSpell::ChosenColor => "spells of the chosen color".to_string(),
+    }
+}
+
+/// The " with power 4 or greater" that trails a spell class, or nothing when the class
+/// names no bound. Written once so the singular and the plural phrasings cannot drift.
+fn spell_power_clause(min_power: Option<i32>) -> String {
+    match min_power {
+        None => String::new(),
+        Some(min) => format!(" with power {min} or greater"),
     }
 }
 

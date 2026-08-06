@@ -24,6 +24,7 @@ mod combat;
 mod commander;
 pub mod compat;
 mod condition;
+mod cost_modification;
 #[cfg(test)]
 mod fixtures;
 mod id;
@@ -46,19 +47,19 @@ mod zone;
 pub use ability::{
     activation_taps, group_target_counts, is_emblem_ability, is_equip_ability,
     is_graveyard_ability, is_loyalty_ability, is_mana_ability, maximum_targets, minimum_targets,
-    target_counts, Ability, ActivatorScope, CardFilter, Chooser, Condition, Cost, CountScope,
-    DamageSubject, DerivedAmount, DestroyAffects, Effect, FoundDestination, GraveyardCardClass,
-    GraveyardScope, ManaRestriction, MassAffects, ObservedActivation, ObservedPermanent,
-    ObservedSpell, PermanentCount, PlayerModification, PlayerRef, StaticAffects, StaticCondition,
-    StaticModification, Target, TargetCount, TargetGroup, TargetSpec, TriggerCondition,
-    TriggerStep, TurnScope,
+    target_counts, Ability, ActivatorScope, CardFilter, Chooser, Condition, Cost, CostModification,
+    CountScope, DamageSubject, DerivedAmount, DestroyAffects, Effect, FoundDestination,
+    GraveyardCardClass, GraveyardScope, ManaRestriction, MassAffects, ObservedActivation,
+    ObservedPermanent, ObservedSpell, PermanentCount, PlayerModification, PlayerRef, StaticAffects,
+    StaticCondition, StaticModification, Target, TargetCount, TargetGroup, TargetSpec,
+    TriggerCondition, TriggerStep, TurnScope,
 };
 pub use actions::{
     activation_discard_cost, activation_sacrifice_candidates, auto_activation_payment,
     auto_payment, discard_cost, is_plain_mana_source, mana_ability_pips, mode_options,
     payment_pips, payment_sources, remaining_cost_pips, sacrifice_cost, target_requirements,
-    valid_actions, x_options, Action, Attack, Block, CostPayment, DamageOrder, DiscardCost,
-    ManaSource, ModeOption, PaymentPip, SacrificeCost, TargetRequirement, XOption,
+    total_cast_cost, valid_actions, x_options, Action, Attack, Block, CostPayment, DamageOrder,
+    DiscardCost, ManaSource, ModeOption, PaymentPip, SacrificeCost, TargetRequirement, XOption,
 };
 pub use apply::apply_action;
 pub use automation::{forced_declaration_without_choice, priority_has_no_meaningful_action};
