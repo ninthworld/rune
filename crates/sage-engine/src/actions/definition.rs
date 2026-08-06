@@ -323,6 +323,30 @@ pub enum Action {
         /// then enters ([`Permanent::named_card`](crate::Permanent)).
         card: CardId,
     },
+    /// Answer the **mid-resolution card-ordering choice** the game is currently waiting
+    /// on: the *in any order* of a look that puts what it did not take on the bottom of
+    /// the library (see [`crate::order_candidates`]).
+    ///
+    /// The sixth answer shape, routed identically to the five above — offered to the
+    /// choice's chooser and to no other seat, and nothing else happens until it arrives.
+    ///
+    /// What makes it its own action rather than another [`Self::AnswerChoice`] is the
+    /// **legality rule**, not the payload: a selection is *between min and max of these
+    /// cards*, and an ordering is *all of these cards, once each*. Sharing a variant
+    /// would mean one gate reading a pending question to decide which of two rules it was
+    /// enforcing, which is exactly the disagreement the choice queue is built to avoid.
+    ///
+    /// A remainder of nothing or of one card is never posed — there is no arrangement to
+    /// make — so like [`Self::ChooseTriggerTargets`] this action is only ever offered
+    /// when it can be answered.
+    AnswerOrder {
+        /// The cards in the order they are put on the bottom of the library, the **first
+        /// named ending up deepest** — the convention every bottoming in the engine
+        /// follows. It must be a permutation of the freshly recomputed
+        /// [`crate::order_candidates`]: a duplicate, a card the remainder does not
+        /// contain, and a short list are each rejected outright rather than tolerated.
+        order: Vec<CardInstanceId>,
+    },
     /// Cast a spell from hand, paying its mana cost from the caster's pool.
     CastSpell {
         /// The specific card in the caster's hand to cast. Names the physical
@@ -554,6 +578,7 @@ impl Action {
             | Action::AnswerColor { .. }
             | Action::AnswerReplacement { .. }
             | Action::AnswerCardName { .. }
+            | Action::AnswerOrder { .. }
             | Action::PlayLand { .. }
             | Action::Discard { .. }
             | Action::Mulligan
@@ -639,6 +664,10 @@ impl Action {
             // card anyone is held to having named; the legality gate checks the
             // submitted handle against the freshly derived candidates.
             Action::AnswerCardName { .. } => Action::AnswerCardName { card: CardId(0) },
+            // A card ordering is advertised as the bare question too, and its answer is
+            // the permutation the submitted action carries — never one offer per
+            // arrangement, which for five cards would be a hundred and twenty of them.
+            Action::AnswerOrder { .. } => Action::AnswerOrder { order: Vec::new() },
             // The requirement form of a combat declaration is the empty selection —
             // exactly what `valid_actions` advertises during the declare window.
             Action::DeclareAttackers { .. } => Action::DeclareAttackers {

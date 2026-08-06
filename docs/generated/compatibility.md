@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (236)
+## Supported cards (237)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -27,6 +27,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `ajani_s_welcome` | Ajani's Welcome | functional definition |
 | `alpine_moon` | Alpine Moon | functional definition |
 | `angel_of_the_dawn` | Angel of the Dawn | functional definition |
+| `anticipate` | Anticipate | functional definition |
 | `arcades_the_strategist` | Arcades, the Strategist | functional definition |
 | `arcane_encyclopedia` | Arcane Encyclopedia | functional definition |
 | `arisen_gorgon` | Arisen Gorgon | functional definition |
@@ -266,7 +267,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Costs paid by exiling from anywhere but a graveyard, or by choosing to pay at all | a cast and an activation each carry the sacrifices, discards, and graveyard exiles their cost names on the action — a fixed number of permanents or any number of them, and always the payer's own — but a cost exiles only out of the payer's own graveyard, never from a hand, a library, or the battlefield, and every non-mana cost is mandatory rather than an option the player may decline |
 | Damage prevention beyond a blanket shield for the turn | a shield prevents all damage — or all combat damage — for the rest of the turn, consulted at the one seam damage is dealt, and a spell may declare its own damage unpreventable to defeat it; nothing prevents a fixed amount, names a recipient or a source, redirects damage, or lasts anything but the turn |
 | Effects that ask a player to name a type | a permanent records the colour and the card its controller named as it entered — the card as a functional identity chosen from the catalog, never a string — but a card or creature type has no recorded identity, only a nonbasic land may be named, and nothing on a spell records a choice at all |
-| Effects that let a player choose the order of cards put back on a library | a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random |
+| Effects that let a player choose the order of the cards a scry keeps on top | a look bottoms its rest in an order the looker picks or at random, as the card says, but the cards a scry leaves on top stay in their printed order |
 | Effects that return a card from a graveyard to a zone other than a hand or the battlefield | a targeted card returns from a graveyard to a hand or to the battlefield, and a whole graveyard can be exiled; nothing else moves a card out of one |
 | Effects that untap a permanent it did not just take | untapping rides on the control change that steals a creature, because one effect names one target; nothing else brings an untap forward |
 | Effects whose amount is derived from a source outside the six the IR names | an amount may be a count of permanents (feeding power/toughness, life, damage, a token count, and an attachment's static grant), the life gained this turn, a count of what this resolution milled, the greatest mana value among a class of permanents, how many permanents this object's own cost sacrificed, or the power the creature that cost sacrificed had — the last five feeding power/toughness, a draw, damage, and a search's size; nothing else may — not cards in a zone, a life total, one named object's mana value, a surviving object's power, half of a total, or the permanent an effect just put onto the battlefield |

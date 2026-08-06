@@ -816,11 +816,31 @@ fn issue_604_the_choice_effects_round_trip_with_their_defaults() {
         Effect::LookAtTop {
             count: 4,
             take: 1,
+            take_min: 0,
             filter: CardFilter::Creature {
                 max_power: Some(2),
                 subtype: None
             },
             destination: FoundDestination::Hand,
+            bottom_order: BottomOrder::Random,
+        }
+    );
+
+    // "in any order" is the other printed wording, and it is a different rule: the
+    // looker arranges the remainder rather than the game rolling for it.
+    let ordered =
+        r#"{"kind":"look_at_top","count":3,"take":1,"take_min":1,"bottom_order":"chosen"}"#;
+    assert_eq!(
+        serde_json::from_str::<Effect>(ordered).unwrap(),
+        Effect::LookAtTop {
+            count: 3,
+            take: 1,
+            // "Put one of them into your hand" is not "you may put": the floor is the
+            // card's, and it is the half of the take that has to be authored.
+            take_min: 1,
+            filter: CardFilter::Any,
+            destination: FoundDestination::Hand,
+            bottom_order: BottomOrder::Chosen,
         }
     );
 
@@ -841,18 +861,21 @@ fn issue_604_the_choice_effects_round_trip_with_their_defaults() {
         assert_eq!(effect.target_spec(), None);
     }
 
-    // An unconstrained creature filter and the default destination both elide.
+    // An unconstrained creature filter, the default destination, the optional take, and
+    // the conservative random bottoming all elide.
     let bare = r#"{"kind":"look_at_top","count":3,"take":1,"filter":{"kind":"creature"}}"#;
     assert_eq!(
         serde_json::from_str::<Effect>(bare).unwrap(),
         Effect::LookAtTop {
             count: 3,
             take: 1,
+            take_min: 0,
             filter: CardFilter::Creature {
                 max_power: None,
                 subtype: None
             },
             destination: FoundDestination::Hand,
+            bottom_order: BottomOrder::Random,
         }
     );
 }

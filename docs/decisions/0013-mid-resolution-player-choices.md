@@ -146,3 +146,21 @@ look-at-the-top bottoms go there at random rather than in an order the player pi
 random one is right for the cards that say "in a random order" and conservative for the
 ones that say "in any order" — it tells the player strictly less than the real card does,
 which is the safe direction to be wrong in.
+
+**The second of those was taken back** (issue #746), and the shape held: a look that says
+"in any order" now asks its controller for a *permutation* of the remainder, as a fifth
+`ChoiceQuestion` variant plus its own `Action`, on the same queue with the same routing.
+Three things it needed that were already here — the never-stall rule (a remainder of one
+card is not a decision), the derive-don't-snapshot rule (the remainder stays on top of the
+library, so the question is a window onto it), and the hidden-information channel — and
+one thing it did not: **an answer must not consume randomness**. A player-chosen bottoming
+that drew from the seeded stream would fork every later shuffle on replay, so the two
+orders take different roads through the same function, and the ordered one leaves
+`rng_seed` exactly where it found it. That is a new obligation on every future answer that
+replaces something the game used to roll for.
+
+It also produced the first choice that poses **another choice as its outcome**: "the rest"
+is not knowable until the taking is answered, so the second question is queued when the
+first is applied and the suspended `Resume` moves across to it. A `PendingChoice`'s resume
+therefore travels, and code that assumes the question a resume was attached to is the
+question it will be answered on is wrong.

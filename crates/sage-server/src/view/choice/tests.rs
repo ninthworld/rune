@@ -603,3 +603,105 @@ fn issue_738_the_card_a_permanent_names_is_offered_as_the_catalogs_own_cards() {
     // The opponent is offered nothing: the game is frozen on someone else's answer.
     assert!(choice_action(&personalized_view(&state, &db, PlayerId(1))).is_none());
 }
+
+#[test]
+fn issue_746_the_library_ordering_projects_as_an_order_prompt_over_the_remainder() {
+    // Anticipate asks twice, on one action kind and one slot: a `select_from_zone`
+    // for the card taken, then an `order` for what is left. The second is the prompt
+    // the combat-damage assignment already rides on — no new wire shape — and the
+    // cards behind its item ids reach the chooser on `revealed` and nobody else.
+    let db = CardDatabase::bundled().unwrap();
+    let mut state = main_phase();
+    state.players[0].library = ["mountain", "swamp", "island", "forest"]
+        .iter()
+        .map(|slug| state.new_instance(fixture(slug)))
+        .collect();
+    let state = cast_and_resolve(&state, &db, "anticipate", Vec::new());
+
+    // Answer the look through the wire, taking the second card it showed.
+    let view = personalized_view(&state, &db, PlayerId(0));
+    let action = choice_action(&view).expect("the look is owed");
+    let Prompt::SelectFromZone { candidates, .. } = &action.prompts[0] else {
+        panic!("the take is a select_from_zone");
+    };
+    let taken = resolve_action(
+        &state,
+        &db,
+        PlayerId(0),
+        &ChooseAction {
+            action_id: action.id.clone(),
+            token: action.token.clone(),
+            targets: vec![TargetChoice {
+                slot: CHOICE_SLOT.to_string(),
+                chosen: vec![candidates[1].clone()],
+            }],
+            ..Default::default()
+        },
+    )
+    .expect("the take binds");
+    let state = sage_engine::apply_action(&state, &taken, &db);
+
+    // Same action kind, same slot, a different prompt shape.
+    let view = personalized_view(&state, &db, PlayerId(0));
+    let action = choice_action(&view).expect("the arrangement is owed");
+    let Prompt::Order {
+        slot,
+        prompt,
+        items,
+    } = &action.prompts[0]
+    else {
+        panic!("the arrangement is an order prompt");
+    };
+    assert_eq!(slot, CHOICE_SLOT);
+    assert_eq!(
+        prompt, "Choose the order these go on the bottom of your library, deepest first",
+        "the sentence says which end is which",
+    );
+    assert_eq!(items.len(), 2, "the two cards the look did not take");
+    assert_eq!(action.label, *prompt, "the dock button asks the question");
+
+    let revealed: Vec<&str> = view.revealed.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(revealed, vec!["Forest", "Swamp"]);
+    assert!(
+        personalized_view(&state, &db, PlayerId(1))
+            .revealed
+            .is_empty(),
+        "the top of a library reaches its owner and no other seat",
+    );
+
+    // The answer round-trips **in the order sent** — re-sorting it would bottom the
+    // cards somewhere the player did not choose.
+    let picked = vec![items[1].clone(), items[0].clone()];
+    let answer = ChooseAction {
+        action_id: action.id.clone(),
+        token: action.token.clone(),
+        targets: vec![TargetChoice {
+            slot: CHOICE_SLOT.to_string(),
+            chosen: picked.clone(),
+        }],
+        ..Default::default()
+    };
+    let Some(Action::AnswerOrder { order }) = resolve_action(&state, &db, PlayerId(0), &answer)
+    else {
+        panic!("the answer resolves to an AnswerOrder");
+    };
+    assert_eq!(
+        order
+            .iter()
+            .map(|id| card_entity_id(*id))
+            .collect::<Vec<_>>(),
+        picked,
+    );
+
+    // An id the offer did not name is rejected rather than dropped.
+    let forged = ChooseAction {
+        action_id: action.id.clone(),
+        token: action.token.clone(),
+        targets: vec![TargetChoice {
+            slot: CHOICE_SLOT.to_string(),
+            chosen: vec!["card_999999".to_string()],
+        }],
+        ..Default::default()
+    };
+    assert!(resolve_action(&state, &db, PlayerId(0), &forged).is_none());
+}

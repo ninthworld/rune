@@ -596,25 +596,42 @@ pub enum Effect {
         count: u8,
     },
     /// Look at the top `count` cards of the controller's library, put up to `take` of
-    /// them matching `filter` into `destination`, and put the rest on the bottom in a
-    /// random order — the "look at the top N and take one" verb.
+    /// them matching `filter` into `destination`, and put the rest on the bottom — the
+    /// "look at the top N and take one" verb.
     ///
-    /// Taking is optional (every card printed this way says "you may"), so a look that
-    /// turns up nothing legal still bottoms what it looked at rather than stalling. The
-    /// unchosen cards are bottomed in a random order drawn from the seeded RNG
-    /// ([`crate::GameState::rng_seed`]), which is what the cards printed with this
-    /// wording say and what keeps the looked-at cards from becoming known future draws.
+    /// `take` and `take_min` are the two ends of one range, because the cards print
+    /// both: *you may reveal a creature card from among them and put it into your hand*
+    /// leaves the take optional, and *put one of them into your hand* does not. Whichever
+    /// it is, the bounds are **clamped to what is actually there**
+    /// ([`choice_bounds`](crate::choice_bounds)), so a mandatory take over a library that
+    /// cannot supply one resolves with nothing taken rather than stalling — the
+    /// never-stall rule owns the floor, not the card.
+    ///
+    /// `bottom_order` is the second half of the card, and it is a rule rather than a
+    /// flourish: *in a random order* is the game deciding and *in any order* is the
+    /// looker deciding, so the second poses a **second question** over the remainder
+    /// through the same choice queue the taking used. A remainder of nothing or of one
+    /// card is not a decision and is never asked (ADR 0013 §5).
     LookAtTop {
         /// How many cards from the top are looked at.
         count: u8,
-        /// How many of them may be taken.
+        /// The **most** of them that may be taken.
         take: u8,
+        /// The **fewest** of them a legal answer may take, before clamping. Defaults to
+        /// `0` — every look printed with "you may" — so a card that says nothing keeps
+        /// the take optional.
+        #[serde(default)]
+        take_min: u8,
         /// Which of the looked-at cards may be taken. Defaults to any of them.
         #[serde(default)]
         filter: CardFilter,
         /// Where a taken card goes. Defaults to its owner's hand.
         #[serde(default)]
         destination: FoundDestination,
+        /// How the cards not taken reach the bottom. Defaults to
+        /// [`BottomOrder::Random`], the conservative reading.
+        #[serde(default)]
+        bottom_order: BottomOrder,
     },
     /// **Search** the controller's library for up to `take` cards matching `filter`,
     /// put them into `destination`, then shuffle (CR 701.19).

@@ -82,6 +82,10 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 ChoiceQuestion::CardName(_) => vec![Action::AnswerCardName {
                     card: crate::id::CardId(0),
                 }],
+                // A card ordering is advertised the same way: one bare question, whose
+                // answer is the permutation the submitted action carries. It is posed
+                // only over two cards or more, so it is always answerable.
+                ChoiceQuestion::Order(_) => vec![Action::AnswerOrder { order: Vec::new() }],
             };
             // CR 605.3a: a player asked to pay a cost while something resolves may
             // activate mana abilities to pay it — the one thing the freeze lets

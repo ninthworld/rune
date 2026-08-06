@@ -1805,7 +1805,7 @@ as it is *at that moment* — see `docs/decisions/0013-mid-resolution-player-cho
 | --- | --- | --- |
 | `discard` | `count` cards of `player_ref`'s hand | they go to that player's graveyard |
 | `scry` | any number of the top `count` cards | the chosen go to the bottom, in the chosen order |
-| `look_at_top` | up to `take` of the top `count` | the chosen go to `destination`, the rest to the bottom in a random order |
+| `look_at_top` | `take_min` to `take` of the top `count` | the chosen go to `destination`, the rest to the bottom as `bottom_order` says |
 | `search_library` | up to `take` cards of the library | the chosen go to `destination`, then the library is shuffled |
 
 ```json
@@ -1837,15 +1837,49 @@ as it is *at that moment* — see `docs/decisions/0013-mid-resolution-player-cho
   entering the battlefield this way goes through the same seam a resolving permanent
   spell uses, so its "enters tapped"/"enters with counters" replacements and its ETB
   triggers all fire.
+- `take_min` (`look_at_top` only) is the **fewest** cards a legal answer may take, and
+  `take` is the most: together they are one range. It defaults to `0`, which is every look
+  printed *you may reveal … and put it into your hand* — so a card that says nothing keeps
+  the take optional and nothing in the catalog changes. Set it equal to `take` for the
+  cards that make the take mandatory: *put one of them into your hand* is not a `you may`,
+  and modelling it as one lets a player decline a card the printed spell hands them.
+- `bottom_order` (`look_at_top` only) is how the cards **not** taken reach the bottom:
+  `random` (the default) or `chosen`. The two are the two wordings printed on these cards
+  and they are different rules — *in a random order* is the game deciding, and *in any
+  order* is the player deciding.
+
+```json
+{ "kind": "look_at_top", "count": 3, "take": 1, "take_min": 1,
+  "destination": "hand", "bottom_order": "chosen" }
+```
+
+A `chosen` bottoming asks its controller a **second question** (issue #746), through the
+same queue the taking went through: an *ordering* of the remainder rather than a selection
+from it, answered with every one of those cards exactly once, first named ending up
+deepest. A duplicate, a card the remainder does not contain, and a short answer are each
+rejected outright.
+
+It also **draws nothing from the seeded RNG**, which a `random` bottoming does. That is
+load-bearing rather than an optimisation: the player's answer is already in the action log,
+and consuming randomness for a decision they made would move every later shuffle in the
+game on replay (ADR 0006).
 
 A question with **no legal answer is never asked**: an empty hand, an empty library, or a
 look that turns up nothing matching applies the effect with an empty selection and
 resolves — including the aftermath, so a look that whiffs still bottoms what it looked at
-and a search that finds nothing still shuffles (CR 701.19c).
+and a search that finds nothing still shuffles (CR 701.19c). The ordering has its own form
+of the same rule: a remainder of one card, or of none, has one arrangement, so it is
+bottomed outright and nobody is asked. A look that could take nothing still asks for the
+arrangement, because skipping the first question does not skip the second.
 
-Two orderings are deliberately **not** modeled and are listed in the exclusions: the
-cards a scry keeps on top stay in their printed order, and the cards a `look_at_top`
-bottoms go there at random rather than in an order the player picks.
+**The floor belongs to that rule, not to the card.** Every bound here is clamped to what
+the zone can actually supply, so a mandatory `take_min` that nothing can meet — an empty
+library, or a filter no card in the window matches — becomes no minimum at all and the
+effect resolves having taken nothing. A minimum is a statement about the answers a player
+may give, never a reason the game stops.
+
+One ordering is deliberately **not** modeled and is listed in the exclusions: the cards a
+scry keeps on top stay in their printed order.
 
 ### Creating tokens (CR 111)
 

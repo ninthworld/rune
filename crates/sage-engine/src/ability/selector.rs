@@ -318,6 +318,33 @@ pub enum FoundDestination {
     BattlefieldTapped,
 }
 
+/// How the cards a [`Effect::LookAtTop`] did *not* take reach the bottom of the library.
+///
+/// The two wordings printed on these cards, and they are genuinely different rules: *put
+/// the rest on the bottom of your library in a random order* is the game deciding, and
+/// *in any order* is the player deciding. The distinction is worth a field rather than a
+/// blanket approximation because it is the difference between three cards whose future
+/// order is unknown and three cards whose future order the looker just set.
+///
+/// [`Random`](Self::Random) is the default, so a card that says nothing keeps the
+/// conservative reading — it tells the player strictly less than the printed card does.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BottomOrder {
+    /// *…in a random order.* Drawn from the seeded RNG
+    /// ([`GameState::rng_seed`](crate::GameState::rng_seed)), so a replay of the same
+    /// seed produces the same bottom order and the looker learns nothing about their
+    /// future draws.
+    #[default]
+    Random,
+    /// *…in any order.* The looker is asked, through the same mid-resolution choice
+    /// queue the taking itself went through (ADR 0013), and the answer is the order the
+    /// cards are put on the bottom in. **It consumes no randomness at all** — a player's
+    /// answer is already recorded in the action log, and drawing from the RNG for a
+    /// decision the player made would desynchronise every later shuffle on replay.
+    Chosen,
+}
+
 /// Which cards of a zone a mid-resolution choice may pick — the card-selection
 /// counterpart of [`TargetSpec`], for a card in a hidden zone rather than an object on
 /// the battlefield.

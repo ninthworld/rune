@@ -44,8 +44,8 @@
     "blocker": "a permanent records the colour and the card its controller named as it entered — the card as a functional identity chosen from the catalog, never a string — but a card or creature type has no recorded identity, only a nonbasic land may be named, and nothing on a spell records a choice at all"
   },
   {
-    "name": "Effects that let a player choose the order of cards put back on a library",
-    "blocker": "a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random"
+    "name": "Effects that let a player choose the order of the cards a scry keeps on top",
+    "blocker": "a look bottoms its rest in an order the looker picks or at random, as the card says, but the cards a scry leaves on top stay in their printed order"
   },
   {
     "name": "Effects that return a card from a graveyard to a zone other than a hand or the battlefield",

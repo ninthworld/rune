@@ -546,6 +546,15 @@ export const Prompt = z.discriminatedUnion('kind', [
     min: z.number().optional(),
     candidates: z.array(EntityId).optional(),
   }),
+  /**
+   * A permutation of every one of `items`, answered in the chosen order.
+   *
+   * Two actions pose one and the shape is identical for both: `order_combat_damage`
+   * arranges a multi-blocked attacker's blockers, and `player_choice` arranges the cards a
+   * look puts back on the bottom of a library *in any order*. The `prompt` is what says
+   * which end of the arrangement is which — nothing here is a rule the client works out —
+   * and the server never poses one over fewer than two items.
+   */
   z.object({
     kind: z.literal('order'),
     slot: z.string(),

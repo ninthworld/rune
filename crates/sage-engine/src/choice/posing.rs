@@ -43,6 +43,11 @@ fn cost_could_be_paid(
 ///   (which still shuffles a searched library and still bottoms a looked-at pile);
 /// - an optional cost no amount of tapping could pay is declined, and *recorded* as
 ///   declined, so the log never quietly omits a decision the player was entitled to.
+///
+/// Settling a card selection may leave a **follow-up** owed — a look whose remainder its
+/// controller arranges takes two questions, and skipping the first does not skip the
+/// second — so the settled branch queues whatever it hands back, and that queued question
+/// is what the caller's [`attach_resume`] then lands on.
 pub(crate) fn pose_choices(
     state: &mut GameState,
     choices: Vec<(PlayerId, ChoiceQuestion)>,
@@ -50,12 +55,16 @@ pub(crate) fn pose_choices(
 ) -> bool {
     let mut queued = false;
     for (chooser, question) in choices {
-        match &question {
+        let question = match &question {
             ChoiceQuestion::Cards(request) => {
                 let (_, max) = choice_bounds(state, request, db);
                 if max == 0 {
-                    apply_choice_outcome(state, request, &[], db);
-                    continue;
+                    match apply_choice_outcome(state, request, &[], db) {
+                        Some(follow_up) => follow_up,
+                        None => continue,
+                    }
+                } else {
+                    question
                 }
             }
             ChoiceQuestion::Confirm(request) => {
@@ -63,6 +72,7 @@ pub(crate) fn pose_choices(
                     state.record_event(GameEvent::OptionalDeclined { player: chooser });
                     continue;
                 }
+                question
             }
             // A color question always has five legal answers, so it is always posed —
             // the one shape with no "nothing to ask" case at all.
@@ -71,10 +81,15 @@ pub(crate) fn pose_choices(
             // from here: neither is asked by an effect resolving. Both are asked by the
             // battlefield-entry seam, which queues them directly
             // ([`GameState::begin_battlefield_entry`](crate::GameState)).
+            //
+            // Neither is a card ordering: no effect declares one, it is only ever the
+            // follow-up a settled selection hands back above — already judged worth
+            // asking, since a remainder of nothing or of one card never produces one.
             ChoiceQuestion::Color(_)
             | ChoiceQuestion::CardName(_)
-            | ChoiceQuestion::Replacement(_) => {}
-        }
+            | ChoiceQuestion::Replacement(_)
+            | ChoiceQuestion::Order(_) => question,
+        };
         state.pending_choices.push(PendingChoice {
             chooser,
             question,
@@ -166,11 +181,16 @@ pub(crate) fn choices_for_effect(
                 outcome: ChoiceOutcome::BottomChosen,
             }),
         )]),
+        // One question here, and possibly a second later: the taking is asked now, and
+        // the arrangement of what is left over — when the card says *in any order* — is
+        // posed by the outcome once the taking is answered and the remainder is known.
         Effect::LookAtTop {
             count,
             take,
+            take_min,
             filter,
             destination,
+            bottom_order,
         } => Some(vec![(
             controller,
             ChoiceQuestion::Cards(ChoiceRequest {
@@ -178,10 +198,15 @@ pub(crate) fn choices_for_effect(
                 zone: ChoiceZone::LibraryTop(*count),
                 filter: filter.clone(),
                 source_card,
-                // Taking is optional ("you may reveal…"), so nothing forces a pick.
-                min: 0,
+                // The card's own floor: `0` for the "you may reveal…" looks, `1` for one
+                // that says *put one of them into your hand*. Clamped by
+                // [`choice_bounds`] either way, so it never becomes a stall.
+                min: u32::from(*take_min),
                 max: u32::from(*take),
-                outcome: ChoiceOutcome::TakeAndBottomRest(*destination),
+                outcome: ChoiceOutcome::TakeAndBottomRest {
+                    destination: *destination,
+                    order: *bottom_order,
+                },
             }),
         )]),
         Effect::SearchLibrary {

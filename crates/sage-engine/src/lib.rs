@@ -48,7 +48,7 @@ pub use ability::{
     activation_taps, group_target_counts, is_emblem_ability, is_equip_ability,
     is_graveyard_ability, is_loyalty_ability, is_mana_ability, is_sorcery_speed_ability,
     maximum_targets, minimum_targets, target_counts, Ability, ActivationTiming, ActivatorScope,
-    CardFilter, Chooser, Condition, Cost, CostModification, CountScope, DamageSubject,
+    BottomOrder, CardFilter, Chooser, Condition, Cost, CostModification, CountScope, DamageSubject,
     DerivedAmount, DestroyAffects, Effect, FoundDestination, GraveyardCardClass, GraveyardScope,
     ManaRestriction, MassAffects, ObservedActivation, ObservedPermanent, ObservedSpell,
     PermanentCount, PlayerModification, PlayerRef, SacrificeCount, StaticAffects, StaticCondition,
@@ -78,10 +78,10 @@ pub use characteristics::{
     controller_of_id, Characteristics,
 };
 pub use choice::{
-    choice_bounds, choice_candidates, confirm_is_payable, named_card_candidates,
+    choice_bounds, choice_candidates, confirm_is_payable, named_card_candidates, order_candidates,
     pending_player_choice, CardNameRequest, ChoiceOutcome, ChoiceQuestion, ChoiceRequest,
-    ChoiceZone, ColorOutcome, ColorRequest, ConfirmRequest, NamedCardClass, PendingChoice,
-    ReplacementRequest, Resume, SuspendedSpell,
+    ChoiceZone, ColorOutcome, ColorRequest, ConfirmRequest, NamedCardClass, OrderRequest,
+    PendingChoice, ReplacementRequest, Resume, SuspendedSpell,
 };
 pub use combat::{
     attack_target_of, attacked_players, attacker_candidates, attackers_needing_damage_order,

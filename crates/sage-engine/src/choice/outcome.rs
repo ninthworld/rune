@@ -1,6 +1,7 @@
 //! What an answer *does*: the cards a selection moves, the mana or the recorded name a
-//! colour or a card-name answer produces, and the effects an accepted `you may` hands
-//! back to be spliced onto the remainder.
+//! colour or a card-name answer produces, the arrangement an ordering puts a remainder
+//! back in, and the effects an accepted `you may` hands back to be spliced onto the
+//! remainder.
 //!
 //! Split from the question half ([`super`]) along the seam the whole module is built on.
 //! That half says what is being asked, who may answer, and what a legal answer looks
@@ -14,20 +15,32 @@ use super::*;
 ///
 /// The caller has already established that `chosen` is a legal answer; this moves cards
 /// and records the log event, and decides nothing.
+///
+/// Returns the **follow-up question** the outcome leaves owed, if it leaves one: a look
+/// whose remainder its controller orders (CR 701.17-adjacent "in any order") answers one
+/// question and immediately owes a second. `None` for every other outcome, and for that
+/// one whenever the remainder is too short to be a decision.
 pub(crate) fn apply_choice_outcome(
     state: &mut GameState,
     request: &ChoiceRequest,
     chosen: &[CardInstanceId],
     db: &CardDatabase,
-) {
+) -> Option<ChoiceQuestion> {
     match request.outcome {
-        ChoiceOutcome::Discard => discard_chosen(state, request.subject, chosen),
-        ChoiceOutcome::BottomChosen => bottom_chosen(state, request.subject, chosen),
-        ChoiceOutcome::TakeAndBottomRest(destination) => {
-            take_and_bottom_rest(state, request, chosen, destination, db);
+        ChoiceOutcome::Discard => {
+            discard_chosen(state, request.subject, chosen);
+            None
+        }
+        ChoiceOutcome::BottomChosen => {
+            bottom_chosen(state, request.subject, chosen);
+            None
+        }
+        ChoiceOutcome::TakeAndBottomRest { destination, order } => {
+            take_and_bottom_rest(state, request, chosen, destination, order, db)
         }
         ChoiceOutcome::TakeAndShuffle(destination) => {
             take_and_shuffle(state, request, chosen, destination, db);
+            None
         }
     }
 }
@@ -81,28 +94,54 @@ fn bottom_chosen(state: &mut GameState, subject: PlayerId, chosen: &[CardInstanc
             moved.push(player.library.remove(pos));
         }
     }
-    // The bottom of the library is index 0, and the first card chosen ends up deepest.
-    moved.reverse();
-    for card in moved {
+    put_on_bottom(state, subject, moved);
+}
+
+/// Put `cards` on the bottom of the subject's library, the **first one deepest**.
+///
+/// The single convention every bottoming in the engine follows — a scry's chosen cards,
+/// a look's random remainder, a look's *ordered* remainder — so "the order they were
+/// chosen" means one thing everywhere rather than one thing per caller. The cards must
+/// already have been removed from wherever they were.
+fn put_on_bottom(state: &mut GameState, subject: PlayerId, cards: Vec<CardInstance>) {
+    let Some(player) = state.players.get_mut(subject.0) else {
+        return;
+    };
+    // The bottom of the library is index 0, so inserting back-to-front leaves the first
+    // card of `cards` at index 0 — the deepest.
+    for card in cards.into_iter().rev() {
         player.library.insert(0, card);
     }
 }
 
-/// Take the chosen cards to `destination` and bottom every *other* card this choice
-/// looked at, in a random order drawn from the seeded RNG.
+/// Take the chosen cards to `destination` and deal with every *other* card this choice
+/// looked at, as `order` says.
 ///
 /// The looked-at set is the request's own window onto the library
 /// ([`ChoiceZone::LibraryTop`]) rather than the filtered candidate list: a look at the
 /// top four bottoms all four, not only the ones that could have been taken.
+///
+/// The two orders take deliberately different roads through the library:
+///
+/// - [`BottomOrder::Random`] settles here. Every looked-at card leaves the library, the
+///   taken ones go to `destination`, and the rest are shuffled from the seeded stream and
+///   put on the bottom.
+/// - [`BottomOrder::Chosen`] settles *later*. Only the taken cards leave; the remainder
+///   is untouched and therefore still sitting on top of the library, exactly where an
+///   [`OrderRequest`] over the top N of it can find it — which is what lets the follow-up
+///   question derive its own cards rather than carry a snapshot (ADR 0013 §2). **No
+///   randomness is drawn on this road at all**, so a game whose looker orders their own
+///   remainder replays byte-identically.
 fn take_and_bottom_rest(
     state: &mut GameState,
     request: &ChoiceRequest,
     chosen: &[CardInstanceId],
     destination: FoundDestination,
+    order: BottomOrder,
     db: &CardDatabase,
-) {
+) -> Option<ChoiceQuestion> {
     let ChoiceZone::LibraryTop(count) = request.zone else {
-        return;
+        return None;
     };
     let looked_at: Vec<CardInstance> = state
         .players
@@ -117,28 +156,59 @@ fn take_and_bottom_rest(
                 .collect()
         })
         .unwrap_or_default();
-    // Every looked-at card leaves the library first, so nothing below can find a card
-    // in two places at once; each is then put where the answer says.
+    let taken: Vec<CardInstance> = looked_at
+        .iter()
+        .filter(|card| chosen.contains(&card.id))
+        .copied()
+        .collect();
+    let remainder = looked_at.len() - taken.len();
+    // Whichever road follows, the cards being *taken* leave the library first, so nothing
+    // below can find one in two places at once.
     if let Some(player) = state.players.get_mut(request.subject.0) {
         player
             .library
-            .retain(|card| !looked_at.iter().any(|seen| seen.id == card.id));
+            .retain(|card| !taken.iter().any(|seen| seen.id == card.id));
     }
-    let (taken, mut rest): (Vec<CardInstance>, Vec<CardInstance>) = looked_at
-        .into_iter()
-        .partition(|card| chosen.contains(&card.id));
     for card in taken {
         place_card(state, request.subject, card, destination, db);
     }
-    // "in a random order" — the seeded stream, so the same seed replays the same
-    // bottom order and the chooser learns nothing about their future draws.
-    let mut rng = SplitMix64::new(state.rng_seed);
-    rng.shuffle(&mut rest);
-    state.rng_seed = rng.state();
-    if let Some(player) = state.players.get_mut(request.subject.0) {
-        for card in rest.into_iter().rev() {
-            player.library.insert(0, card);
+    match order {
+        BottomOrder::Random => {
+            let mut rest: Vec<CardInstance> = looked_at
+                .into_iter()
+                .filter(|card| !chosen.contains(&card.id))
+                .collect();
+            if let Some(player) = state.players.get_mut(request.subject.0) {
+                player
+                    .library
+                    .retain(|card| !rest.iter().any(|seen| seen.id == card.id));
+            }
+            // "in a random order" — the seeded stream, so the same seed replays the same
+            // bottom order and the chooser learns nothing about their future draws.
+            let mut rng = SplitMix64::new(state.rng_seed);
+            rng.shuffle(&mut rest);
+            state.rng_seed = rng.state();
+            put_on_bottom(state, request.subject, rest);
+            None
         }
+        // "in any order" — the looker decides, and a remainder of nothing or of one card
+        // is not a decision (ADR 0013 §5). The one-card case still has to *move*, so it
+        // is bottomed here rather than asked about.
+        BottomOrder::Chosen => match u8::try_from(remainder).unwrap_or(u8::MAX) {
+            0 => None,
+            1 => {
+                let single = state
+                    .players
+                    .get_mut(request.subject.0)
+                    .and_then(|player| player.library.pop());
+                put_on_bottom(state, request.subject, single.into_iter().collect());
+                None
+            }
+            count => Some(ChoiceQuestion::Order(OrderRequest {
+                subject: request.subject,
+                count,
+            })),
+        },
     }
 }
 
@@ -208,6 +278,35 @@ fn place_card(
             state.put_card_onto_battlefield(card, subject, true, None, db);
         }
     }
+}
+
+/// Carry out `request` for the ordering just submitted: the named cards leave the top of
+/// the subject's library and go to the bottom, the **first named deepest**.
+///
+/// The counterpart of [`apply_choice_outcome`] for the ordering question, and the whole
+/// of what an ordering answer does. The caller has established that `order` is a
+/// permutation of exactly the cards the request covers
+/// ([`order_answer_is_legal`](super::order_answer_is_legal)), so a card named here that
+/// is somehow no longer on top is skipped rather than hunted for elsewhere.
+///
+/// **Nothing here draws from the RNG.** The order is the player's, and reaching for the
+/// seeded stream to place cards a player already placed would fork every later shuffle
+/// on replay.
+pub(crate) fn apply_order_outcome(
+    state: &mut GameState,
+    request: &OrderRequest,
+    order: &[CardInstanceId],
+) {
+    let Some(player) = state.players.get_mut(request.subject.0) else {
+        return;
+    };
+    let mut moved = Vec::with_capacity(order.len());
+    for id in order {
+        if let Some(pos) = player.library.iter().position(|card| card.id == *id) {
+            moved.push(player.library.remove(pos));
+        }
+    }
+    put_on_bottom(state, request.subject, moved);
 }
 
 /// Carry out `request` for the colour just named — the colour counterpart of

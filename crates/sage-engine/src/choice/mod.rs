@@ -1,5 +1,7 @@
 //! Mid-resolution player choices: "choose N cards from this set", "do you want this to
-//! happen?", "which color of mana?", and "name a card".
+//! happen?", "which color of mana?", "name a card", and "in which order?".
+//!
+//! The questions live here; what an *answer* does lives in [`outcome`].
 //!
 //! Every effect before this one resolved without asking anyone anything. A discard, a
 //! scry, a look-at-the-top, a library search, and an optional `you may …` all stop in
@@ -25,7 +27,9 @@
 //!   an empty selection instead, so an empty hand, an empty library, or a look that
 //!   turns up nothing matching resolves rather than stalling every seat. An optional
 //!   cost no amount of tapping could pay is the same rule wearing different clothes:
-//!   it is declined outright ([`ChoiceQuestion::Confirm`]).
+//!   it is declined outright ([`ChoiceQuestion::Confirm`]), and so is an arrangement of
+//!   one card or of none ([`ChoiceQuestion::Order`]), which has one answer and so asks
+//!   no question.
 //!
 //! ## Hidden information
 //!
@@ -39,12 +43,12 @@ mod outcome;
 mod posing;
 
 pub(crate) use outcome::{
-    apply_card_name_outcome, apply_choice_outcome, apply_color_outcome, discard_to_cost,
-    take_confirmed_effects,
+    apply_card_name_outcome, apply_choice_outcome, apply_color_outcome, apply_order_outcome,
+    discard_to_cost, take_confirmed_effects,
 };
 pub(crate) use posing::{attach_resume, choices_for_effect, pose_choices};
 
-use crate::ability::{CardFilter, Effect, FoundDestination, Target};
+use crate::ability::{BottomOrder, CardFilter, Effect, FoundDestination, Target};
 use crate::card_type::{CardType, Supertype};
 use crate::id::{CardId, CardInstance, CardInstanceId, PlayerId};
 use crate::mana::Color;
@@ -123,6 +127,16 @@ pub enum ChoiceQuestion {
     /// on naming: the answer is a [`CardId`] chosen from the cards SAGE has defined, so
     /// no prose and no name the catalog does not contain can ever be recorded.
     CardName(CardNameRequest),
+    /// In **which order**? — the arrangement a card asks for when it puts more than one
+    /// card back on a library *in any order* ([`OrderRequest`]). Answered with
+    /// [`Action::AnswerOrder`](crate::Action).
+    ///
+    /// The fifth shape, and the first whose answer is a **permutation**: not a subset of
+    /// the cards on offer but all of them, arranged. That is what keeps it apart from
+    /// [`Cards`](Self::Cards), whose answer is a selection and whose bounds are a count —
+    /// a question with the same candidates and a completely different legality rule
+    /// (every card exactly once, no more and no fewer).
+    Order(OrderRequest),
 }
 
 impl ChoiceQuestion {
@@ -136,7 +150,8 @@ impl ChoiceQuestion {
             ChoiceQuestion::Confirm(_)
             | ChoiceQuestion::Color(_)
             | ChoiceQuestion::CardName(_)
-            | ChoiceQuestion::Replacement(_) => None,
+            | ChoiceQuestion::Replacement(_)
+            | ChoiceQuestion::Order(_) => None,
         }
     }
 
@@ -148,7 +163,8 @@ impl ChoiceQuestion {
             ChoiceQuestion::Cards(_)
             | ChoiceQuestion::Color(_)
             | ChoiceQuestion::CardName(_)
-            | ChoiceQuestion::Replacement(_) => None,
+            | ChoiceQuestion::Replacement(_)
+            | ChoiceQuestion::Order(_) => None,
         }
     }
 
@@ -160,7 +176,8 @@ impl ChoiceQuestion {
             ChoiceQuestion::Cards(_)
             | ChoiceQuestion::Confirm(_)
             | ChoiceQuestion::CardName(_)
-            | ChoiceQuestion::Replacement(_) => None,
+            | ChoiceQuestion::Replacement(_)
+            | ChoiceQuestion::Order(_) => None,
         }
     }
 
@@ -172,6 +189,20 @@ impl ChoiceQuestion {
             ChoiceQuestion::Cards(_)
             | ChoiceQuestion::Confirm(_)
             | ChoiceQuestion::Color(_)
+            | ChoiceQuestion::Replacement(_)
+            | ChoiceQuestion::Order(_) => None,
+        }
+    }
+
+    /// The ordering request this question asks, or `None` when it is not one.
+    #[must_use]
+    pub fn order(&self) -> Option<&OrderRequest> {
+        match self {
+            ChoiceQuestion::Order(request) => Some(request),
+            ChoiceQuestion::Cards(_)
+            | ChoiceQuestion::Confirm(_)
+            | ChoiceQuestion::Color(_)
+            | ChoiceQuestion::CardName(_)
             | ChoiceQuestion::Replacement(_) => None,
         }
     }
@@ -184,9 +215,38 @@ impl ChoiceQuestion {
             ChoiceQuestion::Cards(_)
             | ChoiceQuestion::Confirm(_)
             | ChoiceQuestion::Color(_)
-            | ChoiceQuestion::CardName(_) => None,
+            | ChoiceQuestion::CardName(_)
+            | ChoiceQuestion::Order(_) => None,
         }
     }
+}
+
+/// A card-ordering question ([`ChoiceQuestion::Order`]): *in which order do these go on
+/// the bottom of your library?*
+///
+/// Carries a **window**, not a list. The cards are the top `count` of the subject's
+/// library, recomputed by [`order_candidates`] on every read, in exactly the relationship
+/// [`ChoiceRequest`] has to [`choice_candidates`] and for the same reason (ADR 0013 §2):
+/// while the question is owed nothing else in the game is legal, so the library cannot
+/// move underneath it, and an answer is therefore checked against the cards that are
+/// there *now* rather than the ones a client was shown.
+///
+/// That window is also why the look that poses this leaves its remainder on top of the
+/// library rather than picking it up: the cards have to be somewhere derivable, and the
+/// place they already are is the honest one.
+///
+/// `count` is never `0` or `1`. A remainder that short is not a decision, so it is
+/// bottomed outright and no question is posed at all — the never-stall rule of ADR 0013
+/// §5, applied to a shape whose bounds are not a `(min, max)` pair.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OrderRequest {
+    /// The player whose library's top cards are being arranged, and whose bottom they
+    /// are going to. Equal to [`PendingChoice::chooser`]: only the looker orders their
+    /// own remainder.
+    pub subject: PlayerId,
+    /// How many cards from the top are being arranged — the whole of the question, since
+    /// a legal answer names every one of them exactly once.
+    pub count: u8,
 }
 
 /// The CR 616.1 ordering question ([`ChoiceQuestion::Replacement`]): *which of these
@@ -415,8 +475,18 @@ pub enum ChoiceOutcome {
     /// stays on top in the order it was already in. This is scry (CR 701.17).
     BottomChosen,
     /// The chosen cards go to `destination`; every **other looked-at** card goes to the
-    /// bottom of the library in a random order drawn from the seeded RNG.
-    TakeAndBottomRest(FoundDestination),
+    /// bottom of the library, in the order `order` names.
+    ///
+    /// [`BottomOrder::Chosen`] is the one outcome that leaves a *second* question owed:
+    /// the remainder stays on top of the library and an [`OrderRequest`] over it is
+    /// queued behind this one, unless the remainder is too short to be a decision.
+    TakeAndBottomRest {
+        /// Where a taken card goes.
+        destination: FoundDestination,
+        /// How the cards not taken reach the bottom — the game's roll, or the looker's
+        /// arrangement.
+        order: BottomOrder,
+    },
     /// The chosen cards go to `destination`; the subject's library is then shuffled
     /// (CR 701.19c). This is a search.
     TakeAndShuffle(FoundDestination),
@@ -525,11 +595,20 @@ pub fn choice_candidates(
 ///
 /// Clamping is what makes "discard two cards" mean "discard the one card you have"
 /// rather than deadlock, and what makes a `max` of `0` the single, uniform signal that
-/// a choice has no legal answer and must not be posed.
+/// a choice has no legal answer and must not be posed. It is also what lets a card state
+/// a **mandatory** take — *put one of them into your hand* — without that floor ever
+/// becoming a hang: a library that cannot supply one lowers the floor to nothing, and the
+/// choice settles with an empty selection.
+///
+/// The returned pair is always satisfiable. The floor is held below the ceiling as well
+/// as below what is available, so a card authored with a minimum larger than its maximum
+/// is a wrong effect rather than a game nobody can continue — the direction ADR 0013 says
+/// to be wrong in.
 #[must_use]
 pub fn choice_bounds(state: &GameState, request: &ChoiceRequest, db: &CardDatabase) -> (u32, u32) {
     let available = u32::try_from(choice_candidates(state, request, db).len()).unwrap_or(u32::MAX);
-    (request.min.min(available), request.max.min(available))
+    let max = request.max.min(available);
+    (request.min.min(available).min(max), max)
 }
 
 /// Whether `chosen` is a legal answer to the choice currently owed (CR-style
@@ -581,6 +660,60 @@ pub(crate) fn named_card_is_legal(state: &GameState, named: CardId, db: &CardDat
         return false;
     };
     named_card_candidates(db, request.class).contains(&named)
+}
+
+/// The cards `request` currently asks to be arranged, top of the library first.
+///
+/// The [`choice_candidates`] of the ordering question, and derived on every call for the
+/// same reason: a snapshot is one more thing that can disagree with the game. Shorter
+/// than `count` only if a library somehow shrank while the question was owed, which no
+/// legal transition can do — nothing but the answer is legal while it is pending.
+///
+/// **Visible only to [`PendingChoice::chooser`].** Like [`choice_candidates`], this
+/// returns the cards to any caller; the projection is what keeps them off another seat's
+/// wire.
+#[must_use]
+pub fn order_candidates(state: &GameState, request: &OrderRequest) -> Vec<CardInstance> {
+    state
+        .players
+        .get(request.subject.0)
+        .map(|player| {
+            player
+                .library
+                .iter()
+                .rev()
+                .take(usize::from(request.count))
+                .copied()
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Whether `order` is a legal answer to the ordering currently owed: a **permutation** of
+/// exactly the cards [`order_candidates`] names right now.
+///
+/// Three ways to be wrong and all three are rejected rather than tolerated, because each
+/// would silently mean something the player did not say: a card named twice would bottom
+/// one card and lose another, a card the remainder does not contain would move a card
+/// nobody looked at, and a short answer would leave cards on top that the effect said go
+/// underneath. There is no clamping counterpart to [`choice_bounds`] here — an ordering
+/// has one legal size, and it is the whole list.
+#[must_use]
+pub(crate) fn order_answer_is_legal(state: &GameState, order: &[CardInstanceId]) -> bool {
+    // An ordering aimed at some other shape of question is an answer to a question
+    // nobody asked.
+    let Some(request) = pending_player_choice(state).and_then(|p| p.question.order()) else {
+        return false;
+    };
+    let cards = order_candidates(state, request);
+    if order.len() != cards.len() {
+        return false;
+    }
+    let distinct = order
+        .iter()
+        .enumerate()
+        .all(|(index, id)| !order[..index].contains(id));
+    distinct && order.iter().all(|id| cards.iter().any(|c| c.id == *id))
 }
 
 /// Whether the pending yes-or-no can currently be answered **yes**: it is a

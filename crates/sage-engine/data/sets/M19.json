@@ -180,6 +180,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "anticipate",
+    "collector_number": "44",
+    "rarity": "common"
+  },
+  {
     "functional_id": "aven_wind_mage",
     "collector_number": "45",
     "rarity": "common"

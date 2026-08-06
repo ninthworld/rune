@@ -330,14 +330,26 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         Effect::LookAtTop {
             count,
             take,
+            take_min,
             filter,
             destination,
+            bottom_order,
         } => format!(
-            "look at the top {} cards of your library, you may put {} from among them {}, \
-             then put the rest on the bottom of your library in a random order",
+            "look at the top {} cards of your library, {} {} from among them {}, \
+             then put the rest on the bottom of your library in {}",
             number(u32::from(*count)),
-            up_to(u32::from(*take), filter),
+            // "You may put up to one" and "put one" are the two takes, and the words have
+            // to follow the floor: a card that reads "you may" where the rules make the
+            // player take one is a card the player will misplay.
+            if *take_min == 0 { "you may put" } else { "put" },
+            take_phrase(u32::from(*take_min), u32::from(*take), filter),
             destination_phrase(*destination),
+            // The card's own two wordings, and they are different rules: one is the
+            // game's roll and the other is the looker's arrangement.
+            match bottom_order {
+                BottomOrder::Random => "a random order",
+                BottomOrder::Chosen => "any order",
+            },
         ),
         Effect::SearchLibrary {
             take,
@@ -863,6 +875,23 @@ fn up_to(count: u32, filter: &CardFilter) -> String {
         format!("up to one {}", filter_noun(filter, false))
     } else {
         format!("up to {} {}", number(count), filter_noun(filter, true))
+    }
+}
+
+/// How many cards a look takes, as the card would print it: *up to one creature card*
+/// where the take is optional, and a bare *one of them* where it is not.
+///
+/// A floor equal to the ceiling is the printed *put one of them into your hand*, and the
+/// "up to" has to go with it — the phrase is what tells a player whether they may decline,
+/// and it is the one thing on the card that the new bound changes.
+fn take_phrase(min: u32, max: u32, filter: &CardFilter) -> String {
+    if min == 0 {
+        return up_to(max, filter);
+    }
+    if max == 1 {
+        format!("one {}", filter_noun(filter, false))
+    } else {
+        format!("{} {}", number(max), filter_noun(filter, true))
     }
 }
 

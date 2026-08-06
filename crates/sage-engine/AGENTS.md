@@ -272,10 +272,16 @@ leaving the battlefield, a draw, and life gained route nowhere near this, and th
 seams run inside the SBA loop where there is nothing to suspend a question onto.
 
 A choice asks one shape of **question** (`ChoiceQuestion`, ADR 0014): pick cards, answer a
-`you may` yes-or-no, name a colour, name a card, or order applicable replacements by
-position in a derived list. Everything around them is single — one queue, one chooser, one
+`you may` yes-or-no, name a colour, name a card, order applicable replacements by position
+in a derived list, or arrange cards into a **permutation** — the *in any order* a look
+bottoms its remainder in. Everything around them is single — one queue, one chooser, one
 `Resume` — and only the answer branches, so a new question shape is a variant plus its own
-`Action`, never a second queue. An accepted optional effect is *spliced onto the front of
+`Action`, never a second queue. Two rules the permutation added and every later answer
+inherits: an answer replacing something the game used to **roll** for consumes no
+randomness (`BottomOrder::Chosen` leaves `rng_seed` where `Random` advances it, or a replay
+diverges), and an outcome may pose the *next* question — "the rest" is unknown until the
+taking is answered — so a `Resume` travels onto the question that follows.
+An accepted optional effect is *spliced onto the front of
 the remainder*, not applied on the spot; declining is the same path with nothing spliced,
 which is why "a decline leaves the game as if the effect were absent" needs no proof. An
 optional **cost** is mana, charged from the chooser's pool, and is the one place mana

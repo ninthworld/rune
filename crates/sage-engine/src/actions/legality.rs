@@ -77,6 +77,15 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         return crate::choice::named_card_is_legal(state, *card, db);
     }
 
+    // 1a-quinquies. A card ordering names *every* card of the pending remainder, once
+    //     each, and is checked against that remainder recomputed now
+    //     ([`crate::choice::order_answer_is_legal`]). A permutation has one legal size, so
+    //     unlike a selection there is nothing to clamp: a duplicate, a foreign card, or a
+    //     short list is rejected rather than partly obeyed.
+    if let Action::AnswerOrder { order } = action {
+        return crate::choice::order_answer_is_legal(state, order);
+    }
+
     // 1b. A mulligan keep validates its bottoming selection (CR 103.5) rather than
     //     the target-slot machinery: exactly one distinct hand card per mulligan
     //     taken (see [`crate::mulligan::keep_bottom_is_legal`]).

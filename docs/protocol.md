@@ -845,11 +845,14 @@ legally under-fill the slot: scrying *any number* of the cards looked at, taking
 one of them, or failing to find on a search (CR 701.19c). A client that ignores `min`
 therefore behaves as it always did on exact prompts, and only over-constrains the new
 ones. The **order** of the returned ids is significant and is preserved by the server: it
-is the order a scry puts its cards on the bottom in. `order` requests a permutation of its `items`; the
+is the order a scry puts its cards on the bottom in. `order` requests a permutation of its `items`. Two actions emit one: the
 `order_combat_damage` action emits one `order` prompt per attacker blocked by two or more
 creatures, so its controller chooses the combat-damage assignment order (CR 510.1, issue
 #346) — lethal damage is then assigned to the blockers along the chosen order. An attacker
-with 0–1 blockers produces no ordering prompt.
+with 0–1 blockers produces no ordering prompt. And `player_choice` emits one for the *in any
+order* of a look putting cards back on a library (issue #746, below), over two items or
+more. Both follow the same rule: fewer than two items is not a decision, and no prompt is
+emitted for one.
 
 `number` (issue #554) requests a value in the inclusive range `min`..`max` — the value
 of X, how many counters to remove, one share of a divided effect. It is answered with
@@ -1036,6 +1039,30 @@ the **server** says may be named: each option's `label` is the card's name and i
 that card's authored `functional_id`, the same stable identity `card.functional_id` carries
 everywhere else. The client picks one and echoes the id; it composes no list, sends no typed
 name, and an id the offer did not list is refused rather than guessed at.
+
+The same `player_choice` action carries another question: **in which order?** (issue #746)
+— the *put the rest on the bottom of your library in any order* of a look. It adds no wire
+shape either: it is the `order` prompt the `order_combat_damage` action already rides on,
+on the same `choice` slot, and it is answered the same atomic way — with a **permutation of
+every one of its `items`**, no more and no fewer. Four things distinguish it from the three
+questions above:
+
+- It is the **second** question one effect asks. A look that says "in any order" poses its
+  card selection first (*which one do you keep?*) and this one only once that is answered,
+  because until then nobody knows what "the rest" is. The action id and the slot are the
+  same both times; the prompt `kind` is what changed.
+- The answer's **order is the whole answer**, and the prompt says which end is which:
+  *"Choose the order these go on the bottom of your library, deepest first"*. The first id
+  sent ends up deepest, which is the same convention a `select_from_zone` bottoming uses.
+- A permutation of one item, or of none, is not a decision, so it is **never posed** — the
+  cards are bottomed and the resolution carries on. A client will not see this prompt with
+  fewer than two items.
+- The items are cards from the top of a library, so they ride the same `revealed` array a
+  search does, on the chooser's view and no other seat's.
+
+The counterpart of *in any order* is *in a random order*, which is not a question at all:
+the server bottoms those cards itself and no prompt is emitted. Which of the two a card
+uses is the card's own text and never a client decision.
 
 Combat declarations also use requirements. The `attackers` slot lists creatures eligible to
 attack; blocker slots list eligible blockers for each attacker. When there is more than one

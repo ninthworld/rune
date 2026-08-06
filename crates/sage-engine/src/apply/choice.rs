@@ -2,7 +2,8 @@
 
 use super::*;
 use crate::choice::{
-    apply_choice_outcome, pending_player_choice, take_confirmed_effects, ChoiceQuestion,
+    apply_choice_outcome, apply_order_outcome, pending_player_choice, take_confirmed_effects,
+    ChoiceQuestion, PendingChoice,
 };
 use crate::id::CardInstanceId;
 use crate::resolve::resume_after_choice;
@@ -22,6 +23,13 @@ use crate::resolve::resume_after_choice;
 ///    That continuation may itself pose a further choice, which simply queues behind
 ///    whatever is left — a card that draws and then discards suspends twice.
 ///
+/// An outcome may hand back a **follow-up question** instead of finishing — *put the rest
+/// on the bottom in any order* is a second decision that only exists once the first is
+/// answered, since until then nobody knows what "the rest" is. That question is queued
+/// and the suspended remainder is carried onto it, so resuming still happens exactly
+/// once, after the *last* question the effect asked. Nothing else changes: it is the same
+/// queue, the same chooser, and the same hand-off.
+///
 /// Legality has already been established by [`crate::apply_action`]'s gate
 /// ([`crate::choice::answer_is_legal`]), so this writes rather than re-deciding. An
 /// answer with no choice pending is a no-op.
@@ -37,7 +45,49 @@ pub(crate) fn apply_answer_choice(
     let ChoiceQuestion::Cards(request) = &answered.question else {
         return;
     };
-    apply_choice_outcome(state, request, chosen, db);
+    if let Some(question) = apply_choice_outcome(state, request, chosen, db) {
+        // Behind anything the outcome itself queued (a found permanent naming a colour
+        // as it enters), because those are questions about steps that already happened.
+        state.pending_choices.push(PendingChoice {
+            chooser: answered.chooser,
+            question,
+            resume: answered.resume,
+        });
+        return;
+    }
+    if let Some(resume) = answered.resume {
+        resume_after_choice(state, resume, db);
+    }
+}
+
+/// Answer the pending **card ordering** with `order`: put those cards on the bottom of
+/// the library in that order, then let the suspended resolution continue.
+///
+/// The same three steps [`apply_answer_choice`] takes. It is the second half of a look
+/// that says *in any order*: the first answer decided what was taken, this one decides
+/// where the rest sits, and the [`Resume`](crate::Resume) rode across from the first
+/// question to this one so the rest of the card happens after both.
+///
+/// The answer has already been checked to be a permutation of the freshly recomputed
+/// remainder ([`crate::choice::order_answer_is_legal`]), so this writes rather than
+/// re-deciding — and it **draws nothing from the RNG**, which is the whole difference
+/// between this road and the random one: a replay that feeds back the same answers has to
+/// leave the seeded stream exactly where an ordered bottoming found it.
+///
+/// An answer with no ordering choice pending is a no-op.
+pub(crate) fn apply_answer_order(
+    state: &mut GameState,
+    order: &[CardInstanceId],
+    db: &CardDatabase,
+) {
+    let Some(ChoiceQuestion::Order(_)) = pending_player_choice(state).map(|p| &p.question) else {
+        return;
+    };
+    let answered = state.pending_choices.remove(0);
+    let ChoiceQuestion::Order(request) = &answered.question else {
+        return;
+    };
+    apply_order_outcome(state, request, order);
     if let Some(resume) = answered.resume {
         resume_after_choice(state, resume, db);
     }

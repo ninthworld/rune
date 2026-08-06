@@ -300,8 +300,8 @@ pub struct ManaOption {
 ///   shape for a yes/no such as the mulligan keep/take-another decision).
 /// - [`Prompt::SelectFromZone`] — pick `count` cards from a zone (cleanup
 ///   discard-to-max, mulligan bottoming, future tutors).
-/// - [`Prompt::Order`] — arrange N items into an order (ordering simultaneous
-///   triggers, scry).
+/// - [`Prompt::Order`] — arrange N items into an order (a multi-blocked attacker's
+///   damage assignment, the cards a look puts back on a library in any order).
 /// - [`Prompt::Number`] — choose a number in a server-stated range (the value of
 ///   X, how much of a divided effect goes where).
 ///
@@ -363,13 +363,22 @@ pub enum Prompt {
     /// Arrange the given [`items`](Prompt::Order::items) into an order. The slot is
     /// answered with **all** of the items in the chosen order in
     /// [`TargetChoice::chosen`] (a permutation of `items`).
+    ///
+    /// Two actions pose one, and the shape is identical for both: an
+    /// `order_combat_damage` picks the order lethal damage is assigned to a multi-blocked
+    /// attacker's blockers (CR 510.1), and a `player_choice` picks the order a look puts
+    /// what it did not take on the bottom of a library — the *in any order* of issue #746,
+    /// where the first id sent ends up deepest. Neither is ever posed over fewer than two
+    /// items: a permutation of one is not a decision, and the server settles it itself.
     Order {
         /// Stable slot id the client echoes back as [`TargetChoice::slot`].
         slot: String,
-        /// Human-readable prompt describing what to order.
+        /// Human-readable prompt describing what to order. It is the prompt, not the
+        /// slot, that says **which end of the arrangement is which** — a permutation the
+        /// player cannot orient is a coin flip.
         prompt: String,
         /// The items to arrange, in their initial order. The answer is a permutation
-        /// of exactly these ids.
+        /// of exactly these ids. Two or more, always.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         items: Vec<EntityId>,
     },

@@ -60,6 +60,7 @@ pub(crate) fn player_choice_prompts(state: &GameState, db: &CardDatabase) -> Vec
         ChoiceQuestion::Confirm(request) => vec![confirm_prompt(state, request)],
         ChoiceQuestion::Color(request) => vec![color_prompt(request, db)],
         ChoiceQuestion::Replacement(_) => vec![replacement_prompt(state, db)],
+        ChoiceQuestion::Order(request) => vec![card_order_prompt(state, request)],
         ChoiceQuestion::CardName(request) => vec![card_name_prompt(request, db)],
     }
 }
@@ -105,6 +106,31 @@ fn card_name_question(request: &CardNameRequest, db: &CardDatabase) -> String {
         // arm is unreachable in play; naming no card is the honest rendering.
         None => "Choose a card name as this permanent enters the battlefield".to_string(),
     }
+}
+
+/// The *in any order* of a look, as the `order` prompt the combat-damage assignment
+/// already rides on (CR 510.1) — a permutation of the items, and no new wire shape.
+///
+/// Its items are the engine's own remainder ([`order_candidates`]), recomputed now, and
+/// the cards behind those ids reach the chooser on the same view's `revealed` array and
+/// no other seat's — the same channel a searched library uses, for the same reason: this
+/// is the top of somebody's deck.
+fn card_order_prompt(state: &GameState, request: &OrderRequest) -> Prompt {
+    Prompt::Order {
+        slot: CHOICE_SLOT.to_string(),
+        prompt: card_order_question(),
+        items: order_candidates(state, request)
+            .into_iter()
+            .map(|inst| card_entity_id(inst.id))
+            .collect(),
+    }
+}
+
+/// The words the card-ordering question is asked in. It states **which end is which**,
+/// because a permutation the player cannot orient is a coin flip: the first card named is
+/// the deepest, the convention every bottoming in the engine follows.
+fn card_order_question() -> String {
+    "Choose the order these go on the bottom of your library, deepest first".to_string()
 }
 
 /// The CR 616.1 ordering question, as the same `option` slot the yes-or-no and the
@@ -310,7 +336,10 @@ fn choice_prompt_text(state: &GameState, request: &ChoiceRequest, min: u32, max:
         ChoiceOutcome::BottomChosen => {
             format!("Choose {how_many} to put on the bottom of your library, in that order")
         }
-        ChoiceOutcome::TakeAndBottomRest(_) => {
+        // Whether the rest are bottomed at random or in an order the player is about to
+        // be asked for is left out on purpose: this sentence is about *this* question,
+        // and the arrangement gets a question, and a sentence, of its own.
+        ChoiceOutcome::TakeAndBottomRest { .. } => {
             format!("Choose {how_many} to keep; the rest go to the bottom of your library")
         }
         ChoiceOutcome::TakeAndShuffle(_) => {
@@ -334,6 +363,7 @@ pub(crate) fn player_choice_label(state: &GameState, db: &CardDatabase) -> Strin
         }
         Some(ChoiceQuestion::Color(request)) => color_question(request, db),
         Some(ChoiceQuestion::Replacement(_)) => replacement_question(),
+        Some(ChoiceQuestion::Order(_)) => card_order_question(),
         Some(ChoiceQuestion::CardName(request)) => card_name_question(request, db),
         None => "Make a choice".to_string(),
     }
@@ -367,6 +397,38 @@ pub(crate) fn bind_player_card_name(
     Some(Action::AnswerCardName {
         card: db.card_id(&functional_id)?,
     })
+}
+
+/// Map a returned answer to the card ordering onto [`Action::AnswerOrder`].
+///
+/// The same reject-stale discipline the other answers follow: only ids the offer itself
+/// listed count, and the engine is asked whether an ordering is owed at all before one is
+/// built. **The submitted order is carried through untouched** — it is the whole answer,
+/// so re-sorting here would silently bottom the cards somewhere else. The engine
+/// independently re-derives the remainder and rejects anything that is not a permutation
+/// of it, so nothing here is the last word.
+pub(crate) fn bind_player_order(
+    state: &GameState,
+    offered: &ValidAction,
+    targets: &[TargetChoice],
+) -> Option<Action> {
+    let items = offered.prompts.iter().find_map(|prompt| match prompt {
+        Prompt::Order { slot, items, .. } if slot == CHOICE_SLOT => Some(items),
+        _ => None,
+    })?;
+    let request = pending_player_choice(state)?.question.order()?;
+    let available = order_candidates(state, request);
+    let mut order = Vec::new();
+    for id in chosen_for(targets, CHOICE_SLOT) {
+        if !items.contains(id) {
+            return None;
+        }
+        let inst = available
+            .iter()
+            .find(|inst| card_entity_id(inst.id) == *id)?;
+        order.push(inst.id);
+    }
+    Some(Action::AnswerOrder { order })
 }
 
 /// Map a returned answer to the CR 616.1 ordering choice onto
@@ -441,6 +503,10 @@ pub(crate) fn bind_player_choice(
 /// library reaches the searcher and no one else, and a hand read by a coercive discard
 /// reaches the reader rather than the table. The [`SpectatorView`] has no counterpart
 /// field at all: a spectator is structurally incapable of receiving these.
+///
+/// Two questions are about cards and both are covered: the selection, and the *ordering*
+/// of what a look did not take. The second is not optional — its prompt names those cards
+/// by id, and a client with an id and no card has nothing to draw.
 pub(crate) fn revealed_to(state: &GameState, db: &CardDatabase, viewer: PlayerId) -> Vec<CardView> {
     let Some(pending) = pending_player_choice(state) else {
         return Vec::new();
@@ -448,12 +514,18 @@ pub(crate) fn revealed_to(state: &GameState, db: &CardDatabase, viewer: PlayerId
     if pending.chooser != viewer {
         return Vec::new();
     }
-    // A yes-or-no is about an effect, not about a zone: it shows nobody anything, so
-    // there is nothing here for even its own chooser.
-    let Some(request) = pending.question.cards() else {
-        return Vec::new();
+    // A yes-or-no, a colour, a card name, and a replacement ordering are about an effect
+    // rather than a zone: they show nobody anything, so there is nothing here for even
+    // their own chooser.
+    let shown: Vec<CardInstance> = match &pending.question {
+        ChoiceQuestion::Cards(request) => choice_candidates(state, request, db),
+        ChoiceQuestion::Order(request) => order_candidates(state, request),
+        ChoiceQuestion::Confirm(_)
+        | ChoiceQuestion::Color(_)
+        | ChoiceQuestion::CardName(_)
+        | ChoiceQuestion::Replacement(_) => Vec::new(),
     };
-    choice_candidates(state, request, db)
+    shown
         .into_iter()
         .map(|inst| card_view(card_entity_id(inst.id), inst.card, db))
         .collect()
