@@ -45,8 +45,10 @@ this resolution, a discard by this resolution, and life gained this turn. It is 
 the effect is reached (CR 608.2), which is an if-clause on an effect rather than the
 CR 603.4 trigger check. Every question but the count reads recorded events over a window —
 the resolution, or the turn — because none of them can be answered from a snapshot.
-An effect's amount may scale with a count of permanents (`count_of`); cards in a zone, life
-totals, and mana values feed nothing.
+A count of permanents (`count_of`) may feed an effect's amount, the number of tokens it
+creates, and an attachment's static grant — the last recalculated on every read, because a
+static ability is not a resolution; cards in a zone, life totals, mana values, and another
+object's power feed nothing.
 
 **`data/exclusions.json` is the maintained list, and it is the one that has to stay
 right.** Every exclusion names a single blocker; `make compat` regenerates

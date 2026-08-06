@@ -169,6 +169,22 @@ pub enum Violation {
         /// The definition at fault.
         functional_id: String,
     },
+    /// An `attachment` block's counted grant counts permanents by `min_power`.
+    ///
+    /// The second site with [`Self::PowerInStaticCondition`]'s problem and the same
+    /// answer. An attachment's grant is a static ability (CR 604.3) evaluated from inside
+    /// the computation of its host's characteristics, so a count that read a *computed*
+    /// power there would ask the layer system for the answer it is in the middle of
+    /// producing — and two mutually enchanted creatures would ask each other forever.
+    /// Refused at build time rather than left as a stack overflow.
+    ///
+    /// A separate variant rather than a shared one because a violation names one place: a
+    /// card author who wrote `min_power` on an Aura is told about the Aura, not about a
+    /// static ability the card has not got.
+    PowerInAttachmentCount {
+        /// The definition at fault.
+        functional_id: String,
+    },
     /// A `create_emblem` effect gives the emblem an ability an emblem cannot have
     /// (CR 114.1–114.4) — anything but a static or triggered ability.
     ///
@@ -319,6 +335,12 @@ impl fmt::Display for Violation {
             Self::PowerInStaticCondition { functional_id } => write!(
                 f,
                 "{functional_id}: a static ability's condition may not count by \
+                 `min_power`; a computed power read from inside the layer system \
+                 would not terminate"
+            ),
+            Self::PowerInAttachmentCount { functional_id } => write!(
+                f,
+                "{functional_id}: an attachment's counted grant may not count by \
                  `min_power`; a computed power read from inside the layer system \
                  would not terminate"
             ),

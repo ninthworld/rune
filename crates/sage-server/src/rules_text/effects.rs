@@ -203,6 +203,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         Effect::CreateToken {
             token,
             count,
+            count_of,
             player_ref,
             tapped,
             attacking,
@@ -212,8 +213,15 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 (true, 1) => " that's attacking",
                 (true, _) => " that are attacking",
             };
+            // A counted number is stated as the *rule* rather than as a number, the way
+            // every other count-derived amount is: how many there will be does not exist
+            // until the effect resolves.
+            let each = match count_of {
+                None => String::new(),
+                Some(count_of) => format!(" for each {}", count_noun(count_of)),
+            };
             format!(
-                "{} {}{attacking}",
+                "{} {}{attacking}{each}",
                 conjugate(*player_ref, "create"),
                 token_noun(token, u32::from(*count), *tapped)
             )
@@ -453,7 +461,7 @@ fn power_clause(class: &str, count: &PermanentCount) -> String {
 /// separate from [`mass_subject`] — English puts a class in the plural when it is
 /// counted and in the singular after "each", and one function per position keeps both
 /// exhaustive.
-fn count_noun(count: &PermanentCount) -> String {
+pub(super) fn count_noun(count: &PermanentCount) -> String {
     let mut noun = String::new();
     if let Some(color) = count.color {
         noun.push_str(color.word());

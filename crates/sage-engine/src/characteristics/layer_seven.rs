@@ -63,7 +63,9 @@ pub(super) fn static_pt_delta(
 /// (CR 613.7c). Those contributions are **derived, never stored**: the grant follows the
 /// attachment, so it appears here exactly while the permanent is attached and vanishes the
 /// instant it leaves *or is equipped onto someone else*, with nothing to prune (unlike a
-/// keyed pump, which the SBA loop must clean up). Object ids are unique, so timestamps do
+/// keyed pump, which the SBA loop must clean up). A grant that scales with a count is
+/// derived in the same breath — the count is read here, on this call, so it tracks the
+/// board rather than the moment the Aura resolved. Object ids are unique, so timestamps do
 /// not tie; the sort is stable regardless.
 pub(super) fn ordered_pt_modifiers(
     state: &GameState,
@@ -81,7 +83,7 @@ pub(super) fn ordered_pt_modifiers(
     // modifier, timestamped by the attachment's own object id (CR 613.7).
     for attachment in &state.battlefield {
         if attachment.attached_to == Some(perm.id) {
-            if let Some(effect) = attachment_pt_effect(attachment, db) {
+            if let Some(effect) = attachment_pt_effect(state, attachment, db) {
                 if affects(state, &effect, perm, is_creature) {
                     effects.push(effect);
                 }

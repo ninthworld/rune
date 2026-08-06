@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "functional_id": "blanchwood_armor",
+  "name": "Blanchwood Armor",
+  "types": [
+    "enchantment"
+  ],
+  "subtypes": [
+    "Aura"
+  ],
+  "mana_cost": "{2}{G}",
+  "colors": [
+    "green"
+  ],
+  "attachment": {
+    "kind": "aura",
+    "attach_to": "any_creature",
+    "power": 1,
+    "toughness": 1,
+    "count_of": {
+      "scope": "you_control",
+      "subtype": "Forest"
+    }
+  }
+}
