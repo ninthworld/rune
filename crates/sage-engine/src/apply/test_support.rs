@@ -126,7 +126,7 @@ pub(crate) fn place_permanent(
         tapped,
         entered_turn: 0,
         attacking: None,
-        blocking: None,
+        blocking: Vec::new(),
         skips_untap: false,
         damage,
         counters: Default::default(),
@@ -256,7 +256,7 @@ pub(crate) fn default_damage_order(state: &GameState) -> Option<Action> {
             blockers: state
                 .battlefield
                 .iter()
-                .filter(|p| p.blocking == Some(attacker))
+                .filter(|p| p.blocking.contains(&attacker))
                 .map(|p| p.id)
                 .collect(),
         })
@@ -438,7 +438,7 @@ pub(crate) fn place_commander_permanent(
         tapped: false,
         entered_turn: 0,
         attacking: Some(crate::combat::AttackTarget::Player(defender)),
-        blocking: None,
+        blocking: Vec::new(),
         skips_untap: false,
         damage: 0,
         counters: Default::default(),

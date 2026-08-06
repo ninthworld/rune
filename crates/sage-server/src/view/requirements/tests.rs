@@ -336,7 +336,7 @@ fn issue_346_multi_block_projects_an_order_action_and_binds_the_permutation() {
             .iter_mut()
             .find(|p| p.id == b)
             .unwrap()
-            .blocking = Some(attacker);
+            .blocking = vec![attacker];
     }
 
     let view = personalized_view(&state, &db, PlayerId(0));

@@ -4,9 +4,15 @@ use serde::Deserialize;
 
 use crate::mana::Color;
 
-/// A restriction on how a creature may take part in combat — the vocabulary beyond
-/// the keyword abilities (CR 506.3, "restrictions on which creatures can attack or
-/// block", and CR 509.1b, "evasion abilities").
+/// A rule about how a creature may take part in combat — the vocabulary beyond the
+/// keyword abilities (CR 506.3, "restrictions on which creatures can attack or block",
+/// and CR 509.1b, "evasion abilities").
+///
+/// Almost every member narrows what is legal, which is what the name says. One
+/// ([`Self::CanBlockAdditional`]) widens it instead, and it belongs here rather than in
+/// a second enum because it is the same *kind* of thing everywhere it matters: printed
+/// in the same list, granted by the same layer-6 machinery, and consulted by the same
+/// declare-blockers gate that judges the restrictions it sits beside.
 ///
 /// Separate from [`Keyword`](super::Keyword) because these are not keyword abilities:
 /// no card prints the word "can't be blocked" as a keyword, several of them carry a
@@ -94,6 +100,26 @@ pub enum CombatRestriction {
     /// that becomes correct on its own the day that layer lands, with no call site to
     /// remember.
     CantBeBlockedExceptBy(String),
+
+    /// This creature **may block the named number of additional creatures** each combat
+    /// (CR 509.1a) — the one member of this vocabulary that *lifts* a limit instead of
+    /// imposing one. A blocker blocks one attacker unless an effect says otherwise, and
+    /// this is that effect: a value of 1 is "can block an additional creature", 2 is "up
+    /// to two additional creatures", and so on.
+    ///
+    /// It lives here rather than beside [`Keyword`](super::Keyword) for the same reasons
+    /// the rest of this enum does: no card prints it as a keyword, it carries a
+    /// parameter, and it is granted and read through the computed
+    /// [`Characteristics`](crate::Characteristics) at CR 613 layer 6 exactly as an
+    /// imposed restriction is. What it changes is a fact about the whole declaration —
+    /// how many attackers *one blocker* is assigned to — so it is enforced over the
+    /// assembled selection in the declare-blockers legality gate, beside menace and the
+    /// blocker-count ceiling, and never in the pairwise check.
+    ///
+    /// It is a **permission, not a requirement**: nothing about it forces a creature to
+    /// block at all, or to use the extra assignment when it does. Block requirements
+    /// ("blocks each combat if able") remain unmodeled.
+    CanBlockAdditional(u32),
 }
 
 impl CombatRestriction {
@@ -110,7 +136,8 @@ impl CombatRestriction {
             | CombatRestriction::CantBeBlocked
             | CombatRestriction::CantBeBlockedByMoreThanOne
             | CombatRestriction::CantBeBlockedByPowerOrLess(_)
-            | CombatRestriction::CantBeBlockedExceptBy(_) => None,
+            | CombatRestriction::CantBeBlockedExceptBy(_)
+            | CombatRestriction::CanBlockAdditional(_) => None,
         }
     }
 
@@ -127,7 +154,8 @@ impl CombatRestriction {
             | CombatRestriction::CantBeBlocked
             | CombatRestriction::CantBeBlockedBy(_)
             | CombatRestriction::CantBeBlockedByMoreThanOne
-            | CombatRestriction::CantBeBlockedExceptBy(_) => None,
+            | CombatRestriction::CantBeBlockedExceptBy(_)
+            | CombatRestriction::CanBlockAdditional(_) => None,
         }
     }
 
@@ -141,12 +169,36 @@ impl CombatRestriction {
     pub fn required_blocker_subtype(&self) -> Option<&str> {
         match self {
             CombatRestriction::CantBeBlockedExceptBy(subtype) => Some(subtype),
+            CombatRestriction::CanBlockAdditional(_) => None,
             CombatRestriction::CantAttack
             | CombatRestriction::CantBlock
             | CombatRestriction::CantBeBlocked
             | CombatRestriction::CantBeBlockedBy(_)
             | CombatRestriction::CantBeBlockedByMoreThanOne
             | CombatRestriction::CantBeBlockedByPowerOrLess(_) => None,
+        }
+    }
+
+    /// How many creatures **beyond the first** this permission lets a blocker block
+    /// (CR 509.1a), if it is that permission.
+    ///
+    /// The fourth named accessor, for the same reason as the other three: the
+    /// declare-blockers gate folds every such permission a creature currently has into
+    /// one allowance, and asks this one question of every restriction to do it.
+    ///
+    /// Takes `&self` rather than `self`: a restriction naming a subtype carries a
+    /// `String`, so this vocabulary is `Clone` and no longer `Copy`.
+    #[must_use]
+    pub fn additional_blocks(&self) -> Option<u32> {
+        match self {
+            CombatRestriction::CanBlockAdditional(count) => Some(*count),
+            CombatRestriction::CantAttack
+            | CombatRestriction::CantBlock
+            | CombatRestriction::CantBeBlocked
+            | CombatRestriction::CantBeBlockedBy(_)
+            | CombatRestriction::CantBeBlockedByMoreThanOne
+            | CombatRestriction::CantBeBlockedByPowerOrLess(_)
+            | CombatRestriction::CantBeBlockedExceptBy(_) => None,
         }
     }
 }
@@ -213,8 +265,52 @@ mod tests {
             CombatRestriction::CantBeBlockedBy(Color::Black),
             CombatRestriction::CantBeBlockedByMoreThanOne,
             CombatRestriction::CantBeBlockedByPowerOrLess(2),
+            CombatRestriction::CanBlockAdditional(1),
         ] {
             assert_eq!(other.required_blocker_subtype(), None);
         }
+    }
+
+    #[test]
+    fn issue_739_the_block_permission_parses_with_its_count_and_names_only_itself() {
+        // The one permission in the vocabulary, authored in the same list as the
+        // restrictions and read back with the count it names — and nothing else in the
+        // enum answers the question it answers.
+        let json = r#"[{"schema_version":1,"functional_id":"extra_blocker",
+            "name":"Extra Blocker","types":["creature"],"mana_cost":"","power":1,"toughness":1,
+            "restrictions":[{"can_block_additional":2},"cant_attack"]}]"#;
+        let db = crate::card::CardDatabase::from_json(json).unwrap();
+        let card = crate::card::tests::card_named(&db, "extra_blocker");
+        assert_eq!(
+            card.restrictions,
+            vec![
+                CombatRestriction::CanBlockAdditional(2),
+                CombatRestriction::CantAttack,
+            ]
+        );
+
+        assert_eq!(
+            CombatRestriction::CanBlockAdditional(2).additional_blocks(),
+            Some(2)
+        );
+        for other in [
+            CombatRestriction::CantAttack,
+            CombatRestriction::CantBlock,
+            CombatRestriction::CantBeBlocked,
+            CombatRestriction::CantBeBlockedBy(Color::Black),
+            CombatRestriction::CantBeBlockedByMoreThanOne,
+            CombatRestriction::CantBeBlockedByPowerOrLess(2),
+        ] {
+            assert_eq!(other.additional_blocks(), None);
+        }
+        // And the permission answers neither of the questions the evasion restrictions do.
+        assert_eq!(
+            CombatRestriction::CanBlockAdditional(1).forbidden_blocker_color(),
+            None
+        );
+        assert_eq!(
+            CombatRestriction::CanBlockAdditional(1).forbidden_blocker_power(),
+            None
+        );
     }
 }

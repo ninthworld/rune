@@ -355,7 +355,7 @@ pub(crate) mod tests {
             tapped: false,
             entered_turn: 0,
             attacking: None,
-            blocking: None,
+            blocking: Vec::new(),
             skips_untap: false,
             damage: 0,
             counters: Default::default(),

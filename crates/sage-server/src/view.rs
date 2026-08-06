@@ -165,7 +165,12 @@ pub(crate) fn personalized_view(
                 .and_then(|target| target.defending_player(state))
                 .map(player_id),
             attacking_planeswalker: attacking_planeswalker_of(perm),
-            blocking: perm.blocking.map(permanent_entity_id),
+            blocking: perm
+                .blocking
+                .iter()
+                .copied()
+                .map(permanent_entity_id)
+                .collect(),
             // Marked combat damage (CR 120.3 / 510), for lethal-damage display.
             damage: perm.damage,
             // Attachment (CR 303.4 / 301.5): the host this permanent is attached to,
@@ -388,7 +393,12 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
                 .and_then(|target| target.defending_player(state))
                 .map(player_id),
             attacking_planeswalker: attacking_planeswalker_of(perm),
-            blocking: perm.blocking.map(permanent_entity_id),
+            blocking: perm
+                .blocking
+                .iter()
+                .copied()
+                .map(permanent_entity_id)
+                .collect(),
             damage: perm.damage,
             attached_to: perm.attached_to.map(permanent_entity_id),
             // Commander marker (CR 903.3, issue #553): whether this object *is* its
@@ -742,7 +752,7 @@ mod tests {
             tapped: false,
             entered_turn: 0,
             attacking: None,
-            blocking: None,
+            blocking: Vec::new(),
             skips_untap: false,
             damage: 0,
             counters: std::collections::BTreeMap::new(),

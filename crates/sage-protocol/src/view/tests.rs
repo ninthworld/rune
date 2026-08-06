@@ -182,7 +182,7 @@ fn issue_345_multiplayer_combat_and_elimination_fields_round_trip_and_elide() {
         attacking: true,
         attacking_player: Some("p2".into()),
         attacking_planeswalker: None,
-        blocking: None,
+        blocking: Vec::new(),
         damage: 0,
         attached_to: None,
         is_commander: false,
@@ -315,7 +315,7 @@ fn game_view_round_trips_through_json() {
             attacking: false,
             attacking_player: None,
             attacking_planeswalker: None,
-            blocking: None,
+            blocking: Vec::new(),
             damage: 0,
             attached_to: None,
             is_commander: false,
@@ -554,7 +554,7 @@ fn issue_627_board_fixture_round_trips_with_every_relationship_a_view_projects()
     let blockers: Vec<&str> = view
         .battlefield
         .iter()
-        .filter(|p| p.blocking.as_deref() == Some("perm_ogre"))
+        .filter(|p| p.blocking.iter().any(|id| id == "perm_ogre"))
         .map(|p| p.id.as_str())
         .collect();
     assert_eq!(blockers, vec!["perm_dreadmaw", "perm_zombie"]);

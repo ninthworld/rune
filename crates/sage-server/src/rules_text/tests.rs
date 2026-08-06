@@ -590,6 +590,13 @@ fn issue_606_evasion_and_restriction_cards_generate_their_rules_text() {
         "Destroy target land.\nCreatures without flying can't block this turn."
     );
 
+    // The one *permission* in the vocabulary (CR 509.1a, issue #739), beside a keyword
+    // exactly as an imposed restriction sits: a "can", not a "can't".
+    assert_eq!(
+        text_of(&db, "ghastbark_twins"),
+        "Trample\nGhastbark Twins can block an additional creature each combat."
+    );
+
     // The opponents-wide mass scope, on the card that introduced it.
     assert_eq!(
         text_of(&db, "plague_mare"),

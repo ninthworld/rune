@@ -255,7 +255,13 @@ export const Permanent = z.object({
    * out what is being attacked from which collection an id turns up in.
    */
   attacking_planeswalker: EntityId.optional(),
-  blocking: EntityId.optional(),
+  /**
+   * The attackers this permanent is blocking (CR 509), each as an entity id. A list because
+   * a blocker blocks one attacker *unless* an effect lets it block additional creatures
+   * (CR 509.1a), and ordered because the order is its combat-damage assignment order
+   * (CR 509.3). Absent when it is not blocking.
+   */
+  blocking: z.array(EntityId).optional(),
   damage: z.number().optional(),
   attached_to: EntityId.optional(),
   is_commander: z.boolean().optional(),

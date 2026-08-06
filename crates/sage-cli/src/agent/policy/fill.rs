@@ -22,8 +22,11 @@ use super::{card_in_hand, mana_value_of, permanent_in_play};
 pub fn fill_answers(view: &GameView, action: &ValidAction) -> Option<Vec<TargetChoice>> {
     let mut out: Vec<TargetChoice> = Vec::with_capacity(action.requirements.len());
 
-    // Combat blocking assigns each blocker to at most one attacker, so the choice for
-    // a `block_*` slot depends on which blockers earlier slots already used.
+    // The agent assigns each blocker to at most one attacker, so the choice for a
+    // `block_*` slot depends on which blockers earlier slots already used. That is this
+    // agent's restraint rather than the rule — a creature with the CR 509.1a permission
+    // may be assigned to several attackers — and it keeps every declaration it assembles
+    // legal without asking how many blocks any one creature may make.
     let mut used_blockers: Vec<String> = Vec::new();
 
     for req in &action.requirements {
@@ -340,7 +343,7 @@ mod tests {
             attacking: false,
             attacking_player: None,
             attacking_planeswalker: None,
-            blocking: None,
+            blocking: Vec::new(),
             damage: 0,
             attached_to: None,
             is_commander: false,

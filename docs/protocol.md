@@ -433,7 +433,11 @@ A `Permanent` contains:
   who answers for it, and a client draws its arrow at whichever it wants without deriving
   the relationship. A two-player client with no planeswalkers on the board may ignore
   both;
-- optional `blocking`, naming the attacker’s entity id;
+- optional `blocking`, the attackers this permanent is blocking as a list of entity ids
+  (a blocker blocks one attacker unless an effect lets it block additional creatures,
+  CR 509.1a). Omitted when it is not blocking, and **ordered**: the order is the blocker’s
+  combat-damage assignment order (CR 509.3), which the declaration itself named and which
+  a client renders rather than derives;
 - optional marked `damage`;
 - optional `attached_to`, naming the host permanent’s entity id when this permanent
   (e.g. an Aura, CR 303.4) is attached to another;
@@ -895,7 +899,18 @@ constrains *how many* blockers may be assigned — menace's two-or-more (CR 702.
 "no more than one" ceiling (CR 509.1b) — and the engine can only reject it once the
 declaration is assembled, so the slot's `prompt` states it in words rather than letting a
 submit silently do nothing. Either way the server asks the engine and the client still
-computes no legality: it renders the candidates and the prompt it was given. Empty selections are legal for these optional
+computes no legality: it renders the candidates and the prompt it was given.
+
+The same creature may legitimately appear in **more than one** blocker slot's answer, and
+be sent in both: a blocker blocks one attacker unless an effect lets it block additional
+creatures (CR 509.1a, issue #739). Which creatures those are is a fact about the blocker
+rather than about any slot, and it is printed on the card — its `rules_text` says so — so
+no slot advertises it and a client must not try to work out how many assignments a
+creature may take. It sends the declaration the player assembled; the engine judges it, and
+rejects the whole declaration if a creature was assigned to more attackers than it may
+block. The order the assignments are sent in is the order the blocker will assign its
+combat damage (CR 509.3), and it is what comes back as that permanent’s `blocking` list.
+Empty selections are legal for these optional
 declarations. The server validates cardinality and action-specific rules.
 
 ### `ChooseAction`

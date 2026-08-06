@@ -93,7 +93,7 @@ pub(super) fn timeout_default_action(state: &GameState, db: &CardDatabase) -> Op
                 blockers: state
                     .battlefield
                     .iter()
-                    .filter(|p| p.blocking == Some(attacker))
+                    .filter(|p| p.blocking.contains(&attacker))
                     .map(|p| p.id)
                     .collect(),
             })

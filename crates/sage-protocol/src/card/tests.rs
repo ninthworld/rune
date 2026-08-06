@@ -55,7 +55,7 @@ fn permanent_combat_state_round_trips_and_elides_when_absent() {
         attacking: false,
         attacking_player: None,
         attacking_planeswalker: None,
-        blocking: None,
+        blocking: Vec::new(),
         damage: 0,
         attached_to: None,
         is_commander: false,
@@ -79,7 +79,7 @@ fn permanent_combat_state_round_trips_and_elides_when_absent() {
         ..base.clone()
     };
     let blocker = Permanent {
-        blocking: Some("perm_1".into()),
+        blocking: vec!["perm_1".into()],
         ..base.clone()
     };
     let attacker_json = serde_json::to_value(&attacker).unwrap();
@@ -94,7 +94,7 @@ fn permanent_combat_state_round_trips_and_elides_when_absent() {
     let blocker_json = serde_json::to_value(&blocker).unwrap();
     assert_eq!(
         blocker_json.get("blocking"),
-        Some(&serde_json::json!("perm_1"))
+        Some(&serde_json::json!(["perm_1"]))
     );
     assert_eq!(
         serde_json::from_value::<Permanent>(blocker_json).unwrap(),
@@ -144,7 +144,7 @@ fn permanent_attachment_round_trips_and_elides_when_absent() {
         attacking: false,
         attacking_player: None,
         attacking_planeswalker: None,
-        blocking: None,
+        blocking: Vec::new(),
         damage: 0,
         attached_to: None,
         is_commander: false,
@@ -311,7 +311,7 @@ fn issue_650_the_physical_card_round_trips_and_elides_on_both_projections() {
         attacking: false,
         attacking_player: None,
         attacking_planeswalker: None,
-        blocking: None,
+        blocking: Vec::new(),
         damage: 0,
         attached_to: None,
         is_commander: false,
@@ -430,7 +430,7 @@ fn issue_650_two_copies_of_one_card_are_told_apart_by_the_physical_card_alone() 
         attacking: false,
         attacking_player: None,
         attacking_planeswalker: None,
-        blocking: None,
+        blocking: Vec::new(),
         damage: 0,
         attached_to: None,
         is_commander: false,

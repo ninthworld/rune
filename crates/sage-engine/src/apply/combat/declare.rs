@@ -90,7 +90,7 @@ pub(crate) fn apply_declare_blockers(state: &mut GameState, blocks: &[Block]) {
     let declarer = pending_blocker_declarer(state).unwrap_or(state.active_player);
     for block in blocks {
         if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == block.blocker) {
-            perm.blocking = Some(block.attacker);
+            perm.blocking.push(block.attacker);
         }
     }
     // Record the assignments with both creatures' card identity for stable naming.
