@@ -561,6 +561,7 @@ pub(crate) mod tests {
                     permanent: source.permanent,
                     index: source.index,
                     targets: Vec::new(),
+                    payment: Vec::new(),
                 }),
                 "{source:?} is offered as a payment source but not as an activation"
             );

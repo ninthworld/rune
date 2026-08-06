@@ -237,6 +237,7 @@ fn gravewaker_reanimates_tapped() {
             permanent: waker,
             index: 0,
             targets: vec![Target::Card(corpse.id)],
+            payment: Vec::new(),
         },
         &db,
     );

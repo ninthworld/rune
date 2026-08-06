@@ -1,4 +1,5 @@
-//! What an activated ability charges to activate (CR 118): tapping, mana, and loyalty.
+//! What an activated ability charges to activate (CR 118): tapping, mana, loyalty, and
+//! the two costs whose payment the activating player **chooses**.
 
 use super::*;
 
@@ -88,4 +89,103 @@ pub enum Cost {
         /// How many of them are removed. At least one on every printed card.
         count: u32,
     },
+    /// **Sacrifice a permanent the activating player picks** (CR 601.2b / 701.17) — the
+    /// `Sacrifice another creature:` of a creature that eats its friends and the
+    /// `Sacrifice a Goblin:` of one that eats its kin, authored as
+    /// `{"kind":"sacrifice","card_type":"creature","another":true}`.
+    ///
+    /// The sibling of [`Self::SacrificeThis`] and a **separate variant** for the one
+    /// reason that matters: this one requires a *choice*, and a choice has to ride on the
+    /// action. A cost is paid as the ability is activated (CR 602.2b), so there is no
+    /// resolution to ask during and nothing to take back once the ability is on the
+    /// stack — the chosen permanent arrives in
+    /// [`Action::ActivateAbility::payment`](crate::Action::ActivateAbility) or the
+    /// activation does not happen.
+    ///
+    /// **Whose permanent stays a rule rather than a field**: CR 701.17b lets a player
+    /// sacrifice only what they control, so there is nothing to author and nothing to get
+    /// wrong. Exactly **one** permanent per such cost, for the reason the cast side takes
+    /// one: no card in this set sacrifices two to an activation, and a count every reader
+    /// had to carry for no card is a count that will be wrong the first time one prints.
+    ///
+    /// Payable only while a matching permanent exists, so an ability with nothing to feed
+    /// it is simply not offered (CR 602.2b) rather than offered and then found free.
+    /// Paying it is a **real death** down the one leaves-battlefield seam, exactly as
+    /// [`Self::SacrificeThis`] is.
+    Sacrifice {
+        /// The card type a matching permanent must have — the `creature` of `Sacrifice
+        /// another creature`. Absent means any type, which is what `Sacrifice a Goblin`
+        /// means: a Goblin is a Goblin whatever else it is.
+        #[serde(default)]
+        card_type: Option<CardType>,
+        /// The printed subtype a matching permanent must have — the `Goblin` of
+        /// `Sacrifice a Goblin`. Absent means any subtype.
+        #[serde(default)]
+        subtype: Option<String>,
+        /// Whether the source is excluded — the **another** of `Sacrifice another
+        /// creature`. `false` lets an ability eat its own source, which is what
+        /// `Sacrifice a Goblin` on a Goblin means and is a legal (if final) activation.
+        #[serde(default)]
+        another: bool,
+    },
+    /// **Discard `count` cards** from the activating player's hand (CR 601.2b / 701.8) —
+    /// the `{T}, Discard a card:` of a rummaging creature, authored as
+    /// `{"kind":"discard","count":1}`.
+    ///
+    /// The hand counterpart of [`Self::Sacrifice`], carrying its choice the same way and
+    /// for the same reason. Payable only out of cards the activator actually holds, so an
+    /// empty hand withholds the offer; unlike the cast-side cost there is no card to
+    /// exclude, because the source of an activated ability is on the battlefield rather
+    /// than on its way to the stack.
+    Discard {
+        /// How many cards are discarded. At least one on every printed card.
+        count: u8,
+    },
+}
+
+impl Cost {
+    /// How many cards this component discards, or `0` for a component that discards none.
+    ///
+    /// A named accessor for the reason the cast side's is: the offer gate, the candidate
+    /// list, and the payment check each ask one question in one place rather than matching
+    /// the enum for themselves.
+    #[must_use]
+    pub fn discard_count(&self) -> u8 {
+        match self {
+            Cost::Discard { count } => *count,
+            Cost::Tap
+            | Cost::Mana { .. }
+            | Cost::Loyalty { .. }
+            | Cost::SacrificeThis
+            | Cost::RemoveCounters { .. }
+            | Cost::Sacrifice { .. } => 0,
+        }
+    }
+
+    /// Whether `face` is a permanent this component would accept as its sacrifice —
+    /// everything about a candidate that is a question about the *card*, with whose it is
+    /// and whether it is the source left to the caller that knows the board.
+    ///
+    /// `false` for every component that sacrifices nothing, so a caller may ask it of a
+    /// whole cost list without first sorting out which entry is which.
+    #[must_use]
+    pub fn accepts_sacrifice(&self, face: &crate::token::PrintedFace<'_>) -> bool {
+        let Cost::Sacrifice {
+            card_type, subtype, ..
+        } = self
+        else {
+            return false;
+        };
+        card_type.is_none_or(|wanted| face.has_type(wanted))
+            && subtype
+                .as_deref()
+                .is_none_or(|wanted| face.has_subtype(wanted))
+    }
+
+    /// Whether this component excludes the ability's own source — the `another` of
+    /// `Sacrifice another creature`. `false` for every component that sacrifices nothing.
+    #[must_use]
+    pub fn excludes_source(&self) -> bool {
+        matches!(self, Cost::Sacrifice { another: true, .. })
+    }
 }

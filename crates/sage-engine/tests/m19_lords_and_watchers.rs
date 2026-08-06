@@ -112,6 +112,7 @@ fn activate(
             permanent,
             index,
             targets,
+            payment: Vec::new(),
         },
         db,
     );
@@ -518,6 +519,7 @@ fn manalith_taps_for_a_colour_of_its_controllers_choosing() {
             permanent: manalith,
             index: 0,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );
@@ -567,6 +569,7 @@ fn dryad_greenseeker_takes_the_top_card_only_when_it_is_a_land() {
             permanent: greenseeker,
             index: 0,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );
@@ -593,6 +596,7 @@ fn dryad_greenseeker_takes_the_top_card_only_when_it_is_a_land() {
             permanent: greenseeker,
             index: 0,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );

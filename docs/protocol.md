@@ -759,6 +759,19 @@ the `cost_discard` and `cost_sacrifice` slots, and both are answered with entity
 the server-enumerated `candidates` like any other selection. A client that renders "pick
 from this list" already renders both; one that ignores the slots leaves the cost unpaid,
 and the server pays it (ADR 0010).
+
+**An `activate_ability` carries the same two slots** when its cost asks the player to pick
+what pays it — `{B}, Sacrifice another creature:` poses `cost_sacrifice` over the
+battlefield, `{T}, Discard a card:` poses `cost_discard` over the hand — with the same slot
+ids, the same exactness (`count` and no `min`), and the same server fallback. The slot's
+`prompt` is the cost as the card writes it, so a player is asked the question printed on the
+permanent. Nothing about either slot is action-kind-specific on the wire, and a client that
+already answers them on a cast answers them here without learning anything new.
+
+An activation poses **no `pay_mana` slots**: an activated ability's mana comes from its
+controller's pool (CR 602.2b), floated by activating mana abilities as actions in their own
+right, which is why such an ability is only offered once that mana is available. Pips are a
+cast's shape and stay one.
 Its `count` is the **maximum** number of ids a legal answer may name; `min` is the
 minimum, and is **omitted when it equals `count`** — which is every exact choice, and the
 only shape this prompt had before issue #604. It is present exactly when a player may

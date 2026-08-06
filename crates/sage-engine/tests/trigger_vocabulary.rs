@@ -165,6 +165,7 @@ fn activate(
             permanent,
             index,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         db,
     );

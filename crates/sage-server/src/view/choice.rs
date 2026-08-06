@@ -507,6 +507,7 @@ mod tests {
                 permanent: caller,
                 index: 1,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -710,6 +711,7 @@ mod tests {
                 permanent: land,
                 index: 0,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );

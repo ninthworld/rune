@@ -32,8 +32,8 @@
     "blocker": "no cost-modification layer"
   },
   {
-    "name": "Activation costs paid by sacrificing another permanent, or by discarding",
-    "blocker": "a cast carries its chosen sacrifices and discards on the action, but an activation names only its source, its ability, and its targets"
+    "name": "Costs paid by exiling a card, by sacrificing more than one permanent, or by choosing to pay at all",
+    "blocker": "a cast and an activation each carry the sacrifices and discards their cost names on the action, one permanent per sacrifice and always the caster's or activator's own; nothing exiles a card as a cost, no cost takes two permanents or any number of them, and every non-mana cost is mandatory rather than an option the player may decline"
   },
   {
     "name": "Damage prevention",

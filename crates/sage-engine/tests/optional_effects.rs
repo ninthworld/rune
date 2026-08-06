@@ -372,6 +372,7 @@ fn issue_610_a_payer_may_float_mana_while_the_question_is_owed() {
         permanent: forest,
         index: 0,
         targets: Vec::new(),
+        payment: Vec::new(),
     };
     assert_eq!(
         valid_actions(&owed, &db),

@@ -946,6 +946,51 @@ describe('a cost that is not only mana', () => {
   })
 })
 
+describe('an activation whose cost asks for a sacrifice', () => {
+  /** Ravenous Harpy: `{B}, Sacrifice another creature:` — the mana is already floating. */
+  const HARPY: ValidAction = {
+    id: 'harpy',
+    type: 'activate_ability',
+    label: '{B}, Sacrifice another creature: …',
+    subject: ['perm_harpy'],
+    token: 't',
+    prompts: [
+      {
+        kind: 'select_from_zone',
+        slot: 'cost_sacrifice',
+        prompt: 'Sacrifice another creature',
+        zone: 'battlefield',
+        owner: 'p0',
+        count: 1,
+        candidates: ['perm_courser'],
+      },
+    ],
+  }
+
+  /**
+   * The whole client-side claim of the activation half: **nothing here is new**. The slot is
+   * the one a cast's additional cost already poses, over a zone that is a free-form string,
+   * on an action kind this file has no opinion about — so the same code that will not cast
+   * until the discard is chosen will not activate until the sacrifice is.
+   */
+  it('will not activate until the sacrifice is chosen', () => {
+    const interaction = arm(IDLE, HARPY)
+    const slots = slotsOf(HARPY, interaction.draft)
+    expect(slots.map((slot) => [slot.slot, slot.kind])).toEqual([['cost_sacrifice', 'zone']])
+    expect(focus([HARPY], interaction).ready).toBe(false)
+
+    expect(gestureFor([HARPY], interaction, 'perm_courser')).toEqual({
+      kind: 'fill',
+      slot: 'cost_sacrifice',
+    })
+    const answered = fill(interaction, slots[0]!, 'perm_courser', slots)
+    expect(focus([HARPY], answered).ready).toBe(true)
+    expect(buildChooseAction(HARPY, answered.draft).targets).toEqual([
+      { slot: 'cost_sacrifice', chosen: ['perm_courser'] },
+    ])
+  })
+})
+
 describe('a spell that asks for a target and a cost', () => {
   /** Plummet: one target slot, two pips, four Forests on the board. */
   const PLUMMET: ValidAction = {

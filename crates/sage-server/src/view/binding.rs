@@ -217,12 +217,16 @@ pub(crate) fn bind_ability_targets(
         }
     }
     match action {
+        // The targets, plus whatever the activation's cost asked the player to pick — and,
+        // for the slots they left unanswered, the payment the server assembles for them
+        // (ADR 0010), exactly as a cast's is.
         Action::ActivateAbility {
             permanent, index, ..
         } => Some(Action::ActivateAbility {
             permanent: *permanent,
             index: *index,
             targets: chosen,
+            payment: bind_activation_payment(state, db, *permanent, *index, targets),
         }),
         // The graveyard activation (CR 113.6) binds through the same per-slot path: the
         // engine offers one slot per targeting effect whether the source is a permanent

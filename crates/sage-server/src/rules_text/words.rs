@@ -18,7 +18,12 @@ pub(crate) fn effects_description(source: &str, effects: &[Effect]) -> String {
 }
 
 /// The cost symbol paid to activate an ability.
-pub(super) fn cost_symbol(cost: &Cost) -> String {
+///
+/// Crate-visible because the *prompt* for a cost a player picks the payment for needs the
+/// same words the cost line is written in: "Sacrifice another creature" asked as a question
+/// and printed on the card is one phrase, and two renderings of one cost would be two things
+/// to keep in step.
+pub(crate) fn cost_symbol(cost: &Cost) -> String {
     match cost {
         Cost::Tap => "{T}".to_string(),
         // A mana cost is already written in the notation a player reads it in, so it
@@ -38,6 +43,42 @@ pub(super) fn cost_symbol(cost: &Cost) -> String {
         Cost::RemoveCounters { counter, count } => {
             format!("Remove {} from this permanent", counters(*counter, *count))
         }
+        // The two costs the *player* picks the payment for read as the card writes them:
+        // "Sacrifice another creature", "Sacrifice a Goblin", "Discard a card". The same
+        // phrase labels the slot the choice is answered on, so what a player is asked and
+        // what the card says are one string.
+        Cost::Sacrifice {
+            card_type,
+            subtype,
+            another,
+        } => {
+            let noun = sacrifice_noun(*card_type, subtype.as_deref());
+            let article = if *another {
+                "another".to_string()
+            } else {
+                indefinite_article(&noun).to_string()
+            };
+            format!("Sacrifice {article} {noun}")
+        }
+        Cost::Discard { count: 1 } => "Discard a card".to_string(),
+        Cost::Discard { count } => {
+            format!("Discard {} cards", number(u32::from(*count)))
+        }
+    }
+}
+
+/// The class of permanent a sacrifice cost takes, as the noun a card writes: the
+/// `Goblin` of `Sacrifice a Goblin`, the `creature` of `Sacrifice another creature`, and
+/// `permanent` for a cost that names neither.
+///
+/// The same subtype-wins-over-type ordering [`count_noun`](super::effects::count_noun)
+/// uses, because a card writes the class the same way wherever it appears.
+fn sacrifice_noun(card_type: Option<CardType>, subtype: Option<&str>) -> String {
+    match (subtype, card_type) {
+        (Some(subtype), Some(card_type)) => format!("{subtype} {}", card_type_word(card_type)),
+        (Some(subtype), None) => subtype.to_string(),
+        (None, Some(card_type)) => card_type_word(card_type).to_string(),
+        (None, None) => "permanent".to_string(),
     }
 }
 

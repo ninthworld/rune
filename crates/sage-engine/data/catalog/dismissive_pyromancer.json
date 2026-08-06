@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "functional_id": "dismissive_pyromancer",
+  "name": "Dismissive Pyromancer",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Wizard"
+  ],
+  "mana_cost": "{2}{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 2,
+  "toughness": 1,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "tap"
+        },
+        {
+          "kind": "discard",
+          "count": 1
+        }
+      ],
+      "effects": [
+        {
+          "kind": "draw_card",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{2}{R}"
+        },
+        {
+          "kind": "sacrifice_this"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "deal_damage",
+          "target": "any_creature",
+          "amount": 4
+        }
+      ]
+    }
+  ]
+}

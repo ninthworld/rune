@@ -461,6 +461,7 @@ fn the_thief_may_activate_the_stolen_creatures_abilities() {
         permanent: druid,
         index: 0,
         targets: Vec::new(),
+        payment: Vec::new(),
     };
     assert!(
         !valid_actions(&state, &db).contains(&ability),

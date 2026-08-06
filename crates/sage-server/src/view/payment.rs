@@ -20,16 +20,22 @@
 
 use super::*;
 
+mod activation;
+
+pub(crate) use activation::{activation_payment_prompts, bind_activation_payment};
+
 /// The slot id for the `n`th pip of a cast's remaining cost. Recomputed (never parsed)
 /// on resolution, like every other slot id.
 fn pip_slot(index: usize) -> String {
     format!("pay_{index}")
 }
 
-/// The slot a cast's additional-cost discard is answered on (CR 601.2b).
+/// The slot a discard cost is answered on (CR 601.2b) — a cast's additional cost and an
+/// activation's alike, because it is the same question about the same zone.
 const DISCARD_SLOT: &str = "cost_discard";
 
-/// The slot a cast's additional-cost sacrifice is answered on (CR 601.2b / 701.17).
+/// The slot a sacrifice cost is answered on (CR 601.2b / 701.17), for a cast and an
+/// activation alike.
 const SACRIFICE_SLOT: &str = "cost_sacrifice";
 
 /// The opaque id for one way to pay a pip: which permanent, and which of its abilities.

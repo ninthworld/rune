@@ -32,6 +32,7 @@ fn forest_mana_ability_adds_green_without_using_the_stack() {
             permanent: PermanentId(id),
             index: 0,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );
@@ -67,6 +68,7 @@ fn mana_ability_does_not_pass_priority() {
             permanent: PermanentId(id),
             index: 0,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );

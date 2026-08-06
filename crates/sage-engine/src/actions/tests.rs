@@ -138,6 +138,7 @@ fn targeted_ability_is_advertised_once_with_an_o_n_candidate_set() {
             permanent: tapper,
             index: 0,
             targets: Vec::new(),
+            payment: Vec::new(),
         }
     );
 
@@ -167,6 +168,7 @@ fn a_legal_target_is_accepted_and_carried_onto_the_stack() {
             permanent: tapper,
             index: 0,
             targets: vec![target],
+            payment: Vec::new(),
         },
         &db,
     );
@@ -216,6 +218,7 @@ fn an_illegal_target_makes_the_activation_a_no_op() {
             permanent: tapper,
             index: 0,
             targets: vec![Target::Permanent(tapper)],
+            payment: Vec::new(),
         },
         &db,
     );
@@ -239,6 +242,7 @@ fn a_stale_target_makes_the_activation_a_no_op() {
             permanent: tapper,
             index: 0,
             targets: vec![stale],
+            payment: Vec::new(),
         },
         &db,
     );
@@ -259,6 +263,7 @@ fn a_targeting_activation_with_no_target_is_a_no_op() {
             permanent: tapper,
             index: 0,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );
@@ -281,6 +286,7 @@ fn a_non_targeting_ability_needs_no_targets_and_still_resolves() {
             permanent: forest,
             index: 0,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
     )
     .is_empty());
@@ -291,6 +297,7 @@ fn a_non_targeting_ability_needs_no_targets_and_still_resolves() {
             permanent: forest,
             index: 0,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );

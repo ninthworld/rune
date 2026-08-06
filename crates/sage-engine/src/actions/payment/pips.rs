@@ -44,17 +44,22 @@ pub struct PaymentPip {
     pub candidates: Vec<ManaSource>,
 }
 
-/// The discard an additional cost demands, and the cards that could pay it (CR 601.2b).
+/// The discard a cost demands, and the cards that could pay it (CR 601.2b) — a cast's
+/// additional cost ([`discard_cost`]) and an activation's
+/// ([`activation_discard_cost`](super::activation_discard_cost)) alike, because it is the
+/// same question about the same zone.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DiscardCost {
     /// How many cards must be discarded. Never zero — a card with no such cost has no
     /// [`DiscardCost`] at all.
     pub count: u8,
-    /// The cards in the caster's hand that could pay it.
+    /// The cards in the paying player's hand that could pay it.
     ///
     /// **The card being cast is not among them.** It is on its way to the stack, so a hand
     /// of exactly this one card cannot discard to cast it — which is a rule (CR 601.2b,
-    /// 601.2h) and therefore answered here rather than by whoever draws the hand.
+    /// 601.2h) and therefore answered here rather than by whoever draws the hand. An
+    /// activation has nothing to exclude: its source is a permanent, not a card in the hand
+    /// paying for itself.
     pub candidates: Vec<CardInstanceId>,
 }
 

@@ -238,6 +238,7 @@ fn the_tower_taps_for_colourless_like_any_other_land() {
             permanent: tower,
             index: 1,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );

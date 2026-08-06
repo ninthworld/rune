@@ -441,6 +441,7 @@ mod tests {
                 permanent: forest,
                 index: 0,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             db,
         )

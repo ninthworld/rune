@@ -49,11 +49,15 @@ pub(crate) fn apply_payment(
             permanent: source.permanent,
             index: source.index,
             targets: Vec::new(),
+            payment: Vec::new(),
         };
         if !valid_actions(state, db).contains(&activation) {
             return false;
         }
-        crate::apply::apply_activate_ability(state, source.permanent, source.index, &[], db);
+        // A mana ability charges nothing a player picks — [`is_plain_mana_source`] has
+        // established it is a `{T}`-and-mana activation — so it is applied with an empty
+        // payment of its own.
+        crate::apply::apply_activate_ability(state, source.permanent, source.index, &[], &[], db);
     }
     true
 }

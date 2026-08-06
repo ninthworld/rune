@@ -29,6 +29,7 @@ fn issue_card_effects_etb_draw_end_to_end() {
                 permanent: forest,
                 index: 0,
                 targets: Vec::new(),
+                payment: Vec::new(),
             },
             &db,
         );
@@ -369,6 +370,7 @@ fn issue_256_mana_rock_taps_for_colorless_mana() {
             permanent: lodestone,
             index: 0,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );

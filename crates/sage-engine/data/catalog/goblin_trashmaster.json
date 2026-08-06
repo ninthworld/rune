@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "functional_id": "goblin_trashmaster",
+  "name": "Goblin Trashmaster",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Goblin"
+  ],
+  "mana_cost": "{2}{R}{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 3,
+  "toughness": 3,
+  "abilities": [
+    {
+      "type": "static",
+      "affects": {
+        "scope": "creatures_you_control",
+        "subtype": "Goblin",
+        "except_this": true
+      },
+      "modification": {
+        "kind": "power_toughness",
+        "power": 1,
+        "toughness": 1
+      }
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{1}{R}"
+        },
+        {
+          "kind": "sacrifice",
+          "subtype": "Goblin"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "destroy",
+          "target": "any_artifact"
+        }
+      ]
+    }
+  ]
+}

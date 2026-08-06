@@ -88,10 +88,22 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
     //     current state — a stale or forged action id can never slip a sick creature's
     //     tap ability through [`crate::apply_action`].
     if let Action::ActivateAbility {
-        permanent, index, ..
+        permanent,
+        index,
+        payment,
+        ..
     } = action
     {
         if !activation_clears_summoning_sickness(state, db, *permanent, *index) {
+            return false;
+        }
+        // 1d-bis. An activation that names its own chosen costs (CR 601.2b): the cards and
+        //     permanents it names must be exactly what the cost demands, each still where
+        //     it was and still the activator's. Check 1 above established only that *a*
+        //     payment exists — it is asked before the player has chosen anything — and
+        //     this establishes that the one they assembled is one, so the widened offer
+        //     never widens what is legal.
+        if !super::payment_covers_activation(state, db, *permanent, *index, payment) {
             return false;
         }
         // 1e. Hardening (CR 606.3, issue #608): a loyalty ability is sorcery-speed,
@@ -561,6 +573,7 @@ mod tests {
             permanent: id,
             index: 0,
             targets: Vec::new(),
+            payment: Vec::new(),
         };
         (state, db, action)
     }

@@ -619,6 +619,7 @@ fn issue_604_a_search_finds_by_name_puts_it_onto_the_battlefield_and_shuffles() 
             permanent: caller,
             index: 1,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );
@@ -678,6 +679,7 @@ fn issue_604_a_search_shuffles_deterministically_and_a_failed_one_shuffles_too()
                     permanent: caller,
                     index: 1,
                     targets: Vec::new(),
+                    payment: Vec::new(),
                 },
                 &db,
             ),
