@@ -995,3 +995,222 @@ fn a_spell_trait_conditional_on_x_needs_an_x_to_announce() {
     without_x["spell_traits"] = serde_json::json!([{"kind": "cant_be_countered"}]);
     assert!(validate_definition(Some("test_card"), &without_x).is_ok());
 }
+
+// ---------------------------------------------------------------------------
+// Issue #776: authorable nonsense the validator used to accept.
+//
+// Each of the three below is a definition that parses, validates, loads, and then
+// does nothing at all. They are grouped because they are one shape — a claim made in
+// a doc comment with nothing enforcing it — and because that shape is the failure
+// mode no behaviour test catches: nobody writes a test for a card they think works.
+// ---------------------------------------------------------------------------
+
+/// A granted `enters_tapped` is read by nobody: the four entry abilities and
+/// `enters_as_copy` are consulted off the *card*'s printed abilities as a permanent
+/// arrives, at a moment when there is no permanent to have been granted anything.
+#[test]
+fn issue_776_a_granted_entry_ability_is_refused_wherever_it_is_granted() {
+    // An Aura that hands its host "this enters tapped" — the host is already on the
+    // battlefield when the Aura arrives, so nothing would ever ask.
+    let mut aura = definition(r#", "subtypes": ["Aura"]"#);
+    aura["types"] = serde_json::json!(["enchantment"]);
+    aura["power"] = serde_json::Value::Null;
+    aura["toughness"] = serde_json::Value::Null;
+    let aura_object = aura.as_object_mut().unwrap();
+    aura_object.remove("power");
+    aura_object.remove("toughness");
+    aura_object.insert(
+        "attachment".to_string(),
+        serde_json::json!({
+            "kind": "aura",
+            "attach_to": "any_creature",
+            "abilities": [{"type": "enters_tapped"}],
+        }),
+    );
+    assert_eq!(
+        validate_definition(Some("test_card"), &aura).unwrap_err(),
+        Violation::GrantedAbilityIsNeverRead {
+            functional_id: "test_card".to_string(),
+            ability: "enters_tapped".to_string(),
+        }
+    );
+
+    // The same ability granted by a pump, until end of turn.
+    let mut pump = definition("");
+    pump["spell_effects"] = serde_json::json!([{
+        "kind": "pump",
+        "target": "any_creature",
+        "power": 2,
+        "toughness": 2,
+        "abilities": [{"type": "enters_choosing_color"}],
+    }]);
+    assert_eq!(
+        validate_definition(Some("test_card"), &pump).unwrap_err(),
+        Violation::GrantedAbilityIsNeverRead {
+            functional_id: "test_card".to_string(),
+            ability: "enters_choosing_color".to_string(),
+        }
+    );
+
+    // And printed on the card itself, which is the ordinary working thing, it is fine —
+    // the rule is about the grant, never about the ability.
+    let mut printed = definition("");
+    printed["abilities"] = serde_json::json!([{"type": "enters_tapped"}]);
+    assert!(validate_definition(Some("test_card"), &printed).is_ok());
+}
+
+/// A discard cost of zero cards is free. `AdditionalCost::Discard` has been checked
+/// since it was written; the activation and optional costs carried the same claim —
+/// "at least one on every printed card" — in a doc comment with nothing behind it.
+#[test]
+fn issue_776_a_zero_card_discard_cost_is_refused() {
+    let mut activated = definition("");
+    activated["abilities"] = serde_json::json!([{
+        "type": "activated",
+        "cost": [{"kind": "tap"}, {"kind": "discard", "count": 0}],
+        "effects": [{"kind": "draw_card", "count": 1}],
+    }]);
+    assert_eq!(
+        validate_definition(Some("test_card"), &activated).unwrap_err(),
+        Violation::DiscardCostIsFree {
+            functional_id: "test_card".to_string(),
+        }
+    );
+
+    // One card is a cost, and validates.
+    activated["abilities"][0]["cost"][1]["count"] = serde_json::json!(1);
+    assert!(validate_definition(Some("test_card"), &activated).is_ok());
+
+    // The cost of accepting a `you may …` is the same rule, and was the same hole.
+    let mut optional = definition("");
+    optional["spell_effects"] = serde_json::json!([{
+        "kind": "may",
+        "cost": {"kind": "discard", "count": 0},
+        "effects": [{"kind": "draw_card", "count": 1}],
+    }]);
+    assert_eq!(
+        validate_definition(Some("test_card"), &optional).unwrap_err(),
+        Violation::DiscardCostIsFree {
+            functional_id: "test_card".to_string(),
+        }
+    );
+}
+
+/// Four checks that read the top-level object now run **per face** (CR 712.2), so a
+/// back face is held to the rules its front is. Before #776 each of these validated:
+/// the check never looked inside `back_face`.
+#[test]
+fn issue_776_a_back_face_is_judged_by_the_rules_its_front_is() {
+    /// A card whose back face carries `extra`, as a JSON object.
+    fn with_back(extra: serde_json::Value) -> serde_json::Value {
+        let mut card = definition("");
+        let mut back = serde_json::json!({
+            "name": "Test Card Back",
+            "types": ["creature"],
+            "power": 3,
+            "toughness": 3,
+        });
+        for (key, value) in extra.as_object().unwrap() {
+            back[key] = value.clone();
+        }
+        card["back_face"] = back;
+        card
+    }
+
+    // An `{X}` in an activation cost: announced only as a spell is cast (CR 107.3), so
+    // an ability charging one would simply be activated for free.
+    assert_eq!(
+        validate_definition(
+            Some("test_card"),
+            &with_back(serde_json::json!({
+                "abilities": [{
+                    "type": "activated",
+                    "cost": [{"kind": "mana", "mana": "{X}{R}"}],
+                    "effects": [{"kind": "draw_card", "count": 1}],
+                }],
+            }))
+        )
+        .unwrap_err(),
+        Violation::XOutsideAManaCost {
+            functional_id: "test_card".to_string(),
+            cost: "{X}{R}".to_string(),
+        }
+    );
+
+    // An amount reading a sacrifice the face never performs.
+    assert_eq!(
+        validate_definition(
+            Some("test_card"),
+            &with_back(serde_json::json!({
+                "abilities": [{
+                    "type": "activated",
+                    "cost": [{"kind": "tap"}],
+                    "effects": [{
+                        "kind": "damage",
+                        "target": "any_creature",
+                        "amount": {"source": "sacrificed_creature_power"},
+                    }],
+                }],
+            }))
+        )
+        .unwrap_err(),
+        Violation::AmountIsNeverSacrificed {
+            functional_id: "test_card".to_string(),
+        }
+    );
+
+    // "Permanents with the chosen name" on a face that names no card.
+    assert_eq!(
+        validate_definition(
+            Some("test_card"),
+            &with_back(serde_json::json!({
+                "abilities": [{
+                    "type": "static",
+                    "affects": {"with_the_named_card": true},
+                    "modification": {"kind": "lose_all_abilities"},
+                }],
+            }))
+        )
+        .unwrap_err(),
+        Violation::ChosenNameIsNeverNamed {
+            functional_id: "test_card".to_string(),
+        }
+    );
+
+    // And a grant, so the new rule reaches a back face on the day it is written rather
+    // than the day someone notices.
+    assert_eq!(
+        validate_definition(
+            Some("test_card"),
+            &with_back(serde_json::json!({
+                "abilities": [{
+                    "type": "static",
+                    "affects": "source",
+                    "modification": {
+                        "kind": "grant_ability",
+                        "ability": {"type": "enters_naming_card", "class": "nonbasic_land"},
+                    },
+                }],
+            }))
+        )
+        .unwrap_err(),
+        Violation::GrantedAbilityIsNeverRead {
+            functional_id: "test_card".to_string(),
+            ability: "enters_naming_card".to_string(),
+        }
+    );
+
+    // A back face that breaks none of them still validates, so the move did not make
+    // an ordinary two-faced card unauthorable.
+    assert!(validate_definition(
+        Some("test_card"),
+        &with_back(serde_json::json!({
+            "abilities": [{
+                "type": "activated",
+                "cost": [{"kind": "tap"}],
+                "effects": [{"kind": "draw_card", "count": 1}],
+            }],
+        }))
+    )
+    .is_ok());
+}

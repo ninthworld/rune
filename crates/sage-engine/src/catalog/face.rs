@@ -184,6 +184,63 @@ fn validate_face_effects(
         });
     }
 
+    // The same pairing for the other half of CR 614.12: "permanents with the chosen name"
+    // is a selector whose referent is the face's own naming ability, and a face that
+    // selects on it without one has written a class nothing can ever join.
+    if selects_the_named_card(object) && !object_names_a_card(object) {
+        return Err(Violation::ChosenNameIsNeverNamed {
+            functional_id: named(),
+        });
+    }
+
+    // An amount that reads a sacrifice back needs the sacrifice that produces it — a cost
+    // for the power one ate, an effect for how many this resolution took — or the face
+    // reads as doing something and always does nothing.
+    if reads_an_unsacrificed_amount(object) {
+        return Err(Violation::AmountIsNeverSacrificed {
+            functional_id: named(),
+        });
+    }
+
+    // CR 107.3: `{X}` is announced as a spell is cast, so it belongs in a face's mana
+    // cost and nowhere else. An activation pays out of a pool with no announcement step
+    // to fix a value in, so an `{X}` in an ability's cost is a symbol nothing would ever
+    // charge for — it would simply be ignored and the ability activated for free.
+    if let Some(cost) = ability_cost_with_x(object) {
+        return Err(Violation::XOutsideAManaCost {
+            functional_id: named(),
+            cost,
+        });
+    }
+
+    // A spell trait that names a threshold for X is a sentence about a value the face
+    // never asks for unless its cost prints `{X}` — "if X is 5 or more" on a fixed cost
+    // is a clause that can never be true, and on a back face, which has no mana cost at
+    // all (CR 712.4a), it never can be.
+    if spell_trait_needs_x(object) && !mana_cost_has_x(object) {
+        return Err(Violation::SpellTraitNeedsX {
+            functional_id: named(),
+        });
+    }
+
+    // A granted ability of a kind only an entering object's printed abilities are read
+    // for is carried by the layer-6 fold and asked for by nobody (issue #776).
+    if let Some(ability) = grants_an_unread_ability(object) {
+        return Err(Violation::GrantedAbilityIsNeverRead {
+            functional_id: named(),
+            ability,
+        });
+    }
+
+    // A discard cost of zero cards is a cost in name only — the same rule
+    // `additional_cost` has carried since it was written, applied to the two costs whose
+    // doc comments claimed it and had nothing behind them.
+    if names_a_free_discard(object) {
+        return Err(Violation::DiscardCostIsFree {
+            functional_id: named(),
+        });
+    }
+
     Ok(())
 }
 

@@ -224,37 +224,12 @@ pub(crate) fn validate_definition(
         }
     }
 
-    // CR 107.3: `{X}` is announced as a spell is cast, so it belongs in a card's mana
-    // cost and nowhere else. An activation pays out of a pool with no announcement step
-    // to fix a value in, so an `{X}` in an ability's cost is a symbol nothing would ever
-    // charge for — it would simply be ignored and the ability activated for free.
-    if let Some(cost) = ability_cost_with_x(object) {
-        return Err(Violation::XOutsideAManaCost {
-            functional_id,
-            cost,
-        });
-    }
-
-    // A spell trait that names a threshold for X is a sentence about a value the card
-    // never asks for unless its cost prints `{X}` — "if X is 5 or more" on a fixed cost
-    // is a clause that can never be true.
-    if spell_trait_needs_x(object) && !mana_cost_has_x(object) {
-        return Err(Violation::SpellTraitNeedsX { functional_id });
-    }
-
-    // An amount that reads a sacrifice back needs the sacrifice that produces it — a cost
-    // for the power one ate, an effect for how many this resolution took — or the card
-    // reads as doing something and always does nothing.
-    if reads_an_unsacrificed_amount(object) {
-        return Err(Violation::AmountIsNeverSacrificed { functional_id });
-    }
-
-    // The same pairing for the other half of CR 614.12: "permanents with the chosen name"
-    // is a selector whose referent is the card's own naming ability, and a card that
-    // selects on it without one has written a class nothing can ever join.
-    if selects_the_named_card(object) && !object_names_a_card(object) {
-        return Err(Violation::ChosenNameIsNeverNamed { functional_id });
-    }
+    // Five rules moved from here into `validate_face` by issue #776: the `{X}` in an
+    // activation cost, the spell trait that needs one, the amount that reads a sacrifice
+    // nothing performs, and the selector that names a card nothing named. Each is about
+    // what **one face** prints, and each read only the top-level object — so a back
+    // face's abilities, spell traits, and effects went unjudged. They are asked once per
+    // face now, which is where CR 712.2 puts them.
 
     // An `attachment` block is the Aura ability (CR 303.4) or the Equipment's equip
     // ability (CR 301.5), so the card must actually bear the subtype it claims — and, for

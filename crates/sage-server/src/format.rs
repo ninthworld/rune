@@ -141,18 +141,23 @@ impl Format {
         }
     }
 
-    /// The permissive default two-player format (`standard_2p`): any decklist of
-    /// resolvable cards is legal, preserving the pre-format-registry behavior (ADR
-    /// 0012, where `submit_deck` only checked that every identity resolved). Named
-    /// competitive formats like `starter-1v1` are where size/copy limits bite; the
-    /// catch-all default deliberately imposes none so casual and test games play
-    /// with any deck.
+    /// The permissive **multiplayer** catch-all (`standard_multiplayer`): any decklist
+    /// of resolvable cards is legal, preserving the pre-format-registry behavior (ADR
+    /// 0012, where `submit_deck` only checked that every identity resolved), across the
+    /// lobby's full 2–8 seat plumbing range. Named competitive formats like
+    /// `starter-1v1` are where size/copy limits bite; the catch-all deliberately imposes
+    /// none so casual and test games play with any deck.
+    ///
+    /// **Its name says how many it seats, because its seat range is the widest one**
+    /// (issue #707). This was `standard_2p` until a format called a duel was found to
+    /// advertise eight seats; the duel keeps that id and this one took a neutral name,
+    /// so no registered format's identity promises a game it does not seat.
     fn open() -> Self {
         Self {
             starting_life: sage_engine::DEFAULT_STARTING_LIFE,
             starting_hand_size: sage_engine::DEFAULT_STARTING_HAND_SIZE,
-            // The permissive catch-all keeps the lobby's full 2–8 seat plumbing range
-            //; named formats like the free-for-all narrow it.
+            // The permissive catch-all keeps the lobby's full 2–8 seat plumbing range;
+            // every named format narrows it to the game its name describes.
             seats: 2..=8,
             deck_rules: DeckRules {
                 min_size: 0,
@@ -162,6 +167,20 @@ impl Format {
                 require_commander: false,
                 enforce_color_identity: false,
             },
+        }
+    }
+
+    /// The permissive **duel** format (`standard_2p`, and the web client's `1v1`): the
+    /// same no-deck-rules openness as [`Self::open`], seating exactly two (issue #707).
+    ///
+    /// A format named for a duel seats a duel. Before #707 both ids resolved to
+    /// [`Self::open`] and would open an eight-seat room, which is the contradiction that
+    /// issue names: the identifiers, the comments, the protocol examples, and the
+    /// client's label all said two.
+    fn duel() -> Self {
+        Self {
+            seats: 2..=2,
+            ..Self::open()
         }
     }
 
@@ -284,8 +303,13 @@ pub(crate) struct FormatRegistry {
 
 impl FormatRegistry {
     /// The identifier of the default two-player format, carried in the protocol's
-    /// `RoomConfig` examples (`docs/protocol.md`).
+    /// `RoomConfig` examples (`docs/protocol.md`). Seats exactly two (issue #707).
     const DEFAULT_ID: &'static str = "standard_2p";
+
+    /// The identifier of the permissive multiplayer catch-all (issue #707): no deck
+    /// rules, the lobby's full 2–8 seats, and a name that says so. This is where a room
+    /// wanting more than four seats is made now that `standard_2p` seats a duel.
+    const MULTIPLAYER_ID: &'static str = "standard_multiplayer";
 
     /// The identifier of the seeded starter format.
     const STARTER_ID: &'static str = "starter-1v1";
@@ -302,15 +326,22 @@ impl FormatRegistry {
     /// and the permissive default two-player format (`standard_2p`: no size or copy
     /// limits, the pre-registry behavior). Deck-legality rules are the point of
     /// difference — the default catch-all imposes none so any resolvable deck plays.
+    ///
+    /// **Every registered format's name and its seat range describe the same game**
+    /// (issue #707), which is checked over the whole registry in `format::tests`.
     pub(crate) fn with_defaults() -> Self {
         let mut formats = HashMap::new();
         // The competitive starter format enforces deck legality (size + copy limits).
         formats.insert(Self::STARTER_ID.to_string(), Format::starter());
-        // Permissive two-player catch-all formats: the CLI's/protocol's `standard_2p`
-        // default and the web client's `1v1` (LobbyScreen). No deck rules.
+        // Permissive duel formats: the CLI's/protocol's `standard_2p` default and the
+        // web client's `1v1` (LobbyScreen). No deck rules, exactly two seats.
         for id in [Self::DEFAULT_ID, "1v1"] {
-            formats.insert(id.to_string(), Format::open());
+            formats.insert(id.to_string(), Format::duel());
         }
+        // The permissive multiplayer catch-all, which is where the lobby's full 2–8 seat
+        // range is reachable from. Neutrally named, because it is the one format that
+        // seats anything from a duel to eight.
+        formats.insert(Self::MULTIPLAYER_ID.to_string(), Format::open());
         // Permissive free-for-all formats seating 3–4 players (issue #349): the web
         // client's `ffa-4` and the named `standard_ffa`. These start real multiplayer
         // games on the engine's multiplayer rules; an id absent here is still rejected

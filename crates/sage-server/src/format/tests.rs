@@ -3,6 +3,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use super::*;
+use crate::lobby::SEAT_RANGE;
 use crate::test_support::fixture;
 
 /// The bundled database. Forest is its only basic land.
@@ -44,7 +45,71 @@ fn registry_resolves_seeded_ids_and_rejects_unknown() {
     // real-server e2e).
     assert!(registry.get("1v1").is_some());
     assert!(registry.get("ffa-4").is_some());
+    assert!(registry.get("standard_multiplayer").is_some());
     assert!(registry.get("no-such-format").is_none());
+}
+
+/// Issue #707: a format's **name and its advertised seat range describe the same
+/// game**, checked over the whole registry rather than one id at a time — the
+/// contradiction that issue names (a format called `1v1` seating eight) could only be
+/// found by reading a name against a range, so that reading is the test.
+///
+/// The rule is the one an operator can state: an id naming a duel seats exactly two,
+/// an id naming a free-for-all seats more than two, and every registered range is
+/// inside the lobby's own `2..=8` plumbing. A new format cannot be registered without
+/// answering this.
+#[test]
+fn issue_707_every_format_name_and_seat_range_describe_the_same_game() {
+    let registry = FormatRegistry::with_defaults();
+    let mut seen = 0;
+    for (id, format) in registry.iter() {
+        seen += 1;
+        assert!(
+            SEAT_RANGE.contains(format.seats.start()) && SEAT_RANGE.contains(format.seats.end()),
+            "{id} advertises {:?}, outside the lobby's {SEAT_RANGE:?} plumbing",
+            format.seats,
+        );
+        // A name that promises a duel seats exactly two — never a range that could
+        // open an eight-seat room.
+        if id.contains("1v1") || id.contains("2p") || id.contains("duel") {
+            assert_eq!(
+                format.seats,
+                2..=2,
+                "{id} names a duel but advertises {:?}",
+                format.seats,
+            );
+        }
+        // A name that promises a free-for-all seats more than two.
+        if id.contains("ffa") {
+            assert!(
+                *format.seats.start() > 2,
+                "{id} names a free-for-all but seats {:?}",
+                format.seats,
+            );
+        }
+    }
+    assert_eq!(seen, 7, "every registered format is judged by this rule");
+}
+
+/// Issue #707: the permissive catch-all keeps the full 2–8 range, under a name that
+/// does not promise a duel — so a room seating five is still creatable, and is made
+/// with an id that says as much.
+#[test]
+fn issue_707_the_permissive_catch_all_is_neutrally_named_and_keeps_the_full_range() {
+    let registry = FormatRegistry::with_defaults();
+    let open = registry
+        .get("standard_multiplayer")
+        .expect("standard_multiplayer is registered");
+    assert_eq!(open.seats, 2..=8);
+    assert_eq!(open.deck_rules, Format::open().deck_rules);
+    // And the two duel ids that used to resolve here now seat exactly two.
+    for id in ["standard_2p", "1v1"] {
+        let duel = registry.get(id).expect("duel format is registered");
+        assert_eq!(duel.seats, 2..=2, "{id} seats a duel");
+        assert!(!duel.seats.contains(&3), "{id} refuses a third seat");
+        // Deck rules are unchanged by #707: only the seat range moved.
+        assert_eq!(duel.deck_rules, Format::open().deck_rules);
+    }
 }
 
 #[test]
@@ -466,7 +531,14 @@ fn issue_395_display_for_logs_is_unchanged_and_uses_the_raw_id() {
 fn issue_372_existing_formats_keep_default_life_and_no_commander_rules() {
     // Regression guard: the non-commander formats are unchanged — 20 life, no
     // commander requirement, no color-identity enforcement.
-    for id in ["starter-1v1", "standard_2p", "1v1", "standard_ffa", "ffa-4"] {
+    for id in [
+        "starter-1v1",
+        "standard_2p",
+        "1v1",
+        "standard_ffa",
+        "ffa-4",
+        "standard_multiplayer",
+    ] {
         let format = FormatRegistry::with_defaults().get(id).unwrap().clone();
         assert_eq!(format.starting_life, sage_engine::DEFAULT_STARTING_LIFE);
         assert!(!format.deck_rules.require_commander);

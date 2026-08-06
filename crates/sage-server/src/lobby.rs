@@ -130,7 +130,9 @@ pub(crate) use {commands::*, errors::*, registry::*, views::*};
 /// plumbing support 2–8 seats even while the engine remains two-player:
 /// a config the engine cannot yet build a game for is caught later, at the ready
 /// gate (issue #112), not here.
-const SEAT_RANGE: std::ops::RangeInclusive<u8> = 2..=8;
+/// `pub(crate)` because the format registry's ranges are judged against it: every
+/// registered format seats a subset of what the lobby plumbs (issue #707).
+pub(crate) const SEAT_RANGE: std::ops::RangeInclusive<u8> = 2..=8;
 
 /// The maximum length (in Unicode scalar values) of a player display name (issue
 /// #294). Long enough for real names/handles, short enough to keep rosters and

@@ -334,6 +334,38 @@ pub enum Violation {
         /// The definition at fault.
         functional_id: String,
     },
+    /// A **granted** ability is one of the kinds only an *entering* object's own printed
+    /// abilities are ever read for (CR 614.12 / CR 616.1), so the grant is silently dead.
+    ///
+    /// `enters_tapped`, `enters_with_counters`, `enters_choosing_color`,
+    /// `enters_naming_card`, and `enters_as_copy` are all consulted at one seam — the
+    /// moment a permanent arrives — off the *card*'s abilities
+    /// ([`abilities_of`](crate::abilities_of)), before any permanent exists to have been
+    /// granted anything. The CR 613 layer-6 fold will happily carry one: `fold_abilities`
+    /// boxes whatever it is handed and pushes it, and every later read simply never asks.
+    ///
+    /// Caught here for the reason [`Self::ChosenColorIsNeverNamed`] is: the engine's
+    /// honest answer is silence, and an authored ability that does nothing at all is the
+    /// failure mode no test catches — nobody writes a test for a card they believe works
+    /// (issue #776).
+    GrantedAbilityIsNeverRead {
+        /// The definition at fault.
+        functional_id: String,
+        /// The ability `type` it granted.
+        ability: String,
+    },
+    /// A `discard` cost names **zero** cards — an activation cost component, or the cost
+    /// of accepting a `you may …` (CR 601.2b / CR 701.8).
+    ///
+    /// The `AdditionalCost::Discard` half of this rule has been checked since it was
+    /// written ([`Self::AdditionalCostIsUnpayable`]); these two carried the same claim in
+    /// a doc comment — *at least one on every printed card* — with nothing enforcing it.
+    /// A cost of zero cards is not a cost: the ability reads as charging a card and is
+    /// free, which is a rules difference rather than a cosmetic one (issue #776).
+    DiscardCostIsFree {
+        /// The definition at fault.
+        functional_id: String,
+    },
     /// Two printings in one set claim the same collector number, so one would shadow
     /// the other.
     DuplicatePrinting {
@@ -544,6 +576,20 @@ impl fmt::Display for Violation {
             } => write!(
                 f,
                 "two printings in {set_code} claim collector number {collector_number}"
+            ),
+            Self::GrantedAbilityIsNeverRead {
+                functional_id,
+                ability,
+            } => write!(
+                f,
+                "{functional_id} grants `{ability}`, which is read only off an entering \
+                 object's own printed abilities (CR 614.12) — a granted one is never \
+                 asked for and does nothing"
+            ),
+            Self::DiscardCostIsFree { functional_id } => write!(
+                f,
+                "{functional_id} names a discard cost of zero cards: a cost of nothing is \
+                 not a cost (CR 601.2b)"
             ),
         }
     }
