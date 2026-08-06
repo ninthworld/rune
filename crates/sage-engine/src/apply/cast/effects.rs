@@ -285,6 +285,8 @@ pub(crate) fn apply_effect(
         | Effect::ReturnCardToHand { .. }
         | Effect::PutOnTopOfLibrary { .. }
         | Effect::GainControl { .. }
+        // An equip names a host to attach to, so it too arrives with a chosen target.
+        | Effect::Attach { .. }
         | Effect::Restrict { .. } => {}
         // X is taken **once, on resolution** (CR 608.2), from the board as it stands
         // then — a creature that dies afterwards does not take the life back. The count

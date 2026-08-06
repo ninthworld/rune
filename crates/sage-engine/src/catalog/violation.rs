@@ -67,11 +67,31 @@ pub enum Violation {
         /// Whether the card is a planeswalker — which is to say, which way it is wrong.
         planeswalker: bool,
     },
-    /// An `aura` grant appears on a card whose `subtypes` do not include `"Aura"`
-    /// (CR 303.4).
-    AuraOnNonAura {
+    /// An `attachment` block names a `kind` the card's `subtypes` do not bear — an Aura
+    /// grant on something that is not an Aura (CR 303.4), or an Equipment grant on
+    /// something that is not an Equipment (CR 301.5).
+    ///
+    /// The subtype is what makes a card one of these things; the block only says what it
+    /// does while attached. A card carrying one without the other would be granting from
+    /// a type line that never claimed it could.
+    AttachmentSubtypeMismatch {
         /// The definition at fault.
         functional_id: String,
+        /// The subtype the authored `kind` requires and the card does not have.
+        subtype: &'static str,
+    },
+    /// An `attachment` block's `equip` cost disagrees with its `kind`: an Equipment with
+    /// no equip cost, or an Aura with one (CR 702.6a).
+    ///
+    /// Wrong in both directions, like [`Self::PowerToughnessMismatch`]. An Equipment with
+    /// no equip cost could never be attached to anything and would sit on the battlefield
+    /// doing nothing for ever; an Aura with one would advertise an activated ability the
+    /// rules do not give it.
+    EquipCostMismatch {
+        /// The definition at fault.
+        functional_id: String,
+        /// Whether the card is an Equipment — which is to say, which way it is wrong.
+        equipment: bool,
     },
     /// An `additional_cost` appears on a card that cannot be cast, or names a cost of
     /// nothing. A land is *played*, not cast (CR 116.2a), so a cast cost on one could
@@ -237,10 +257,24 @@ impl fmt::Display for Violation {
                 f,
                 "{functional_id} is not a Planeswalker but carries loyalty"
             ),
-            Self::AuraOnNonAura { functional_id } => write!(
+            Self::AttachmentSubtypeMismatch {
+                functional_id,
+                subtype,
+            } => write!(
                 f,
-                "{functional_id} carries an `aura` grant but is not an Aura \
-                 (its subtypes do not include `{AURA_SUBTYPE}`)"
+                "{functional_id} carries an `attachment` grant of that kind but its \
+                 subtypes do not include `{subtype}`"
+            ),
+            Self::EquipCostMismatch {
+                functional_id,
+                equipment: true,
+            } => write!(f, "{functional_id} is an Equipment with no `equip` cost"),
+            Self::EquipCostMismatch {
+                functional_id,
+                equipment: false,
+            } => write!(
+                f,
+                "{functional_id} is not an Equipment but carries an `equip` cost"
             ),
             Self::AdditionalCostIsUnpayable { functional_id } => write!(
                 f,

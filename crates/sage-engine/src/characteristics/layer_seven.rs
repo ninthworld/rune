@@ -57,12 +57,14 @@ pub(super) fn static_pt_delta(
 ///
 /// Two sources feed this one list, folded through the same timestamp-ordered path
 /// (ADR 0005 §4): the stored [`GameState::static_effects`] (anthems and pumps) and,
-/// synthesized fresh, each Aura currently attached to `perm` (CR 303.4 / 613.7c) —
-/// see [`aura_pt_effect`]. The Aura contributions are **derived, never stored**: an
-/// Aura's P/T grant follows its attachment, so it appears here exactly while the
-/// Aura is attached and vanishes the instant it leaves, with nothing to prune
-/// (unlike a keyed pump, which the SBA loop must clean up). Object ids are unique,
-/// so timestamps do not tie; the sort is stable regardless.
+/// synthesized fresh, each **attachment** currently on `perm` — an Aura (CR 303.4) or an
+/// Equipment (CR 301.5), which contribute through the one
+/// [`attachment_pt_effect`] because at this layer they are the same thing
+/// (CR 613.7c). Those contributions are **derived, never stored**: the grant follows the
+/// attachment, so it appears here exactly while the permanent is attached and vanishes the
+/// instant it leaves *or is equipped onto someone else*, with nothing to prune (unlike a
+/// keyed pump, which the SBA loop must clean up). Object ids are unique, so timestamps do
+/// not tie; the sort is stable regardless.
 pub(super) fn ordered_pt_modifiers(
     state: &GameState,
     perm: &Permanent,
@@ -75,11 +77,11 @@ pub(super) fn ordered_pt_modifiers(
         .filter(|effect| affects(state, effect, perm, is_creature))
         .copied()
         .collect();
-    // CR 303.4 / 613.7c: each Aura attached to `perm` contributes its static P/T
-    // modifier, timestamped by the Aura's own object id (CR 613.7).
-    for aura in &state.battlefield {
-        if aura.attached_to == Some(perm.id) {
-            if let Some(effect) = aura_pt_effect(aura, db) {
+    // CR 303.4 / 301.5 / 613.7c: each attachment on `perm` contributes its static P/T
+    // modifier, timestamped by the attachment's own object id (CR 613.7).
+    for attachment in &state.battlefield {
+        if attachment.attached_to == Some(perm.id) {
+            if let Some(effect) = attachment_pt_effect(attachment, db) {
                 if affects(state, &effect, perm, is_creature) {
                     effects.push(effect);
                 }

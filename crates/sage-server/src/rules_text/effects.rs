@@ -324,6 +324,13 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         Effect::PutOnTopOfLibrary { target } => {
             format!("put {} on top of its owner's library", target_noun(*target))
         }
+        // The equip action (CR 702.6b). The subject is the source — an Equipment attaches
+        // *itself* — so the sentence names it, which is also what makes the dock button
+        // read as an instruction about a specific sword rather than about equipment in
+        // general.
+        Effect::Attach { target } => {
+            format!("attach {source} to {}", target_noun(*target))
+        }
         Effect::PumpByCount {
             target,
             power_per,

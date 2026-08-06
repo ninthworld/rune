@@ -10,11 +10,11 @@ use super::*;
 ///
 /// Two sources feed the grants, mirroring [`ordered_pt_modifiers`] (ADR 0005 §4):
 /// the stored [`GameState::static_effects`] carrying [`Modification::GrantKeyword`]
-/// (anthems and until-end-of-turn pumps) and, synthesized fresh, each Aura attached
-/// to `perm` whose [`AuraGrant`](crate::AuraGrant) lists keywords (CR 303.4 /
-/// 613.1f). Layer 6 grants are timestamp-independent for a pure keyword grant, so —
-/// unlike the layer-7c P/T folds — no ordering is imposed. `is_creature` gates the
-/// anthem-style "creatures you control" selector.
+/// (anthems and until-end-of-turn pumps) and, synthesized fresh, each **attachment** on
+/// `perm` — an Aura or an Equipment — whose [`Attachment`](crate::Attachment) lists
+/// keywords (CR 303.4 / 301.5 / 613.1f). Layer 6 grants are timestamp-independent for a
+/// pure keyword grant, so — unlike the layer-7c P/T folds — no ordering is imposed.
+/// `is_creature` gates the anthem-style "creatures you control" selector.
 pub(super) fn current_keywords(
     state: &GameState,
     perm: &Permanent,
@@ -65,9 +65,10 @@ pub(super) fn current_restrictions(
 /// Three sources feed it, mirroring [`ordered_pt_modifiers`] (ADR 0005 §4): the stored
 /// [`GameState::static_effects`] (until-end-of-turn grants and impositions), each
 /// printed static ability in force ([`static_ability_effects`], the anthem and lord
-/// shape), and — synthesized fresh — each Aura attached to `perm`, whose
-/// [`AuraGrant`](crate::AuraGrant) keywords and restrictions are read off the
-/// attachment (CR 303.4 / 613.1f) and so vanish the instant the Aura leaves (ADR 0005).
+/// shape), and — synthesized fresh — each **attachment** on `perm`, whose
+/// [`Attachment`](crate::Attachment) keywords and restrictions are read off the
+/// attachment (CR 303.4 / 301.5 / 613.1f) and so vanish the instant it leaves or is moved
+/// to another host (ADR 0005).
 ///
 /// Layer 6 is timestamp-independent for a pure grant, so no ordering is imposed:
 /// a grant either adds something or finds it already there. Layer-7c P/T modifications
@@ -94,13 +95,19 @@ pub(super) fn layer_six_modifications(
             .into_iter()
             .map(|effect| effect.modification),
     );
-    // CR 303.4 / 613.1f: each Aura attached to `perm` grants its listed keywords and
-    // imposes its listed restrictions while attached.
-    for aura in &state.battlefield {
-        if aura.attached_to != Some(perm.id) {
+    // CR 303.4 / 301.5 / 613.1f: each attachment on `perm` — an Aura or an Equipment —
+    // grants its listed keywords and imposes its listed restrictions while attached. One
+    // walk for both kinds: a keyword an Equipment grants is a keyword, and nothing that
+    // reads this list has any business knowing where it came from.
+    for attachment in &state.battlefield {
+        if attachment.attached_to != Some(perm.id) {
             continue;
         }
-        if let Some(grant) = aura.printed.face(db).and_then(|face| face.aura()) {
+        if let Some(grant) = attachment
+            .printed
+            .face(db)
+            .and_then(|face| face.attachment())
+        {
             modifications.extend(
                 grant
                     .keywords

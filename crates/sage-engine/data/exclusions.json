@@ -64,8 +64,8 @@
     "blocker": "an emblem carries static and triggered abilities only; nothing offers a way to activate one"
   },
   {
-    "name": "Equipment",
-    "blocker": "no equip action or attachment outside the Aura model"
+    "name": "Equipment that grants an ability or a type, and cards that ask whether a creature is equipped",
+    "blocker": "an attachment grants power/toughness, keywords, and combat restrictions at CR 613 layers 6 and 7c; it adds no triggered ability and no type, and nothing asks whether a permanent is attached"
   },
   {
     "name": "Fight, and other effects taking two differently-specified targets",

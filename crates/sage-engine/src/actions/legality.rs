@@ -16,7 +16,8 @@ use super::definition::{Action, Attack, Block, DamageOrder};
 use super::generation::valid_actions;
 use super::targeting::action_target_groups;
 use super::utilities::{
-    all_unique, loyalty_cost_is_payable, loyalty_timing_allows, tap_cost_is_summoning_sick,
+    all_unique, equip_timing_allows, loyalty_cost_is_payable, loyalty_timing_allows,
+    tap_cost_is_summoning_sick,
 };
 
 /// Whether `action` — including any targets it carries — is legal against the
@@ -101,6 +102,13 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         //     turn, nor sneak one in at instant speed. The exact shape
         //     `activation_clears_summoning_sickness` uses.
         if !loyalty_activation_is_legal(state, db, *permanent, *index) {
+            return false;
+        }
+        // 1e-bis. Hardening (CR 702.6b, issue #728): equip is a sorcery-speed activation.
+        //     Check 1 already withholds the offer; this re-derives the timing from
+        //     current state so a stale or forged action id can never move an Equipment
+        //     during combat, on an opponent's turn, or in response to a spell.
+        if !equip_activation_is_legal(state, db, *permanent, *index) {
             return false;
         }
     }
@@ -238,6 +246,31 @@ fn loyalty_activation_is_legal(
             crate::ability::Cost::Loyalty { amount } => loyalty_cost_is_payable(perm, *amount),
             _ => true,
         })
+}
+
+/// Whether activating ability `index` of `permanent` satisfies CR 702.6b, the one timing
+/// rule an **equip** ability has and no other activated ability does: it is activated only
+/// when its controller could cast a sorcery ([`equip_timing_allows`]).
+///
+/// `false` for a permanent that is not on the battlefield — a stale id names no Equipment
+/// to move. `true` for an index that is not an equip ability: there is nothing to attach,
+/// so this gate has nothing to say about it. The exact shape
+/// [`loyalty_activation_is_legal`] uses.
+fn equip_activation_is_legal(
+    state: &GameState,
+    db: &CardDatabase,
+    permanent: PermanentId,
+    index: usize,
+) -> bool {
+    let Some(perm) = state.battlefield.iter().find(|p| p.id == permanent) else {
+        return false;
+    };
+    match abilities_of_permanent(db, perm).get(index) {
+        Some(ability) if crate::ability::is_equip_ability(ability) => {
+            equip_timing_allows(state, perm)
+        }
+        _ => true,
+    }
 }
 
 /// Whether a declared attacker selection is legal (CR 508.1a): every named

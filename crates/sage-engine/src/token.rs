@@ -29,7 +29,7 @@
 use serde::Deserialize;
 
 use crate::ability::Ability;
-use crate::card::{AuraGrant, CardData, CombatRestriction, Keyword};
+use crate::card::{Attachment, CardData, CombatRestriction, Keyword};
 use crate::card_type::{render_type_line, CardType, Supertype};
 use crate::id::CardId;
 use crate::mana::Color;
@@ -46,7 +46,7 @@ use crate::mana::Color;
 /// cannot be named by a decklist or a printing, and cannot appear in the
 /// compatibility report — none of which is a rule to be remembered, because the field
 /// does not exist to fill in. There is no mana cost (a token has none unless an effect
-/// says otherwise), no `spell_effects` (a token is never cast), no `aura` grant, and
+/// says otherwise), no `spell_effects` (a token is never cast), no `attachment` grant, and
 /// no `scripted` escape hatch (code-defined behavior is keyed on an authored identity
 /// this type has not got). `deny_unknown_fields` makes each of those a parse error
 /// rather than a silently ignored field, exactly as it does on
@@ -300,12 +300,13 @@ impl<'a> PrintedFace<'a> {
         }
     }
 
-    /// The Aura ability of an Aura (CR 303.4), or `None`. Always `None` for a token:
-    /// no effect in the IR creates an Aura token, so [`TokenData`] carries no grant.
+    /// The attachment ability of an Aura (CR 303.4) or an Equipment (CR 301.5), or
+    /// `None`. Always `None` for a token: no effect in the IR creates one that attaches
+    /// to anything, so [`TokenData`] carries no grant.
     #[must_use]
-    pub fn aura(&self) -> Option<&'a AuraGrant> {
+    pub fn attachment(&self) -> Option<&'a Attachment> {
         match self {
-            Self::Card(card) => card.aura.as_ref(),
+            Self::Card(card) => card.attachment.as_ref(),
             Self::Token(_) => None,
         }
     }
@@ -378,10 +379,10 @@ mod tests {
         assert_eq!(face.power(), Some(1));
         assert_eq!(face.toughness(), Some(1));
         assert_eq!(face.colors(), [Color::Red]);
-        // A token has no mana cost, no supertypes, and no Aura grant.
+        // A token has no mana cost, no supertypes, and no attachment grant.
         assert_eq!(face.mana_cost(), "");
         assert!(face.supertypes().is_empty());
-        assert!(face.aura().is_none());
+        assert!(face.attachment().is_none());
     }
 
     #[test]

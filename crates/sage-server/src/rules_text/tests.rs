@@ -363,10 +363,10 @@ fn an_aura_states_its_restriction_and_its_grant() {
         r#"[
             {"schema_version":1,"functional_id":"test_aegis","name":"Test Aegis",
              "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{1}{G}","colors":["green"],
-             "aura":{"enchant":"any_creature","power":2,"toughness":2}},
+             "attachment":{"kind":"aura","attach_to":"any_creature","power":2,"toughness":2}},
             {"schema_version":1,"functional_id":"test_curse","name":"Test Curse",
              "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{B}","colors":["black"],
-             "aura":{"enchant":"any_creature","power":-2,"toughness":-2}}
+             "attachment":{"kind":"aura","attach_to":"any_creature","power":-2,"toughness":-2}}
         ]"#,
     )
     .unwrap();
@@ -378,6 +378,39 @@ fn an_aura_states_its_restriction_and_its_grant() {
     assert_eq!(
         text_of(&db, "test_curse"),
         "Enchant creature.\nEnchanted creature gets -2/-2."
+    );
+}
+
+#[test]
+fn issue_728_an_equipment_states_its_grant_and_its_equip_ability() {
+    // Marauder's Axe (bundled). The grant sentence names "equipped creature" rather than
+    // repeating the equip ability's restriction — an Equipment is only ever on a creature
+    // (CR 301.5c), whoever controls it — and there is no "Enchant …" sentence, because an
+    // Equipment chooses nothing as it is cast.
+    //
+    // The equip line is composed from the same derived ability the engine activates and by
+    // the same `ability_text` that labels the dock button, so the words on the card and
+    // the words a player clicks are one string.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "marauder_s_axe"),
+        "Equipped creature gets +2/+1.\n\
+         {2}: Attach Marauder's Axe to target creature you control."
+    );
+
+    // A keyword-granting Equipment has no M19 representative, so that shape is exercised
+    // inline (ADR 0009) — and reads exactly as the equivalent Aura does below it.
+    let inline = CardDatabase::from_json(
+        r#"[{"schema_version":1,"functional_id":"test_wings","name":"Test Wings",
+            "types":["artifact"],"subtypes":["Equipment"],"mana_cost":"{1}","colors":[],
+            "attachment":{"kind":"equipment","attach_to":"any_creature_you_control",
+                          "equip":"{1}","keywords":["flying"]}}]"#,
+    )
+    .unwrap();
+    assert_eq!(
+        text_of(&inline, "test_wings"),
+        "Equipped creature has flying.\n\
+         {1}: Attach Test Wings to target creature you control."
     );
 }
 
@@ -395,7 +428,7 @@ fn issue_374_a_keyword_granting_aura_states_what_it_grants() {
     let inline = CardDatabase::from_json(
         r#"[{"schema_version":1,"functional_id":"test_flight","name":"Test Flight",
             "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{U}","colors":["blue"],
-            "aura":{"enchant":"any_creature","keywords":["flying"]}}]"#,
+            "attachment":{"kind":"aura","attach_to":"any_creature","keywords":["flying"]}}]"#,
     )
     .unwrap();
     assert_eq!(
@@ -492,7 +525,7 @@ fn a_replacement_reads_as_a_statement_about_entering() {
 #[test]
 fn every_bundled_card_with_rules_generates_text_for_them() {
     // The completeness claim, checked against the whole catalog: a card that has
-    // any keyword, combat restriction, ability, spell effect, or Aura grant must
+    // any keyword, combat restriction, ability, spell effect, or attachment grant must
     // produce text — the formatter never silently emits nothing for a card that
     // does something.
     let db = bundled();
@@ -502,7 +535,7 @@ fn every_bundled_card_with_rules_generates_text_for_them() {
             || !card.restrictions.is_empty()
             || !card.abilities.is_empty()
             || !card.spell_effects.is_empty()
-            || card.aura.is_some();
+            || card.attachment.is_some();
         let text = rules_text(card, sage_engine::scripted_rules_text(&card.functional_id));
         assert_eq!(
             has_rules,

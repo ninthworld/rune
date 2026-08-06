@@ -771,6 +771,33 @@ pub enum Effect {
         /// What that mana may be spent on.
         restriction: ManaRestriction,
     },
+    /// **Attach this effect's own source** to the single permanent it targets — the whole
+    /// of the equip action (CR 702.6b), and the only effect in the IR that moves one
+    /// permanent onto another.
+    ///
+    /// Two subjects, and only one of them is chosen. The *host* is a target, picked on
+    /// activation (CR 601.2c) and re-checked on resolution (CR 608.2b) — an equip whose
+    /// creature died in response does nothing, and the Equipment stays exactly where it
+    /// was. The *attachment* is the ability's own source, never named and never chosen,
+    /// which is what makes "equip something else's Equipment" unsayable rather than
+    /// merely unoffered.
+    ///
+    /// Attaching is a **move**, not an addition: an Equipment already attached to a
+    /// creature becomes unattached from it and attached to the new one in the same step
+    /// (CR 701.3c), so a second equip re-points the one field rather than accumulating.
+    /// The grant that follows is read off the attachment by the layer system (CR 613
+    /// layers 6 and 7c) and is therefore already correct on the new host and already gone
+    /// from the old one, with nothing to move alongside it (ADR 0005).
+    ///
+    /// It is authored nowhere: the equip ability is derived from an Equipment's attachment
+    /// block ([`equip_ability`](crate::card::equip_ability)), so this variant is reachable
+    /// only through a card that actually is one.
+    Attach {
+        /// What this effect is allowed to attach its source to — an Equipment's
+        /// [`attach_to`](crate::Attachment::attach_to), which for every printed Equipment
+        /// is a creature its controller controls (CR 702.6b).
+        target: TargetSpec,
+    },
     /// Let the referenced player cast cards matching `filter` **from their graveyard**
     /// for the rest of the turn (`You may cast Zombie creature spells from your
     /// graveyard this turn.`).
@@ -841,6 +868,9 @@ impl Effect {
             | Effect::GainControl { target, .. }
             | Effect::ReturnCardToBattlefield { target, .. }
             | Effect::PutOnTopOfLibrary { target }
+            // An equip names its *host* as a target and its own source as everything
+            // else, so it declares exactly one slot (CR 702.6b).
+            | Effect::Attach { target }
             | Effect::ReturnToHand { target } => Some(TargetGroup::single(*target)),
             // A player-subject effect targets exactly when its reference does
             // (CR 115.1) — "target opponent loses 2 life" fills a slot, "each

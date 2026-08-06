@@ -335,7 +335,7 @@ fn killing_an_enchanted_creature_logs_only_the_creature_death_not_the_aura() {
          "power":3,"toughness":2},
         {"schema_version":1,"functional_id":"test_aegis","name":"Test Aegis",
          "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{1}{G}","colors":["green"],
-         "aura":{"enchant":"any_creature","power":2,"toughness":2}}
+         "attachment":{"kind":"aura","attach_to":"any_creature","power":2,"toughness":2}}
     ]"#;
     let db = CardDatabase::from_json(json).expect("a well-formed inline catalog");
     let mut state = main_phase();

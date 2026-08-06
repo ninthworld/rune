@@ -64,7 +64,7 @@ no Oracle text, flavor, art, or branding.
 | `abilities` | no | Activated, triggered, or replacement-style ability IR |
 | `spell_effects` | no | Resolution effects for instants and sorceries |
 | `additional_cost` | no | An additional cost to **cast** the card (CR 601.2b); never on a land |
-| `aura` | no | Aura enchant restriction and static power/toughness, keyword, and/or combat-restriction grant |
+| `attachment` | no | Aura or Equipment: what it may be attached to, its equip cost, and its static power/toughness, keyword, and/or combat-restriction grant |
 | `scripted` | no | Declares behavior implemented in `src/scripted.rs`; defaults to `false` |
 
 Current keyword values are `flying`, `reach`, `vigilance`, `haste`, `defender`, `menace`,
@@ -94,10 +94,11 @@ Effects can grant a keyword ability, applied at the layer system's ability-addin
 layer 6 so a granted keyword is indistinguishable from a printed one everywhere
 keywords are read (combat legality, evasion, damage, view projection, generated text):
 
-- An **Aura** (or other static grant) grants for as long as it is attached: list the
-  keywords under `aura.keywords`, e.g. an Aura granting flying is
-  `"aura": {"enchant": "any_creature", "keywords": ["flying"]}`. The `power`/`toughness`
-  and `keywords` grants are independent; either or both may be present.
+- An **attachment** — an Aura or an Equipment — grants for as long as it is attached:
+  list the keywords under `attachment.keywords`, e.g. an Aura granting flying is
+  `"attachment": {"kind": "aura", "attach_to": "any_creature", "keywords": ["flying"]}`.
+  The `power`/`toughness` and `keywords` grants are independent; either or both may be
+  present.
 - A **spell or ability** grants **until end of turn** with the `grant_keyword` effect,
   e.g. `{"kind": "grant_keyword", "target": "any_creature", "keyword": "trample"}`. The
   grant expires in the cleanup step (CR 514.2). Duplicate grants are redundant, not
@@ -211,10 +212,61 @@ The three restriction verbs mirror the keyword-granting ones exactly, and all im
 - `{"kind": "restrict_all", "affects": {"scope": "creatures_without_flying"}, "restriction": "cant_block"}`
   — a class, whose members are locked in on resolution (CR 611.2c).
 
-An **Aura** imposes for as long as it is attached, via `aura.restrictions`, e.g.
-`"aura": {"enchant": "any_creature", "restrictions": ["cant_attack", "cant_block"]}`. The
-`power`/`toughness`, `keywords`, and `restrictions` grants are independent; any
-combination may be present.
+An **attachment** imposes for as long as it is attached, via `attachment.restrictions`,
+e.g. `"attachment": {"kind": "aura", "attach_to": "any_creature", "restrictions":
+["cant_attack", "cant_block"]}`. The `power`/`toughness`, `keywords`, and `restrictions`
+grants are independent; any combination may be present.
+
+### Attachments: Auras and Equipment (CR 303.4, CR 301.5, CR 702.6)
+
+**One block, with a `kind`.** An Aura and an Equipment share a single `attachment` field
+rather than owning a field each, and that is a decision worth stating because it is the
+one the rest of the vocabulary is built on. The *grant* is one thing: what an attached
+permanent does to its host is read at CR 613 layer 6 (keywords, combat restrictions) and
+layer 7c (power/toughness), and a creature carrying a sword is indistinguishable at both
+layers from one under an Aura. Two fields would mean every reader of a permanent's
+characteristics asked two questions where the rules ask one — and could answer them
+differently. Widening what may be attached to (a player, a land) therefore widens both
+kinds at once, in one place.
+
+```json
+"attachment": {"kind": "aura", "attach_to": "any_creature", "power": 2, "toughness": 2}
+"attachment": {"kind": "equipment", "attach_to": "any_creature_you_control",
+               "equip": "{2}", "power": 2, "toughness": 1}
+```
+
+The `kind` decides exactly two things, and nothing else in the schema branches on it:
+
+- **How it arrives.** An Aura is cast *at* an object: `attach_to` is a required target
+  slot on the cast (CR 601.2c), the card is uncastable with no legal object (CR 303.4c),
+  and it enters already attached (CR 303.4d). An Equipment is cast like any other
+  artifact — no target, attached to nothing — and `attach_to` is instead the target slot
+  of its **equip ability**.
+- **What happens when the host leaves.** An Aura attached to an illegal object, or to
+  nothing, is put into its owner's graveyard (CR 704.5m). An Equipment becomes
+  **unattached and stays on the battlefield** (CR 704.5n), ready to be equipped again.
+
+The equip ability is **derived, never authored**: `equip` is the cost, `attach_to` is the
+class of legal host, and `sage_engine::equip_ability` composes
+`{cost}: attach this to target creature you control` from the two. There is no way to
+write an equip ability that charges a cost the card does not print or attaches something
+other than itself. It is an ordinary activated ability everywhere downstream — offered,
+targeted, paid for, put on the stack, resolved, and labelled by the same code an authored
+`{2}: …` goes through — with one extra rule: it is **sorcery-speed** (CR 702.6b), gated
+both where the action is offered and again, independently, where it is applied.
+
+`attach_to` is a restriction on the *equip target*, not on where the Equipment may stay:
+CR 301.5c says only that an Equipment is attached to a creature, so a card that equips
+"target creature you control" does not fall off a creature an opponent gains control of.
+An Aura's `attach_to`, by contrast, is exactly what CR 704.5m re-checks.
+
+Moving an Equipment onto a second creature is one write: attaching an already-attached
+permanent unattaches it first (CR 701.3c), and because the grant is derived from the
+attachment on every read, the old host loses it and the new host gains it with nothing to
+migrate. Aura *movement* remains out of scope, and is listed in the exclusions.
+
+The validator rejects an `attachment` whose `kind` names a subtype the card does not bear
+(`Aura`, `Equipment`), an Equipment with no `equip` cost, and an `equip` cost on an Aura.
 
 ### Targets (CR 115.1)
 
@@ -868,7 +920,7 @@ A `token` block takes `name`, `types`, and optionally `subtypes`, `colors`, `pow
 `toughness`, `keywords`, `restrictions`, and `abilities` — the same vocabulary a card
 uses for each. What it **cannot** take is as deliberate: no `functional_id` (a token is
 not a card, is not decklist-legal, and never appears in the compatibility report), no
-`mana_cost`, no `spell_effects`, no `aura`, and no `scripted`. Those fields do not exist
+`mana_cost`, no `spell_effects`, no `attachment`, and no `scripted`. Those fields do not exist
 on the type, so writing one is a parse error rather than a rule to remember. The
 validator additionally rejects a token that is not a permanent (it could exist in no
 zone) and one whose power/toughness disagrees with being a creature.
@@ -1005,7 +1057,7 @@ spell's does — including the resolution-time re-check that fizzles it if its t
 gone (CR 608.2b). A trigger with no legal choice for one of its slots is never put on the
 stack at all (CR 603.3c), so authoring one costs nothing when the board cannot answer it.
 
-The full `abilities`, `spell_effects`, target, cost, and Aura shapes are the enums in
+The full `abilities`, `spell_effects`, target, cost, and attachment shapes are the enums in
 `crates/sage-engine/src/ability.rs`. Those Rust types are authoritative; do not reproduce
 the IR in a second documentation schema that can drift.
 
@@ -1070,7 +1122,8 @@ The build and loader reject:
 - malformed, duplicate, or file-mismatched functional ids;
 - missing types or invalid creature power/toughness;
 - a planeswalker with no `loyalty`, or a `loyalty` on anything else;
-- an Aura grant on a non-Aura;
+- an `attachment` whose `kind` names a subtype the card does not have;
+- an Equipment with no `equip` cost, or an `equip` cost on an Aura;
 - printed `restrictions` on a card that is not a creature;
 - an optional effect's contents, or a conditional's branches, choosing a target;
 - a `create_emblem` handing out anything but a static or triggered ability (CR 114.1);

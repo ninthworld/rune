@@ -42,13 +42,13 @@ mod triggers;
 mod zone;
 
 pub use ability::{
-    activation_taps, group_target_counts, is_emblem_ability, is_loyalty_ability, is_mana_ability,
-    maximum_targets, minimum_targets, target_counts, Ability, ActivatorScope, CardFilter, Chooser,
-    Condition, Cost, CountScope, DamageSubject, Effect, FoundDestination, GraveyardCardClass,
-    GraveyardScope, ManaRestriction, MassAffects, ObservedActivation, ObservedPermanent,
-    ObservedSpell, PermanentCount, PlayerModification, PlayerRef, StaticAffects, StaticCondition,
-    StaticModification, Target, TargetCount, TargetGroup, TargetSpec, TriggerCondition,
-    TriggerStep, TurnScope,
+    activation_taps, group_target_counts, is_emblem_ability, is_equip_ability, is_loyalty_ability,
+    is_mana_ability, maximum_targets, minimum_targets, target_counts, Ability, ActivatorScope,
+    CardFilter, Chooser, Condition, Cost, CountScope, DamageSubject, Effect, FoundDestination,
+    GraveyardCardClass, GraveyardScope, ManaRestriction, MassAffects, ObservedActivation,
+    ObservedPermanent, ObservedSpell, PermanentCount, PlayerModification, PlayerRef, StaticAffects,
+    StaticCondition, StaticModification, Target, TargetCount, TargetGroup, TargetSpec,
+    TriggerCondition, TriggerStep, TurnScope,
 };
 pub use actions::{
     auto_payment, discard_cost, is_plain_mana_source, mana_ability_pips, payment_pips,
@@ -59,8 +59,9 @@ pub use actions::{
 pub use apply::apply_action;
 pub use automation::{forced_declaration_without_choice, priority_has_no_meaningful_action};
 pub use card::{
-    abilities_of, abilities_of_permanent, AdditionalCost, AuraGrant, CardData, CardDatabase,
-    CatalogError, CombatRestriction, Keyword, Printing, PrintingDatabase, Rarity, SCHEMA_VERSION,
+    abilities_of, abilities_of_permanent, equip_ability, AdditionalCost, Attachment,
+    AttachmentKind, CardData, CardDatabase, CatalogError, CombatRestriction, Keyword, Printing,
+    PrintingDatabase, Rarity, SCHEMA_VERSION,
 };
 pub use card_type::{CardType, Supertype};
 pub use catalog::Violation;

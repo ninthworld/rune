@@ -8,7 +8,7 @@ use super::database::CardDatabase;
 use crate::id::{CardId, FunctionalId};
 
 /// The number of functional definitions in `data/catalog/`.
-pub(crate) const CATALOG_SIZE: usize = 197;
+pub(crate) const CATALOG_SIZE: usize = 198;
 
 /// Every handle the bundled catalog interned: `CardId(0..n)` (ADR 0008 §3).
 pub(crate) fn every_id() -> impl Iterator<Item = CardId> {
@@ -103,7 +103,7 @@ fn issue_256_no_bundled_card_is_a_functionless_shell() {
     //
     // - a land must have an ability (its mana ability);
     // - an instant, sorcery, or noncreature permanent (artifact/enchantment) must
-    //   have at least one of spell_effects / abilities / aura;
+    //   have at least one of spell_effects / abilities / attachment;
     // - a creature is inherently functional — a body with power/toughness — so a
     //   vanilla creature is not a shell, and needs no IR to prove it.
     //
@@ -113,7 +113,7 @@ fn issue_256_no_bundled_card_is_a_functionless_shell() {
         let card = db.card(id).unwrap();
         let has_ir = !card.spell_effects.is_empty()
             || !abilities_of(&db, id).is_empty()
-            || card.aura.is_some()
+            || card.attachment.is_some()
             || !card.keywords.is_empty()
             || card.scripted;
 
@@ -126,7 +126,7 @@ fn issue_256_no_bundled_card_is_a_functionless_shell() {
         } else if !card.has_type(CardType::Creature) {
             assert!(
                 has_ir,
-                "{} is a functionless shell — no spell effect, ability, or aura",
+                "{} is a functionless shell — no spell effect, ability, or attachment",
                 card.name
             );
         }

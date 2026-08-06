@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (197)
+## Supported cards (198)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -117,6 +117,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `macabre_waltz` | Macabre Waltz | functional definition |
 | `make_a_stand` | Make a Stand | functional definition |
 | `manalith` | Manalith | functional definition |
+| `marauder_s_axe` | Marauder's Axe | functional definition |
 | `meandering_river` | Meandering River | functional definition |
 | `mentor_of_the_meek` | Mentor of the Meek | functional definition |
 | `meteor_golem` | Meteor Golem | functional definition |
@@ -233,7 +234,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Effects that untap a permanent it did not just take | untapping rides on the control change that steals a creature, because one effect names one target; nothing else brings an untap forward |
 | Effects whose amount is derived from anything but a count of permanents | an amount may scale with a count of permanents — power/toughness, life, or damage; cards in a zone, life totals, and mana values feed nothing |
 | Emblems with an activated ability | an emblem carries static and triggered abilities only; nothing offers a way to activate one |
-| Equipment | no equip action or attachment outside the Aura model |
+| Equipment that grants an ability or a type, and cards that ask whether a creature is equipped | an attachment grants power/toughness, keywords, and combat restrictions at CR 613 layers 6 and 7c; it adds no triggered ability and no type, and nothing asks whether a permanent is attached |
 | Fight, and other effects taking two differently-specified targets | one effect's target slots all share a single spec, so two differently-specified slots are unwritable |
 | Gaining control of a permanent for longer than a turn, and exchanging control | a control change is a targeted layer-2 effect the cleanup step ends; no duration outlives the turn and nothing swaps two permanents' controllers |
 | Keyword removal and loses-all-abilities effects | the ability-adding layer only adds abilities |

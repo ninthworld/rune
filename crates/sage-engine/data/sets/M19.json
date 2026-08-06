@@ -780,6 +780,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "marauder_s_axe",
+    "collector_number": "240",
+    "rarity": "common"
+  },
+  {
     "functional_id": "meteor_golem",
     "collector_number": "241",
     "rarity": "uncommon"

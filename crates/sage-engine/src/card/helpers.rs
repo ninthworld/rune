@@ -1,17 +1,21 @@
 //! Public helper functions for card data.
 
+use super::attachment::AttachmentKind;
 use super::database::CardDatabase;
-use crate::ability::Effect;
+use crate::ability::{Ability, Cost, Effect};
 use crate::id::CardId;
 use crate::scripted::scripted_abilities;
 use crate::state::Permanent;
 
-/// All abilities of a card: its data-driven [`super::CardData::abilities`] plus any
+/// All abilities of a card: its data-driven [`super::CardData::abilities`], the **equip
+/// ability** an Equipment's attachment block implies ([`equip_ability`]), plus any
 /// code-defined ones from [`crate::scripted`].
 ///
 /// Returns an empty list if the id is unknown and has no scripted abilities. This
-/// is the single accessor the pipeline uses so both authoring tiers are always
-/// considered together.
+/// is the single accessor the pipeline uses so all three authoring tiers are always
+/// considered together — which is what makes the equip ability an ordinary activation
+/// everywhere downstream: it is offered, targeted, paid for, put on the stack, resolved,
+/// and labelled by exactly the code an authored `{2}: …` goes through.
 #[must_use]
 pub fn abilities_of(db: &CardDatabase, card: CardId) -> Vec<crate::ability::Ability> {
     let Some(data) = db.card(card) else {
@@ -20,8 +24,39 @@ pub fn abilities_of(db: &CardDatabase, card: CardId) -> Vec<crate::ability::Abil
         return Vec::new();
     };
     let mut abilities = data.abilities.clone();
+    abilities.extend(equip_ability(data));
     abilities.extend(scripted_abilities(&data.functional_id));
     abilities
+}
+
+/// The **equip ability** of an Equipment (CR 702.6a): `{cost}: Attach this to target
+/// creature you control`, derived from the card's attachment block. `None` for every card
+/// that is not an Equipment.
+///
+/// Derived rather than authored, for the reason an Aura's cast target slot is derived: an
+/// authored ability could name a cost the card does not print, or attach something other
+/// than itself, and neither is a thing a printed Equipment can say. What it *may* say —
+/// the cost and the class of legal host — is the two fields the block already carries.
+///
+/// The one shape the whole feature hangs off, so it is public: the rules-text formatter
+/// composes the printed equip line from the same value the engine activates, and the two
+/// therefore cannot describe different costs (ADR 0008 §7).
+#[must_use]
+pub fn equip_ability(data: &super::CardData) -> Option<Ability> {
+    let attachment = data.attachment.as_ref()?;
+    if attachment.kind != AttachmentKind::Equipment {
+        return None;
+    }
+    // The catalog validator guarantees an Equipment authors an equip cost, so this is
+    // belt-and-braces: an Equipment with none would advertise a free equip, and no
+    // ability at all is the safer of the two wrong answers.
+    let mana = attachment.equip.clone()?;
+    Some(Ability::Activated {
+        cost: vec![Cost::Mana { mana }],
+        effects: vec![Effect::Attach {
+            target: attachment.attach_to,
+        }],
+    })
 }
 
 /// All abilities of a **permanent**, whether it is a card or a token.

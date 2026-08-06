@@ -175,7 +175,7 @@ fn issue_152_aura_boosted_host_projects_current_pt() {
          "power":1,"toughness":1},
         {"schema_version":1,"functional_id":"test_aegis","name":"Test Aegis",
          "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{1}{G}","colors":["green"],
-         "aura":{"enchant":"any_creature","power":2,"toughness":2}}
+         "attachment":{"kind":"aura","attach_to":"any_creature","power":2,"toughness":2}}
     ]"#;
     let db = CardDatabase::from_json(json).unwrap();
     let mut state = GameState::new_two_player();
@@ -435,7 +435,7 @@ fn issue_333_aura_attachment_projects_into_the_view() {
          "power":1,"toughness":1},
         {"schema_version":1,"functional_id":"test_aegis","name":"Test Aegis",
          "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{1}{G}","colors":["green"],
-         "aura":{"enchant":"any_creature","power":2,"toughness":2}}
+         "attachment":{"kind":"aura","attach_to":"any_creature","power":2,"toughness":2}}
     ]"#;
     let db = CardDatabase::from_json(json).unwrap();
     let mut state = GameState::new_two_player();
@@ -565,7 +565,7 @@ fn issue_374_granted_keyword_projects_onto_the_card_view() {
         r#"[
             {"schema_version":1,"functional_id":"test_flight","name":"Test Flight",
              "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{U}","colors":["blue"],
-             "aura":{"enchant":"any_creature","keywords":["flying"]}},
+             "attachment":{"kind":"aura","attach_to":"any_creature","keywords":["flying"]}},
             {"schema_version":1,"functional_id":"test_ogre","name":"Test Ogre",
              "types":["creature"],"subtypes":["Ogre"],"mana_cost":"{2}{R}","colors":["red"],
              "power":4,"toughness":2}

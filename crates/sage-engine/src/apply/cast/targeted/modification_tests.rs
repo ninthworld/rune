@@ -261,7 +261,7 @@ fn issue_152_minus_x_aura_cast_kills_its_host_and_follows_it_cr_704_5f() {
     let json = r#"[
         {"schema_version":1,"functional_id":"test_curse","name":"Test Curse",
          "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{B}","colors":["black"],
-         "aura":{"enchant":"any_creature","power":-2,"toughness":-2}},
+         "attachment":{"kind":"aura","attach_to":"any_creature","power":-2,"toughness":-2}},
         {"schema_version":1,"functional_id":"test_boar","name":"Test Boar",
          "types":["creature"],"subtypes":["Boar"],"mana_cost":"{2}{G}","colors":["green"],
          "power":3,"toughness":2}

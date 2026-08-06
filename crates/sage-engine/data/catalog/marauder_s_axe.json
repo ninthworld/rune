@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "functional_id": "marauder_s_axe",
+  "name": "Marauder's Axe",
+  "types": [
+    "artifact"
+  ],
+  "subtypes": [
+    "Equipment"
+  ],
+  "mana_cost": "{3}",
+  "colors": [],
+  "attachment": {
+    "kind": "equipment",
+    "attach_to": "any_creature_you_control",
+    "equip": "{2}",
+    "power": 2,
+    "toughness": 1
+  }
+}

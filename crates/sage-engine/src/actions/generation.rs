@@ -1,6 +1,6 @@
 //! Action generation — enumeration of legal actions from game state.
 
-use crate::ability::{is_loyalty_ability, is_mana_ability, Ability, Effect};
+use crate::ability::{is_equip_ability, is_loyalty_ability, is_mana_ability, Ability, Effect};
 use crate::card_type::CardType;
 use crate::choice::ChoiceQuestion;
 use crate::commander::commander_tax_cost;
@@ -12,7 +12,8 @@ use crate::CardDatabase;
 use super::definition::Action;
 use super::targeting::legal_targets_for_spec;
 use super::utilities::{
-    cost_payable, is_castable_spell, is_land, loyalty_timing_allows, tap_cost_is_summoning_sick,
+    cost_payable, equip_timing_allows, is_castable_spell, is_land, loyalty_timing_allows,
+    tap_cost_is_summoning_sick,
 };
 
 /// Enumerate the actions legal for the player who currently holds priority.
@@ -459,6 +460,13 @@ fn offer_activations(
                 // about its cost, so they gate the offer beside the summoning-sickness
                 // check rather than inside `cost_payable`.
                 if is_loyalty_ability(ability) && !loyalty_timing_allows(state, perm) {
+                    continue;
+                }
+                // CR 702.6b: equip is activated only when its controller could cast a
+                // sorcery. Gated here beside the loyalty rule and for the same reason —
+                // it is a timing fact about *this* activation rather than about its
+                // cost — and re-derived independently in `apply_action`.
+                if is_equip_ability(ability) && !equip_timing_allows(state, perm) {
                     continue;
                 }
                 // CR 601.2c via CR 602.2b: an ability whose required target slots have

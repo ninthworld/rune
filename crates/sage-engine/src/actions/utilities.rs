@@ -90,14 +90,39 @@ pub(crate) fn loyalty_cost_is_payable(permanent: &Permanent, amount: i32) -> boo
 /// a planeswalker (there are none in the catalog, but the IR permits one) is bound only
 /// by the ordinary gates.
 pub(crate) fn loyalty_timing_allows(state: &GameState, permanent: &Permanent) -> bool {
-    let sorcery_speed = crate::characteristics::controller_of(state, permanent)
-        == state.active_player
+    sorcery_speed_for(state, permanent) && !state.loyalty_activations.contains(&permanent.id)
+}
+
+/// Whether `permanent`'s controller could cast a sorcery right now — the timing an
+/// **equip** ability is bound by (CR 702.6b), and the half of CR 606.3
+/// [`loyalty_timing_allows`] shares.
+///
+/// One expression of "sorcery speed, measured from the permanent's controller", so an
+/// equip and a loyalty activation cannot disagree about when that is. Measured from the
+/// *controller* rather than from whoever holds priority for the reason the loyalty gate
+/// is: an opponent holding priority in a main phase must not be able to equip through a
+/// window that is not theirs.
+///
+/// Unlike a loyalty ability there is no per-turn limit: an Equipment may be moved as
+/// many times in a main phase as its controller can pay for.
+pub(crate) fn equip_timing_allows(state: &GameState, permanent: &Permanent) -> bool {
+    sorcery_speed_for(state, permanent)
+}
+
+/// The three conditions [`crate::valid_actions`] applies to a sorcery — the permanent's
+/// controller is the active player, the game is in a main phase, and the stack is empty
+/// (CR 117.1a).
+///
+/// The controller is the **computed** one (CR 613 layer 2), not the stored field: an
+/// Equipment whose control has changed is equipped on its new controller's turn, not its
+/// owner's.
+fn sorcery_speed_for(state: &GameState, permanent: &Permanent) -> bool {
+    crate::characteristics::controller_of(state, permanent) == state.active_player
         && matches!(
             state.step,
             crate::phase::Step::PrecombatMain | crate::phase::Step::PostcombatMain
         )
-        && state.stack.is_empty();
-    sorcery_speed && !state.loyalty_activations.contains(&permanent.id)
+        && state.stack.is_empty()
 }
 
 /// `player`'s pool **plus every unit of mana their untapped permanents could still
