@@ -467,10 +467,18 @@ fn on_battlefield(state: &GameState, perm: &Permanent) -> bool {
     state.battlefield.iter().any(|p| p.id == perm.id)
 }
 
-/// Whether the spell `card` is one `observes` notices.
+/// Whether the spell `card` is one `observes` notices, for a watcher whose source named
+/// `chosen` as it entered (CR 614.12).
+///
+/// `chosen` is threaded in rather than looked up because only one class reads it, and a
+/// watcher that named no colour — an emblem, a token, a card that never declared the
+/// choice — passes `None` and notices nothing of that class. That is the correct answer
+/// rather than a defensive one: "a spell of the chosen color" is unsatisfiable until a
+/// colour has been chosen.
 fn observed_spell_matches(
     observes: ObservedSpell,
     card: crate::id::CardId,
+    chosen: Option<crate::mana::Color>,
     db: &CardDatabase,
 ) -> bool {
     let Some(data) = db.card(card) else {
@@ -481,6 +489,9 @@ fn observed_spell_matches(
         ObservedSpell::InstantOrSorcery => {
             data.has_type(CardType::Instant) || data.has_type(CardType::Sorcery)
         }
+        // CR 105.2: a spell *is* each of its colours, so a gold spell satisfies a
+        // watcher of any one of them and a colourless spell satisfies none.
+        ObservedSpell::ChosenColor => chosen.is_some_and(|color| data.colors.contains(&color)),
     }
 }
 
@@ -642,8 +653,13 @@ fn fire_count(
             events_in(before, after)
                 .filter(|event| {
                     matches!(event, GameEvent::SpellCast { player, card }
-                        if *player == watcher.controller
-                            && observed_spell_matches(*spell, card.card, db))
+                    if *player == watcher.controller
+                        && observed_spell_matches(
+                            *spell,
+                            card.card,
+                            watcher.permanent.and_then(|perm| perm.chosen_color),
+                            db,
+                        ))
                 })
                 .count()
         }
@@ -708,6 +724,7 @@ mod tests {
             damage: 0,
             counters: Default::default(),
             attached_to: None,
+            chosen_color: None,
         });
         let triggers = collect_triggers(&before, &after, &db);
         assert_eq!(triggers.len(), 1);
@@ -735,6 +752,7 @@ mod tests {
             damage: 0,
             counters: Default::default(),
             attached_to: None,
+            chosen_color: None,
         });
         (before, id, instance)
     }
@@ -837,6 +855,7 @@ mod tests {
             damage: 0,
             counters: Default::default(),
             attached_to: None,
+            chosen_color: None,
         });
         let mut after = before.clone();
         after.turn = turn;
@@ -984,6 +1003,7 @@ mod tests {
                 damage: 0,
                 counters: Default::default(),
                 attached_to: None,
+                chosen_color: None,
             });
         }
         let mut after = before.clone();

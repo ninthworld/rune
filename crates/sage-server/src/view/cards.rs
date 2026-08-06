@@ -190,6 +190,21 @@ pub(crate) fn colors_in_wubrg(
     .collect()
 }
 
+/// One engine [`Color`](sage_engine::Color) as the wire's colour letter.
+///
+/// The single-value counterpart of [`colors_in_wubrg`], for the one colour a permanent
+/// named as it entered (CR 614.12) rather than a set a card belongs to. Exhaustive, so a
+/// sixth colour would have to be answered here rather than silently dropped.
+pub(crate) fn wire_color(color: sage_engine::Color) -> sage_protocol::Color {
+    match color {
+        sage_engine::Color::White => sage_protocol::Color::White,
+        sage_engine::Color::Blue => sage_protocol::Color::Blue,
+        sage_engine::Color::Black => sage_protocol::Color::Black,
+        sage_engine::Color::Red => sage_protocol::Color::Red,
+        sage_engine::Color::Green => sage_protocol::Color::Green,
+    }
+}
+
 /// The wire name for an engine [`Keyword`], as the client expects it in
 /// [`CardView::keywords`] (e.g. `"flying"`, `"first_strike"`). Kept exhaustive so
 /// a new engine keyword forces a matching wire string here rather than silently

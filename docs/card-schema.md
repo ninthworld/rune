@@ -722,6 +722,42 @@ asked once per point — so two mana may be two of one colour or one each of two
 same mid-resolution choice queue a discard or a scry uses, answered with `answer_color`. The
 optional `restriction` rides on every point produced, exactly as `add_restricted_mana`'s does.
 
+### A colour named as a permanent enters (CR 614.12)
+
+`enters_choosing_color` is a card's declaration that its controller names one of the five
+colours **as it enters the battlefield**, and that the answer stays on the permanent:
+
+```json
+{ "abilities": [
+    { "type": "enters_choosing_color" },
+    { "type": "triggered",
+      "event": { "you_cast_spell": "chosen_color" },
+      "effects": [{ "kind": "gain_life", "player_ref": "controller", "amount": 1 }] } ] }
+```
+
+It carries no answer, the way `enters_tapped` carries no tapped state: the answer belongs to
+the permanent, so two copies of one card side by side may have chosen differently, and a card
+that leaves and comes back is a new object that chooses again (CR 400.7).
+
+**It is not an enters-the-battlefield trigger**, and the difference is the point. A trigger
+goes on the stack after the permanent has arrived, leaving a window in which it sat there with
+no colour recorded and any player could respond. This is part of arriving: the card waits on
+the choice queue in no zone at all — where a spell's card already waits while a mid-resolution
+choice is owed — and the permanent that then enters already carries its colour. Every read of
+the board, including the state-based-action loop and the trigger diff, therefore sees one
+complete arrival. The controller is asked, always, and all five colours are always legal, so
+the question can never stall (ADR 0013).
+
+The only thing that reads the answer back today is `{"you_cast_spell": "chosen_color"}` — "a
+spell of the chosen color", satisfied by a spell whose printed colours *include* it (CR 105.2),
+so a gold spell is of each of its colours and a colourless spell is of none. Watching it on a
+card that never names a colour is a validation error (`ChosenColorIsNeverNamed`), because the
+engine's honest answer to a permanent with no colour recorded is to notice nothing, and a card
+that silently does nothing is the hardest kind of wrong to spot.
+
+Naming a **card** or a **type** is not authorable: only a colour is recorded, and nothing on a
+spell records a choice at all.
+
 ### Restricted mana (CR 106.6)
 
 `add_restricted_mana` adds mana that may be spent only on what its restriction names:
@@ -1175,7 +1211,9 @@ it, "whenever a creature **with flying** attacks". Both are read through the com
 characteristics of the state the event happened in, so a creature that entered pumped is
 judged by what it was then, one that died shrunk by what it was as it died, and one that was
 *granted* flying is a flier for exactly as long as the grant lasts.
-`you_cast_spell` takes `enchantment` or `instant_or_sorcery`.
+`you_cast_spell` takes `enchantment`, `instant_or_sorcery`, or `chosen_color` — the last of
+which is the one selector whose meaning comes from elsewhere on the same card, and is
+described under [a colour named as a permanent enters](#a-colour-named-as-a-permanent-enters-cr-61412).
 
 `ability_activated` watches a player activating an ability (CR 602.2), with two optional
 filters: `activator` is `any` (the default) or `opponents`, and `source_types` names the

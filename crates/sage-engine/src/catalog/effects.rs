@@ -427,3 +427,38 @@ pub(super) fn effect_chooses_a_target(effect: &serde_json::Value) -> bool {
         .into_iter()
         .any(effect_chooses_a_target)
 }
+
+/// Whether any ability of `object` watches "a spell of the **chosen color**" — the one
+/// trigger selector whose meaning comes from elsewhere on the same card (CR 614.12).
+///
+/// Reads the authored `event` shape directly: `{"you_cast_spell": "chosen_color"}`. Like
+/// everything else here it works on JSON, because `build.rs` validates a definition
+/// before the typed IR exists (ADR 0008 §5).
+pub(super) fn watches_the_chosen_color(
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> bool {
+    abilities_of(object).iter().any(|ability| {
+        ability
+            .get("event")
+            .and_then(|event| event.get("you_cast_spell"))
+            .and_then(serde_json::Value::as_str)
+            == Some("chosen_color")
+    })
+}
+
+/// Whether `object` declares the `enters_choosing_color` ability — whether it names a
+/// colour as it enters (CR 614.12), and so whether "the chosen color" refers to anything.
+pub(super) fn object_chooses_a_color(object: &serde_json::Map<String, serde_json::Value>) -> bool {
+    abilities_of(object).iter().any(|ability| {
+        ability.get("type").and_then(serde_json::Value::as_str) == Some("enters_choosing_color")
+    })
+}
+
+/// A definition's authored `abilities` array, or an empty slice when it has none.
+fn abilities_of(object: &serde_json::Map<String, serde_json::Value>) -> &[serde_json::Value] {
+    object
+        .get("abilities")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+}

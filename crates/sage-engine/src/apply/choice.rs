@@ -43,15 +43,21 @@ pub(crate) fn apply_answer_choice(
     }
 }
 
-/// Answer the pending **color choice** with `color`: put that one mana in the chooser's
-/// pool, then let the suspended resolution continue.
+/// Answer the pending **color choice** with `color`: carry out whatever the question was
+/// for, then let any suspended resolution continue.
 ///
 /// The same three steps [`apply_answer_choice`] takes, and the simplest instance of
 /// them: there is no candidate set to re-derive, because every color is always a legal
-/// answer (CR 105.1), and no aftermath for the points not chosen. An effect producing
+/// answer (CR 105.1), and no aftermath for the answers not given. An effect producing
 /// more than one mana queued one question per point, so answering this one leaves the
 /// next at the head of the queue and the player is asked again — which is the whole
 /// meaning of "in any combination of colors".
+///
+/// The other thing a colour answer can do is **finish a battlefield entry** (CR 614.12):
+/// the permanent that was waiting for it arrives here, colour and all. It carries no
+/// [`Resume`](crate::Resume) — nothing was suspended, because the entry is the last step
+/// of a resolution rather than one of its effects — so the `if let` below simply finds
+/// nothing, which is the correct amount of special-casing.
 ///
 /// An answer with no color choice pending is a no-op.
 pub(crate) fn apply_answer_color(
@@ -66,7 +72,7 @@ pub(crate) fn apply_answer_color(
     let ChoiceQuestion::Color(request) = &answered.question else {
         return;
     };
-    crate::choice::add_chosen_color(state, answered.chooser, request, color);
+    crate::choice::apply_color_outcome(state, answered.chooser, request, color, db);
     if let Some(resume) = answered.resume {
         resume_after_choice(state, resume, db);
     }

@@ -93,6 +93,17 @@ pub enum Violation {
         /// Whether the card is an Equipment — which is to say, which way it is wrong.
         equipment: bool,
     },
+    /// An ability watches "a spell of the **chosen color**" on a card that never names
+    /// one — it declares no `enters_choosing_color` (CR 614.12).
+    ///
+    /// The phrase has no referent, so the trigger could not fire once in the whole game.
+    /// It is caught here rather than left to the engine because the engine's honest
+    /// answer — a permanent with no recorded colour notices nothing — is silence, and a
+    /// card that silently does nothing is the hardest kind of wrong to notice.
+    ChosenColorIsNeverNamed {
+        /// The definition at fault.
+        functional_id: String,
+    },
     /// An `additional_cost` appears on a card that cannot be cast, or names a cost of
     /// nothing. A land is *played*, not cast (CR 116.2a), so a cast cost on one could
     /// never be paid or checked; a cost of zero cards is not a cost, and authoring one
@@ -310,6 +321,11 @@ impl fmt::Display for Violation {
                 functional_id,
                 equipment: true,
             } => write!(f, "{functional_id} is an Equipment with no `equip` cost"),
+            Self::ChosenColorIsNeverNamed { functional_id } => write!(
+                f,
+                "{functional_id} watches a spell of the chosen color but never chooses \
+                 one: it declares no `enters_choosing_color` ability"
+            ),
             Self::EquipCostMismatch {
                 functional_id,
                 equipment: false,

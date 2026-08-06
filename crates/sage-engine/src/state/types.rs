@@ -573,6 +573,25 @@ pub struct Permanent {
     /// host having left) is caught by the CR 704.5m state-based action, which
     /// puts the Aura into its owner's graveyard.
     pub attached_to: Option<PermanentId>,
+    /// The colour this permanent's controller named **as it entered** (CR 614.12), for a
+    /// card that declares [`Ability::EntersChoosingColor`](crate::Ability) — the "chosen
+    /// color" its other abilities read. `None` for every permanent that names none.
+    ///
+    /// **Raw stored state, not a derivation** (ADR 0005 §1), and it has to be: the answer
+    /// is a player's, so nothing else in [`GameState`](crate::GameState) determines it and
+    /// no amount of recomputation could recover it. It is written exactly once, at the
+    /// battlefield-entry seam, and never again — a permanent's colour is chosen as it
+    /// enters and not re-chosen, so the field is as immutable in practice as
+    /// [`Self::instance`].
+    ///
+    /// Because entry is where it is written, it is also **never absent when it should be
+    /// present**: a card that declares the choice does not reach the battlefield until the
+    /// question is answered ([`ColorOutcome::RecordOnEntry`](crate::ColorOutcome)), so no
+    /// read of a permanent — a trigger, a projection, a state-based action — can ever
+    /// catch one mid-decision. And because a fresh [`PermanentId`] is minted on every
+    /// entry, a card that leaves and returns is a new object that chooses again, with no
+    /// memory of the colour the last one named (CR 400.7).
+    pub chosen_color: Option<crate::mana::Color>,
 }
 
 impl Permanent {

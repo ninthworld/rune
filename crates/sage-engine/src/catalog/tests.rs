@@ -611,3 +611,39 @@ fn a_return_self_from_graveyard_must_sit_on_an_activated_ability_it_can_pay_for(
         );
     }
 }
+
+#[test]
+fn issue_738_the_chosen_color_must_be_chosen_somewhere_on_the_card() {
+    // "A spell of the chosen color" is the one trigger selector that refers to the rest
+    // of its own card. Without an `enters_choosing_color` there is no colour to refer to
+    // and the trigger cannot fire once all game — and the engine's answer to a permanent
+    // with no recorded colour is *silence*, which is why this is caught at authoring
+    // time instead.
+    let unnamed = r#", "abilities": [{"type": "triggered",
+        "event": {"you_cast_spell": "chosen_color"},
+        "effects": [{"kind": "gain_life", "player_ref": "controller", "amount": 1}]}]"#;
+    assert_eq!(
+        validate_definition(None, &definition(unnamed)),
+        Err(Violation::ChosenColorIsNeverNamed {
+            functional_id: "test_card".to_string(),
+        }),
+    );
+
+    // With the choice declared, the same trigger is exactly what Diamond Mare authors.
+    let named = r#", "abilities": [{"type": "enters_choosing_color"},
+        {"type": "triggered", "event": {"you_cast_spell": "chosen_color"},
+         "effects": [{"kind": "gain_life", "player_ref": "controller", "amount": 1}]}]"#;
+    assert!(validate_definition(None, &definition(named)).is_ok());
+
+    // A card that names a colour and never reads it back is not an error: an entry
+    // choice is a fact about the permanent, and nothing says an ability has to consult
+    // it. Only the dangling reference is wrong.
+    let choice_only = r#", "abilities": [{"type": "enters_choosing_color"}]"#;
+    assert!(validate_definition(None, &definition(choice_only)).is_ok());
+
+    // The other spellings of the same trigger are untouched.
+    let ordinary = r#", "abilities": [{"type": "triggered",
+        "event": {"you_cast_spell": "instant_or_sorcery"},
+        "effects": [{"kind": "draw_card", "count": 1}]}]"#;
+    assert!(validate_definition(None, &definition(ordinary)).is_ok());
+}

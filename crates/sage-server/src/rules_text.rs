@@ -187,6 +187,14 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
             "{source} enters the battlefield with {} on it.",
             counters(*counter, *count)
         ),
+        // "As …" rather than "When …", and the distinction is the rule (CR 614.12): the
+        // colour is named as part of entering, not by an ability that goes on the stack
+        // once the permanent is already there. Every ability of the card that reads the
+        // answer calls it "the chosen color", so this sentence is what gives that phrase
+        // its referent.
+        Ability::EntersChoosingColor => {
+            format!("As {source} enters the battlefield, choose a color.")
+        }
         // A player-subject static says what is true of *you*, so the sentence has no
         // object at all — the shortest ability the formatter composes, and the only one
         // whose subject is a person.
@@ -318,6 +326,11 @@ fn observed_spell_noun(spell: ObservedSpell) -> &'static str {
     match spell {
         ObservedSpell::Enchantment => "an enchantment spell",
         ObservedSpell::InstantOrSorcery => "an instant or sorcery spell",
+        // Named, not spelled out: the sentence is printed on a card that has not
+        // entered the battlefield yet, where the colour is genuinely unknown. What the
+        // *permanent* chose is on the board, in its own field, rather than baked into
+        // text a hand and a battlefield would then disagree about.
+        ObservedSpell::ChosenColor => "a spell of the chosen color",
     }
 }
 

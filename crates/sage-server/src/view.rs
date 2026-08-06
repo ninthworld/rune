@@ -19,9 +19,10 @@ use sage_engine::{
     scripted_rules_text, summoning_sickness_restricts, target_requirements, valid_actions,
     AbilityOrigin, Action, Attack, AttackTarget, Block, CardData, CardDatabase, CardId,
     CardInstance, CardInstanceId, ChoiceOutcome, ChoiceQuestion, ChoiceRequest, ChoiceZone, Color,
-    ColorRequest, ConfirmRequest, CostPayment, CounterKind, DamageOrder, DamageTarget, GameEvent,
-    GameResult, GameState, Keyword, LoggedIdentity, LoggedPermanent, LossReason, PermanentId,
-    Player, PlayerId, PrintedFace, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
+    ColorOutcome, ColorRequest, ConfirmRequest, CostPayment, CounterKind, DamageOrder,
+    DamageTarget, GameEvent, GameResult, GameState, Keyword, LoggedIdentity, LoggedPermanent,
+    LossReason, PermanentId, Player, PlayerId, PrintedFace, StackId, StackObject, StackObjectKind,
+    Step, Target, TargetSpec,
 };
 
 use crate::rules_text::{
@@ -198,6 +199,10 @@ pub(crate) fn personalized_view(
             // trample or an Aura's flying would otherwise be true of the object and
             // invisible on it.
             granted_keywords: granted_keywords(state, perm, db),
+            // The colour named as this permanent entered (CR 614.12). Raw engine state:
+            // it is a player's answer, so nothing on the board implies it and no client
+            // could work it out from the card.
+            chosen_color: perm.chosen_color.map(wire_color),
         })
         .collect();
 
@@ -417,6 +422,9 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
             // the trample a pump gave it, the flying an Aura grants. Public, like the
             // rest of the board.
             granted_keywords: granted_keywords(state, perm, db),
+            // Public exactly as the rest of the board is: the colour was named aloud as
+            // the permanent entered (CR 614.12), so a spectator sees what the seats do.
+            chosen_color: perm.chosen_color.map(wire_color),
         })
         .collect();
 
@@ -758,6 +766,7 @@ mod tests {
             damage: 0,
             counters: std::collections::BTreeMap::new(),
             attached_to: None,
+            chosen_color: None,
         });
         // A plain creature beside it, to prove the marker is not "every legend".
         let plain = put_permanent(

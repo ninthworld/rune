@@ -58,7 +58,7 @@ pub(crate) fn player_choice_prompts(state: &GameState, db: &CardDatabase) -> Vec
     match &pending.question {
         ChoiceQuestion::Cards(request) => vec![card_choice_prompt(state, db, request)],
         ChoiceQuestion::Confirm(request) => vec![confirm_prompt(state, request)],
-        ChoiceQuestion::Color(request) => vec![color_prompt(request)],
+        ChoiceQuestion::Color(request) => vec![color_prompt(request, db)],
     }
 }
 
@@ -68,10 +68,10 @@ pub(crate) fn player_choice_prompts(state: &GameState, db: &CardDatabase) -> Vec
 /// color is legal by being a color (CR 105.1). The prompt says what the mana may be
 /// spent on when the effect restricted it, since that is the only thing that makes one
 /// answer better than another.
-fn color_prompt(request: &ColorRequest) -> Prompt {
+fn color_prompt(request: &ColorRequest, db: &CardDatabase) -> Prompt {
     Prompt::Option {
         slot: CHOICE_SLOT.to_string(),
-        prompt: color_question(request),
+        prompt: color_question(request, db),
         options: COLOR_OPTIONS
             .iter()
             .map(|(id, label, _)| PromptOption {
@@ -83,16 +83,28 @@ fn color_prompt(request: &ColorRequest) -> Prompt {
     }
 }
 
-/// The words a color choice is asked in, naming the spend restriction when there is
-/// one — "choose a color" and "choose a color you may only spend on Dragons" are
-/// different decisions.
-fn color_question(request: &ColorRequest) -> String {
-    match &request.restriction {
-        Some(restriction) => format!(
+/// The words a color choice is asked in — five identical answers make the *question*
+/// the only thing that tells a player what they are deciding.
+///
+/// Three sentences for two outcomes: adding mana, adding mana that may only be spent
+/// somewhere ("choose a color" and "choose a color you may only spend on Dragons" are
+/// different decisions), and naming the colour a permanent enters with. The last one
+/// names the card, because a player who has just cast two things needs to know which of
+/// them is asking, and because that colour is a lasting property of a permanent rather
+/// than a point of mana about to be spent.
+fn color_question(request: &ColorRequest, db: &CardDatabase) -> String {
+    match &request.outcome {
+        ColorOutcome::AddMana {
+            restriction: Some(restriction),
+        } => format!(
             "Choose a color of mana to add — you may spend it only to {}",
             crate::rules_text::restriction_phrase(restriction)
         ),
-        None => "Choose a color of mana to add".to_string(),
+        ColorOutcome::AddMana { restriction: None } => "Choose a color of mana to add".to_string(),
+        ColorOutcome::RecordOnEntry(entry) => format!(
+            "Choose a color as {} enters the battlefield",
+            card_name(entry.card.card, db)
+        ),
     }
 }
 
@@ -201,7 +213,7 @@ pub(crate) fn player_choice_label(state: &GameState, db: &CardDatabase) -> Strin
         Some(ChoiceQuestion::Confirm(request)) => {
             optional_effect_question(request.cost.as_deref(), &request.effects)
         }
-        Some(ChoiceQuestion::Color(request)) => color_question(request),
+        Some(ChoiceQuestion::Color(request)) => color_question(request, db),
         None => "Make a choice".to_string(),
     }
 }
@@ -481,6 +493,7 @@ mod tests {
             damage: 0,
             counters: std::collections::BTreeMap::new(),
             attached_to: None,
+            chosen_color: None,
         });
         let library: Vec<CardInstance> = ["forest", "elvish_clancaller", "island"]
             .iter()
@@ -711,5 +724,44 @@ mod tests {
             resolve_action(&floated, &db, PlayerId(0), &answer(action, ACCEPT_OPTION)),
             Some(Action::AnswerConfirm { accept: true }),
         );
+    }
+
+    #[test]
+    fn issue_738_the_colour_a_permanent_enters_with_is_asked_by_name() {
+        // Diamond Mare's colour is named as it enters (CR 614.12), so the question is
+        // owed while the permanent is still on the battlefield's doorstep. Five answers,
+        // always — and the sentence names the card, because five identical buttons are
+        // all a player has to go on when two things are entering at once.
+        let db = CardDatabase::bundled().unwrap();
+        let state = cast_and_resolve(&main_phase(), &db, "diamond_mare", Vec::new());
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let action = choice_action(&view).expect("its controller is asked");
+        let (prompt, options) = option_prompt(action);
+        assert_eq!(
+            prompt,
+            "Choose a color as Diamond Mare enters the battlefield"
+        );
+        assert_eq!(options, vec!["white", "blue", "black", "red", "green"]);
+        assert_eq!(
+            action.label, prompt,
+            "the dock button says what it is about to ask"
+        );
+        let answer = ChooseAction {
+            action_id: action.id.clone(),
+            token: action.token.clone(),
+            targets: vec![TargetChoice {
+                slot: CHOICE_SLOT.to_string(),
+                chosen: vec!["red".to_string()],
+            }],
+            ..Default::default()
+        };
+        assert_eq!(
+            resolve_action(&state, &db, PlayerId(0), &answer),
+            Some(Action::AnswerColor { color: Color::Red }),
+        );
+
+        // The opponent is offered nothing: the game is frozen on someone else's answer.
+        assert!(choice_action(&personalized_view(&state, &db, PlayerId(1))).is_none());
     }
 }

@@ -383,4 +383,18 @@ pub enum ObservedSpell {
     Enchantment,
     /// An instant **or** sorcery spell — one class, as a card writes it.
     InstantOrSorcery,
+    /// A spell of the **chosen color** — the class a card names *after* its controller
+    /// has answered the choice made as it entered
+    /// ([`Ability::EntersChoosingColor`](crate::Ability)).
+    ///
+    /// The one member of this set whose meaning is not fixed by the card: it is read
+    /// off [`Permanent::chosen_color`](crate::Permanent) at the moment the cast is
+    /// observed, so the same printed ability watches a different class on two
+    /// battlefields. A source with no colour recorded — a token given the ability, or a
+    /// permanent whose card never declared the choice — notices nothing at all, which is
+    /// the honest answer to "spells of which colour?" when none was named.
+    ///
+    /// Satisfied by a spell whose printed colours *include* the chosen one (CR 105.2),
+    /// so a gold spell is of each of its colours and a colourless spell is of none.
+    ChosenColor,
 }

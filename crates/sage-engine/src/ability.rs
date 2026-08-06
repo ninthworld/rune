@@ -89,6 +89,24 @@ pub enum Ability {
         /// How many counters of that kind the permanent enters with.
         count: u32,
     },
+    /// A choice made **as this permanent enters** (CR 614.12): its controller names one
+    /// of the five colors, and the answer is kept on the permanent for as long as it is
+    /// on the battlefield — the "chosen color" every later ability of the card reads.
+    ///
+    /// It is not an enters-the-battlefield *trigger*, and the difference is the whole
+    /// variant. A trigger goes on the stack after the permanent has arrived, so there
+    /// would be a window in which the permanent sat on the battlefield with no answer
+    /// recorded and any player could respond to it. This is part of the arrival: the
+    /// card waits *off* the battlefield while its controller answers
+    /// ([`ColorOutcome::RecordOnEntry`](crate::ColorOutcome)), exactly as a spell's card
+    /// waits off the stack while a mid-resolution choice is owed, and the permanent that
+    /// then enters already carries its colour.
+    ///
+    /// The answer lives on [`Permanent::chosen_color`](crate::Permanent), not here: this
+    /// variant is the card's *declaration* that a colour is chosen, in the same way
+    /// [`Self::EntersTapped`] is a declaration about the entry event rather than a record
+    /// of one. Deserialized as `{"type":"enters_choosing_color"}`.
+    EntersChoosingColor,
     /// A **static ability** (CR 604.3): a continuous effect that applies for as long
     /// as this permanent is on the battlefield, with nothing ever put on the stack —
     /// an anthem (`Creatures you control get +1/+1.`) or a lord (`Other Elves you

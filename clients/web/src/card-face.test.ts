@@ -152,6 +152,21 @@ describe('a permanent on the battlefield', () => {
     expect(lathliss.stat?.value).toBe('6/6')
   })
 
+  it('names the colour a permanent chose as it entered, and says nothing when it chose none', () => {
+    // CR 614.12: the choice is the permanent's, not the card's, so the board is the only
+    // place it can be read. Nothing here works out what colour anything is — the letter is
+    // stated and this only sets it in words.
+    const bear = permanent('gameview.json', 'perm_bear')
+
+    expect(permanentFace({ ...bear, chosen_color: 'R' }).markers).toContain('Chose Red')
+    expect(permanentFace({ ...bear, chosen_color: 'W' }).markers).toContain('Chose White')
+    expect(
+      permanentFace({ ...bear, chosen_color: undefined }).markers.some((marker) =>
+        marker.startsWith('Chose'),
+      ),
+    ).toBe(false)
+  })
+
   it('carries keywords the server computed', () => {
     const ogre = permanentFace(permanent('gameview-emblem.json', 'perm_ogre'))
 

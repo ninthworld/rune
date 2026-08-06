@@ -40,8 +40,8 @@
     "blocker": "no prevention shield or damage-replacement layer"
   },
   {
-    "name": "Effects that ask a player to name a colour, type, or card",
-    "blocker": "no player choice recorded on a permanent or spell"
+    "name": "Effects that ask a player to name a type or a card",
+    "blocker": "a permanent records the colour its controller named as it entered; a card name and a creature type have no recorded identity, and nothing on a spell records a choice at all"
   },
   {
     "name": "Effects that let a player choose the order of cards put back on a library",
