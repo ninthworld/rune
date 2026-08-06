@@ -65,7 +65,9 @@ pub use card::{
 };
 pub use card_type::{CardType, Supertype};
 pub use catalog::Violation;
-pub use characteristics::{characteristics, controller_of, controller_of_id, Characteristics};
+pub use characteristics::{
+    characteristics, controller_of, controller_of_id, loses_all_abilities, Characteristics,
+};
 pub use choice::{
     choice_bounds, choice_candidates, confirm_is_payable, pending_player_choice, ChoiceOutcome,
     ChoiceQuestion, ChoiceRequest, ChoiceZone, ColorRequest, ConfirmRequest, PendingChoice, Resume,

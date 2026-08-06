@@ -266,6 +266,39 @@ pub(crate) fn apply_effect(
                 }
             }
         }
+        // Layer 6 again, and the half of it that subtracts. One minted timestamp for the
+        // whole clause, because it is one continuous effect (CR 613.7): the pieces are
+        // pushed subtraction-first and the layer-6 sort is stable, so within the clause
+        // the losses settle before the gains while *between* clauses the timestamp still
+        // decides. A clause that neither loses nor gains anything pushes nothing.
+        Effect::AlterAbilitiesSelf {
+            lose_all,
+            lose,
+            gain,
+        } => {
+            if let Some(id) = source {
+                if state.battlefield.iter().any(|p| p.id == id) {
+                    let stamp = state.mint_id();
+                    let mut push = |modification| {
+                        state.static_effects.push(StaticEffect {
+                            source: stamp,
+                            affects: EffectAffects::SpecificPermanent(id),
+                            modification,
+                            duration: Duration::UntilEndOfTurn,
+                        });
+                    };
+                    if *lose_all {
+                        push(Modification::LoseAllAbilities);
+                    }
+                    for keyword in lose {
+                        push(Modification::LoseKeyword(*keyword));
+                    }
+                    for keyword in gain {
+                        push(Modification::GrantKeyword(*keyword));
+                    }
+                }
+            }
+        }
         Effect::PutCountersOnSelf { counter, count } => {
             if let Some(id) = source {
                 if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {

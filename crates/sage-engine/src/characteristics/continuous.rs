@@ -64,7 +64,11 @@ pub(super) fn static_ability_effects(
                 controller: controller_of(state, source),
                 permanent: Some(source.id),
             },
-            abilities_of_permanent(db, source),
+            // CR 613 layer 6 gates the *source*: a lord that has lost all its abilities
+            // has no static ability to contribute, so it stops pumping. The gate reads
+            // stored effects only, which is why asking it from inside this computation
+            // cannot recurse — the same property that lets `controller_of` be read here.
+            abilities_of_permanent(state, db, source),
         );
     }
     // CR 114.1: an emblem's abilities function from nowhere — it is in no zone, so the

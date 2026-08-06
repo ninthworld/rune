@@ -142,7 +142,7 @@ fn ability_taps(state: &GameState, db: &CardDatabase, source: sage_engine::ManaS
         .iter()
         .find(|perm| perm.id == source.permanent)
         .and_then(|perm| {
-            abilities_of_permanent(db, perm)
+            abilities_of_permanent(state, db, perm)
                 .get(source.index)
                 .map(activation_taps)
         })
@@ -162,7 +162,7 @@ fn ability_pip_label(
         .iter()
         .find(|perm| perm.id == source.permanent)
         .and_then(|perm| {
-            abilities_of_permanent(db, perm)
+            abilities_of_permanent(state, db, perm)
                 .get(source.index)
                 .map(|ability| mana_ability_pips(ability).join(""))
         })

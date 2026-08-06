@@ -780,6 +780,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "gargoyle_sentinel",
+    "collector_number": "236",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "gearsmith_guardian",
     "collector_number": "237",
     "rarity": "common"

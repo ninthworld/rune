@@ -109,6 +109,17 @@ pub enum Violation {
         /// The definition at fault.
         functional_id: String,
     },
+    /// An `alter_abilities_self` effect neither loses anything nor gains anything —
+    /// `lose_all` is absent or false and both keyword lists are empty.
+    ///
+    /// A CR 613 layer-6 effect that changes no ability is not a small effect, it is
+    /// no effect: it would mint a timestamp, sit in the stored effects until cleanup,
+    /// and be describable only as "unchanged until end of turn". Every field defaults,
+    /// which is exactly why authoring all of them away has to be caught here.
+    AbilityChangeIsEmpty {
+        /// The definition at fault.
+        functional_id: String,
+    },
     /// A `create_token` effect describes a token that could not be a permanent: it
     /// names no types at all, or names one no permanent has (an instant or a sorcery).
     ///
@@ -301,6 +312,11 @@ impl fmt::Display for Violation {
                 f,
                 "{functional_id} carries printed `restrictions` but is not a creature; \
                  a combat restriction can only restrict attacking or blocking"
+            ),
+            Self::AbilityChangeIsEmpty { functional_id } => write!(
+                f,
+                "{functional_id} authors an `alter_abilities_self` that loses nothing \
+                 and gains nothing; a layer-6 effect that changes no ability is no effect"
             ),
             Self::TokenIsNotAPermanent { functional_id } => write!(
                 f,

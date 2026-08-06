@@ -195,7 +195,7 @@ impl GameState {
             counters: Default::default(),
             attached_to,
         };
-        crate::card::apply_enters_replacements(db, &mut permanent);
+        crate::card::apply_enters_replacements(self, db, &mut permanent);
         self.battlefield.push(permanent);
         id
     }
@@ -250,7 +250,7 @@ impl GameState {
             counters: Default::default(),
             attached_to: None,
         };
-        crate::card::apply_enters_replacements(db, &mut permanent);
+        crate::card::apply_enters_replacements(self, db, &mut permanent);
         self.battlefield.push(permanent);
         id
     }

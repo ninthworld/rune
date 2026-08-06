@@ -110,7 +110,10 @@ pub fn collect_triggers(before: &GameState, after: &GameState, db: &CardDatabase
                 controller: crate::characteristics::controller_of(after, perm),
             },
             None,
-            abilities_of_permanent(db, perm),
+            // CR 613 layer 6, read against the same snapshot: a permanent that has
+            // lost all its abilities has no triggered ones either, so nothing here
+            // fires for it.
+            abilities_of_permanent(after, db, perm),
             before,
             after,
             db,
@@ -133,7 +136,10 @@ pub fn collect_triggers(before: &GameState, after: &GameState, db: &CardDatabase
                 controller: crate::characteristics::controller_of(before, perm),
             },
             None,
-            abilities_of_permanent(db, perm),
+            // Read against `before` for the same reason the controller is: it is the
+            // snapshot the permanent still exists in, and therefore the one whose
+            // layer-6 effects still silenced it as it died.
+            abilities_of_permanent(before, db, perm),
             before,
             after,
             db,

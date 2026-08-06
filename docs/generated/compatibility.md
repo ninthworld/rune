@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (201)
+## Supported cards (202)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -78,6 +78,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `fountain_of_renewal` | Fountain of Renewal | functional definition |
 | `frilled_sea_serpent` | Frilled Sea Serpent | functional definition |
 | `gallant_cavalry` | Gallant Cavalry | functional definition |
+| `gargoyle_sentinel` | Gargoyle Sentinel | functional definition |
 | `gearsmith_guardian` | Gearsmith Guardian | functional definition |
 | `gearsmith_prodigy` | Gearsmith Prodigy | functional definition |
 | `ghastbark_twins` | Ghastbark Twins | functional definition |
@@ -215,7 +216,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `wall_of_vines` | Wall of Vines | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (33)
+## Excluded (34)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
@@ -240,8 +241,8 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Equipment that grants an ability or a type, and cards that ask whether a creature is equipped | an attachment grants power/toughness, keywords, and combat restrictions at CR 613 layers 6 and 7c; it adds no triggered ability and no type, and nothing asks whether a permanent is attached |
 | Fight, and other effects taking two differently-specified targets | one effect's target slots all share a single spec, so two differently-specified slots are unwritable |
 | Gaining control of a permanent for longer than a turn, and exchanging control | a control change is a targeted layer-2 effect the cleanup step ends; no duration outlives the turn and nothing swaps two permanents' controllers |
-| Keyword removal and loses-all-abilities effects | the ability-adding layer only adds abilities |
 | Kicker and other optional additional costs | no optional cost declared on announcement |
+| Losing abilities on a permanent other than the effect's own source | a layer-6 removal names its own source, loses named keywords or all abilities until end of turn, and reaches no target and no class |
 | Mana filtering | mana is produced and spent, never converted; nothing changes the colour of mana already in a pool |
 | Modal spells that choose one | no mode choice on announcement |
 | Multi-face cards (transform, modal double-faced) | the card model has a single face |
@@ -249,6 +250,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Protection | there is no protection layer: nothing stops a spell, a block, an aura, or damage by a quality the way CR 702.16 does |
 | Reflexive triggers, and conditional branches that choose a target | an optional effect declares the target group of the one effect it wraps, but a conditional's branches, a wrapper over two targeting effects, and a "when you do" aimed after a cost is paid have no group one announcement could fill |
 | Replacement effects | no replacement-effect layer in the rules engine |
+| Rules that apply as though a permanent lacked a keyword it has | a keyword is present or absent at layer 6; nothing tells one rule to ignore a keyword the permanent still has |
 | Selectors that filter by toughness, or by a power relative to another permanent's | a permanent count, an enters-or-dies trigger selector, a blocking restriction, and a card choice each name a fixed power threshold; a target spec, a mass-effect class, and a static ability's condition name none, no threshold reads toughness, and no threshold is another permanent's power |
 | Spells with X in their cost | mana costs are fixed strings with no X announcement |
 | Static abilities that affect anything but the source or creatures its controller controls | the continuous-effect selector names the source or one class of that controller's creatures, so a permanent or an emblem may modify no other |

@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "functional_id": "gargoyle_sentinel",
+  "name": "Gargoyle Sentinel",
+  "types": [
+    "artifact",
+    "creature"
+  ],
+  "subtypes": [
+    "Gargoyle"
+  ],
+  "mana_cost": "{3}",
+  "colors": [],
+  "power": 3,
+  "toughness": 4,
+  "keywords": [
+    "defender"
+  ],
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{3}"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "alter_abilities_self",
+          "lose": [
+            "defender"
+          ],
+          "gain": [
+            "flying"
+          ]
+        }
+      ]
+    }
+  ]
+}

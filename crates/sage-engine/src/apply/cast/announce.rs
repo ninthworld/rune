@@ -40,7 +40,7 @@ pub(crate) fn apply_play_land(state: &mut GameState, card: CardInstance, db: &Ca
     // CR 614.1c/614.12: apply the land's own enters-the-battlefield replacements
     // (e.g. a tapland's "enters tapped") as it enters, so it is tapped the instant
     // it is on the battlefield — no untapped window to tap for mana this turn.
-    apply_enters_replacements(db, &mut permanent);
+    apply_enters_replacements(state, db, &mut permanent);
     state.battlefield.push(permanent);
     state.land_played = true;
 }
@@ -59,7 +59,7 @@ pub(crate) fn apply_activate_ability(
         return;
     };
     let controller = crate::characteristics::controller_of(state, perm);
-    let Some(ability) = abilities_of_permanent(db, perm).get(index).cloned() else {
+    let Some(ability) = abilities_of_permanent(state, db, perm).get(index).cloned() else {
         return;
     };
     let Ability::Activated { cost, effects } = &ability else {

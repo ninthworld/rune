@@ -102,7 +102,7 @@ keywords are read (combat legality, evasion, damage, view projection, generated 
 - A **spell or ability** grants **until end of turn** with the `grant_keyword` effect,
   e.g. `{"kind": "grant_keyword", "target": "any_creature", "keyword": "trample"}`. The
   grant expires in the cleanup step (CR 514.2). Duplicate grants are redundant, not
-  additive. Keyword *removal* and conditional grants are out of scope.
+  additive. Conditional grants are out of scope.
 - A card that pumps **and** grants in one breath — `Target creature gets +2/+2 and gains
   flying until end of turn` — is **one** `pump` effect carrying `keywords`, never a
   `pump` beside a `grant_keyword`:
@@ -115,6 +115,45 @@ keywords are read (combat legality, evasion, damage, view projection, generated 
   One effect declares one target group, so two effects would advertise two independent
   slots and let a player pump one creature while a different one gained flying. Author
   the two-effect form only when the card really names two targets.
+
+### Losing keywords and losing all abilities (continuous, CR 613.1f)
+
+Layer 6 **subtracts** as well as adds. `alter_abilities_self` is the one verb that says
+so, and its subject is the ability's own source — the way `pump_self` and `restrict_self`
+name theirs:
+
+```json
+{ "kind": "alter_abilities_self", "lose": ["defender"], "gain": ["flying"] }
+```
+
+That is the whole of `{3}: Until end of turn, this creature loses defender and gains
+flying` — **one** effect, not a removal beside a grant. Both halves are one printed
+sentence about one permanent, so they share one CR 613.7 timestamp, and within the clause
+the losses are applied before the gains.
+
+- `lose` names keywords to remove. It removes a keyword however the permanent got it:
+  by the time layer 6 applies, a granted keyword is indistinguishable from a printed one.
+  Removing one it does not have does nothing.
+- `gain` names keywords to add, exactly as `grant_keyword` does.
+- `lose_all` (default `false`) is `loses all abilities`: every keyword, every combat
+  restriction, and every printed static, triggered, and activated ability. A permanent
+  under it offers no activation, fires no trigger, and contributes no continuous effect
+  to anything — every collector that walks a permanent's abilities reads the same
+  answer, so there is no path that sees a silenced ability.
+- All three fields default, and a clause that says nothing is rejected by the catalog
+  validator rather than minting a timestamp for an effect that changes nothing.
+
+**Order is what decides a disagreement** (CR 613.1f). Between two clauses the later
+timestamp speaks last: a grant after a removal leaves the keyword present, and a removal
+after a grant leaves it absent. An Aura hung on a permanent *after* it lost all abilities
+still grants what it grants, because the attachment's grant is timestamped by the
+attachment. The whole effect is until-end-of-turn and the cleanup step removes it, at
+which point the printed abilities are simply there again — nothing was ever taken off the
+card.
+
+What is **not** here: removal aimed at a target or a class (the verb names its own
+source), removal that outlives the turn, and "attacks as though it didn't have defender",
+which is not removal at all — the keyword stays and one rule stops applying to it.
 
 ### Additional costs (CR 601.2b)
 
@@ -746,7 +785,8 @@ because a permission was granted on a later one.
 
 ### Effects on the ability's own source
 
-`pump_self` and `put_counters_on_self` act on the permanent whose ability is resolving.
+`pump_self`, `put_counters_on_self`, and `alter_abilities_self` act on the permanent
+whose ability is resolving.
 The source is not a *target* (CR 115.1), so these choose nothing, fill no slot, and never
 fizzle; a source that has left the battlefield is simply not there to modify. They are
 meaningless on a spell, which has no source permanent.

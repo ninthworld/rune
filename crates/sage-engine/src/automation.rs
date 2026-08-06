@@ -186,7 +186,7 @@ fn is_mana_ability_action(
     let Some(perm) = state.battlefield.iter().find(|p| p.id == permanent) else {
         return false;
     };
-    abilities_of_permanent(db, perm)
+    abilities_of_permanent(state, db, perm)
         .get(index)
         .is_some_and(is_mana_ability)
 }
