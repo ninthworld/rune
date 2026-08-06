@@ -99,9 +99,18 @@ pub enum Condition {
 /// ([`PermanentCount`], authored as `count_of`), because it is the one source a *static*
 /// ability may also read — an Aura's `+1/+1 for each Forest you control` is recalculated
 /// on every read of its host's characteristics, and has to be. Nothing here could stand
-/// in that position: two of the three read *events* over a window, exactly as
+/// in that position: two of the four read *events* over a window, exactly as
 /// [`Condition`] does and for the same reason, and an event window has no meaning
-/// outside a resolution.
+/// outside a resolution. A **count of cards in a graveyard** keeps its own spelling too
+/// ([`GraveyardCount`]), for that reason and one more: the only card that reads one is a
+/// characteristic-defining ability ([`Ability::DefinedPower`](crate::Ability)),
+/// re-derived on every read of a permanent's power rather than taken on a resolution.
+///
+/// **A chosen permanent's power is not one of these either** ([`PermanentAmount`]). Every
+/// source below is a question about the *game*, answerable wherever the effect that reads
+/// it stands; that one is a question about an object the same effect is about to remove,
+/// so CR 608.2h makes it readable only *before* the removal — which is why it rides on
+/// the effect that does the removing instead of standing here.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(tag = "source", rename_all = "snake_case")]
 pub enum DerivedAmount {
@@ -180,6 +189,27 @@ pub enum DerivedAmount {
     /// the cost sacrificed no creature, and zero for a power that was negative — damage is
     /// never negative (CR 120.1).
     SacrificedCreaturePower,
+    /// **Half** of `of`, rounded up — the `half their life, rounded up` of a symmetric
+    /// sorcery that takes half of everything.
+    ///
+    /// The one source here that is *arithmetic over* another number, and it is a variant
+    /// rather than the beginning of an expression language on purpose: "half, rounded up"
+    /// is a phrase printed cards write about a handful of named totals, not an operator
+    /// they compose. There is no doubling, no adding two sources together, and no
+    /// halving of a half.
+    ///
+    /// **Rounding is up and is not a field.** Every card that halves a total says which
+    /// way it rounds, and the ones that round down are a different phrase; when one is
+    /// authored it adds its own variant rather than a flag here, so no card can be
+    /// written that rounds the direction its text does not say.
+    ///
+    /// The total is read of the player the effect *names*, not of its controller — the
+    /// point of `each player loses half their life` is that each of them loses their own
+    /// half — and it is read once, where the effect applies (CR 608.2).
+    HalfRoundedUp {
+        /// Which total is halved.
+        of: HalvedTotal,
+    },
 }
 
 /// The class of permanents a **mass destruction** puts into their owners' graveyards
@@ -204,6 +234,70 @@ pub enum DestroyAffects {
     /// class rather than two, because the printed sentence is one destruction and a
     /// permanent that is both is destroyed once.
     EachArtifactOrEnchantment,
+}
+
+/// A total a [`DerivedAmount::HalfRoundedUp`] takes half of, asked about the player the
+/// effect names.
+///
+/// A closed list of the three a printed card halves, and each one is a *snapshot*
+/// question — a life total, a hand, a board — so all three are answered from the state as
+/// the effect is reached rather than from recorded events.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HalvedTotal {
+    /// That player's **life total** (CR 119.1) — `loses half their life`. A player
+    /// already at or below zero has no positive total to halve and loses nothing.
+    LifeTotal,
+    /// How many cards are in that player's **hand** — `discards half the cards in their
+    /// hand`. Counted as the effect is reached, so a discard earlier in the same
+    /// resolution has already made the hand smaller.
+    HandSize,
+    /// How many **creatures that player controls** — `sacrifices half the creatures they
+    /// control`. Control is read through the one CR 613 layer-2 path, so a creature
+    /// someone has taken counts for whoever controls it now.
+    CreaturesControlled,
+}
+
+/// A number read off **one chosen permanent** — the `its power` of `Exile target
+/// colorless creature. You gain life equal to its power.`
+///
+/// Deliberately not a [`DerivedAmount`]: that vocabulary answers questions about the
+/// *game*, which stay answerable wherever the effect that asks them stands. This one asks
+/// about an object the very same effect is about to remove, and CR 608.2h says the answer
+/// is what was last known of it — so it can only be read *before* the removal, which is
+/// why it is a field on the effect that removes rather than a source a later effect could
+/// name.
+///
+/// One variant today, and it grows by adding them: a card that pays off a chosen
+/// permanent's toughness or mana value writes its own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PermanentAmount {
+    /// The permanent's **power** as the effect found it — the *computed* power (CR 613),
+    /// so a creature pumped or grown by counters is worth what it currently is rather
+    /// than what it printed. A permanent with no power at all is worth nothing.
+    Power,
+}
+
+/// A class of **cards in a graveyard** to count.
+///
+/// The graveyard counterpart of [`PermanentCount`], and separate from it for the reason
+/// [`CardFilter`] is separate from [`TargetSpec`]: a card in a graveyard has printed
+/// characteristics and nothing else — no controller, no [`PermanentId`], no computed
+/// power — so the two selectors have almost no fields in common.
+///
+/// It is read where the question is asked and counted fresh every time, because the one
+/// thing that asks is a characteristic-defining ability
+/// ([`Ability::DefinedPower`](crate::Ability)).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+pub struct GraveyardCount {
+    /// Whose graveyards are counted, relative to the reading object's controller.
+    /// Defaults to their own — "in your graveyard".
+    #[serde(default)]
+    pub scope: GraveyardScope,
+    /// Which cards of those graveyards are counted. Defaults to all of them.
+    #[serde(default)]
+    pub filter: CardFilter,
 }
 
 /// A class of permanents to **count**, relative to an effect's controller.

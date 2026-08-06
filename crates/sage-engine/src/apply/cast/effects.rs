@@ -132,8 +132,14 @@ pub(crate) fn apply_effect(
         // (CR 608.2) — once, here, so a mill this same resolution performed is what the
         // "this way" sources read.
         Effect::DrawCardsByAmount { amount } => {
-            let count =
-                crate::condition::derived_amount(state, amount, controller, resolution, db);
+            let count = crate::condition::derived_amount(
+                state,
+                amount,
+                controller,
+                controller,
+                resolution,
+                db,
+            );
             draw_cards(state, controller, count);
         }
         // CR 119.3: the referenced player gains life. A non-targeting reference names
@@ -151,6 +157,18 @@ pub(crate) fn apply_effect(
             let delta = i32::try_from(*amount).unwrap_or(i32::MAX);
             for seat in non_targeting_subjects(state, *player_ref, controller) {
                 state.change_life(seat, -delta);
+            }
+        }
+        // The same loss with X off the game rather than off the card (CR 608.2), read
+        // once **per named seat**: `each player loses half their life` is each of them
+        // reading their own total, which is why the amount is asked about `seat` and
+        // not about the controller.
+        Effect::LoseLifeByAmount { player_ref, amount } => {
+            for seat in non_targeting_subjects(state, *player_ref, controller) {
+                let lost = crate::condition::derived_amount(
+                    state, amount, controller, seat, resolution, db,
+                );
+                state.change_life(seat, -i32::try_from(lost).unwrap_or(i32::MAX));
             }
         }
         // CR 701.13: the referenced player puts the top `count` cards of their
@@ -225,7 +243,9 @@ pub(crate) fn apply_effect(
         // card (CR 608.2). A class-subject form chose no target and is applied here; a
         // targeted one goes through [`apply_targeted_effect`] and is a no-op in this arm.
         Effect::DealDamageByAmount { subject, amount } => {
-            let value = crate::condition::derived_amount(state, amount, controller, resolution, db);
+            let value = crate::condition::derived_amount(
+                state, amount, controller, controller, resolution, db,
+            );
             apply_class_damage(
                 state,
                 subject,
@@ -417,6 +437,11 @@ pub(crate) fn apply_effect(
         // the interception was missed, so both arms are deliberately empty rather
         // than silently doing half the effect.
         Effect::Discard { .. }
+        // Both derived-number verbs that ask a player something suspend the same way,
+        // and for the same reason: the number is fixed when the choice is posed, not
+        // when the answer comes back.
+        | Effect::DiscardByAmount { .. }
+        | Effect::Sacrifice { .. }
         | Effect::Scry { .. }
         | Effect::LookAtTop { .. }
         | Effect::SearchLibrary { .. }
@@ -794,6 +819,16 @@ pub(crate) fn non_targeting_subjects(
             .iter()
             .enumerate()
             .filter(|(seat, player)| PlayerId(*seat) != controller && !player.has_lost)
+            .map(|(seat, _)| PlayerId(seat))
+            .collect(),
+        // Every seat still in the game, the controller included — the symmetric class,
+        // and the reason it is not `EachOpponent` plus the caster is that a spell which
+        // names it hits the caster whether they like it or not.
+        PlayerRef::EachPlayer => state
+            .players
+            .iter()
+            .enumerate()
+            .filter(|(_, player)| !player.has_lost)
             .map(|(seat, _)| PlayerId(seat))
             .collect(),
         PlayerRef::TargetPlayer | PlayerRef::TargetOpponent => Vec::new(),

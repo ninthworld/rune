@@ -115,7 +115,9 @@ pub(crate) fn apply_targeted_effect(
         // — the creature that paid was gone before this resolution began, which is the
         // whole reason it was written down at announcement (CR 601.2h).
         Effect::DealDamageByAmount { amount, .. } => {
-            let value = crate::condition::derived_amount(state, amount, controller, resolution, db);
+            let value = crate::condition::derived_amount(
+                state, amount, controller, controller, resolution, db,
+            );
             deal_damage_to_target(state, target, value, resolution, source, db);
         }
         // Destroy the targeted permanent (CR 701.7): move it to its owner's
@@ -143,9 +145,24 @@ pub(crate) fn apply_targeted_effect(
         // ([`GameState::move_permanent_to_exile`]) — the exile counterpart of the
         // graveyard path `Destroy` uses. A commander exiled here is flagged for the
         // CR 903.9a return-to-command-zone decision by that seam.
-        Effect::Exile { .. } => {
+        Effect::Exile { gain_life, .. } => {
             if let Target::Permanent(id) = target {
+                // CR 608.2h: "its power" is read off the permanent **before** it moves,
+                // because once it is in exile there is nothing on the battlefield to
+                // read and last known information is what the rule asks for. The
+                // computed power (CR 613), so a creature grown by counters or an anthem
+                // is worth what it had become.
+                let gained = gain_life.map_or(0, |amount| match amount {
+                    PermanentAmount::Power => crate::characteristics::characteristics(state, id, db)
+                        .power
+                        .unwrap_or(0),
+                });
                 state.move_permanent_to_exile(id);
+                // A negative power gains nothing rather than draining the controller:
+                // CR 119.3 has no such thing as gaining a negative amount of life.
+                if gained > 0 {
+                    state.change_life(controller, gained);
+                }
             }
         }
         // Put counters on the targeted permanent (CR 122). Current power/toughness
@@ -419,7 +436,12 @@ pub(crate) fn apply_targeted_effect(
             ..
         } => {
             let count = i32::try_from(crate::condition::derived_amount(
-                state, amount, controller, resolution, db,
+                state,
+                amount,
+                controller,
+                controller,
+                resolution,
+                db,
             ))
             .unwrap_or(i32::MAX);
             pump_by(state, target, *power_per, *toughness_per, count);
@@ -471,6 +493,12 @@ pub(crate) fn apply_targeted_effect(
         | Effect::AlterAbilitiesSelf { .. }
         | Effect::GainLifeByCount { .. }
         | Effect::DrawCardsByAmount { .. }
+        // A derived life loss names its seats outright, and the two verbs that pose a
+        // mid-resolution question are intercepted by the resolve loop before either
+        // apply path is reached.
+        | Effect::LoseLifeByAmount { .. }
+        | Effect::DiscardByAmount { .. }
+        | Effect::Sacrifice { .. }
         // A card returning itself out of a graveyard names its own source, never a
         // chosen one (CR 115.1), so it too is applied by [`apply_effect`].
         | Effect::ReturnSelfFromGraveyard { .. }

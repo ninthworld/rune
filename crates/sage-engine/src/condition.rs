@@ -26,7 +26,10 @@
 //! discipline the life-gain and cast trigger conditions already follow (ADR 0007),
 //! applied to a window this module chooses.
 
-use crate::ability::{CardFilter, Condition, CountScope, DerivedAmount, PermanentCount};
+use crate::ability::{
+    CardFilter, Condition, CountScope, DerivedAmount, GraveyardCount, GraveyardScope, HalvedTotal,
+    PermanentCount,
+};
 use crate::id::{PermanentId, PlayerId};
 use crate::state::{GameEvent, GameState};
 use crate::CardDatabase;
@@ -184,22 +187,60 @@ fn permanents_matching<'a>(
     })
 }
 
+/// How many cards in a graveyard `wanted` names, for an object controlled by
+/// `controller`.
+///
+/// The graveyard counterpart of [`count_permanents`], and the one counter here that is
+/// *not* read once: its only caller is the characteristic-defining power of CR 604.3,
+/// which asks again on every read of the permanent (see
+/// [`Ability::DefinedPower`](crate::Ability)). It is safe to call from inside the layer
+/// system for a stronger reason than that one is — a graveyard holds cards, which have no
+/// computed characteristics to recurse through.
+#[must_use]
+pub(crate) fn count_graveyard_cards(
+    state: &GameState,
+    wanted: &GraveyardCount,
+    controller: PlayerId,
+    db: &CardDatabase,
+) -> u32 {
+    let matching = state
+        .players
+        .iter()
+        .enumerate()
+        .filter(|(seat, _)| match wanted.scope {
+            GraveyardScope::Yours => PlayerId(*seat) == controller,
+            GraveyardScope::Any => true,
+        })
+        .flat_map(|(_, player)| player.graveyard.iter())
+        .filter(|inst| card_matches(db, inst.card, &wanted.filter))
+        .count();
+    u32::try_from(matching).unwrap_or(u32::MAX)
+}
+
 /// The number a [`DerivedAmount`] names, for an object controlled by `controller`
 /// resolving as described by `resolution` — its log window, the X it announced, and what
 /// its cost payment recorded.
 ///
 /// Taken **once**, where it is called (CR 608.2): every caller turns the answer into a
-/// fixed number — cards drawn, damage dealt, or a timestamped power/toughness modifier —
-/// and nothing re-reads the source afterwards.
+/// fixed number — cards drawn, damage dealt, life lost, cards to discard, or a timestamped
+/// power/toughness modifier — and nothing re-reads the source afterwards.
 ///
-/// Three of the sources read the game: the board, or the events a window recorded. The
-/// two that read the object's own [`PaidCost`](crate::PaidCost) read neither, and could
-/// not: their answer was settled at announcement and the objects it was about are gone.
+/// Some of the sources read the game: the board, or the events a window recorded. The two
+/// that read the object's own [`PaidCost`](crate::PaidCost) read neither, and could not:
+/// their answer was settled at announcement and the objects it was about are gone.
+///
+/// **Two seats, because two different questions are asked.** Most sources are relative to
+/// the object's `controller` — `you` means the caster wherever the effect lands. A
+/// halved total ([`DerivedAmount::HalfRoundedUp`]) is relative to `subject`, the player
+/// the effect names, because the whole content of `each player loses half their life` is
+/// that each of them reads their own. An effect with no player subject passes the
+/// controller for both.
 #[must_use]
 pub(crate) fn derived_amount(
     state: &GameState,
     amount: &DerivedAmount,
     controller: PlayerId,
+    subject: PlayerId,
     resolution: crate::resolve::Resolution,
     db: &CardDatabase,
 ) -> u32 {
@@ -246,6 +287,45 @@ pub(crate) fn derived_amount(
             .sacrificed_power
             .and_then(|power| u32::try_from(power).ok())
             .unwrap_or(0),
+        // Half, rounded up: `(n + 1) / 2` in integer arithmetic, which is the whole of
+        // "round up each time" — 7 halves to 4, 8 halves to 4, and 0 halves to 0.
+        DerivedAmount::HalfRoundedUp { of } => {
+            let total = halved_total(state, *of, subject, db);
+            total.saturating_add(1) / 2
+        }
+    }
+}
+
+/// The number a [`HalvedTotal`] names for `subject`, **before** it is halved.
+///
+/// Split out so the rounding lives in exactly one place: every total here is a plain
+/// count of something, and which way the halving rounds is not a property of any of them.
+#[must_use]
+fn halved_total(
+    state: &GameState,
+    total: HalvedTotal,
+    subject: PlayerId,
+    db: &CardDatabase,
+) -> u32 {
+    let Some(player) = state.players.get(subject.0) else {
+        return 0;
+    };
+    match total {
+        // A negative life total has no half to lose (CR 119.1); the player is already
+        // dead to the CR 704.5a state-based action either way.
+        HalvedTotal::LifeTotal => u32::try_from(player.life).unwrap_or(0),
+        HalvedTotal::HandSize => u32::try_from(player.hand.len()).unwrap_or(u32::MAX),
+        // "The creatures they control" is the subject's own class, so it is counted
+        // through the one selector with the subject standing in as the reference seat.
+        HalvedTotal::CreaturesControlled => count_permanents(
+            state,
+            &PermanentCount {
+                card_type: Some(crate::card_type::CardType::Creature),
+                ..PermanentCount::default()
+            },
+            subject,
+            db,
+        ),
     }
 }
 

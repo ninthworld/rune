@@ -49,6 +49,14 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         return crate::choice::answer_is_legal(state, chosen, db);
     }
 
+    // 1a-ter. A permanent-selection answer is validated the same way and for the same
+    //     reason, against its own freshly recomputed candidate set: the ids name objects
+    //     on the battlefield rather than targets a slot declared, so the target-slot
+    //     machinery has nothing to say about them.
+    if let Action::AnswerPermanents { chosen } = action {
+        return crate::choice::answer_permanents_is_legal(state, chosen, db);
+    }
+
     // 1a-bis. A yes-or-no answer is validated against the *pool as it stands*: accepting
     //     an optional cost is legal only while the chooser can actually pay it, which is
     //     the same predicate the offer is built from ([`crate::confirm_is_payable`]), so

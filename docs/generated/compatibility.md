@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (237)
+## Supported cards (240)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -75,6 +75,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `electrify` | Electrify | functional definition |
 | `elvish_clancaller` | Elvish Clancaller | functional definition |
 | `elvish_rejuvenator` | Elvish Rejuvenator | functional definition |
+| `enigma_drake` | Enigma Drake | functional definition |
 | `epicure_of_blood` | Epicure of Blood | functional definition |
 | `essence_scatter` | Essence Scatter | functional definition |
 | `exclusion_mage` | Exclusion Mage | functional definition |
@@ -86,6 +87,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `forsaken_sanctuary` | Forsaken Sanctuary | functional definition |
 | `foul_orchard` | Foul Orchard | functional definition |
 | `fountain_of_renewal` | Fountain of Renewal | functional definition |
+| `fraying_omnipotence` | Fraying Omnipotence | functional definition |
 | `frilled_sea_serpent` | Frilled Sea Serpent | functional definition |
 | `gallant_cavalry` | Gallant Cavalry | functional definition |
 | `gargoyle_sentinel` | Gargoyle Sentinel | functional definition |
@@ -116,6 +118,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `horizon_scholar` | Horizon Scholar | functional definition |
 | `hostile_minotaur` | Hostile Minotaur | functional definition |
 | `infectious_horror` | Infectious Horror | functional definition |
+| `infernal_reckoning` | Infernal Reckoning | functional definition |
 | `infernal_scarring` | Infernal Scarring | functional definition |
 | `inferno_hellion` | Inferno Hellion | functional definition |
 | `inspired_charge` | Inspired Charge | functional definition |
@@ -270,7 +273,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Effects that let a player choose the order of the cards a scry keeps on top | a look bottoms its rest in an order the looker picks or at random, as the card says, but the cards a scry leaves on top stay in their printed order |
 | Effects that return a card from a graveyard to a zone other than a hand or the battlefield | a targeted card returns from a graveyard to a hand or to the battlefield, and a whole graveyard can be exiled; nothing else moves a card out of one |
 | Effects that untap a permanent it did not just take | untapping rides on the control change that steals a creature, because one effect names one target; nothing else brings an untap forward |
-| Effects whose amount is derived from a source outside the six the IR names | an amount may be a count of permanents (feeding power/toughness, life, damage, a token count, and an attachment's static grant), the life gained this turn, a count of what this resolution milled, the greatest mana value among a class of permanents, how many permanents this object's own cost sacrificed, or the power the creature that cost sacrificed had — the last five feeding power/toughness, a draw, damage, and a search's size; nothing else may — not cards in a zone, a life total, one named object's mana value, a surviving object's power, half of a total, or the permanent an effect just put onto the battlefield |
+| Effects whose amount is derived from a source outside the ones the IR names | an amount may be a count of permanents (feeding power/toughness, life, damage, a token count, and an attachment's static grant), the life gained this turn, a count of what this resolution milled, the greatest mana value among a class of permanents, the X its controller announced, how many permanents this object's own cost sacrificed, the power the creature that cost sacrificed had, or half a named player's life total, hand, or creature count rounded up — the last seven feeding power/toughness, a draw, damage, a search's size, a life loss, a discard, and a sacrifice; a count of cards in a graveyard feeds a characteristic-defining power and nothing else, and a chosen permanent's power feeds only the life gained by the exile that removes it — nothing else may: not a whole life total, hand, or graveyard feeding an effect, not one named object's mana value, not a surviving object's power, not a chosen permanent's toughness or mana value, not half of anything rounded down, and not the permanent an effect just put onto the battlefield |
 | Emblems with an activated ability | an emblem carries static and triggered abilities only; nothing offers a way to activate one |
 | Equipment that grants a type, and cards that ask whether a creature is equipped | an attachment grants power/toughness, keywords, combat restrictions, and written-out abilities at CR 613 layers 6 and 7c — one block for both kinds, so an Equipment grants an ability exactly as an Aura does; it adds no type, and nothing asks whether a permanent is attached |
 | Gaining control of a permanent for longer than a turn, and exchanging control | a control change is a targeted layer-2 effect the cleanup step ends; no duration outlives the turn and nothing swaps two permanents' controllers |

@@ -188,6 +188,7 @@ fn exile_ability_targeting(state: &mut GameState, target: PermanentId) {
             origin: AbilityOrigin::Activated,
             effects: vec![Effect::Exile {
                 target: TargetSpec::AnyPermanent,
+                gain_life: None,
             }],
         },
         targets: vec![Target::Permanent(target)],

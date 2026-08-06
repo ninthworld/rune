@@ -347,6 +347,27 @@ pub enum Action {
         /// contain, and a short list are each rejected outright rather than tolerated.
         order: Vec<CardInstanceId>,
     },
+    /// Answer the **mid-resolution permanent choice** the game is currently waiting on:
+    /// which permanents to sacrifice (CR 701.17 — see
+    /// [`crate::Effect::Sacrifice`](crate::Effect)).
+    ///
+    /// The fifth answer shape, routed exactly as the other four are — offered to the
+    /// choice's chooser and to no other seat, with nothing else happening until it
+    /// arrives. It is a separate action from [`Self::AnswerChoice`] because it names
+    /// objects on the battlefield rather than cards in a zone, and a token has no card
+    /// to name (CR 111): folding the two together would make a board of tokens
+    /// unsacrificeable.
+    ///
+    /// A choice with no legal answer is never queued at all — a player who controls
+    /// nothing of the named class simply sacrifices nothing — so like the others this
+    /// action is only ever offered when it can be answered.
+    AnswerPermanents {
+        /// The permanents chosen. Each names one in the choice's freshly recomputed
+        /// candidate set ([`crate::permanent_choice_candidates`]), no id twice, and the
+        /// selection size must fall within that choice's clamped bounds
+        /// ([`crate::permanent_choice_bounds`]).
+        chosen: Vec<crate::id::PermanentId>,
+    },
     /// Cast a spell from hand, paying its mana cost from the caster's pool.
     CastSpell {
         /// The specific card in the caster's hand to cast. Names the physical
@@ -579,6 +600,7 @@ impl Action {
             | Action::AnswerReplacement { .. }
             | Action::AnswerCardName { .. }
             | Action::AnswerOrder { .. }
+            | Action::AnswerPermanents { .. }
             | Action::PlayLand { .. }
             | Action::Discard { .. }
             | Action::Mulligan
@@ -668,6 +690,10 @@ impl Action {
             // the permutation the submitted action carries — never one offer per
             // arrangement, which for five cards would be a hundred and twenty of them.
             Action::AnswerOrder { .. } => Action::AnswerOrder { order: Vec::new() },
+            // And a permanent selection the same way, for the reason a card selection
+            // is: the offer is the bare question and the chosen ids ride in the
+            // submitted action.
+            Action::AnswerPermanents { .. } => Action::AnswerPermanents { chosen: Vec::new() },
             // The requirement form of a combat declaration is the empty selection —
             // exactly what `valid_actions` advertises during the declare window.
             Action::DeclareAttackers { .. } => Action::DeclareAttackers {

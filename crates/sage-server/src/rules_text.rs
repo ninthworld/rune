@@ -26,11 +26,11 @@ use sage_engine::{
     AttachmentKind, BackFace, BottomOrder, CardData, CardFilter, CardType, Chooser, Color,
     CombatRestriction, Condition, Cost, CostModification, CountScope, CounterKind,
     DamageCharacteristic, DamageSubject, DerivedAmount, DestroyAffects, Effect, EnteringFilter,
-    FoundDestination, GraveyardCardClass, GraveyardScope, Keyword, ManaRestriction, MassAffects,
-    NamedCardClass, ObservedPermanent, ObservedSpell, PermanentCount, PlayerModification,
-    PlayerRef, ReplacementEffect, SacrificeCount, SpellMode, SpellTrait, StaticAffects,
-    StaticCondition, StaticModification, TargetCount, TargetSpec, TokenData, TriggerCondition,
-    TriggerStep, TurnScope,
+    FoundDestination, GraveyardCardClass, GraveyardCount, GraveyardScope, HalvedTotal, Keyword,
+    ManaRestriction, MassAffects, NamedCardClass, ObservedPermanent, ObservedSpell,
+    PermanentAmount, PermanentCount, PlayerModification, PlayerRef, ReplacementEffect,
+    SacrificeCount, SpellMode, SpellTrait, StaticAffects, StaticCondition, StaticModification,
+    TargetCount, TargetSpec, TokenData, TriggerCondition, TriggerStep, TurnScope,
 };
 
 mod effects;
@@ -307,6 +307,14 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
         Ability::EntersNamingCard { class } => format!(
             "As {source} enters the battlefield, choose a {} card name.",
             named_card_class_noun(*class)
+        ),
+        // A characteristic-defining ability is a statement about *this* object's power,
+        // in the present tense and with no trigger word — which is exactly what CR 604.3
+        // makes it. It names the source because the card does: the printed corner says
+        // `*`, and this sentence is what that asterisk means.
+        Ability::DefinedPower { count_of } => format!(
+            "{source}'s power is equal to the number of {}.",
+            graveyard_count_noun(count_of)
         ),
         // A player-subject static says what is true of *you*, so the sentence has no
         // object at all — the shortest ability the formatter composes, and the only one

@@ -177,6 +177,18 @@ pub enum Effect {
     Exile {
         /// What this effect is allowed to target (typically a creature or permanent).
         target: TargetSpec,
+        /// The effect's controller **gains life equal to** this, read off the exiled
+        /// permanent — `Exile target colorless creature. You gain life equal to its
+        /// power.` Absent for the ordinary exile, which is nearly every one.
+        ///
+        /// A field on the exile rather than a life-gain effect standing after it, and
+        /// CR 608.2h is the whole reason. "Its power" is a question about an object this
+        /// effect has just removed from the battlefield; a second effect asking it would
+        /// be asking about something that is no longer there, so the number is read
+        /// *here*, before the permanent moves, and the life is gained in the same breath.
+        /// The rider is therefore never a separate amount the IR could get out of order.
+        #[serde(default)]
+        gain_life: Option<PermanentAmount>,
     },
     /// Two chosen creatures and the damage their power deals (CR 701.12): the first
     /// deals damage equal to its power to the second, and — when the card prints the
@@ -942,6 +954,68 @@ pub enum Effect {
         /// How many cards are drawn.
         amount: DerivedAmount,
     },
+    /// The referenced player loses a number of life the card does not print — `Each
+    /// player loses half their life, rounded up.`
+    ///
+    /// The derived-amount counterpart of [`Effect::LoseLife`], whose `amount` is a
+    /// printed number, and the sibling of [`Effect::DrawCardsByAmount`] on the life
+    /// total. It reaches the same [`Effect::LoseLife`] seam, so the loss still drives the
+    /// CR 704.5a state-based action.
+    ///
+    /// The amount is read **once per named player, as the effect applies** (CR 608.2),
+    /// and it is read *of that player*: `half their life` is each seat's own half, so a
+    /// reference naming three seats reads three different numbers rather than the
+    /// controller's one three times.
+    LoseLifeByAmount {
+        /// Which player loses the life.
+        player_ref: PlayerRef,
+        /// How much they lose.
+        amount: DerivedAmount,
+    },
+    /// The referenced player **discards** a number of cards the card does not print —
+    /// `Each player … discards half the cards in their hand, rounded up.`
+    ///
+    /// The derived-amount counterpart of [`Effect::Discard`], and deliberately the
+    /// narrow one: the cards are picked by the player discarding them and any card in the
+    /// hand may be picked. A coercive or filtered discard of a derived number is a card
+    /// nobody has printed, and giving this variant the other two fields would make it
+    /// authorable ahead of the card that means it.
+    ///
+    /// Like the fixed-count discard it poses one mid-resolution choice per named player
+    /// ([`crate::PendingChoice`]) and suspends. The number is fixed when the choice is
+    /// *posed*, from the hand as it stands then (CR 608.2), so a hand the same resolution
+    /// already emptied asks for nothing.
+    DiscardByAmount {
+        /// Whose hands the cards leave.
+        player_ref: PlayerRef,
+        /// How many each of them discards.
+        amount: DerivedAmount,
+    },
+    /// The referenced player **sacrifices** that many permanents they control (CR 701.17)
+    /// — `Each player … sacrifices half the creatures they control, rounded up.`
+    ///
+    /// The first sacrifice in the IR that is an *effect* rather than a cost, and the two
+    /// are not the same shape. A cost is paid as the spell is cast or the ability is
+    /// activated, so the permanent rides on the action; this happens in the middle of a
+    /// resolution, so it poses a mid-resolution choice ([`crate::PendingChoice`]) and
+    /// suspends exactly as a discard does — and it is the only choice in the IR whose
+    /// candidates are *permanents*, which is why a token can be picked.
+    ///
+    /// **Whose permanents is not a field.** CR 701.17b lets a player sacrifice only what
+    /// they control, so the class is always the named player's own; `card_type` narrows
+    /// it to one printed type and nothing more. The count is fixed when the choice is
+    /// posed (CR 608.2) and clamped to what is actually there, so a player with one
+    /// creature asked for two sacrifices the one.
+    Sacrifice {
+        /// Which player sacrifices.
+        player_ref: PlayerRef,
+        /// How many permanents they sacrifice.
+        amount: DerivedAmount,
+        /// Restrict the choice to permanents with this printed card type. Absent lets
+        /// any permanent they control be picked.
+        #[serde(default)]
+        card_type: Option<CardType>,
+    },
     /// The referenced player gains `amount_per` life **per permanent** matching
     /// `count_of` (`You gain 1 life for each creature you control.`) — the
     /// count-derived counterpart of [`Effect::GainLife`], and the life-total sibling of
@@ -1316,7 +1390,7 @@ impl Effect {
             Effect::Tap { target }
             | Effect::CounterSpell { target }
             | Effect::Destroy { target }
-            | Effect::Exile { target }
+            | Effect::Exile { target, .. }
             | Effect::Pump { target, .. }
             | Effect::PumpByCount { target, .. }
             | Effect::PumpByAmount { target, .. }
@@ -1339,6 +1413,12 @@ impl Effect {
             // discards a card" fills none and cannot.
             | Effect::Discard { player_ref, .. }
             | Effect::GainLifeByCount { player_ref, .. }
+            // The three verbs whose number is derived name their player the same way
+            // their fixed-count siblings do: the amount is where X comes from, never a
+            // subject, so it changes nothing about the targeting question.
+            | Effect::LoseLifeByAmount { player_ref, .. }
+            | Effect::DiscardByAmount { player_ref, .. }
+            | Effect::Sacrifice { player_ref, .. }
             | Effect::ExileGraveyard { player_ref }
             // Emptying a library names its owner the same way a graveyard's does.
             | Effect::ExileLibraryExceptBottom { target: player_ref }

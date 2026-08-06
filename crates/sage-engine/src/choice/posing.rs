@@ -89,6 +89,17 @@ pub(crate) fn pose_choices(
             | ChoiceQuestion::CardName(_)
             | ChoiceQuestion::Replacement(_)
             | ChoiceQuestion::Order(_) => question,
+            // A sacrifice of nothing is not a question: a player with no permanent of
+            // the named class simply sacrifices none, exactly as a player with an empty
+            // hand discards none. There is no aftermath to apply for the answers not
+            // given, so unlike a card selection this one is skipped outright.
+            ChoiceQuestion::Permanents(request) => {
+                let (_, max) = permanent_choice_bounds(state, request, db);
+                if max == 0 {
+                    continue;
+                }
+                question
+            }
         };
         state.pending_choices.push(PendingChoice {
             chooser,
@@ -118,10 +129,12 @@ pub(crate) fn attach_resume(state: &mut GameState, resume: Resume) {
 /// than a seat derived here — and an optional effect's chosen target is carried into
 /// the question it poses.
 ///
-/// `resolution` is the frame the question is asked in, and one question reads it: a search
-/// whose size is a [`DerivedAmount`](crate::DerivedAmount) takes that number here
-/// (CR 608.2), before the choice is posed, because the *bounds* of the question are what
-/// the amount decides.
+/// `resolution` and `db` are here for the verbs whose *size* is derived (CR 608.2): a
+/// search whose size is a [`DerivedAmount`](crate::DerivedAmount), the number of cards to
+/// discard, and the number of permanents to sacrifice are all read as the question is
+/// **posed**, from the state as it stands then, and the request carries the number rather
+/// than the source. That is what makes the amount taken once — a permanent that leaves
+/// while the answer is being given cannot change a count already written down.
 pub(crate) fn choices_for_effect(
     state: &GameState,
     effect: &Effect,
@@ -162,6 +175,71 @@ pub(crate) fn choices_for_effect(
                                 min: u32::from(*count),
                                 max: u32::from(*count),
                                 outcome: ChoiceOutcome::Discard,
+                            }),
+                        )
+                    })
+                    .collect(),
+            )
+        }
+        // The derived-count discard: one question per named seat, and the count is read
+        // *of that seat* — `each player discards half the cards in their hand` is each
+        // of them halving their own hand, so three seats produce three different
+        // numbers. Fixed here, as the question is posed (CR 608.2).
+        Effect::DiscardByAmount { player_ref, amount } => {
+            let subjects = match target {
+                Some(Target::Player(seat)) => vec![seat],
+                _ => crate::apply::non_targeting_subjects(state, *player_ref, controller),
+            };
+            Some(
+                subjects
+                    .into_iter()
+                    .map(|subject| {
+                        let count = crate::condition::derived_amount(
+                            state, amount, controller, subject, resolution, db,
+                        );
+                        (
+                            subject,
+                            ChoiceQuestion::Cards(ChoiceRequest {
+                                subject,
+                                zone: ChoiceZone::Hand,
+                                filter: CardFilter::Any,
+                                source_card,
+                                min: count,
+                                max: count,
+                                outcome: ChoiceOutcome::Discard,
+                            }),
+                        )
+                    })
+                    .collect(),
+            )
+        }
+        // CR 701.17: one question per named seat, each over their own permanents, each
+        // sized by a number read of them as it is posed. The chooser is always the
+        // sacrificing player — CR 701.17b has no other shape.
+        Effect::Sacrifice {
+            player_ref,
+            amount,
+            card_type,
+        } => {
+            let subjects = match target {
+                Some(Target::Player(seat)) => vec![seat],
+                _ => crate::apply::non_targeting_subjects(state, *player_ref, controller),
+            };
+            Some(
+                subjects
+                    .into_iter()
+                    .map(|subject| {
+                        let count = crate::condition::derived_amount(
+                            state, amount, controller, subject, resolution, db,
+                        );
+                        (
+                            subject,
+                            ChoiceQuestion::Permanents(PermanentRequest {
+                                subject,
+                                card_type: *card_type,
+                                min: count,
+                                max: count,
+                                outcome: PermanentOutcome::Sacrifice,
                             }),
                         )
                     })
@@ -227,9 +305,9 @@ pub(crate) fn choices_for_effect(
                 // here, because it is the size of the question rather than something the
                 // answer could still change (CR 608.2).
                 max: match take_amount {
-                    Some(amount) => {
-                        crate::condition::derived_amount(state, amount, controller, resolution, db)
-                    }
+                    Some(amount) => crate::condition::derived_amount(
+                        state, amount, controller, controller, resolution, db,
+                    ),
                     None => u32::from(*take),
                 },
                 outcome: ChoiceOutcome::TakeAndShuffle(*destination),

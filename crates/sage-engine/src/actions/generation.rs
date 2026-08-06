@@ -86,6 +86,12 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 // answer is the permutation the submitted action carries. It is posed
                 // only over two cards or more, so it is always answerable.
                 ChoiceQuestion::Order(_) => vec![Action::AnswerOrder { order: Vec::new() }],
+                // A sacrifice is advertised as the bare question too; the chosen
+                // permanents ride in the submitted action, exactly as a discard's
+                // chosen cards do.
+                ChoiceQuestion::Permanents(_) => {
+                    vec![Action::AnswerPermanents { chosen: Vec::new() }]
+                }
             };
             // CR 605.3a: a player asked to pay a cost while something resolves may
             // activate mana abilities to pay it — the one thing the freeze lets

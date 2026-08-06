@@ -143,6 +143,36 @@ pub enum Ability {
         /// and "card".
         class: crate::choice::NamedCardClass,
     },
+    /// A **characteristic-defining ability** (CR 604.3) that *sets* this permanent's
+    /// power to the number of cards `count_of` names — `Enigma Drake's power is equal to
+    /// the number of instant and sorcery cards in your graveyard.`
+    ///
+    /// **Not an effect, and the difference is the whole variant.** Every other amount in
+    /// the IR is taken once, where a resolution reaches it (CR 608.2), and the number
+    /// that comes out is fixed for good. This one is re-derived on *every read* of the
+    /// permanent's power: a card put into the graveyard changes it with nothing going on
+    /// the stack, no event in between, and no window in which the old number is still
+    /// showing. That is what CR 604.3 says a characteristic-defining ability is, and it
+    /// is why the number lives in the layer system rather than in an effect.
+    ///
+    /// It applies in CR 613 **layer 7a**, ahead of every other power/toughness layer, so
+    /// it *replaces* the printed power and everything else piles on top of the result: a
+    /// `+1/+1` counter (7c) still adds one, an anthem (7c) still adds its own, and a
+    /// later effect that sets base power would still overrule it (7b). Printed power is
+    /// authored as `0` on such a card — the `*` in the corner is this ability, not a
+    /// number — and is never what a reader sees.
+    ///
+    /// Only power is definable. The cards that define toughness the same way, and the
+    /// ones whose defined characteristic is a colour or a type, each add their own
+    /// variant when they arrive; a single "defines a characteristic" variant carrying a
+    /// layer number would let a card be authored that defines its power in layer 4.
+    ///
+    /// Deserialized as
+    /// `{"type":"defined_power","count_of":{"filter":{"kind":"instant_or_sorcery"}}}`.
+    DefinedPower {
+        /// Which cards, in whose graveyards, the power is equal to a count of.
+        count_of: GraveyardCount,
+    },
     /// A **static ability** (CR 604.3): a continuous effect that applies for as long
     /// as this permanent is on the battlefield, with nothing ever put on the stack —
     /// an anthem (`Creatures you control get +1/+1.`) or a lord (`Other Elves you

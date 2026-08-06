@@ -62,6 +62,60 @@ pub(crate) fn player_choice_prompts(state: &GameState, db: &CardDatabase) -> Vec
         ChoiceQuestion::Replacement(_) => vec![replacement_prompt(state, db)],
         ChoiceQuestion::Order(request) => vec![card_order_prompt(state, request)],
         ChoiceQuestion::CardName(request) => vec![card_name_prompt(request, db)],
+        ChoiceQuestion::Permanents(request) => vec![permanent_choice_prompt(state, db, request)],
+    }
+}
+
+/// The sacrifice, as the same [`Prompt::SelectFromZone`] slot a card pick rides on —
+/// over the battlefield rather than a hidden zone.
+///
+/// Not a new wire shape: the zone string is free-form by design, so a client that can
+/// select cards from a hand can select permanents from a board with no new code. The
+/// candidates are the engine's
+/// ([`permanent_choice_candidates`](sage_engine::permanent_choice_candidates)) and the
+/// count is the engine's already-clamped bound, so a player asked to sacrifice two who
+/// controls one is offered exactly one and the submit means what it says.
+///
+/// Nothing here is hidden information: the battlefield is public, so unlike a card pick
+/// this prompt reveals nothing to anybody.
+fn permanent_choice_prompt(
+    state: &GameState,
+    db: &CardDatabase,
+    request: &PermanentRequest,
+) -> Prompt {
+    let (min, max) = permanent_choice_bounds(state, request, db);
+    let candidates: Vec<String> = permanent_choice_candidates(state, request, db)
+        .into_iter()
+        .map(permanent_entity_id)
+        .collect();
+    Prompt::SelectFromZone {
+        slot: CHOICE_SLOT.to_string(),
+        prompt: permanent_choice_question(request, max),
+        zone: "battlefield".to_string(),
+        owner: player_id(request.subject),
+        count: max,
+        min: (min != max).then_some(min),
+        candidates,
+    }
+}
+
+/// The words a sacrifice is asked in, composed from the request rather than from the
+/// card that posed it — the discipline [`choice_prompt_text`] follows, for the reason it
+/// follows it.
+fn permanent_choice_question(request: &PermanentRequest, max: u32) -> String {
+    // The class the card names, in the same word its rules text uses, pluralized where
+    // English wants it — nothing here invents a noun the printed sentence does not have.
+    let singular = match request.card_type {
+        Some(card_type) => crate::rules_text::card_type_word(card_type),
+        None => "permanent",
+    };
+    let noun = if max == 1 {
+        singular.to_string()
+    } else {
+        format!("{singular}s")
+    };
+    match request.outcome {
+        PermanentOutcome::Sacrifice => format!("Sacrifice {max} {noun}"),
     }
 }
 
@@ -364,6 +418,10 @@ pub(crate) fn player_choice_label(state: &GameState, db: &CardDatabase) -> Strin
         Some(ChoiceQuestion::Color(request)) => color_question(request, db),
         Some(ChoiceQuestion::Replacement(_)) => replacement_question(),
         Some(ChoiceQuestion::Order(_)) => card_order_question(),
+        Some(ChoiceQuestion::Permanents(request)) => {
+            let (_, max) = permanent_choice_bounds(state, request, db);
+            permanent_choice_question(request, max)
+        }
         Some(ChoiceQuestion::CardName(request)) => card_name_question(request, db),
         None => "Make a choice".to_string(),
     }
@@ -397,6 +455,40 @@ pub(crate) fn bind_player_card_name(
     Some(Action::AnswerCardName {
         card: db.card_id(&functional_id)?,
     })
+}
+
+/// Map a returned answer to a sacrifice onto [`Action::AnswerPermanents`].
+///
+/// The permanent counterpart of [`bind_player_choice`], and the same reject-stale
+/// discipline: only ids the offer itself listed count, the candidate list is re-derived
+/// from the engine rather than trusted from the prompt, and the engine re-checks the
+/// whole selection against its own bounds afterwards.
+pub(crate) fn bind_player_permanents(
+    state: &GameState,
+    db: &CardDatabase,
+    offered: &ValidAction,
+    targets: &[TargetChoice],
+) -> Option<Action> {
+    let candidates = offered.prompts.iter().find_map(|prompt| match prompt {
+        Prompt::SelectFromZone {
+            slot, candidates, ..
+        } if slot == CHOICE_SLOT => Some(candidates),
+        _ => None,
+    })?;
+    let request = pending_player_choice(state)?.question.permanents()?;
+    let available = permanent_choice_candidates(state, request, db);
+    let mut chosen = Vec::new();
+    for id in chosen_for(targets, CHOICE_SLOT) {
+        if !candidates.contains(id) {
+            return None;
+        }
+        let permanent = available
+            .iter()
+            .copied()
+            .find(|perm| permanent_entity_id(*perm) == *id)?;
+        chosen.push(permanent);
+    }
+    Some(Action::AnswerPermanents { chosen })
 }
 
 /// Map a returned answer to the card ordering onto [`Action::AnswerOrder`].
@@ -523,7 +615,9 @@ pub(crate) fn revealed_to(state: &GameState, db: &CardDatabase, viewer: PlayerId
         ChoiceQuestion::Confirm(_)
         | ChoiceQuestion::Color(_)
         | ChoiceQuestion::CardName(_)
-        | ChoiceQuestion::Replacement(_) => Vec::new(),
+        | ChoiceQuestion::Replacement(_)
+        // The battlefield is public: a sacrifice reveals nothing to anybody.
+        | ChoiceQuestion::Permanents(_) => Vec::new(),
     };
     shown
         .into_iter()

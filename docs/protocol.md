@@ -1064,6 +1064,16 @@ The counterpart of *in any order* is *in a random order*, which is not a questio
 the server bottoms those cards itself and no prompt is emitted. Which of the two a card
 uses is the card's own text and never a client decision.
 
+And one more: **which permanents to sacrifice** (CR 701.17), for an effect that makes a
+player sacrifice a number of their own permanents mid-resolution. It adds no wire shape
+either — it is the same `select_from_zone` prompt on the same `choice` slot, with a `zone`
+of `"battlefield"` and permanent entity ids for candidates, which is exactly what that
+field being free-form is for. The seat asked is always the sacrificing player (CR 701.17b
+lets nobody sacrifice what they do not control), the count is the engine's already-clamped
+bound — a player told to sacrifice two who controls one is offered `count: 1` — and a
+player who controls nothing of the named class is never asked. Nothing is revealed: the
+battlefield is public.
+
 Combat declarations also use requirements. The `attackers` slot lists creatures eligible to
 attack; blocker slots list eligible blockers for each attacker. When there is more than one
 thing to attack (issue #345, widened by #608), `declare_attackers` additionally offers one

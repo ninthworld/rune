@@ -711,6 +711,7 @@ fn issue_748_a_mana_value_spec_is_authored_in_the_tagged_form() {
         effect,
         Effect::Exile {
             target: TargetSpec::AnyPermanentWithManaValue { mana_value: 1 },
+            gain_life: None,
         }
     );
     assert_eq!(

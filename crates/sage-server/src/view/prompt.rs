@@ -180,6 +180,7 @@ pub(crate) fn target_spec_prompt(spec: TargetSpec) -> String {
             "Choose target creature an opponent controls".to_string()
         }
         TargetSpec::AnyCreatureWithFlying => "Choose target creature with flying".to_string(),
+        TargetSpec::AnyColorlessCreature => "Choose target colorless creature".to_string(),
         TargetSpec::AnyTappedCreature => "Choose target tapped creature".to_string(),
         TargetSpec::AnyArtifact => "Choose target artifact".to_string(),
         TargetSpec::AnyEnchantment => "Choose target enchantment".to_string(),

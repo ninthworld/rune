@@ -286,7 +286,8 @@ fn valid_action_view(
         | Action::AnswerColor { .. }
         | Action::AnswerReplacement { .. }
         | Action::AnswerCardName { .. }
-        | Action::AnswerOrder { .. } => (
+        | Action::AnswerOrder { .. }
+        | Action::AnswerPermanents { .. } => (
             "player_choice".to_string(),
             player_choice_label(state, db),
             Vec::new(),
@@ -398,7 +399,8 @@ fn valid_action_view(
         | Action::AnswerColor { .. }
         | Action::AnswerReplacement { .. }
         | Action::AnswerCardName { .. }
-        | Action::AnswerOrder { .. } => player_choice_prompts(state, db),
+        | Action::AnswerOrder { .. }
+        | Action::AnswerPermanents { .. } => player_choice_prompts(state, db),
         // A cast carries one `pay_mana` slot per unit of cost it still owes (CR 601.2f–g)
         // — none at all when the pool already covers it. This is what lets a client offer
         // the card first and the payment second, and take the payment back apart without

@@ -260,6 +260,17 @@ pub(crate) fn target_is_legal(
                     && has_type(p, CardType::Creature, db)
             })
         }
+        // CR 105.2: colourless is the absence of every colour, read off the printed
+        // face — the same reading the count selector and the blocking restriction use,
+        // because no colour-changing layer exists to disagree with them.
+        (TargetSpec::AnyColorlessCreature, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| {
+                has_type(p, CardType::Creature, db)
+                    && p.printed
+                        .face(db)
+                        .is_some_and(|face| face.colors().is_empty())
+            })
+        }
         (TargetSpec::AnyTappedCreature, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| {
                 p.tapped && has_type(p, CardType::Creature, db)
@@ -644,9 +655,10 @@ pub(crate) fn apply_effects_with_targets(
             (0..take).filter_map(|_| targets.pop_front()).collect()
         };
 
-        // A choice-posing effect (CR 701.8 discard, 701.17 scry, 701.19 search) stops
-        // here. Choices whose clamped maximum is zero are applied outright inside
-        // `pose_choices`, so an empty hand or an empty library never suspends anything.
+        // A choice-posing effect (CR 701.8 discard, 701.17 sacrifice, 701.19 search, and
+        // the scry) stops here. Choices whose clamped maximum is zero are applied
+        // outright inside `pose_choices`, so an empty hand, an empty library, or a board
+        // with nothing of the named class never suspends anything.
         if let Some(choices) = crate::choice::choices_for_effect(
             state,
             &effect,

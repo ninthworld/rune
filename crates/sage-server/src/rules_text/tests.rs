@@ -434,6 +434,33 @@ fn issue_722_an_amount_that_is_not_a_count_names_the_source_it_reads() {
 }
 
 #[test]
+fn issue_722_a_defined_power_and_the_three_places_a_half_reads() {
+    // A characteristic-defining ability is a present-tense statement about the source's
+    // own power (CR 604.3), not a trigger and not an effect — and the printed `*` is
+    // exactly this sentence.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "enigma_drake"),
+        "Flying\nEnigma Drake's power is equal to the number of instant or sorcery \
+         cards in your graveyard."
+    );
+    // A halved total names *whose* total it is, so "each player" gets "their" and the
+    // rounding trails the phrase where a card prints it.
+    assert_eq!(
+        text_of(&db, "fraying_omnipotence"),
+        "Each player loses half their life, rounded up.\n\
+         Each player discards half the cards in their hand, rounded up.\n\
+         Each player sacrifices half the creatures they control, rounded up."
+    );
+    // "Its" points back at the noun the same sentence just named, which is why the life
+    // gain is part of the exile rather than a clause standing on its own.
+    assert_eq!(
+        text_of(&db, "infernal_reckoning"),
+        "Exile target colorless creature. You gain life equal to its power."
+    );
+}
+
+#[test]
 fn issue_728_an_equipment_states_its_grant_and_its_equip_ability() {
     // Marauder's Axe (bundled). The grant sentence names "equipped creature" rather than
     // repeating the equip ability's restriction — an Equipment is only ever on a creature

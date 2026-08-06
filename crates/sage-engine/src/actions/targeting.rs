@@ -183,6 +183,7 @@ pub(crate) fn legal_targets_for_spec(
         | TargetSpec::AnyCreatureYouControl
         | TargetSpec::AnyCreatureAnOpponentControls
         | TargetSpec::AnyCreatureWithFlying
+        | TargetSpec::AnyColorlessCreature
         | TargetSpec::AnyTappedCreature
         | TargetSpec::AnyArtifactCreatureYouControl
         | TargetSpec::AnyArtifact

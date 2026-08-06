@@ -56,8 +56,8 @@
     "blocker": "untapping rides on the control change that steals a creature, because one effect names one target; nothing else brings an untap forward"
   },
   {
-    "name": "Effects whose amount is derived from a source outside the six the IR names",
-    "blocker": "an amount may be a count of permanents (feeding power/toughness, life, damage, a token count, and an attachment's static grant), the life gained this turn, a count of what this resolution milled, the greatest mana value among a class of permanents, how many permanents this object's own cost sacrificed, or the power the creature that cost sacrificed had — the last five feeding power/toughness, a draw, damage, and a search's size; nothing else may — not cards in a zone, a life total, one named object's mana value, a surviving object's power, half of a total, or the permanent an effect just put onto the battlefield"
+    "name": "Effects whose amount is derived from a source outside the ones the IR names",
+    "blocker": "an amount may be a count of permanents (feeding power/toughness, life, damage, a token count, and an attachment's static grant), the life gained this turn, a count of what this resolution milled, the greatest mana value among a class of permanents, the X its controller announced, how many permanents this object's own cost sacrificed, the power the creature that cost sacrificed had, or half a named player's life total, hand, or creature count rounded up — the last seven feeding power/toughness, a draw, damage, a search's size, a life loss, a discard, and a sacrifice; a count of cards in a graveyard feeds a characteristic-defining power and nothing else, and a chosen permanent's power feeds only the life gained by the exile that removes it — nothing else may: not a whole life total, hand, or graveyard feeding an effect, not one named object's mana value, not a surviving object's power, not a chosen permanent's toughness or mana value, not half of anything rounded down, and not the permanent an effect just put onto the battlefield"
   },
   {
     "name": "Emblems with an activated ability",

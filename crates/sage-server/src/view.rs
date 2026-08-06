@@ -17,13 +17,14 @@ use sage_engine::{
     choice_bounds, choice_candidates, confirm_is_payable, declared_attackers, defender_candidates,
     is_mana_ability, mana_ability_pips, named_card_candidates, order_candidates,
     pending_blocker_declarer, pending_player_choice, pending_replacement_options,
-    scripted_rules_text, summoning_sickness_restricts, target_requirements, total_cast_cost,
-    valid_actions, Ability, AbilityOrigin, Action, Attack, AttackTarget, Block, CardData,
-    CardDatabase, CardId, CardInstance, CardInstanceId, CardNameRequest, ChoiceOutcome,
-    ChoiceQuestion, ChoiceRequest, ChoiceZone, Color, ColorOutcome, ColorRequest, ConfirmRequest,
-    CostPayment, CounterKind, DamageOrder, DamageTarget, FunctionalId, GameEvent, GameResult,
-    GameState, Keyword, LoggedIdentity, LoggedPermanent, LossReason, OfferedReplacement,
-    OrderRequest, PermanentId, Player, PlayerId, PrintedFace, StackId, StackObject,
+    permanent_choice_bounds, permanent_choice_candidates, scripted_rules_text,
+    summoning_sickness_restricts, target_requirements, total_cast_cost, valid_actions, Ability,
+    AbilityOrigin, Action, Attack, AttackTarget, Block, CardData, CardDatabase, CardId,
+    CardInstance, CardInstanceId, CardNameRequest, ChoiceOutcome, ChoiceQuestion, ChoiceRequest,
+    ChoiceZone, Color, ColorOutcome, ColorRequest, ConfirmRequest, CostPayment, CounterKind,
+    DamageOrder, DamageTarget, FunctionalId, GameEvent, GameResult, GameState, Keyword,
+    LoggedIdentity, LoggedPermanent, LossReason, OfferedReplacement, OrderRequest, PermanentId,
+    PermanentOutcome, PermanentRequest, Player, PlayerId, PrintedFace, StackId, StackObject,
     StackObjectKind, Step, Target, TargetSpec,
 };
 
@@ -594,6 +595,11 @@ pub(crate) fn resolve_action(
             // The *in any order* of a look is answered on the same slot with a
             // permutation of the ids the `order` prompt listed, in the order sent.
             Action::AnswerOrder { .. } => bind_player_order(state, &offered, &choice.targets),
+            // A sacrifice is answered on the same slot with permanent entity ids — a
+            // selection over the battlefield rather than over a hidden zone.
+            Action::AnswerPermanents { .. } => {
+                bind_player_permanents(state, db, &offered, &choice.targets)
+            }
             _ => {
                 if !targets_fill_requirements(
                     &choice.targets,

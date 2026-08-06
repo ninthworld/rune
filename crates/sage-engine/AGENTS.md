@@ -65,18 +65,30 @@ to the permanent's arrival, so it is stored on the permanent (`dealt_damage`, wr
 three seams a permanent is the *source* of damage) and re-asked on every read, never latched.
 A count of permanents (`count_of`) may feed an effect's amount, the number of tokens it
 creates, and an attachment's static grant — the last recalculated on every read, because a
-static ability is not a resolution. Every *other* X is a `DerivedAmount`, a closed set of
-six phrases with no arithmetic over them — the life gained this turn, a count of what
-this resolution milled, the greatest mana value among a class, the **X its controller
-announced**, and the two read off the object's **own cost payment**: how many permanents it
-sacrificed and the power the creature it sacrificed had. Each is read once where the effect
-applies, and between them they feed four verbs: a pump, a draw, a damage, and a search's
-size. The announced X and the two payment amounts are the ones that read neither the board
-nor the event log, because their answer was settled at announcement and — for the payment —
-the objects it was about have left. The count keeps its own spelling because it is the one
-source a static grant may also name; nothing windowed over events could stand there. Cards
-in a zone, a life total, one named object's mana value, a *surviving* object's power, and
-half of anything still feed nothing.
+static ability is not a resolution. Every *other* X an effect reads is a `DerivedAmount`, a
+closed set of seven phrases with no expression language over them — the life gained this
+turn, a count of what this resolution milled, the greatest mana value among a class, the
+**X its controller announced**, the two read off the object's **own cost payment** (how many
+permanents it sacrificed and the power the creature it sacrificed had), and half a named
+player's life total, hand, or creature count rounded up. Each is read once where the effect
+applies, and between them they feed seven verbs: a pump, a draw, a damage, a search's size,
+a life loss, a discard, and a sacrifice. The halved one is the only arithmetic there is, it
+rounds one way because only one way is printed, and it is read of the player the effect
+*names* rather than of its controller. The announced X and the two payment amounts are the
+ones that read neither the board nor the event log, because their answer was settled at
+announcement and — for the payment — the objects it was about have left. The count keeps its
+own spelling because it is the one source a static grant may also name; nothing windowed
+over events could stand there.
+
+**Two amounts sit outside that vocabulary, each because of *when* it is read.** A count of
+cards in a graveyard (`GraveyardCount`) feeds a **characteristic-defining power** and
+nothing else — `Ability::DefinedPower`, at CR 613 **layer 7a** ahead of every other P/T
+layer, re-derived on every read rather than fixed on a resolution (CR 604.3); it replaces
+the printed seed and 7c piles on top of its answer. A chosen permanent's power
+(`PermanentAmount`) is a field on `Effect::Exile`, because CR 608.2h makes it readable only
+*before* the exile removes the object it is about. A whole life total or hand, one named
+object's mana value, a chosen permanent's toughness, and half of anything rounded down
+still feed nothing.
 
 **A choice made at announcement rides the action, and the mode is made first** (CR
 601.2b). `Action::CastSpell` carries a `mode` and an `x`, both cleared to build the
@@ -271,10 +283,12 @@ is ordered against another because every one modeled prevents all of it. A perma
 leaving the battlefield, a draw, and life gained route nowhere near this, and the leave
 seams run inside the SBA loop where there is nothing to suspend a question onto.
 
-A choice asks one shape of **question** (`ChoiceQuestion`, ADR 0014): pick cards, answer a
-`you may` yes-or-no, name a colour, name a card, order applicable replacements by position
-in a derived list, or arrange cards into a **permutation** — the *in any order* a look
-bottoms its remainder in. Everything around them is single — one queue, one chooser, one
+A choice asks one shape of **question** (`ChoiceQuestion`, ADR 0014): pick cards, pick
+**permanents** (the sacrifice — a separate shape because a token has no `CardInstance` to
+name, CR 111), answer a `you may` yes-or-no, name a colour, name a card, order applicable
+replacements by position in a derived list, or arrange cards into a **permutation** — the
+*in any order* a look bottoms its remainder in. Everything around them is single — one
+queue, one chooser, one
 `Resume` — and only the answer branches, so a new question shape is a variant plus its own
 `Action`, never a second queue. Two rules the permutation added and every later answer
 inherits: an answer replacing something the game used to **roll** for consumes no

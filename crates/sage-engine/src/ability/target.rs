@@ -92,6 +92,12 @@ pub enum PlayerRef {
     /// symmetric drain (CR 102.1). Chooses no target, so it never fizzles and, in a
     /// game of three or more, really does hit every opponent rather than one.
     EachOpponent,
+    /// **Every player still in the game**, the controller included — the "each player"
+    /// of a symmetric sweeper. Chooses no target, and it is a separate variant from
+    /// [`Self::EachOpponent`] rather than a flag on it because the difference is the
+    /// whole point of the cards that print it: a spell that makes each player discard
+    /// half their hand makes its caster discard too.
+    EachPlayer,
     /// One **targeted** player (CR 115.1), any seat still in the game: "target player".
     TargetPlayer,
     /// One **targeted** opponent of the controller: "target opponent". Distinct from
@@ -118,7 +124,7 @@ impl PlayerRef {
     #[must_use]
     pub fn target_spec(self) -> Option<TargetSpec> {
         match self {
-            PlayerRef::Controller | PlayerRef::EachOpponent => None,
+            PlayerRef::Controller | PlayerRef::EachOpponent | PlayerRef::EachPlayer => None,
             PlayerRef::TargetPlayer => Some(TargetSpec::AnyPlayer),
             PlayerRef::TargetOpponent => Some(TargetSpec::AnyOpponent),
         }
@@ -221,6 +227,16 @@ pub enum TargetSpec {
     /// disjoint on every card the schema can express, and a spell that wants both says
     /// [`Self::AnyTarget`].
     AnyCreature,
+    /// Any **colorless** creature (CR 105.2) — "target colorless creature", the class a
+    /// one-mana answer to an Eldrazi names.
+    ///
+    /// Colour is read off the card's printed
+    /// [`colors`](crate::CardData::colors), which is where every other colour test in the
+    /// engine reads it: colour-changing effects are not modelled, so printed colour is
+    /// current colour here exactly as it is in the blocking restriction that names one.
+    /// A token contributes the colours its creating effect gave it. Never a planeswalker
+    /// (see [`Self::AnyCreature`]).
+    AnyColorlessCreature,
     /// Any creature the object's controller controls — "target creature you control".
     /// Never a planeswalker (see [`Self::AnyCreature`]).
     AnyCreatureYouControl,

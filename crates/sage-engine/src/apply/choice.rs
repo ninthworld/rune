@@ -2,10 +2,10 @@
 
 use super::*;
 use crate::choice::{
-    apply_choice_outcome, apply_order_outcome, pending_player_choice, take_confirmed_effects,
-    ChoiceQuestion, PendingChoice,
+    apply_choice_outcome, apply_order_outcome, apply_permanent_choice, pending_player_choice,
+    take_confirmed_effects, ChoiceQuestion, PendingChoice,
 };
-use crate::id::CardInstanceId;
+use crate::id::{CardInstanceId, PermanentId};
 use crate::resolve::resume_after_choice;
 
 /// Answer the choice at the head of [`GameState::pending_choices`](crate::GameState)
@@ -88,6 +88,33 @@ pub(crate) fn apply_answer_order(
         return;
     };
     apply_order_outcome(state, request, order);
+    if let Some(resume) = answered.resume {
+        resume_after_choice(state, resume, db);
+    }
+}
+
+/// Answer the pending **permanent choice** with `chosen`: sacrifice what was named, then
+/// let the suspended resolution continue.
+///
+/// The same three steps [`apply_answer_choice`] takes, over objects on the battlefield
+/// rather than cards in a zone. Legality has already been established by
+/// [`crate::apply_action`]'s gate
+/// ([`crate::choice::answer_permanents_is_legal`](crate::choice)), so this writes rather
+/// than re-deciding, and an answer with no permanent choice pending is a no-op.
+pub(crate) fn apply_answer_permanents(
+    state: &mut GameState,
+    chosen: &[PermanentId],
+    db: &CardDatabase,
+) {
+    let Some(ChoiceQuestion::Permanents(_)) = pending_player_choice(state).map(|p| &p.question)
+    else {
+        return;
+    };
+    let answered = state.pending_choices.remove(0);
+    let ChoiceQuestion::Permanents(request) = &answered.question else {
+        return;
+    };
+    apply_permanent_choice(state, request, chosen, db);
     if let Some(resume) = answered.resume {
         resume_after_choice(state, resume, db);
     }

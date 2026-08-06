@@ -40,11 +40,16 @@
 //! identities. See `docs/decisions/0013-mid-resolution-player-choices.md`.
 
 mod outcome;
+mod permanents;
 mod posing;
 
 pub(crate) use outcome::{
     apply_card_name_outcome, apply_choice_outcome, apply_color_outcome, apply_order_outcome,
     discard_to_cost, take_confirmed_effects,
+};
+pub(crate) use permanents::{answer_permanents_is_legal, apply_permanent_choice};
+pub use permanents::{
+    permanent_choice_bounds, permanent_choice_candidates, PermanentOutcome, PermanentRequest,
 };
 pub(crate) use posing::{attach_resume, choices_for_effect, pose_choices};
 
@@ -137,6 +142,15 @@ pub enum ChoiceQuestion {
     /// a question with the same candidates and a completely different legality rule
     /// (every card exactly once, no more and no fewer).
     Order(OrderRequest),
+    /// Choose **permanents** on the battlefield — the sacrifice of
+    /// [`Effect::Sacrifice`](crate::Effect) ([`PermanentRequest`]). Answered with
+    /// [`Action::AnswerPermanents`](crate::Action).
+    ///
+    /// The fifth shape because the answer names a fifth thing: objects on the
+    /// battlefield, which a card selection cannot stand in for. A card selection is a
+    /// list of [`CardInstance`](crate::id::CardInstance)s and a token has no card behind
+    /// it (CR 111), so a board full of tokens would be a board nobody could sacrifice.
+    Permanents(PermanentRequest),
 }
 
 impl ChoiceQuestion {
@@ -151,7 +165,8 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Color(_)
             | ChoiceQuestion::CardName(_)
             | ChoiceQuestion::Replacement(_)
-            | ChoiceQuestion::Order(_) => None,
+            | ChoiceQuestion::Order(_)
+            | ChoiceQuestion::Permanents(_) => None,
         }
     }
 
@@ -164,7 +179,8 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Color(_)
             | ChoiceQuestion::CardName(_)
             | ChoiceQuestion::Replacement(_)
-            | ChoiceQuestion::Order(_) => None,
+            | ChoiceQuestion::Order(_)
+            | ChoiceQuestion::Permanents(_) => None,
         }
     }
 
@@ -177,7 +193,8 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Confirm(_)
             | ChoiceQuestion::CardName(_)
             | ChoiceQuestion::Replacement(_)
-            | ChoiceQuestion::Order(_) => None,
+            | ChoiceQuestion::Order(_)
+            | ChoiceQuestion::Permanents(_) => None,
         }
     }
 
@@ -190,7 +207,8 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Confirm(_)
             | ChoiceQuestion::Color(_)
             | ChoiceQuestion::Replacement(_)
-            | ChoiceQuestion::Order(_) => None,
+            | ChoiceQuestion::Order(_)
+            | ChoiceQuestion::Permanents(_) => None,
         }
     }
 
@@ -203,7 +221,22 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Confirm(_)
             | ChoiceQuestion::Color(_)
             | ChoiceQuestion::CardName(_)
-            | ChoiceQuestion::Replacement(_) => None,
+            | ChoiceQuestion::Replacement(_)
+            | ChoiceQuestion::Permanents(_) => None,
+        }
+    }
+
+    /// The permanent-selection request this question asks, or `None` when it is not one.
+    #[must_use]
+    pub fn permanents(&self) -> Option<&PermanentRequest> {
+        match self {
+            ChoiceQuestion::Permanents(request) => Some(request),
+            ChoiceQuestion::Cards(_)
+            | ChoiceQuestion::Confirm(_)
+            | ChoiceQuestion::Color(_)
+            | ChoiceQuestion::CardName(_)
+            | ChoiceQuestion::Replacement(_)
+            | ChoiceQuestion::Order(_) => None,
         }
     }
 
@@ -216,7 +249,8 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Confirm(_)
             | ChoiceQuestion::Color(_)
             | ChoiceQuestion::CardName(_)
-            | ChoiceQuestion::Order(_) => None,
+            | ChoiceQuestion::Order(_)
+            | ChoiceQuestion::Permanents(_) => None,
         }
     }
 }

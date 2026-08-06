@@ -100,6 +100,7 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         Action::AnswerReplacement { index } => apply_answer_replacement(&mut next, *index, db),
         Action::AnswerCardName { card } => apply_answer_card_name(&mut next, *card, db),
         Action::AnswerOrder { order } => apply_answer_order(&mut next, order, db),
+        Action::AnswerPermanents { chosen } => apply_answer_permanents(&mut next, chosen, db),
         Action::Discard { card } => apply_discard(&mut next, *card, db),
         Action::Mulligan => apply_mulligan(&mut next),
         Action::Keep { bottom } => apply_keep(&mut next, bottom),

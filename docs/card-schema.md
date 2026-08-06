@@ -537,7 +537,8 @@ resolution (CR 608.2b). The classes are `any_player`, `any_player_or_planeswalke
 `any_nonland_permanent_an_opponent_controls`, `any_artifact_creature_you_control`,
 `any_creature`,
 `any_creature_you_control`, `any_creature_an_opponent_controls`,
-`any_creature_with_flying`, `any_tapped_creature`, `any_artifact`, `any_enchantment`,
+`any_creature_with_flying`, `any_colorless_creature`, `any_tapped_creature`,
+`any_artifact`, `any_enchantment`,
 `any_artifact_or_enchantment`, `any_artifact_enchantment_or_creature_with_flying`,
 `any_land`, `spell_on_stack`, `creature_spell_on_stack`, `any_target`,
 `any_permanent_with_mana_value`, and `card_in_graveyard`.
@@ -645,11 +646,14 @@ reference itself decides whether a target is chosen:
 | --- | --- | --- |
 | `controller` | "you" | no |
 | `each_opponent` | every opponent still in the game | no |
+| `each_player` | every player still in the game, **including you** | no |
 | `target_player` | one chosen player | yes |
 | `target_opponent` | one chosen opponent | yes |
 
 A non-targeting reference can never fizzle and, in a game of three or more, really does
-name every opponent. `gain_life`, `lose_life`, and `mill` all take a reference, so both
+name every opponent. `each_player` is a variant of its own rather than a flag on
+`each_opponent`, because the difference is the whole point of the cards that print it: a
+symmetric sweeper hits its own caster. `gain_life`, `lose_life`, and `mill` all take a reference, so both
 shapes exist for each without any of them restating the fizzle rule.
 
 ### Damage (CR 120.3)
@@ -1083,8 +1087,8 @@ control" means on the card that printed the grant, not the host's controller.
 
 Not every X is a count of permanents. The other sources are a closed set — a
 `DerivedAmount`, authored as an `amount` block with a `source` tag — and there is no
-arithmetic over them: no halving, no adding two together, and no way to compose one out of
-another. A card that needs a new phrase adds a source.
+expression language over them: no doubling, no adding two together, and no way to compose
+one out of another. A card that needs a new phrase adds a source.
 
 | `source` | Reads | Written on a card as |
 | --- | --- | --- |
@@ -1102,7 +1106,25 @@ the stack object from there, so the mana that was charged, the effect that resol
 the text the stack entry shows are all the same number by construction. It is zero for an
 object that announced none.
 
-Five effects read one:
+| `half_rounded_up` | **half** of the `of` total, rounded up | `half their life, rounded up` |
+
+`half_rounded_up` is the one source that is arithmetic *over* another number, and it is a
+source rather than an operator on purpose: "half, rounded up" is a phrase printed cards
+write about a handful of named totals, not something they compose. Its `of` names one of
+three, each read of **the player the effect names** rather than of the controller — the
+whole point of `each player loses half their life` is that each of them reads their own:
+
+| `of` | Reads |
+| --- | --- |
+| `life_total` | that player's life total (CR 119.1); a total at or below zero halves to nothing |
+| `hand_size` | how many cards are in that player's hand, as the effect is reached |
+| `creatures_controlled` | how many creatures that player controls (CR 613 layer 2) |
+
+Rounding is **up and is not a field**. Every card that halves a total says which way it
+rounds, and one that rounds down is a different phrase that will add its own source — so
+no card can be authored that rounds the direction its text does not say.
+
+Eight effects read a source:
 
 ```json
 { "kind": "pump_by_amount", "target": "any_creature",
@@ -1120,6 +1142,12 @@ Five effects read one:
 { "kind": "search_library", "take": 0, "filter": { "kind": "land" },
   "destination": "battlefield_tapped",
   "take_amount": { "source": "sacrificed_to_cost" } }
+{ "kind": "lose_life_by_amount", "player_ref": "each_player",
+  "amount": { "source": "half_rounded_up", "of": "life_total" } }
+{ "kind": "discard_by_amount", "player_ref": "each_player",
+  "amount": { "source": "half_rounded_up", "of": "hand_size" } }
+{ "kind": "sacrifice", "player_ref": "each_player", "card_type": "creature",
+  "amount": { "source": "half_rounded_up", "of": "creatures_controlled" } }
 ```
 
 **The last two read the payment, not the game, and that is the whole reason they are
@@ -1161,6 +1189,70 @@ and a window has no meaning outside a resolution.
 resolution, and the card reading the number is the card that just did the milling — "their
 graveyard" is the player the effect above it already named, so a scope here would be a
 second way to say the same thing and a second way to get it wrong.
+
+`lose_life_by_amount` is `lose_life`'s sibling and reaches the same seam, so the loss still
+drives the zero-life state-based action (CR 704.5a). `discard_by_amount` and `sacrifice`
+both **suspend** and ask their player, one question per named seat, and both fix their
+number as the question is *posed* — from the hand and the board as they stand then
+(CR 608.2), clamped to what is actually there. A player told to discard two who holds one
+discards the one; a player told to sacrifice two who controls one sacrifices the one; a
+player with neither is never asked.
+
+`discard_by_amount` is deliberately the narrow discard: the cards are picked by the player
+discarding them and any card in the hand may be picked. A coercive or filtered discard of a
+derived number is a card nobody has printed, and the fields it would need arrive with it.
+
+`sacrifice` is the first sacrifice that is an *effect* rather than a cost, and it is the one
+choice in the IR whose candidates are **permanents** — which is what lets a token be picked
+(a card selection names a `CardInstance`, and a token has none, CR 111). Whose permanents is
+not a field: CR 701.17b lets a player sacrifice only what they control, so the class is
+always the named player's own, with `card_type` narrowing it to one printed type.
+`card_type` restates the class the amount's own phrase already names ("half the creatures
+they control") because a number cannot say which permanents may be picked.
+
+### A chosen permanent's power (`gain life equal to its power`)
+
+One amount is **not** a `DerivedAmount`: the power of a permanent the same effect is about
+to remove. `exile` takes an optional `gain_life`, and `"power"` is its one value:
+
+```json
+{ "kind": "exile", "target": "any_colorless_creature", "gain_life": "power" }
+```
+
+It rides on the exile rather than standing as a life-gain effect after it because of
+CR 608.2h. "Its power" is a question about an object that is no longer on the battlefield
+by the time a following effect would ask, so the number is read *here*, before the permanent
+moves, and the life is gained in the same breath. The power read is the **computed** one
+(CR 613), so a creature grown by counters or an anthem is worth what it had become; a
+negative power gains nothing.
+
+### A characteristic-defining power (CR 604.3, CR 613 layer 7a)
+
+A card whose printed power is `*` has a **characteristic-defining ability**, not an effect.
+It is authored as an ability, `power` is written as `0`, and the asterisk is what the
+ability says:
+
+```json
+{ "type": "defined_power",
+  "count_of": { "scope": "yours", "filter": { "kind": "instant_or_sorcery" } } }
+```
+
+`count_of` is a `GraveyardCount` — a `scope` (`yours`, the default, or `any` for every
+graveyard) and a `filter`, the same card filter a discard or a search names. It is the
+graveyard counterpart of `count_of`'s permanent selector and keeps its own spelling for the
+same reason: it is read where the question is asked rather than fixed on a resolution.
+
+That is the whole difference from every amount above. A defined power is **re-derived on
+every read**: a card put into the graveyard changes it with nothing going on the stack, no
+event in between, and no window in which the old number is still showing. It applies in
+CR 613 **layer 7a**, ahead of every other power layer, so it *replaces* the printed seed and
+everything else piles on top of the result — a `+1/+1` counter still adds one, an anthem
+still adds its own. Layer 6 comes first, so a creature made to lose all its abilities loses
+this one too and is back to what its card printed.
+
+Only power is definable today. A card that defines its toughness, its colour, or its type
+adds its own variant; a single "defines a characteristic" ability carrying a layer number
+would let a power be defined in layer 4.
 
 ### Emptying a graveyard, and the top of a library
 

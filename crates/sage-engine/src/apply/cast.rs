@@ -15,7 +15,8 @@
 
 use super::*;
 use crate::ability::{
-    is_mana_ability, Ability, Cost, DamageSubject, Effect, MassAffects, PlayerRef, Target,
+    is_mana_ability, Ability, Cost, DamageSubject, Effect, MassAffects, PermanentAmount, PlayerRef,
+    Target,
 };
 use crate::card::abilities_of_permanent;
 use crate::id::{CardInstance, PermanentId, PlayerId};

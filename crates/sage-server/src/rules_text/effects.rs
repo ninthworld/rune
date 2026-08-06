@@ -28,9 +28,10 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             // with the subject, and only the second person drops the -s.
             let controls = match player_ref {
                 PlayerRef::Controller => "control",
-                PlayerRef::EachOpponent | PlayerRef::TargetPlayer | PlayerRef::TargetOpponent => {
-                    "controls"
-                }
+                PlayerRef::EachOpponent
+                | PlayerRef::EachPlayer
+                | PlayerRef::TargetPlayer
+                | PlayerRef::TargetOpponent => "controls",
             };
             let tap = format!(
                 "tap all creatures {} {controls}",
@@ -70,13 +71,25 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             | DerivedAmount::MilledThisWay { .. }
             | DerivedAmount::GreatestManaValue { .. }
             | DerivedAmount::SacrificedToCost
-            | DerivedAmount::SacrificedCreaturePower => format!(
+            | DerivedAmount::SacrificedCreaturePower
+            | DerivedAmount::HalfRoundedUp { .. } => format!(
                 "{source} deals damage equal to {} to {}",
-                amount_noun(amount),
+                amount_noun(amount, PlayerRef::Controller),
                 damage_recipient(subject),
             ),
         },
-        Effect::Exile { target } => format!("exile {}", target_noun(*target)),
+        // The life rider is a second sentence, where the card prints it, and "its" points
+        // back at the noun this one just named — which is the whole reason the two are
+        // one effect rather than two.
+        Effect::Exile { target, gain_life } => {
+            let exile = format!("exile {}", target_noun(*target));
+            match gain_life {
+                None => exile,
+                Some(PermanentAmount::Power) => {
+                    format!("{exile}. You gain life equal to its power")
+                }
+            }
+        }
         // The one clause with two target nouns in it (CR 701.12). The mutual form is the
         // printed verb *fights*, which says the power reading on its own; the one-sided
         // form has to spell it out, and "its" refers back to the first noun the sentence
@@ -361,7 +374,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             // never a figure, so the phrase names the amount rather than a count.
             Some(amount) => format!(
                 "search your library for up to {} {}, put them {}, then shuffle",
-                amount_noun(amount),
+                amount_noun(amount, PlayerRef::Controller),
                 filter_noun(filter, true),
                 destination_phrase(*destination),
             ),
@@ -449,6 +462,30 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             damage_recipient(subject),
             count_noun(count_of)
         ),
+        // The three derived-number verbs of a symmetric sweeper, each one sentence in the
+        // order the card prints them. The amount carries its own "rounded up", and it is
+        // rendered against the *named* player, so "each player" gets "their" and a
+        // controller-only form would get "your".
+        Effect::LoseLifeByAmount { player_ref, amount } => format!(
+            "{} {}",
+            conjugate(*player_ref, "lose"),
+            amount_noun(amount, *player_ref)
+        ),
+        Effect::DiscardByAmount { player_ref, amount } => format!(
+            "{} {}",
+            conjugate(*player_ref, "discard"),
+            amount_noun(amount, *player_ref)
+        ),
+        // The class the choice offers (`card_type`) is deliberately not restated here:
+        // the amount's own phrase already names it — "half the creatures they control" —
+        // and printing the class twice would be two ways to say one printed clause.
+        Effect::Sacrifice {
+            player_ref, amount, ..
+        } => format!(
+            "{} {}",
+            conjugate(*player_ref, "sacrifice"),
+            amount_noun(amount, *player_ref)
+        ),
         Effect::ExileGraveyard { player_ref } => {
             format!("exile {}'s graveyard", possessive_subject(*player_ref))
         }
@@ -508,14 +545,17 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             target_noun(*target),
             sign(*power_per),
             sign(*toughness_per),
-            amount_noun(amount),
+            amount_noun(amount, PlayerRef::Controller),
         ),
         // Named subject, unlike the fixed [`Effect::DrawCard`] beside it: a derived draw
         // is printed as the *second* clause of a sentence whose first one belongs to
         // somebody else ("target opponent mills three cards, then **you** draw …"), and a
         // bare "draw" there reads as an instruction to the opponent.
         Effect::DrawCardsByAmount { amount } => {
-            format!("you draw cards equal to {}", amount_noun(amount))
+            format!(
+                "you draw cards equal to {}",
+                amount_noun(amount, PlayerRef::Controller)
+            )
         }
         // The colors are the player's, so the sentence says how many mana and leaves
         // the colors to them — exactly what the card says. Which of the two phrasings it
@@ -690,7 +730,7 @@ fn count_subject(count: &PermanentCount) -> String {
 /// amount can appear in read as one sentence apiece — "gets -X/-X …, where X is **the
 /// amount of life you gained this turn**", "draw cards equal to **the greatest mana value
 /// among artifacts you control**". Exhaustive, so a new source has to say how it reads.
-fn amount_noun(amount: &DerivedAmount) -> String {
+fn amount_noun(amount: &DerivedAmount, subject: PlayerRef) -> String {
     match amount {
         DerivedAmount::LifeGainedThisTurn => "the amount of life you gained this turn".to_string(),
         // "milled this way" is the wording the intervening-if clause already uses for the
@@ -712,6 +752,24 @@ fn amount_noun(amount: &DerivedAmount) -> String {
         // second as a possessive naming the creature that paid.
         DerivedAmount::SacrificedToCost => "that many".to_string(),
         DerivedAmount::SacrificedCreaturePower => "the sacrificed creature's power".to_string(),
+        // The one source whose phrase is about the *named player* rather than about the
+        // controller, so it is the one that takes the subject: "each player loses half
+        // **their** life", "you lose half **your** life". The rounding trails the phrase
+        // exactly where a card prints it.
+        DerivedAmount::HalfRoundedUp { of } => {
+            let total = match of {
+                HalvedTotal::LifeTotal => {
+                    format!("half {} life", possessive_pronoun(subject))
+                }
+                HalvedTotal::HandSize => {
+                    format!("half the cards in {} hand", possessive_pronoun(subject))
+                }
+                HalvedTotal::CreaturesControlled => {
+                    format!("half the creatures {} control", relative_subject(subject))
+                }
+            };
+            format!("{total}, rounded up")
+        }
     }
 }
 
@@ -721,6 +779,31 @@ fn destroy_class(affects: DestroyAffects) -> &'static str {
         DestroyAffects::EachCreature => "creatures",
         DestroyAffects::EachArtifactOrEnchantment => "artifacts and enchantments",
     }
+}
+
+/// The subject of a relative clause hanging off a noun — "the creatures **they**
+/// control". The third of the player-reference renderings beside [`subject_pronoun`] and
+/// [`possessive_pronoun`], and separate for the same reason those two are: English wants
+/// a different word in each position, and one function per position keeps all three
+/// exhaustive.
+fn relative_subject(player_ref: PlayerRef) -> &'static str {
+    match player_ref {
+        PlayerRef::Controller => "you",
+        PlayerRef::EachOpponent
+        | PlayerRef::EachPlayer
+        | PlayerRef::TargetPlayer
+        | PlayerRef::TargetOpponent => "they",
+    }
+}
+
+/// The cards a [`GraveyardCount`] counts, as the noun phrase after "the number of" —
+/// "instant or sorcery cards in your graveyard".
+pub(super) fn graveyard_count_noun(count: &GraveyardCount) -> String {
+    let zone = match count.scope {
+        GraveyardScope::Yours => "in your graveyard",
+        GraveyardScope::Any => "in all graveyards",
+    };
+    format!("{} {zone}", filter_noun(&count.filter, true))
 }
 
 /// A class with its power bound trailing it, where a card prints it: "creatures you
@@ -820,6 +903,7 @@ fn subject_pronoun(player_ref: PlayerRef) -> &'static str {
     match player_ref {
         PlayerRef::Controller => "you",
         PlayerRef::EachOpponent => "each opponent",
+        PlayerRef::EachPlayer => "each player",
         PlayerRef::TargetPlayer => "target player",
         PlayerRef::TargetOpponent => "target opponent",
     }
@@ -829,7 +913,10 @@ fn subject_pronoun(player_ref: PlayerRef) -> &'static str {
 fn possessive_pronoun(player_ref: PlayerRef) -> &'static str {
     match player_ref {
         PlayerRef::Controller => "your",
-        PlayerRef::EachOpponent | PlayerRef::TargetPlayer | PlayerRef::TargetOpponent => "their",
+        PlayerRef::EachOpponent
+        | PlayerRef::EachPlayer
+        | PlayerRef::TargetPlayer
+        | PlayerRef::TargetOpponent => "their",
     }
 }
 
@@ -943,6 +1030,7 @@ fn possessive_subject(player_ref: PlayerRef) -> &'static str {
     match player_ref {
         PlayerRef::Controller => "your own",
         PlayerRef::EachOpponent => "each opponent",
+        PlayerRef::EachPlayer => "each player",
         PlayerRef::TargetPlayer => "target player",
         PlayerRef::TargetOpponent => "target opponent",
     }
@@ -1022,6 +1110,7 @@ fn player_noun(player_ref: PlayerRef) -> &'static str {
     match player_ref {
         PlayerRef::Controller => "you",
         PlayerRef::EachOpponent => "each opponent",
+        PlayerRef::EachPlayer => "each player",
         PlayerRef::TargetPlayer => "target player",
         PlayerRef::TargetOpponent => "target opponent",
     }

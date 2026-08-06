@@ -385,6 +385,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "fraying_omnipotence",
+    "collector_number": "97",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "gravedigger",
     "collector_number": "98",
     "rarity": "uncommon"
@@ -403,6 +408,11 @@
     "functional_id": "infectious_horror",
     "collector_number": "101",
     "rarity": "common"
+  },
+  {
+    "functional_id": "infernal_reckoning",
+    "collector_number": "102",
+    "rarity": "rare"
   },
   {
     "functional_id": "infernal_scarring",
@@ -882,6 +892,11 @@
   {
     "functional_id": "draconic_disciple",
     "collector_number": "215",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "enigma_drake",
+    "collector_number": "216",
     "rarity": "uncommon"
   },
   {
