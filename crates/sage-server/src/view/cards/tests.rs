@@ -197,6 +197,7 @@ fn issue_152_aura_boosted_host_projects_current_pt() {
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
     let aura = PermanentId(state.mint_id());
     state.battlefield.push(sage_engine::Permanent {
@@ -215,6 +216,7 @@ fn issue_152_aura_boosted_host_projects_current_pt() {
         attached_to: Some(host),
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -266,6 +268,7 @@ fn issue_68_permanent_counters_project_into_the_view() {
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
     let without_counters = PermanentId(state.mint_id());
     state.battlefield.push(sage_engine::Permanent {
@@ -284,6 +287,7 @@ fn issue_68_permanent_counters_project_into_the_view() {
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -358,6 +362,7 @@ fn issue_117_attack_and_block_state_project_into_the_view() {
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
     let blocker = PermanentId(state.mint_id());
     state.battlefield.push(sage_engine::Permanent {
@@ -376,6 +381,7 @@ fn issue_117_attack_and_block_state_project_into_the_view() {
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -423,6 +429,7 @@ fn issue_739_a_blocker_on_two_attackers_projects_both_in_order() {
             attached_to: None,
             chosen_color: None,
             named_card: None,
+            copied: None,
         });
         id
     };
@@ -446,6 +453,7 @@ fn issue_739_a_blocker_on_two_attackers_projects_both_in_order() {
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -486,6 +494,7 @@ fn issue_118_marked_damage_projects_into_the_view() {
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -542,6 +551,7 @@ fn issue_333_aura_attachment_projects_into_the_view() {
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
 
     // The Aura spell resolves off the stack attached to the host (CR 303.4d),
@@ -613,6 +623,7 @@ fn issue_153_keywords_project_onto_the_card_view() {
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
     let vanilla = PermanentId(state.mint_id());
     state.battlefield.push(sage_engine::Permanent {
@@ -631,6 +642,7 @@ fn issue_153_keywords_project_onto_the_card_view() {
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -688,6 +700,7 @@ fn issue_374_granted_keyword_projects_onto_the_card_view() {
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
     let bystander = PermanentId(state.mint_id());
     state.battlefield.push(sage_engine::Permanent {
@@ -706,6 +719,7 @@ fn issue_374_granted_keyword_projects_onto_the_card_view() {
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
     // A keyword-only Aura granting flying, attached to the host. M19 prints no
     // such Aura (Prodigious Growth grants trample alongside +7/+7), so the shape
@@ -727,6 +741,7 @@ fn issue_374_granted_keyword_projects_onto_the_card_view() {
         attached_to: Some(host),
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -1116,4 +1131,57 @@ fn issue_747_a_two_faced_card_projects_the_up_face_and_carries_the_other() {
     assert!(card_view("card_2".to_string(), fixture("onakke_ogre"), &db)
         .other_face
         .is_none());
+}
+
+/// A **copy** needs no surface of its own on the wire (`docs/client-design.md` §6.7):
+/// [`CardView`] carries the copied name, cost, type line, rules text, and
+/// power/toughness, so the client draws what it is told and computes nothing. There is
+/// no copy badge because there is nothing left for one to say.
+#[test]
+fn issue_734_a_copy_projects_as_the_thing_it_copies() {
+    use sage_engine::{CopiedValues, CopySubject, Printed};
+
+    let db = CardDatabase::bundled().unwrap();
+    let mut state = GameState::new_two_player();
+    let image = put_permanent(
+        &mut state,
+        fixture("mirror_image"),
+        PlayerId(0),
+        false,
+        false,
+    );
+    let printed = {
+        let view = permanent_card_view(
+            &state,
+            state.battlefield.iter().find(|p| p.id == image).unwrap(),
+            &db,
+        );
+        (view.name.clone(), view.power.clone())
+    };
+    assert_eq!(printed, ("Mirror Image".to_string(), Some("0".to_string())));
+
+    // Now make it a copy of a Colossal Dreadmaw, exactly as the entry seam would.
+    if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == image) {
+        perm.copied = Some(CopiedValues {
+            printed: Printed::from(fixture("colossal_dreadmaw")),
+            subject: CopySubject::This,
+        });
+    }
+    let view = permanent_card_view(
+        &state,
+        state.battlefield.iter().find(|p| p.id == image).unwrap(),
+        &db,
+    );
+    assert_eq!(view.name, "Colossal Dreadmaw");
+    assert_eq!(view.type_line, "Creature — Dinosaur");
+    assert_eq!(view.mana_cost.as_deref(), Some("{4}{G}{G}"));
+    assert_eq!(view.power.as_deref(), Some("6"));
+    assert_eq!(view.toughness.as_deref(), Some("6"));
+    assert_eq!(view.keywords, vec!["trample".to_string()]);
+    // The id is still the permanent's own — the copy is that object, not a second one.
+    assert_eq!(view.id, permanent_entity_id(image));
+
+    // And trample is *printed* on what it copies, so it is not reported as granted.
+    let perm = state.battlefield.iter().find(|p| p.id == image).unwrap();
+    assert!(granted_keywords(&state, perm, &db).is_empty());
 }

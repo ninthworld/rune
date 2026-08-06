@@ -24,13 +24,14 @@
 use sage_engine::{
     equip_ability, Ability, ActivationTiming, ActivatorScope, AdditionalCost, Attachment,
     AttachmentKind, BackFace, BottomOrder, CardData, CardFilter, CardType, Chooser, Color,
-    CombatRestriction, Condition, Cost, CostModification, CountScope, CounterKind,
-    DamageCharacteristic, DamageSubject, DerivedAmount, DestroyAffects, Effect, EnteringFilter,
-    FoundDestination, GraveyardCardClass, GraveyardCount, GraveyardScope, HalvedTotal, Keyword,
-    ManaRestriction, MassAffects, NamedCardClass, ObservedPermanent, ObservedSpell, OptionalCost,
-    PermanentAmount, PermanentCount, PlayerModification, PlayerRef, ReplacementEffect,
-    SacrificeCount, SpellMode, SpellTrait, StaticAffects, StaticCondition, StaticModification,
-    TargetCount, TargetSpec, TokenData, TriggerCondition, TriggerStep, TurnScope,
+    CombatRestriction, Condition, CopyClass, CopySubject, Cost, CostModification, CountScope,
+    CounterKind, DamageCharacteristic, DamageSubject, DelayedCondition, DerivedAmount,
+    DestroyAffects, Effect, EnteringFilter, FoundDestination, GraveyardCardClass, GraveyardCount,
+    GraveyardScope, HalvedTotal, Keyword, ManaRestriction, MassAffects, NamedCardClass,
+    ObservedPermanent, ObservedSpell, OptionalCost, PermanentAmount, PermanentCount,
+    PlayerModification, PlayerRef, ReplacementEffect, SacrificeCount, SpellMode, SpellTrait,
+    StaticAffects, StaticCondition, StaticModification, TargetCount, TargetSpec, TokenData,
+    TriggerCondition, TriggerStep, TurnScope,
 };
 
 mod effects;
@@ -220,6 +221,14 @@ pub(crate) fn token_rules_text(token: &TokenData) -> String {
     .join("\n")
 }
 
+/// The class a copy choice names, as the noun a card writes it with (CR 707).
+fn copy_class_noun(class: CopyClass) -> &'static str {
+    match class {
+        CopyClass::AnyCreature => "a creature",
+        CopyClass::CreatureYouControl => "a creature you control",
+    }
+}
+
 /// One ability as a sentence. `source` is the name of the object the ability is on —
 /// what a rules sentence calls itself. Also used to label an `activate_ability`
 /// action with its own cost-colon-effect line (`view::ability_label`), so the dock
@@ -316,6 +325,28 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
             "{source}'s power is equal to the number of {}.",
             graveyard_count_noun(count_of)
         ),
+        // The copy question, in the two shapes real cards print it in (CR 707). The
+        // subject decides which sentence gets written: `You may have this enter as a copy
+        // of …` says the whole thing in one clause, while an Aura says the choice and the
+        // continuous effect as the two sentences the card prints.
+        Ability::EntersAsCopy {
+            of,
+            subject,
+            optional,
+        } => match subject {
+            CopySubject::This => {
+                let opening = if *optional {
+                    format!("You may have {source} enter the battlefield")
+                } else {
+                    format!("{source} enters the battlefield")
+                };
+                format!("{opening} as a copy of {}.", copy_class_noun(*of))
+            }
+            CopySubject::Attached => format!(
+                "As {source} enters the battlefield, choose {}. Enchanted creature is a copy of the chosen creature.",
+                copy_class_noun(*of)
+            ),
+        }
         // A player-subject static says what is true of *you*, so the sentence has no
         // object at all — the shortest ability the formatter composes, and the only one
         // whose subject is a person.

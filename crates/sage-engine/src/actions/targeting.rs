@@ -116,6 +116,16 @@ pub(crate) fn action_target_groups(
                 crate::stack::StackObjectKind::Ability { effects, .. } => {
                     effects.iter().flat_map(Effect::target_groups).collect()
                 }
+                // A **copy of a spell** whose controller may choose new targets
+                // (CR 707.10c) is aimed by the same action, so it declares the same slots
+                // the copied spell would have chosen at cast (CR 707.2 — a copy has the
+                // copied card's rules text).
+                crate::stack::StackObjectKind::SpellCopy { card, mode, .. } => db
+                    .card(*card)
+                    // The mode the original announced travels with the copy (CR 707.10),
+                    // so its slots are the ones that mode declares.
+                    .map(|data| data.cast_target_groups(*mode))
+                    .unwrap_or_default(),
                 crate::stack::StackObjectKind::Spell { .. } => Vec::new(),
             })
             .unwrap_or_default(),

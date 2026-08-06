@@ -1329,7 +1329,9 @@ card that never names a colour is a validation error (`ChosenColorIsNeverNamed`)
 engine's honest answer to a permanent with no colour recorded is to notice nothing, and a card
 that silently does nothing is the hardest kind of wrong to spot.
 
-Naming a **type** is not authorable, and nothing on a spell records a choice at all.
+Naming a **type** is not authorable, and nothing on a spell records a choice at all. Naming a
+**card** is — `enters_naming_card` below — and so is naming a **permanent**, which
+`enters_as_copy` rides this same seam for.
 
 ### A card named as a permanent enters (CR 614.12)
 
@@ -1363,6 +1365,135 @@ that declares no `enters_naming_card` is a validation error (`ChosenNameIsNeverN
 the reason watching the chosen colour without choosing one is: the phrase would have no
 referent and the class could never contain a permanent. Naming a card and never reading it
 back is fine.
+
+### Copying an object (CR 707)
+
+Copying is **CR 613 layer 1** — earlier than every layer the engine models — and it is not a
+characteristic being overwritten. A copy is a permanent whose *printed seed* is a different
+object's; counters, damage, control changes, and every continuous effect are then applied on
+top of the copied values exactly as they would be on top of printed ones. That ordering is the
+whole feature: a creature that copies a 4/2 and carries two `+1/+1` counters is a 6/4, because
+layer 1 decided the power the counters are added to.
+
+**Copiable values are the printed ones** (CR 707.2): name, mana cost, colours, supertypes,
+types, subtypes, rules text, power, toughness, and loyalty — *as modified by other copy
+effects and by "as … enters" choices*, and by nothing else. So the engine records a copy as a
+handle to a printed face and nothing more; a card's printed face never changes, which is what
+makes the record a snapshot with nothing to keep fresh. Two rules follow for free:
+
+- **CR 707.2b** — changing the original afterwards changes nothing. Putting a counter on the
+  copied creature, enchanting it, or turning it over leaves the copy exactly as it was.
+- **CR 707.3** — a copy of a copy copies the same thing. The chain is followed *as the
+  snapshot is taken*, so a recorded copy always names a real printed face.
+
+#### `enters_as_copy`
+
+`enters_as_copy` is a card's declaration that its controller names a permanent **as it
+enters** (CR 614.12), and that from then on either this permanent or the one it is attached to
+has that permanent's copiable values. Mirror Image:
+
+```json
+{ "abilities": [
+    { "type": "enters_as_copy", "of": "creature_you_control", "optional": true } ] }
+```
+
+Metamorphic Alteration — the same declaration, applied to the Aura's host:
+
+```json
+{ "abilities": [ { "type": "enters_as_copy", "of": "any_creature", "subject": "attached" } ],
+  "attachment": { "kind": "aura", "attach_to": "any_creature" } }
+```
+
+| Field | Meaning |
+| --- | --- |
+| `of` | Which permanents may be named: `any_creature`, or `creature_you_control` |
+| `subject` | `this` (the default) — the entering permanent is the copy (CR 707.5); `attached` — its host is, for as long as it stays attached (CR 707.2c) |
+| `optional` | Whether naming nothing is a legal answer — the `You may have …` of a printed `enters as a copy` |
+
+It **names a permanent, not a target** (CR 115.1): nothing is aimed, no slot is filled at
+announcement, and hexproof has nothing to say about the answer. Like `enters_choosing_color` it
+is a *question* rather than a modification, so the CR 614 replacement layer does not collect it
+and there is nothing to order it against: the card waits on the choice queue, in no zone at
+all, and the permanent that then enters is already a copy. A question with no candidate — a
+`choose a creature` on an empty board — is not posed, and the permanent enters as itself.
+
+The two subjects differ only in who reads the answer back, and that difference is the whole of
+"is the copy continuous?". A `this` copy is recorded on the permanent that entered, so it lasts
+as long as that permanent does. An `attached` copy is recorded on the **Aura**, and its host's
+copy is derived from the attachment on every read — so the host stops being a copy the instant
+the Aura leaves or moves, with nothing to prune. Both are timestamped (CR 613.7): with two copy
+effects on one permanent the later one decides the copiable values, and every later layer — a
+granted keyword at 6, an Aura's `+2/+2` at 7c — applies on top of whichever won.
+
+#### Copying a permanent that has **transformed**
+
+**CR 707.8**: copying a double-faced permanent uses the copiable values of *the face that is
+currently up*. A copy of a permanent that has turned over is therefore the **back face** — its
+name, types, power, toughness, and rules text — and, per **CR 712.8e**, its mana value is
+**0**, because a back face has no mana cost of its own and the copy has no front face to borrow
+one from. (An untransformed double-faced permanent copies as its front face, mana cost and
+all.)
+
+A copy may only be a copy of a **creature**, and only a creature (or an Aura's creature host)
+may be one — so nothing here changes a permanent's card *types*. That matters because the
+type-changing layers (3–5) are still unmodeled and combat, targeting, and the state-based
+actions read printed types: the copy's types are a copiable value the computed characteristics
+carry, and they happen to agree with the printed ones in every case the vocabulary can
+express.
+
+Copying does not copy *face-up status*, and it does not make the copy two-faced. The copying
+permanent keeps its own card and its own faces; it simply reads a different face's
+characteristics. CR 707.8a — a **token** copy of a transforming permanent, which does get both
+faces and can turn over — is not built, and the compatibility report says so.
+
+#### `create_delayed_trigger`
+
+`create_delayed_trigger` creates a **delayed triggered ability** (CR 603.7) for the rest of the
+turn — the `When you next … this turn, …` of a printed card:
+
+```json
+{ "kind": "create_delayed_trigger",
+  "trigger": {
+    "event": { "next_spell_cast": "instant_or_sorcery" },
+    "effects": [ { "kind": "copy_spell", "target": "spell_on_stack", "new_targets": true } ] } }
+```
+
+The fourth per-turn thing an ability can leave on the state, recorded exactly like
+`create_replacement`: on a list carrying the turn it was created on, dropped at the same turn
+boundary, and **spent by firing** (CR 603.7b — `the next time` happens once). It is *not* gated
+on its source surviving: CR 603.7e says a delayed ability fires whether or not what created it
+is still around, and Doublecast is in a graveyard before its ability has anything to do.
+
+Its `event` vocabulary is one condition today, `{"next_spell_cast": <class>}`, which takes the
+same spell classes `you_cast_spell` does. The ability it creates acts on the spell it just
+watched — "that spell" — which the trigger event fixes rather than anybody choosing, so the
+fired ability reaches the stack with its slot already filled and its controller is never asked
+which spell it meant.
+
+#### `copy_spell`
+
+`copy_spell` puts a **copy of a spell** onto the stack, above the original (CR 707.10):
+
+| Field | Meaning |
+| --- | --- |
+| `target` | What may be copied — `spell_on_stack` |
+| `new_targets` | Whether the copy's controller may choose new targets for it (CR 707.10c) |
+
+This is a **different operation** from copying a permanent, and stays one. The copy is a new
+stack object that **was not cast**: no cast is recorded for it, nothing watching a cast notices
+it, and it has no card — so when it finishes resolving it ceases to exist rather than reaching
+a graveyard (CR 707.10a). What it does take from the original is the original's *decisions*
+(CR 707.10), which for this vocabulary means its chosen targets.
+
+With `new_targets`, the copy is put on the stack unaimed and its controller fills its slots
+through the same action a triggered ability's targets are chosen with. The offer is withheld —
+and the original's targets inherited instead — unless the copied spell declares at least one
+required slot with a legal candidate for it, because an offer with no answer would stall the
+game and CR 707.10c's "leave any number unchanged" is then the only answer left anyway.
+
+Only an **instant or sorcery** is copied. A copy of a permanent spell becomes a token as it
+resolves (CR 707.10f) and nothing here creates a token as a copy of anything, so such a copy is
+not made rather than made wrongly.
 
 ### Restricted mana (CR 106.6)
 
@@ -1471,8 +1602,9 @@ collected alongside whatever an ability created, so when more than one applies t
 entry the affected permanent's **controller** — not the effects' controller — chooses which
 applies first (CR 616.1), through the mid-resolution choice queue every other player decision
 rides. Each applies at most once to one event (CR 614.5), which is what makes the loop
-terminate. `enters_choosing_color` and `enters_naming_card` are deliberately not among them:
-they are questions, not modifications anyone could order them against. Each is instead an
+terminate. `enters_choosing_color`, `enters_naming_card`, and `enters_as_copy` are
+deliberately not among them: they are questions, not modifications anyone could order them
+against. Each is instead an
 **answer slot on the entry event** the seam refuses to finish while it is empty, so an answer
 fills its slot and hands the same event straight back — which is what lets a card ask more
 than one without any code saying which comes first, and what makes the whole loop terminate

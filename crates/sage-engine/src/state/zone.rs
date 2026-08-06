@@ -269,6 +269,7 @@ impl GameState {
                 applied: Vec::new(),
                 chosen_color: None,
                 named_card: None,
+                copied: None,
             },
             db,
         )
@@ -304,6 +305,7 @@ impl GameState {
                 applied: Vec::new(),
                 chosen_color: None,
                 named_card: None,
+                copied: None,
             },
             db,
         )
@@ -448,6 +450,34 @@ impl GameState {
                     return None;
                 }
             }
+            // The third CR 614.12 question, and the same road: naming a permanent whose
+            // copiable values this arrival takes (CR 707.5). It is asked only when the
+            // board holds something to name — an `enters as a copy` with no legal choice
+            // copies nothing and enters as itself, rather than posing a question with no
+            // answer.
+            if entry.copied.is_none() {
+                if let Some(copying) = crate::card::copies_on_entry(db, card.card, entry.face) {
+                    let candidates =
+                        crate::copy::copy_choice_candidates(self, copying.of, entry.controller, db);
+                    if !candidates.is_empty() {
+                        self.pending_choices.push(crate::choice::PendingChoice {
+                            chooser: entry.controller,
+                            question: crate::choice::ChoiceQuestion::Permanent(
+                                crate::choice::CopyChoiceRequest {
+                                    of: copying.of,
+                                    optional: copying.optional,
+                                    outcome: crate::choice::CopyChoiceOutcome::RecordOnEntry {
+                                        entry,
+                                        subject: copying.subject,
+                                    },
+                                },
+                            ),
+                            resume: None,
+                        });
+                        return None;
+                    }
+                }
+            }
         }
         Some(self.complete_battlefield_entry(&entry, db))
     }
@@ -456,10 +486,12 @@ impl GameState {
     /// battlefield: the half of [`Self::begin_battlefield_entry`] that actually arrives.
     ///
     /// Split out because it is the one place that mints a permanent, and because it is
-    /// reached only once everything the event was waiting on is settled. The answers a
-    /// card's controller gave ride on the event itself rather than on this signature, so
-    /// adding a question adds a field there and nothing here — and so a permanent built
-    /// from an entry can never disagree with the entry it was built from.
+    /// reached only once everything the event was waiting on is settled — immediately for
+    /// the objects that ask nothing, and one action later for a card whose colour, whose
+    /// named card, or whose copiable values (CR 707.5) had to be settled first. The
+    /// answers a card's controller gave ride on the event itself rather than on this
+    /// signature, so adding a question adds a field there and nothing here — and so a
+    /// permanent built from an entry can never disagree with the entry it was built from.
     ///
     /// The one thing applied *here* rather than by the replacement layer is a
     /// planeswalker's starting loyalty (CR 306.5b). It is not a replacement effect: every
@@ -486,7 +518,14 @@ impl GameState {
             *counters.entry(*counter).or_insert(0) += count;
         }
         let printed = entry.object.printed(entry.face);
-        if let Some(loyalty) = printed.face(db).and_then(|face| face.loyalty()) {
+        // CR 613 layer 1 before CR 306.5b: a permanent entering as a copy of a
+        // planeswalker enters with the *copied* starting loyalty, because that is the
+        // loyalty its characteristics have by the time the rule is applied.
+        let seed = match entry.copied.as_ref().and_then(Option::as_ref) {
+            Some(copied) if copied.subject == crate::copy::CopySubject::This => &copied.printed,
+            _ => &printed,
+        };
+        if let Some(loyalty) = seed.face(db).and_then(|face| face.loyalty()) {
             *counters.entry(super::CounterKind::Loyalty).or_insert(0) += loyalty;
         }
         let permanent = Permanent {
@@ -505,6 +544,7 @@ impl GameState {
             attached_to: entry.attached_to,
             chosen_color: entry.chosen_color,
             named_card: entry.named_card,
+            copied: entry.copied.clone().flatten(),
         };
         self.battlefield.push(permanent);
         id
@@ -557,6 +597,7 @@ impl GameState {
                 applied: Vec::new(),
                 chosen_color: None,
                 named_card: None,
+                copied: None,
             },
             db,
         )

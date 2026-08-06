@@ -41,7 +41,10 @@ pub(crate) fn granted_keywords(
     perm: &sage_engine::Permanent,
     db: &CardDatabase,
 ) -> Vec<String> {
-    let printed: Vec<Keyword> = match perm.printed.face(db) {
+    // The printed half is read from the layer-1 seed (CR 707.2): a copy's printed
+    // keywords are the copied card's, so a copied flyer is not reported as *granted*
+    // flying.
+    let printed: Vec<Keyword> = match copiable_face(state, perm, db) {
         Some(PrintedFace::Card(data)) => data.keywords.clone(),
         // The face that is **up** is the printed set (CR 712.4b): a permanent that has
         // transformed is not "granted" its back face's keywords, it prints them.
@@ -105,9 +108,16 @@ pub(crate) fn card_name(card: CardId, db: &CardDatabase) -> String {
 ///
 /// Every prompt, label, and stack sentence that names a permanent goes through here
 /// rather than through [`card_name`], so a token is named by what it is instead of
-/// being reported as an unknown card.
-pub(crate) fn permanent_name(perm: &sage_engine::Permanent, db: &CardDatabase) -> String {
-    perm.printed.face(db).map_or_else(
+/// being reported as an unknown card — and so is a **copy**, which answers to the name it
+/// copied and not to the one printed on the card it physically is.
+pub(crate) fn permanent_name(
+    state: &GameState,
+    perm: &sage_engine::Permanent,
+    db: &CardDatabase,
+) -> String {
+    // The name a permanent answers to is a copiable value (CR 707.2), so a copy is named
+    // by what it copied — the same face the projection draws it as.
+    copiable_face(state, perm, db).map_or_else(
         || match perm.printed.card() {
             Some(card) => format!("Unknown card {}", card.0),
             None => "Token".to_string(),
@@ -403,8 +413,10 @@ fn face_card_view(entity_id: String, face: PrintedFace<'_>, db: &CardDatabase) -
 }
 
 /// Build the [`CardView`] for a battlefield permanent, projecting its **current**
-/// power/toughness (CR 613 layer 7c) and keywords (CR 613.1f, layer 6) from the
-/// engine's computed [`characteristics`] rather than the printed card. This is what
+/// characteristics rather than its card's printed ones: the copiable values it is
+/// computed from (CR 613 layer 1 — a copy projects as the thing it copies), its
+/// power/toughness (CR 613 layer 7c) and its keywords (CR 613.1f, layer 6) from the
+/// engine's computed [`characteristics`]. This is what
 /// makes counters, until-end-of-turn pumps, and an attachment's P/T grant
 /// (CR 303.4 / 301.5) visible on the wire — a Boar enchanted with a `+2/+2` Aura, or
 /// equipped with a `+2/+1` Axe, projects as a 5/4 — and, equally, what makes a granted
@@ -417,7 +429,12 @@ pub(crate) fn permanent_card_view(
     perm: &sage_engine::Permanent,
     db: &CardDatabase,
 ) -> CardView {
-    let mut view = match perm.printed.face(db) {
+    // CR 613 layer 1 (CR 707.2): the face a copy's characteristics are read from is the
+    // one it copied, so the whole projection — name, type line, mana cost, rules text,
+    // card types, printed P/T — is the copied card's. That is what makes a copy need no
+    // surface of its own on the wire: the client is simply told what the permanent *is*
+    // and draws it, with no badge and no second identity to reconcile.
+    let mut view = match copiable_face(state, perm, db) {
         Some(face) => face_card_view(permanent_entity_id(perm.id), face, db),
         None => unknown_card_view(permanent_entity_id(perm.id), perm.printed.card()),
     };

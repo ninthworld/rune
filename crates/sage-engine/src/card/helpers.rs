@@ -113,7 +113,12 @@ pub fn abilities_of_permanent(
     db: &CardDatabase,
     perm: &Permanent,
 ) -> Vec<crate::ability::Ability> {
-    crate::characteristics::current_abilities(state, perm, printed_abilities_of(db, perm), db)
+    crate::characteristics::current_abilities(
+        state,
+        perm,
+        printed_abilities_of(state, db, perm),
+        db,
+    )
 }
 
 /// The abilities `perm` has after folding in only what is **stored** — until-end-of-turn
@@ -136,19 +141,74 @@ pub(crate) fn stored_abilities_of_permanent(
     db: &CardDatabase,
     perm: &Permanent,
 ) -> Vec<crate::ability::Ability> {
-    crate::characteristics::stored_abilities(state, perm, printed_abilities_of(db, perm), db)
+    crate::characteristics::stored_abilities(state, perm, printed_abilities_of(state, db, perm), db)
 }
 
-/// The abilities printed on `perm`'s face, before any layer applies: a card's two
-/// authoring tiers unioned by [`abilities_of`], or the list the effect that created a
+/// The abilities printed on `perm`'s face, before any layer **below 1** applies: a card's
+/// two authoring tiers unioned by [`abilities_of`], or the list the effect that created a
 /// token wrote down (ADR 0015).
-fn printed_abilities_of(db: &CardDatabase, perm: &Permanent) -> Vec<crate::ability::Ability> {
-    match &perm.printed {
+///
+/// CR 613 layer 1 comes first: a permanent's rules text is a copiable value (CR 707.2), so
+/// a copy has the abilities it copied and none of its own — Mirror Image copying a
+/// Skyscanner really does draw a card as it enters. The seed is the layer-1 answer rather
+/// than the stored face, and it is a read of stored fields only, so it cannot recurse into
+/// the computation this feeds.
+fn printed_abilities_of(
+    state: &crate::GameState,
+    db: &CardDatabase,
+    perm: &Permanent,
+) -> Vec<crate::ability::Ability> {
+    match crate::copy::copiable_printed(state, perm) {
         // CR 712.4b: only the face that is up is read, so a permanent that has
         // transformed offers exactly its back face's abilities and none of its front's.
         crate::token::Printed::Card { card, face } => abilities_of_face(db, *card, *face),
         crate::token::Printed::Token(token) => token.abilities.clone(),
     }
+}
+
+/// What a card declares about **copying something as it enters** (CR 707.5 / CR 614.12) —
+/// its [`Ability::EntersAsCopy`], or `None` for every card that copies nothing.
+///
+/// The copy counterpart of [`chooses_color_on_entry`], and read at the same seam for the
+/// same reason: at the moment the question is asked there is no permanent to read the
+/// ability off, because the whole point is that none exists until it is answered. It is
+/// face-aware — a back face may print its own — and honours both authoring tiers through
+/// [`abilities_of_face`].
+///
+/// A **token** is never asked: a token's abilities are whatever the creating effect wrote
+/// down (ADR 0015), and nothing in the effect IR creates a token as a copy.
+#[must_use]
+pub(crate) fn copies_on_entry(
+    db: &CardDatabase,
+    card: CardId,
+    face: Face,
+) -> Option<EntryCopyDeclaration> {
+    abilities_of_face(db, card, face)
+        .into_iter()
+        .find_map(|ability| match ability {
+            Ability::EntersAsCopy {
+                of,
+                subject,
+                optional,
+            } => Some(EntryCopyDeclaration {
+                of,
+                subject,
+                optional,
+            }),
+            _ => None,
+        })
+}
+
+/// The three facts [`copies_on_entry`] answers with — the printed declaration, unpacked
+/// so the entry seam does not have to match an [`Ability`] it has no other business with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct EntryCopyDeclaration {
+    /// Which permanents may be named.
+    pub of: crate::copy::CopyClass,
+    /// What becomes the copy.
+    pub subject: crate::copy::CopySubject,
+    /// Whether naming nothing is a legal answer.
+    pub optional: bool,
 }
 
 /// The effects a spell of printed card `card` produces on resolution

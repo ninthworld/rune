@@ -112,10 +112,15 @@ the first has since been built as this decision predicted it would be. A token c
 beside `tapped`, taking its defender from the attack its own source is making rather than
 from the card, and CR 506.3c — never *declared*, so no attack trigger fires for it — is
 one condition in the diff-based trigger collector rather than a token special case
-anywhere. A token created as a **copy** of another permanent (Mirror Image) is still out:
-it needs a copiable-values model at CR 613 layer 1, ahead of every layer the engine
-applies, and that is a decision the control-change and replacement work has to settle
-first.
+anywhere. A token created as a **copy** of another permanent is still out, and the reason
+has changed. The copiable-values model it was waiting on now exists (issue #734): a copy is
+recorded as a handle to a printed face and read at CR 613 layer 1, ahead of every layer the
+engine applies, and Mirror Image — a *card* that enters as a copy — is in the catalog. What
+is missing is on this side of the line. `create_token` authors a token's characteristics
+inline and nothing points one at another permanent's copiable values; and `TokenData` is the
+wrong shape for the job anyway, because CR 707.8a gives a token copy of a transforming
+permanent *both* faces and the ability to turn over, while a token has exactly one face by
+construction (§5 above). Both facts are named in the exclusions.
 
 The cost is that `Permanent` no longer answers "what card is this?" without a `match`. That
 is the honest shape: a battlefield object is not always a card, and code that assumed

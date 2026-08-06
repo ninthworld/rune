@@ -44,6 +44,20 @@ pub(crate) fn stack_item(state: &GameState, object: &StackObject, db: &CardDatab
             // battlefield.
             card: Some(card_view(card_entity_id(card.id), card.card, db)),
         },
+        // A **copy of a spell** (CR 707.10): a spell object with no physical card. It is
+        // rendered as the spell it copies — same name, same face, same targets — because
+        // that is what it is; the one thing it cannot carry is a `physical_card`, and that
+        // absence is the whole difference on the wire.
+        StackObjectKind::SpellCopy { card, .. } => StackItem {
+            id: stack_entity_id(object.id),
+            controller: player_id(object.controller),
+            description: format!("Copy of {}", card_name(*card, db)),
+            source: None,
+            physical_card: None,
+            kind: Some(StackItemKind::Spell),
+            targets,
+            card: Some(card_view(stack_entity_id(object.id), *card, db)),
+        },
         StackObjectKind::Ability {
             source,
             origin,
@@ -170,8 +184,12 @@ fn source_name(state: &GameState, source: AbilitySource, db: &CardDatabase) -> S
                 card_name(card.card, db)
             }
             AbilitySource::Permanent(_) => "This ability's source".to_string(),
+            // A delayed ability belongs to no object at all (CR 603.7): whatever created
+            // it may be long gone, and CR 603.7e says it fires anyway — so its sentences
+            // say what it is rather than naming something that is not there.
+            AbilitySource::DelayedAbility => "A delayed ability".to_string(),
         },
-        |perm| permanent_name(perm, db),
+        |perm| permanent_name(state, perm, db),
     )
 }
 

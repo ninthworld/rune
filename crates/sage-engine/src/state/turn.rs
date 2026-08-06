@@ -97,6 +97,10 @@ impl GameState {
         // here rather than comparing the turn at every read is what stops a stale
         // replacement from modifying an event a turn later.
         self.replacements.clear();
+        // And the same again for a delayed trigger whose `this turn` has run out
+        // (CR 603.7b): `when you next cast a spell **this turn**` lapses unfired if the
+        // spell was never cast, and one boundary drops every per-turn record.
+        self.delayed_triggers.clear();
     }
 
     /// Empty every player's mana pool on this owned state (CR 500.4). Applies to

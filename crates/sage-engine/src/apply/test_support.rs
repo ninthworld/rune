@@ -134,6 +134,7 @@ pub(crate) fn place_permanent(
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
     PermanentId(id)
 }
@@ -450,6 +451,7 @@ pub(crate) fn place_commander_permanent(
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
     id
 }

@@ -127,6 +127,22 @@ pub(crate) fn apply_effect(
         // action is what ends it (CR 514.2) — and it belongs to nobody: no target, no
         // player, and no controller anything reads back.
         Effect::PreventDamage { damage } => state.prevention.push(damage.clone()),
+        // CR 603.7a: a delayed triggered ability is created during a resolution and waits
+        // for its event. Recorded exactly as a created replacement is, on a per-turn list
+        // carrying the turn it was made on, and controlled by whoever controlled the
+        // spell or ability as it resolved (CR 603.7d/e) — which is `controller`.
+        Effect::CreateDelayedTrigger { trigger } => {
+            let id = state.mint_id();
+            let turn = state.turn;
+            state
+                .delayed_triggers
+                .push(crate::delayed::PendingDelayedTrigger {
+                    id,
+                    controller,
+                    trigger: trigger.clone(),
+                    turn,
+                });
+        }
         Effect::DrawCard { count } => draw_cards(state, controller, u32::from(*count)),
         // The same draw, with the number taken off the game instead of off the card
         // (CR 608.2) — once, here, so a mill this same resolution performed is what the
@@ -454,6 +470,9 @@ pub(crate) fn apply_effect(
         // so it is applied via [`apply_targeted_effect`] and is a no-op here.
         Effect::Tap { .. }
         | Effect::CounterSpell { .. }
+        // Copying a spell names the spell it copies in a slot, so it arrives with a
+        // chosen value and is applied there.
+        | Effect::CopySpell { .. }
         | Effect::Destroy { .. }
         | Effect::Exile { .. }
         | Effect::ReturnToHand { .. }

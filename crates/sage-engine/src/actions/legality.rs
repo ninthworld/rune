@@ -95,6 +95,24 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         return crate::choice::order_answer_is_legal(state, order);
     }
 
+    // 1a-sexies. A permanent named as a card enters (CR 614.12) is validated against the
+    //     class the card printed, recomputed now — never against a list the client was
+    //     shown. Naming nothing is legal exactly when the card said "you may".
+    if let Action::AnswerPermanent { chosen } = action {
+        let Some(request) =
+            crate::pending_player_choice(state).and_then(|p| p.question.permanent())
+        else {
+            return false;
+        };
+        let chooser = crate::pending_player_choice(state).map(|p| p.chooser);
+        return match chosen {
+            None => request.optional,
+            Some(named) => chooser.is_some_and(|chooser| {
+                crate::copy_choice_candidates(state, request.of, chooser, db).contains(named)
+            }),
+        };
+    }
+
     // 1b. A mulligan keep validates its bottoming selection (CR 103.5) rather than
     //     the target-slot machinery: exactly one distinct hand card per mulligan
     //     taken (see [`crate::mulligan::keep_bottom_is_legal`]).
@@ -631,6 +649,7 @@ mod tests {
             attached_to: None,
             chosen_color: None,
             named_card: None,
+            copied: None,
         });
         let action = Action::ActivateAbility {
             permanent: id,
@@ -671,6 +690,7 @@ mod tests {
                 attached_to: None,
                 chosen_color: None,
                 named_card: None,
+                copied: None,
             });
             id
         };

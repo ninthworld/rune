@@ -310,7 +310,9 @@ fn issue_733_the_announced_x_drives_payment_and_resolution() {
             assert_eq!(x, Some(5), "the announced value rides the object");
             assert_eq!(mode, None);
         }
-        StackObjectKind::Ability { .. } => panic!("a spell, not an ability"),
+        StackObjectKind::Ability { .. } | StackObjectKind::SpellCopy { .. } => {
+            panic!("a spell, not an ability or a copy")
+        }
     }
 
     let resolved = resolve_top(&announced, &db);

@@ -396,7 +396,7 @@ pub(crate) fn ability_label(
         .iter()
         .find(|perm| perm.id == permanent)
         .and_then(|perm| {
-            let name = permanent_name(perm, db);
+            let name = permanent_name(state, perm, db);
             abilities_of_permanent(state, db, perm)
                 .get(index)
                 .map(|ability| ability_text(&name, ability))
@@ -439,10 +439,15 @@ pub(crate) fn trigger_label(state: &GameState, db: &CardDatabase, ability: Stack
                     .and_then(|id| state.battlefield.iter().find(|p| p.id == id))
                     .map_or_else(
                         || "This ability's source".to_string(),
-                        |p| permanent_name(p, db),
+                        |p| permanent_name(state, p, db),
                     ),
                 effects,
             )),
+            // A copy of a spell being re-aimed (CR 707.10c) is labelled by the spell it
+            // copies, which is exactly what a player is choosing targets for.
+            StackObjectKind::SpellCopy { card, .. } => {
+                Some(format!("Copy of {}", card_name(*card, db)))
+            }
             StackObjectKind::Spell { .. } => None,
         })
         .unwrap_or_else(|| "Choose targets".to_string())
@@ -468,6 +473,9 @@ pub(crate) fn trigger_subject(state: &GameState, ability: StackId) -> Vec<String
                     .chain(source.permanent().map(permanent_entity_id))
                     .collect(),
             ),
+            // A copy has no source object on the board to highlight — it *is* the object
+            // being aimed, and the stack is the only place it exists.
+            StackObjectKind::SpellCopy { .. } => Some(vec![stack_entity_id(ability)]),
             StackObjectKind::Spell { .. } => None,
         })
         .unwrap_or_default()
@@ -480,7 +488,7 @@ fn permanent_card_name(state: &GameState, id: PermanentId, db: &CardDatabase) ->
         .battlefield
         .iter()
         .find(|perm| perm.id == id)
-        .map(|perm| permanent_name(perm, db))
+        .map(|perm| permanent_name(state, perm, db))
         .unwrap_or_else(|| "the attacker".to_string())
 }
 

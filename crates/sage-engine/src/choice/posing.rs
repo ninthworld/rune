@@ -64,7 +64,10 @@ pub(crate) fn pose_choices(
             ChoiceQuestion::Color(_)
             | ChoiceQuestion::CardName(_)
             | ChoiceQuestion::Replacement(_)
-            | ChoiceQuestion::Order(_) => question,
+            | ChoiceQuestion::Order(_)
+            // Nor is a permanent named as a card enters: that one is queued by the
+            // battlefield-entry seam, and only when the board holds something to name.
+            | ChoiceQuestion::Permanent(_) => question,
             // A sacrifice of nothing is not a question: a player with no permanent of
             // the named class simply sacrifices none, exactly as a player with an empty
             // hand discards none. There is no aftermath to apply for the answers not

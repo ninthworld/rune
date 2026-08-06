@@ -360,7 +360,10 @@ pub(crate) fn target_is_legal(
                     StackObjectKind::Spell { card, .. } => db
                         .card(card.card)
                         .is_some_and(|c| c.has_type(CardType::Creature)),
-                    StackObjectKind::Ability { .. } => false,
+                    // A copy of a spell is a spell (CR 707.10), but this spec names a
+                    // *creature* spell and no permanent spell is ever copied here
+                    // (CR 707.10f is unmodeled), so a copy is never one.
+                    StackObjectKind::Ability { .. } | StackObjectKind::SpellCopy { .. } => false,
                 }
         }),
         // Any other spec/value pairing names the wrong kind of object and is
@@ -383,12 +386,19 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
     // everything below: which effects there are at all, which target slots they declare,
     // what X the resolution reads, and which spell traits are in force.
     let (announced_mode, announced_x) = match &object.kind {
-        StackObjectKind::Spell { mode, x, .. } => (*mode, *x),
+        StackObjectKind::Spell { mode, x, .. } | StackObjectKind::SpellCopy { mode, x, .. } => {
+            (*mode, *x)
+        }
         StackObjectKind::Ability { .. } => (None, None),
     };
     let effects: Vec<Effect> = match &object.kind {
         StackObjectKind::Ability { effects, .. } => effects.clone(),
         StackObjectKind::Spell { card, .. } => spell_effects_of(db, card.card, announced_mode),
+        // CR 707.2: a copy has the copiable values of what it copied, and rules text is
+        // one of them — so a copy's effects are read from the copied card exactly as the
+        // original's are from its own. A copy is never modal: a copied modal spell keeps
+        // the mode the original announced, which travels with it.
+        StackObjectKind::SpellCopy { card, .. } => spell_effects_of(db, *card, announced_mode),
     };
     // The groups the stored targets were chosen for (CR 601.2c), in slot order.
     // An ability's groups come from its effects; a spell's include any spell-effect
@@ -399,6 +409,10 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         StackObjectKind::Ability { .. } => effects.iter().flat_map(Effect::target_groups).collect(),
         StackObjectKind::Spell { card, .. } => db
             .card(card.card)
+            .map(|data| data.cast_target_groups(announced_mode))
+            .unwrap_or_default(),
+        StackObjectKind::SpellCopy { card, .. } => db
+            .card(*card)
             .map(|data| data.cast_target_groups(announced_mode))
             .unwrap_or_default(),
     };
@@ -429,6 +443,8 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
             .zip(&object.targets)
             .all(|(&spec, &target)| !target_is_legal(spec, target, state, object.controller, db))
     {
+        // CR 707.10a: a copy that fizzles has no card to put anywhere and simply ceases
+        // to exist, which is what happening nothing at all amounts to.
         if let StackObjectKind::Spell { card, .. } = object.kind {
             if let Some(player) = state.players.get_mut(object.controller.0) {
                 player.graveyard.push(card);
@@ -466,7 +482,7 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
     // the same answer a spell gives and needs no special case anywhere.
     let source = match &object.kind {
         StackObjectKind::Ability { source, .. } => Some(*source),
-        StackObjectKind::Spell { .. } => None,
+        StackObjectKind::Spell { .. } | StackObjectKind::SpellCopy { .. } => None,
     };
     // A spell still owes its card a final zone (CR 608.3) after its effects. Carried
     // into the effect loop so that, if an effect suspends on a player choice, the
@@ -477,7 +493,11 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
             card: *card,
             targets: object.targets.clone(),
         }),
-        StackObjectKind::Ability { .. } => None,
+        // A copy owes its card no final zone, because it has no card: when it finishes
+        // resolving it simply ceases to exist (CR 707.10a). That is the whole of how a
+        // copied spell stays distinct from a cast one on the way out, and it is an
+        // absence rather than a rule anyone has to apply.
+        StackObjectKind::Ability { .. } | StackObjectKind::SpellCopy { .. } => None,
     };
     // What this resolution knows about itself, settled once, before any effect runs, and
     // carried through a suspension — so a mill that stops to ask a question still answers

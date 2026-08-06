@@ -368,6 +368,25 @@ pub enum Action {
         /// ([`crate::permanent_choice_bounds`]).
         chosen: Vec<crate::id::PermanentId>,
     },
+    /// Answer the **CR 614.12 permanent choice** the game is currently waiting on: a card
+    /// entering the battlefield names a permanent whose copiable values it (or its host)
+    /// takes — `As this Aura enters, choose a creature` (see
+    /// [`crate::copy_choice_candidates`]).
+    ///
+    /// The fifth answer shape beside the four above, routed identically — offered to the
+    /// choice's chooser and to no other seat, and nothing else happens until it arrives.
+    /// The entering card waits in no zone at all while it is owed, which is what makes a
+    /// permanent that enters as a copy (CR 707.5) never briefly a permanent that is not.
+    ///
+    /// It names a **permanent, not a target** (CR 115.1): nothing is aimed, so hexproof
+    /// and shroud have nothing to say about the answer, and it is validated against the
+    /// class the card printed rather than against a target spec.
+    AnswerPermanent {
+        /// The permanent named, or `None` for a decline — `You may have this creature
+        /// enter as a copy …`, answered with "no". `None` is legal only for a question
+        /// the card wrote as optional.
+        chosen: Option<PermanentId>,
+    },
     /// Cast a spell from hand, paying its mana cost from the caster's pool.
     CastSpell {
         /// The specific card in the caster's hand to cast. Names the physical
@@ -601,6 +620,7 @@ impl Action {
             | Action::AnswerCardName { .. }
             | Action::AnswerOrder { .. }
             | Action::AnswerPermanents { .. }
+            | Action::AnswerPermanent { .. }
             | Action::PlayLand { .. }
             | Action::Discard { .. }
             | Action::Mulligan
@@ -694,6 +714,10 @@ impl Action {
             // is: the offer is the bare question and the chosen ids ride in the
             // submitted action.
             Action::AnswerPermanents { .. } => Action::AnswerPermanents { chosen: Vec::new() },
+            // And a permanent choice the same way: one bare question, whose answer names
+            // a permanent — or names none — in the submitted action. The declining form
+            // is the stand-in, never a default anyone is held to.
+            Action::AnswerPermanent { .. } => Action::AnswerPermanent { chosen: None },
             // The requirement form of a combat declaration is the empty selection —
             // exactly what `valid_actions` advertises during the declare window.
             Action::DeclareAttackers { .. } => Action::DeclareAttackers {

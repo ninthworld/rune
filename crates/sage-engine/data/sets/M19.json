@@ -245,6 +245,16 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "metamorphic_alteration",
+    "collector_number": "60",
+    "rarity": "rare"
+  },
+  {
+    "functional_id": "mirror_image",
+    "collector_number": "61",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "mistcaller",
     "collector_number": "62",
     "rarity": "rare"
@@ -548,6 +558,11 @@
     "functional_id": "dismissive_pyromancer",
     "collector_number": "136",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "doublecast",
+    "collector_number": "137",
+    "rarity": "rare"
   },
   {
     "functional_id": "dragon_egg",

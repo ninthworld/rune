@@ -53,6 +53,7 @@ fn put_on_battlefield(state: &mut GameState, card: CardId) -> PermanentId {
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
     PermanentId(id)
 }

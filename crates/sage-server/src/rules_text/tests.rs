@@ -1740,3 +1740,26 @@ fn issue_747_both_faces_of_a_transforming_card_generate_their_own_text() {
     assert!(back.contains("Nicol Bolas, the Arisen"), "{back}");
     assert!(!back.contains("the Ravager"), "{back}");
 }
+#[test]
+fn issue_734_a_copy_reads_as_the_copy_it_is() {
+    let db = bundled();
+    // CR 707.5, the "you may" and all: one sentence, and the class it may name.
+    assert_eq!(
+        text_of(&db, "mirror_image"),
+        "You may have Mirror Image enter the battlefield as a copy of a creature you control."
+    );
+    // CR 614.12 + CR 707.2c: the choice and the continuous effect are the two sentences
+    // the card prints, in that order — the enchant line follows, as it does on every Aura.
+    assert_eq!(
+        text_of(&db, "metamorphic_alteration"),
+        "As Metamorphic Alteration enters the battlefield, choose a creature. Enchanted \
+         creature is a copy of the chosen creature.\nEnchant creature."
+    );
+    // CR 603.7 + CR 707.10c: the `next` and the `this turn` are facts about the delayed
+    // ability rather than authored words, and the re-target is its own sentence.
+    assert_eq!(
+        text_of(&db, "doublecast"),
+        "When you next cast an instant or sorcery spell this turn, copy that spell. You \
+         may choose new targets for the copy."
+    );
+}

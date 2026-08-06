@@ -163,6 +163,7 @@ fn issue_604_a_searched_library_reaches_the_searcher_and_no_other_seat() {
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
     let library: Vec<CardInstance> = ["forest", "elvish_clancaller", "island"]
         .iter()

@@ -92,6 +92,10 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 ChoiceQuestion::Permanents(_) => {
                     vec![Action::AnswerPermanents { chosen: Vec::new() }]
                 }
+                // CR 614.12: a permanent named as a card enters. Advertised as the bare
+                // question too; the answer names one of the freshly derived candidates
+                // ([`crate::copy_choice_candidates`]), or none where the card said "may".
+                ChoiceQuestion::Permanent(_) => vec![Action::AnswerPermanent { chosen: None }],
             };
             // CR 605.3a: a player asked to pay a cost while something resolves may
             // activate mana abilities to pay it — the one thing the freeze lets
@@ -708,6 +712,7 @@ mod tests {
             attached_to: None,
             chosen_color: None,
             named_card: None,
+            copied: None,
         });
         id
     }

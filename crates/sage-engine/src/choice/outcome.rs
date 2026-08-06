@@ -369,3 +369,42 @@ pub(crate) fn apply_card_name_outcome(
     entry.named_card = Some(named);
     state.begin_battlefield_entry(entry, db);
 }
+
+/// Record the copiable values the named permanent has right now (CR 707.2) on the entry
+/// that was waiting for them, and hand the event back to the battlefield-entry seam.
+///
+/// The copy counterpart of [`apply_card_name_outcome`], and deliberately the same two
+/// lines: an answer fills one slot on the event and re-enters
+/// [`GameState::begin_battlefield_entry`], which is the one function that decides whether
+/// anything is still owed.
+///
+/// `named` is `None` for a decline — `You may have this enter as a copy …`, answered with
+/// "no". The entry then completes copying nothing, which is exactly what declining means,
+/// and the empty slot is filled with a decision rather than left to be asked again: the
+/// `copies_on_entry` gate is only reached while `entry.copied` is empty, so the recorded
+/// `None` would loop. It is therefore written as a *taken* decision — see
+/// [`PendingEntry::copied`](crate::replacement::PendingEntry).
+///
+/// The snapshot is taken **now** and never again (CR 707.2b/707.2c): whatever the named
+/// permanent's copiable values are at this instant is what the copy has for as long as it
+/// is one.
+pub(crate) fn apply_permanent_outcome(
+    state: &mut GameState,
+    request: &CopyChoiceRequest,
+    named: Option<crate::id::PermanentId>,
+    db: &CardDatabase,
+) {
+    match &request.outcome {
+        CopyChoiceOutcome::RecordOnEntry { entry, subject } => {
+            let copied = named
+                .and_then(|id| crate::copy::copiable_values_of(state, id))
+                .map(|printed| crate::copy::CopiedValues {
+                    printed,
+                    subject: *subject,
+                });
+            let mut entry = entry.clone();
+            entry.copied = Some(copied);
+            state.begin_battlefield_entry(entry, db);
+        }
+    }
+}

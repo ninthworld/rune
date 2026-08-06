@@ -14,9 +14,16 @@
 //! (CR 604.3) *replace* the printed power at CR 613 **layer 7a**, folds `+1/+1` and
 //! `-1/-1` counters into power/toughness at **layer 7c**, and then applies simple
 //! static P/T modifications (anthem-style "+X/+Y" effects) at that same layer
-//! **after** counters, in timestamp order. Layers 1 and 3–5 (copy, text, type, color)
-//! remain deferred behind this same function signature, so callers never change as they
-//! are filled in.
+//! **after** counters, in timestamp order. Layers 3–5 (text, type, color) remain deferred
+//! behind this same function signature, so callers never change as they are filled in.
+//!
+//! **Layer 1 — the copiable values — is where the seed comes from.** A copy effect
+//! (CR 613.2a, CR 707) does not overwrite a characteristic; it changes which printed face
+//! everything else is computed *from*, so it is one call at the top of [`characteristics`]
+//! ([`copiable_printed`](crate::copy)) and no stage of its own. That is what puts it ahead
+//! of every layer below by construction rather than by ordering, and it is why a copy's
+//! counters, damage, and control are untouched by the copying (CR 707.2: they are not
+//! copiable values).
 //!
 //! **Layer 2 — control — is [`controller_of`], not [`characteristics`].** Control is
 //! not a characteristic (CR 109.3) and has no place in the [`Characteristics`] value,
@@ -151,12 +158,19 @@ pub fn characteristics(
     let Some(perm) = state.battlefield.iter().find(|p| p.id == permanent) else {
         return Characteristics::default();
     };
-    let Some(face) = perm.printed.face(db) else {
+    // CR 613 layer 1 (CR 613.2a): copy effects are applied first, and they are applied by
+    // choosing a different printed seed. Everything below — the counters at 7c, the
+    // grants at 6, the anthems at 7c — then runs on the copied values, which is what
+    // makes a copied 2/2 with two `+1/+1` counters a 4/4 rather than the copying card's
+    // printed 0/0 plus two.
+    let Some(face) = crate::copy::copiable_printed(state, perm).face(db) else {
         return Characteristics::default();
     };
     // CR 613 layer 7c: `+1/+1` and `-1/-1` counters adjust power and toughness
     // by the same signed amount. They only apply to a permanent that has P/T; a
-    // permanent with no printed power/toughness (`None`) stays `None`.
+    // permanent with no printed power/toughness (`None`) stays `None`. Counters are
+    // **not** a copiable value (CR 707.2), so they are the copying permanent's own and are
+    // folded onto the copied power here, at layer 7c, well after layer 1.
     let counter_delta = pt_counter_delta(perm);
     // CR 613 layer 7c (after counters, ADR 0005 §3): static `+X/+Y` modifiers in
     // force apply in timestamp order. `is_creature` gates anthem-style selectors;

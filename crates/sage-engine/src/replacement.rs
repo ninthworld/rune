@@ -233,6 +233,17 @@ pub struct PendingEntry {
     /// (CR 614.12, [`Ability::EntersNamingCard`](crate::Ability)) — `None` until they
     /// have. [`Self::chosen_color`]'s sibling in every respect, including why it is here.
     pub named_card: Option<crate::id::CardId>,
+    /// The **copy decision** its controller made as it entered (CR 707.5 / CR 614.12), for
+    /// a card that declares [`Ability::EntersAsCopy`](crate::Ability).
+    ///
+    /// Three states rather than two, which is why it is nested: `None` is *not yet asked*,
+    /// `Some(None)` is *asked and declined* (or answered with nothing on an empty board),
+    /// and `Some(Some(values))` is the snapshot taken (CR 707.2b). A decline has to be
+    /// distinguishable from an unasked question, or re-entering the entry seam would pose
+    /// the same `you may` again for ever.
+    ///
+    /// [`Self::chosen_color`]'s sibling in every other respect, including why it is here.
+    pub copied: Option<Option<crate::copy::CopiedValues>>,
 }
 
 /// One replacement effect that could apply to an event, named by where it comes from.

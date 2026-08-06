@@ -61,6 +61,7 @@ pub(crate) fn put_permanent(
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
     id
 }

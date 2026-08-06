@@ -14,18 +14,18 @@ use sage_engine::{
     abilities_of, abilities_of_permanent, activation_taps, attacker_candidates,
     attackers_needing_damage_order, attacking_defender_of, attacking_taps,
     blocker_can_block_attacker, blocker_candidates_for, bottom_requirement, characteristics,
-    choice_bounds, choice_candidates, confirm_is_payable, declared_attackers, defender_candidates,
-    is_mana_ability, mana_ability_pips, named_card_candidates, order_candidates,
-    pending_blocker_declarer, pending_player_choice, pending_replacement_options,
-    permanent_choice_bounds, permanent_choice_candidates, scripted_rules_text,
-    summoning_sickness_restricts, target_requirements, total_cast_cost, valid_actions, Ability,
-    AbilityOrigin, Action, Attack, AttackTarget, Block, CardData, CardDatabase, CardId,
-    CardInstance, CardInstanceId, CardNameRequest, ChoiceOutcome, ChoiceQuestion, ChoiceRequest,
-    ChoiceZone, Color, ColorOutcome, ColorRequest, ConfirmRequest, CostPayment, CounterKind,
-    DamageOrder, DamageTarget, FunctionalId, GameEvent, GameResult, GameState, Keyword,
-    LoggedIdentity, LoggedPermanent, LossReason, OfferedReplacement, OrderRequest, PermanentId,
-    PermanentOutcome, PermanentRequest, Player, PlayerId, PrintedFace, StackId, StackObject,
-    StackObjectKind, Step, Target, TargetSpec,
+    choice_bounds, choice_candidates, confirm_is_payable, copiable_face, copy_choice_candidates,
+    declared_attackers, defender_candidates, is_mana_ability, mana_ability_pips,
+    named_card_candidates, order_candidates, pending_blocker_declarer, pending_player_choice,
+    pending_replacement_options, permanent_choice_bounds, permanent_choice_candidates,
+    scripted_rules_text, summoning_sickness_restricts, target_requirements, total_cast_cost,
+    valid_actions, Ability, AbilityOrigin, Action, Attack, AttackTarget, Block, CardData,
+    CardDatabase, CardId, CardInstance, CardInstanceId, CardNameRequest, ChoiceOutcome,
+    ChoiceQuestion, ChoiceRequest, ChoiceZone, Color, ColorOutcome, ColorRequest, ConfirmRequest,
+    CopyChoiceRequest, CopyClass, CostPayment, CounterKind, DamageOrder, DamageTarget,
+    FunctionalId, GameEvent, GameResult, GameState, Keyword, LoggedIdentity, LoggedPermanent,
+    LossReason, OfferedReplacement, OrderRequest, PermanentId, PermanentOutcome, PermanentRequest,
+    Player, PlayerId, PrintedFace, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
 };
 
 use crate::rules_text::{
@@ -600,6 +600,12 @@ pub(crate) fn resolve_action(
             Action::AnswerPermanents { .. } => {
                 bind_player_permanents(state, db, &offered, &choice.targets)
             }
+            // A permanent named as a card enters (CR 614.12) is answered on the same slot
+            // with the permanent's own entity id — or with the decline the card's "you
+            // may" earns it.
+            Action::AnswerPermanent { .. } => {
+                bind_player_permanent(state, db, &offered, &choice.targets)
+            }
             _ => {
                 if !targets_fill_requirements(
                     &choice.targets,
@@ -801,6 +807,7 @@ mod tests {
             attached_to: None,
             chosen_color: None,
             named_card: None,
+            copied: None,
         });
         // A plain creature beside it, to prove the marker is not "every legend".
         let plain = put_permanent(

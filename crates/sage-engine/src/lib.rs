@@ -24,7 +24,9 @@ mod combat;
 mod commander;
 pub mod compat;
 mod condition;
+mod copy;
 mod cost_modification;
+mod delayed;
 #[cfg(test)]
 mod fixtures;
 mod id;
@@ -82,8 +84,8 @@ pub use choice::{
     choice_bounds, choice_candidates, confirm_is_payable, named_card_candidates, order_candidates,
     pending_player_choice, permanent_choice_bounds, permanent_choice_candidates, CardNameRequest,
     ChoiceOutcome, ChoiceQuestion, ChoiceRequest, ChoiceZone, ColorOutcome, ColorRequest,
-    ConfirmRequest, NamedCardClass, OrderRequest, PendingChoice, PermanentOutcome,
-    PermanentRequest, ReplacementRequest, Resume, SuspendedSpell,
+    ConfirmRequest, CopyChoiceOutcome, CopyChoiceRequest, NamedCardClass, OrderRequest,
+    PendingChoice, PermanentOutcome, PermanentRequest, ReplacementRequest, Resume, SuspendedSpell,
 };
 pub use combat::{
     attack_target_of, attacked_players, attacker_candidates, attackers_needing_damage_order,
@@ -97,6 +99,8 @@ pub use combat::{
 pub use commander::{
     commander_tax_cost, CommanderState, COMMANDER_DAMAGE_LOSS_THRESHOLD, COMMANDER_TAX_PER_CAST,
 };
+pub use copy::{copiable_face, copy_choice_candidates, CopiedValues, CopyClass, CopySubject};
+pub use delayed::{DelayedCondition, DelayedTrigger, PendingDelayedTrigger};
 pub use id::{
     CardId, CardInstance, CardInstanceId, FunctionalId, FunctionalIdError, OracleId, PermanentId,
     PlayerId,

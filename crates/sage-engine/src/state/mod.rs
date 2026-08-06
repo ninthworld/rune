@@ -106,6 +106,15 @@ pub struct GameState {
     /// shield names no target, and CR 616.1 gives the ordering decision to the affected
     /// player rather than to its controller. Empty in almost every state.
     pub prevention: Vec<crate::replacement::DamageFilter>,
+    /// **Delayed triggered abilities** created this turn (CR 603.7) — see
+    /// [`PendingDelayedTrigger`](crate::PendingDelayedTrigger).
+    ///
+    /// The same per-turn shape as [`Self::replacements`], empty in almost every state,
+    /// spent by firing, and cleared at the same turn boundary. It is a **fourth source
+    /// list** for the trigger collector, and the only one that is not an object: a
+    /// delayed ability belongs to nothing anyone can point at, and CR 603.7e says it
+    /// fires whether or not what created it is still around.
+    pub delayed_triggers: Vec<crate::delayed::PendingDelayedTrigger>,
     /// The stack of spells and abilities, bottom first (the last element is the
     /// top and resolves first). Mana abilities never appear here.
     pub stack: Vec<StackObject>,

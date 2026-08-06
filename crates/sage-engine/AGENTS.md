@@ -271,8 +271,26 @@ created for the turn), the affected object's **controller** orders them when mor
 applies (CR 616.1, through the same choice queue), and `PendingEntry::applied` is what stops
 any of them applying twice (CR 614.5) — which is also what makes the loop terminate.
 Applying either modifies the event or replaces it outright, and answering an ordering
-question re-enters the same function. `EntersChoosingColor` and `EntersNamingCard` are not
-collected here — they are questions, not modifications to order.
+question re-enters the same function. `EntersChoosingColor`, `EntersNamingCard`, and
+`EntersAsCopy` are not collected here — they are questions, not modifications to order.
+
+**A copy is CR 613 layer 1, and it is a different printed seed.** `Permanent::copied` records
+the copiable values its controller named *as it entered* (CR 707.2) — a `Printed` handle, since
+that is exactly what "the printed values" means and a card's face never changes — plus whether
+the copy applies to that permanent (CR 707.5) or to the one it is attached to (CR 707.2c, so
+the host's copy is derived and ends with the Aura). `copy::copiable_printed` is the whole
+layer: `characteristics` starts from its answer instead of `perm.printed`, so a copy with two
+`+1/+1` counters is the copied P/T plus two. Chains resolve when the snapshot is taken
+(CR 707.3), and the face that is **up** is the one copied (CR 707.8) — a copy of a transformed
+permanent is the back face, at mana value 0 (CR 712.8e). Copying a *spell* stays a different
+operation: `StackObjectKind::SpellCopy` has no card, so it was never cast, no cast trigger sees
+it, and it reaches no graveyard (CR 707.10/707.10a). No token is ever created as a copy.
+
+**A delayed triggered ability is a fourth source list** (CR 603.7). `GameState::delayed_triggers`
+is one-shot and one-turn like `replacements`, fires from a sibling of `collect_triggers` rather
+than a branch in it, and is deliberately not gated on its source surviving (CR 603.7e) —
+`AbilitySource::DelayedAbility` names nothing because there is nothing honest to name. The
+object it acts on is fixed by the trigger event, so `Trigger::targets` arrives pre-filled.
 
 **Damage is the second replaceable event** (CR 615). `PendingDamage` is the value — the
 recipient, the amount, whether it is *combat* damage — and `GameState::deal_damage` is the

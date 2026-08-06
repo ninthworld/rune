@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (241)
+## Supported cards (244)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -66,6 +66,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `disperse` | Disperse | functional definition |
 | `divination` | Divination | functional definition |
 | `doomed_dissenter` | Doomed Dissenter | functional definition |
+| `doublecast` | Doublecast | functional definition |
 | `draconic_disciple` | Draconic Disciple | functional definition |
 | `dragon_egg` | Dragon Egg | functional definition |
 | `dragon_s_hoard` | Dragon's Hoard | functional definition |
@@ -147,11 +148,13 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `marauder_s_axe` | Marauder's Axe | functional definition |
 | `meandering_river` | Meandering River | functional definition |
 | `mentor_of_the_meek` | Mentor of the Meek | functional definition |
+| `metamorphic_alteration` | Metamorphic Alteration | functional definition |
 | `meteor_golem` | Meteor Golem | functional definition |
 | `mighty_leap` | Mighty Leap | functional definition |
 | `militia_bugler` | Militia Bugler | functional definition |
 | `millstone` | Millstone | functional definition |
 | `mind_rot` | Mind Rot | functional definition |
+| `mirror_image` | Mirror Image | functional definition |
 | `mist_cloaked_herald` | Mist-Cloaked Herald | functional definition |
 | `mistcaller` | Mistcaller | functional definition |
 | `mountain` | Mountain | functional definition |
@@ -255,7 +258,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `wall_of_vines` | Wall of Vines | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (33)
+## Excluded (35)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
@@ -265,8 +268,10 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Abilities that trigger on someone else drawing a card | the draw trigger condition observes only its own controller's draws |
 | Attack requirements | a block requirement is maximised over the whole declaration (CR 509.1c), but nothing can force a creature into the attacker declaration (CR 508.1d) — and the one requirement modeled is that every creature able to block an attacker does so, never that one particular creature blocks |
 | Auras that enchant a player, or move between hosts | an Aura's enchant restriction is any class the target vocabulary names, so a creature and a land are both hosts, and its grant may be P/T, keywords, combat restrictions, or a written-out ability; but no attachment names a player, and once attached an Aura stays on the host it entered on — nothing moves one |
+| Changing what a permanent is a copy of while it stays on the battlefield | CR 707.4 needs a copy effect created after the entry seam; copiable values are only ever recorded as a permanent enters (CR 614.12) |
 | Combat damage assigned by anything but the assigning creature's own power or toughness | an attacker or blocker assigns its current power, or its current toughness while a continuous effect names that one instead, read at the single place the combat-damage step asks how much a creature assigns; no other characteristic can be named, nothing assigns a fixed amount or a count, and nothing reads another object's characteristic |
 | Conditions other than a permanent count, a mill, a discard, life gained this turn, or what one permanent has attacked, blocked, or damaged | a permanent count is a tally of a class and cannot require its members to have distinct names |
+| Copying a permanent spell, an ability, or a card in a zone | CR 707 is modelled for a creature named as a permanent enters and for an instant or sorcery on the stack; a copy of a permanent spell would have to become a token (CR 707.10f), and copying an activated or triggered ability or a card outside the stack has no seam |
 | Cost modification of another player's spells, or of an ability's activation cost | a permanent continuously takes generic mana off, or puts it on, the cost of a class of spell its own controller casts (CR 601.2f), read wherever a cast's cost is read; nothing reaches a spell another player casts, no modification applies to an activated ability's cost, and a coloured or colourless requirement is never changed |
 | Costs paid by exiling from anywhere but a graveyard | a cast and an activation each carry the sacrifices, discards, and graveyard exiles their cost names on the action — a fixed number of permanents or any number of them, and always the payer's own — and an optional effect asks for its own mid-resolution, from the same vocabulary minus every component that names the source; a cost exiles only out of the payer's own graveyard, never from a hand, a library, or the battlefield |
 | Damage prevention beyond a blanket shield for the turn | a shield prevents all damage — or all combat damage — for the rest of the turn, consulted at the one seam damage is dealt, and a spell may declare its own damage unpreventable to defeat it; nothing prevents a fixed amount, names a recipient or a source, redirects damage, or lasts anything but the turn |
@@ -292,5 +297,5 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Selectors that filter by toughness, or by a power relative to another permanent's | a permanent count, an enters-or-dies trigger selector, a blocking restriction, a card choice, a mass-effect class, and the class of spell a cast trigger or a cost modifier names each carry a fixed power threshold; a target spec and a static ability's condition carry none, no threshold reads toughness, and no threshold is another permanent's power |
 | Static abilities that affect a class of the source's controller's own noncreature permanents, or a class of tokens | the continuous-effect selector names the source, one class of that controller's creatures, or permanents an opponent controls filtered by card type and by the card name the source was given as it entered; it cannot name a class of the controller's own noncreature permanents, and nothing anywhere filters a class by token-ness |
 | The legend-rule choice among duplicates | CR 704.5j applies, but which copy survives is a deterministic policy (the newest) rather than the controller's choice |
-| Tokens created as copies of another permanent | there is no copiable-values model; a copy is decided at CR 613 layer 1, ahead of every layer the engine applies |
+| Tokens created as copies of another permanent | create_token authors a token's characteristics inline and nothing points one at another permanent's copiable values; CR 707.8a's two-faced token copy is unbuilt with it |
 | X anywhere but a spell's own mana cost | a cast announces X, folds it into the cost as generic mana, and locks it on the stack for the resolution and the generated text to read; nothing announces X for an activation or on a trigger, and the announced value feeds only the amounts a derived amount already feeds — never the counters a permanent enters with, a token count, or a mana-value filter |

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "functional_id": "doublecast",
+  "name": "Doublecast",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{R}{R}",
+  "colors": [
+    "red"
+  ],
+  "spell_effects": [
+    {
+      "kind": "create_delayed_trigger",
+      "trigger": {
+        "event": {
+          "next_spell_cast": "instant_or_sorcery"
+        },
+        "effects": [
+          {
+            "kind": "copy_spell",
+            "target": "spell_on_stack",
+            "new_targets": true
+          }
+        ]
+      }
+    }
+  ]
+}

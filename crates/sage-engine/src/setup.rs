@@ -234,6 +234,7 @@ impl GameState {
             ignoring_hexproof: Vec::new(),
             replacements: Vec::new(),
             prevention: Vec::new(),
+            delayed_triggers: Vec::new(),
             stack: Vec::new(),
             static_effects: Vec::new(),
             next_object_id: 1,

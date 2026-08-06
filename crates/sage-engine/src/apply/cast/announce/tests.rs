@@ -27,6 +27,7 @@ fn forest_mana_ability_adds_green_without_using_the_stack() {
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
     let after = apply_action(
         &state,
@@ -65,6 +66,7 @@ fn mana_ability_does_not_pass_priority() {
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
     let after = apply_action(
         &state,

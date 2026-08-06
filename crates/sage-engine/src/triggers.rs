@@ -28,6 +28,17 @@ pub struct Trigger {
     pub controller: PlayerId,
     /// The effects the ability produces when it resolves.
     pub effects: Vec<Effect>,
+    /// The slots the **trigger event itself** filled, in slot order — empty for every
+    /// printed triggered ability, which arrives unaimed and is aimed by its controller
+    /// (CR 603.3d).
+    ///
+    /// A *delayed* ability is the exception, and the reason this field exists: `when you
+    /// next cast an instant or sorcery spell this turn, copy **that spell**` names an
+    /// object the event fixed, not one anybody chooses (CR 603.7c). Filling the slot here
+    /// is what keeps that reference out of the controller's hands while still getting the
+    /// CR 608.2b re-check every stack object runs — so a spell that has been countered
+    /// before the ability resolves is simply not copied.
+    pub targets: Vec<crate::ability::Target>,
 }
 
 /// The object a trigger condition is being evaluated for, reduced to what the
@@ -288,6 +299,20 @@ pub fn pending_trigger_target_choice(state: &GameState) -> Option<StackId> {
             StackObjectKind::Ability { effects, .. } => {
                 crate::ability::minimum_targets(effects) > object.targets.len()
             }
+            // A **copy of a spell** whose controller may choose new targets (CR 707.10c)
+            // is in exactly the same position as an unaimed trigger: it is on the stack,
+            // it declares slots, and nobody has filled them. So it is answered by the same
+            // action rather than by a second aiming mechanism.
+            //
+            // "Owes targets" is still derived rather than flagged: the copy carries
+            // *whether re-aiming was offered* — a permission nothing else in the state
+            // records — and is owed an answer exactly while it has none. The seam that
+            // creates it only offers re-aiming for a spell with at least one **required**
+            // slot every one of which has a legal candidate, so an answer always exists
+            // and always fills this.
+            StackObjectKind::SpellCopy { new_targets, .. } => {
+                *new_targets && object.targets.is_empty()
+            }
             StackObjectKind::Spell { .. } => false,
         })
         .map(|object| object.id)
@@ -337,6 +362,9 @@ fn collect_from(
                     source: watcher.source(),
                     controller: watcher.controller,
                     effects: effects.clone(),
+                    // A printed trigger names nothing yet: its controller aims it once it
+                    // is on the stack (CR 603.3d).
+                    targets: Vec::new(),
                 });
             }
         }
@@ -800,6 +828,7 @@ mod tests {
             attached_to: None,
             chosen_color: None,
             named_card: None,
+            copied: None,
         });
         let triggers = collect_triggers(&before, &after, &db);
         assert_eq!(triggers.len(), 1);
@@ -830,6 +859,7 @@ mod tests {
             attached_to: None,
             chosen_color: None,
             named_card: None,
+            copied: None,
         });
         (before, id, instance)
     }
@@ -946,6 +976,7 @@ mod tests {
             attached_to: None,
             chosen_color: None,
             named_card: None,
+            copied: None,
         });
         let mut after = before.clone();
         after.turn = turn;
@@ -1096,6 +1127,7 @@ mod tests {
                 attached_to: None,
                 chosen_color: None,
                 named_card: None,
+                copied: None,
             });
         }
         let mut after = before.clone();

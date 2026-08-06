@@ -87,6 +87,14 @@ pub(crate) fn apply_targeted_effect(
                 }
             }
         }
+        // CR 707.10: put a copy of the named spell onto the stack. The copy is a new
+        // object that was **never cast** — a [`StackObjectKind::SpellCopy`] rather than a
+        // [`StackObjectKind::Spell`], so no cast event is recorded, nothing watching a
+        // cast notices it, and it has no card to reach a graveyard when it is done
+        // (CR 707.10a).
+        Effect::CopySpell { new_targets, .. } => {
+            copy_spell_onto_stack(state, target, *new_targets, controller, db);
+        }
         // Deal damage to the chosen target (CR 120.3): to a creature it is marked
         // (CR 120.3d) for the lethal-damage SBA (CR 704.5g); to a player it is
         // life loss (CR 120.3a) feeding the zero-life SBA (CR 704.5a). Both seams
@@ -505,7 +513,9 @@ pub(crate) fn apply_targeted_effect(
         // Turning a permanent over names its own source too, by either road.
         | Effect::TransformSelf
         | Effect::ExileSelfAndReturnTransformed
-        | Effect::PutCountersOnSelf { .. } => {}
+        | Effect::PutCountersOnSelf { .. }
+        // A delayed trigger names an event, never a chosen object.
+        | Effect::CreateDelayedTrigger { .. } => {}
         // "Target player's graveyard": the targeting form of the same verb, routed here
         // for the reason a targeted mill is — the reference chose a seat, and this is
         // where a chosen seat arrives.
@@ -771,4 +781,71 @@ pub(super) fn take_from_a_graveyard_with_owner(
         }
     }
     None
+}
+
+/// Put a copy of the spell `target` names onto the stack, above the original (CR 707.10).
+///
+/// Three rules decide everything here:
+///
+/// - **The copy takes the original's decisions** (CR 707.10), which for this vocabulary
+///   means its chosen targets. That is the default, and it is what a copy with nothing to
+///   re-aim keeps.
+/// - **Its controller may choose new targets** (CR 707.10c) when the effect says so. The
+///   copy is then put on the stack *unaimed* and its controller fills the slots through
+///   the same action a triggered ability's are filled with — so re-aiming needs no second
+///   mechanism, and the copy cannot resolve before the question is answered.
+///   The offer is withheld unless the spell declares at least one **required** slot and
+///   every one of them has a legal candidate: an offer with no answer would be a stall,
+///   and CR 707.10c's "leave any number unchanged" is then the only answer left anyway.
+/// - **A permanent spell is not copied.** CR 707.10f turns such a copy into a token as it
+///   resolves, and nothing in the engine creates a token as a copy of anything — so the
+///   copy is not made rather than made wrongly.
+fn copy_spell_onto_stack(
+    state: &mut GameState,
+    target: Target,
+    new_targets: bool,
+    controller: crate::id::PlayerId,
+    db: &CardDatabase,
+) {
+    let Target::Spell(id) = target else {
+        return;
+    };
+    let Some(original) = state.stack.iter().find(|o| o.id == id) else {
+        return;
+    };
+    let StackObjectKind::Spell { card, mode, x } = original.kind else {
+        return;
+    };
+    let Some(data) = db.card(card.card) else {
+        return;
+    };
+    if data.is_permanent() {
+        return;
+    }
+    let inherited = original.targets.clone();
+    let groups = data.cast_target_groups(mode);
+    let re_aim = new_targets
+        && groups.iter().any(|group| group.min >= 1)
+        && groups.iter().all(|group| {
+            !crate::actions::legal_targets_for_spec(group.spec, state, controller, db).is_empty()
+        });
+    let stack_id = crate::stack::StackId(state.mint_id());
+    state.stack.push(crate::stack::StackObject {
+        id: stack_id,
+        // CR 707.10: a copy is controlled by the player under whose control it was put on
+        // the stack — the copying effect's controller, not the original spell's.
+        controller,
+        kind: StackObjectKind::SpellCopy {
+            card: card.card,
+            new_targets: re_aim,
+            // CR 707.10: the copy has the choices made for the original, so it resolves
+            // the mode that was chosen and reads the X that was announced.
+            mode,
+            x,
+        },
+        targets: if re_aim { Vec::new() } else { inherited },
+        // CR 707.10: a copy is not cast, so nothing was paid for it and there is no
+        // payment for an amount read off one to find.
+        paid: crate::PaidCost::default(),
+    });
 }

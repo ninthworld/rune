@@ -222,6 +222,37 @@ pub(crate) fn apply_answer_replacement(state: &mut GameState, index: u8, db: &Ca
     state.begin_battlefield_entry(entry, db);
 }
 
+/// Answer the pending **CR 614.12 permanent choice**: record the named permanent's
+/// copiable values on the entry that was waiting for them, and complete that entry.
+///
+/// The same three steps [`apply_answer_choice`] takes, over the same kind of suspended
+/// thing [`apply_answer_color`] finishes: an arrival, not a resolution. There is no
+/// [`Resume`](crate::Resume) — the entry is the last step of whatever produced it — so the
+/// permanent simply arrives, already a copy.
+///
+/// A `None` answer is a decline (or a question the board could not answer): the entry
+/// completes copying nothing, which is exactly a permanent entering as itself. Legality
+/// has been established by [`crate::apply_action`]'s gate; this writes rather than
+/// re-deciding. An answer with no permanent choice pending is a no-op.
+pub(crate) fn apply_answer_permanent(
+    state: &mut GameState,
+    chosen: Option<crate::id::PermanentId>,
+    db: &CardDatabase,
+) {
+    let Some(ChoiceQuestion::Permanent(_)) = pending_player_choice(state).map(|p| &p.question)
+    else {
+        return;
+    };
+    let answered = state.pending_choices.remove(0);
+    let ChoiceQuestion::Permanent(request) = &answered.question else {
+        return;
+    };
+    crate::choice::apply_permanent_outcome(state, request, chosen, db);
+    if let Some(resume) = answered.resume {
+        resume_after_choice(state, resume, db);
+    }
+}
+
 /// Answer the pending **yes-or-no** with `accept`, then let the suspended resolution
 /// continue (CR 608.2 — see [`crate::Effect::May`]).
 ///

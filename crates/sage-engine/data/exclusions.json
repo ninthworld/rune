@@ -128,7 +128,15 @@
     "blocker": "CR 704.5j applies, but which copy survives is a deterministic policy (the newest) rather than the controller's choice"
   },
   {
+    "name": "Copying a permanent spell, an ability, or a card in a zone",
+    "blocker": "CR 707 is modelled for a creature named as a permanent enters and for an instant or sorcery on the stack; a copy of a permanent spell would have to become a token (CR 707.10f), and copying an activated or triggered ability or a card outside the stack has no seam"
+  },
+  {
+    "name": "Changing what a permanent is a copy of while it stays on the battlefield",
+    "blocker": "CR 707.4 needs a copy effect created after the entry seam; copiable values are only ever recorded as a permanent enters (CR 614.12)"
+  },
+  {
     "name": "Tokens created as copies of another permanent",
-    "blocker": "there is no copiable-values model; a copy is decided at CR 613 layer 1, ahead of every layer the engine applies"
+    "blocker": "create_token authors a token's characteristics inline and nothing points one at another permanent's copiable values; CR 707.8a's two-faced token copy is unbuilt with it"
   }
 ]

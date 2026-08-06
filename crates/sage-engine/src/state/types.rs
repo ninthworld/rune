@@ -624,6 +624,27 @@ pub struct Permanent {
     /// card name it has not defined" true of a game in progress and not merely of the
     /// repository.
     pub named_card: Option<crate::id::CardId>,
+    /// The **copiable values** this permanent's controller named as it entered
+    /// (CR 707.2), for a card that declares
+    /// [`Ability::EntersAsCopy`](crate::Ability) — and whether they make *this*
+    /// permanent a copy or the one it is attached to. `None` for every permanent that
+    /// copies nothing, which is nearly all of them.
+    ///
+    /// **Raw stored state, not a derivation** (ADR 0005 §1), twice over. Which permanent
+    /// was named is a player's answer, and the values are frozen at the moment the copy
+    /// effect began (CR 707.2b, CR 707.2c) — so recomputing them would be exactly the
+    /// retroactive copy the rules forbid: the chosen creature growing a counter, gaining a
+    /// keyword, or being turned into something else must not change what was copied.
+    ///
+    /// Written once, at the battlefield-entry seam, like [`Self::chosen_color`] and for
+    /// the same reason: the permanent waits off the battlefield until the question is
+    /// answered ([`PermanentOutcome::RecordOnEntry`](crate::PermanentOutcome)), so no read
+    /// can catch one mid-decision. It is *read* by CR 613 layer 1
+    /// ([`characteristics`](crate::characteristics::characteristics)), which is why an
+    /// Aura's entry writes it on the **Aura** rather than on its host: the host's copy is
+    /// derived from the attachment on every read and therefore ends the instant the Aura
+    /// leaves or moves, with nothing to prune.
+    pub copied: Option<crate::copy::CopiedValues>,
 }
 
 impl Permanent {

@@ -63,7 +63,58 @@ pub(crate) fn player_choice_prompts(state: &GameState, db: &CardDatabase) -> Vec
         ChoiceQuestion::Order(request) => vec![card_order_prompt(state, request)],
         ChoiceQuestion::CardName(request) => vec![card_name_prompt(request, db)],
         ChoiceQuestion::Permanents(request) => vec![permanent_choice_prompt(state, db, request)],
+        ChoiceQuestion::Permanent(request) => vec![permanent_prompt(state, db, request)],
     }
+}
+
+/// The option id that declines an optional permanent choice — `You may have this enter
+/// as a copy …`, answered with "no". Offered only when the card wrote the question as
+/// optional, which is what keeps a mandatory choice from being dodged.
+pub(crate) const DECLINE_COPY_OPTION: &str = "none";
+
+/// The CR 614.12 permanent choice, as the same `option` slot every other non-card answer
+/// rides on.
+///
+/// One option per candidate the engine derived, labelled by the permanent's name, with
+/// the option **id** being that permanent's entity id — the id the board already draws it
+/// under, so a client that wants to answer by clicking the card has everything it needs
+/// and one that renders a list of buttons is no worse off. Nothing here filters: the
+/// candidate set is the engine's ([`copy_choice_candidates`]).
+fn permanent_prompt(state: &GameState, db: &CardDatabase, request: &CopyChoiceRequest) -> Prompt {
+    let chooser = pending_player_choice(state).map_or(PlayerId(0), |pending| pending.chooser);
+    let mut options: Vec<PromptOption> = copy_choice_candidates(state, request.of, chooser, db)
+        .into_iter()
+        .filter_map(|id| {
+            let perm = state.battlefield.iter().find(|p| p.id == id)?;
+            Some(PromptOption {
+                id: permanent_entity_id(id),
+                label: permanent_name(state, perm, db),
+                requires: Vec::new(),
+            })
+        })
+        .collect();
+    if request.optional {
+        options.push(PromptOption {
+            id: DECLINE_COPY_OPTION.to_string(),
+            label: "Enter as itself".to_string(),
+            requires: Vec::new(),
+        });
+    }
+    Prompt::Option {
+        slot: CHOICE_SLOT.to_string(),
+        prompt: permanent_question(request),
+        options,
+    }
+}
+
+/// The words a permanent choice is asked in. It says what the answer *does*, because the
+/// options are a list of creatures and nothing about them says why they are being read.
+fn permanent_question(request: &CopyChoiceRequest) -> String {
+    let noun = match request.of {
+        CopyClass::AnyCreature => "a creature",
+        CopyClass::CreatureYouControl => "a creature you control",
+    };
+    format!("Choose {noun} to copy")
 }
 
 /// The sacrifice, as the same [`Prompt::SelectFromZone`] slot a card pick rides on —
@@ -422,6 +473,7 @@ pub(crate) fn player_choice_label(state: &GameState, db: &CardDatabase) -> Strin
         Some(ChoiceQuestion::Color(request)) => color_question(request, db),
         Some(ChoiceQuestion::Replacement(_)) => replacement_question(),
         Some(ChoiceQuestion::Order(_)) => card_order_question(),
+        Some(ChoiceQuestion::Permanent(request)) => permanent_question(request),
         Some(ChoiceQuestion::Permanents(request)) => {
             let (_, max) = permanent_choice_bounds(state, request, db);
             permanent_choice_question(request, max)
@@ -429,166 +481,6 @@ pub(crate) fn player_choice_label(state: &GameState, db: &CardDatabase) -> Strin
         Some(ChoiceQuestion::CardName(request)) => card_name_question(request, db),
         None => "Make a choice".to_string(),
     }
-}
-
-/// Map a returned answer to a card-naming choice onto [`Action::AnswerCardName`].
-///
-/// The same reject-stale discipline every other answer follows, with one extra step: the
-/// option id is an authored `functional_id`, so it is resolved back to a
-/// [`CardId`](sage_engine::CardId) through the database rather than parsed as a handle.
-/// A handle is a per-build integer and must never travel on the wire (ADR 0008 §3); an
-/// identity is stable, and one the catalog does not know resolves to nothing, which is a
-/// rejection rather than a guess. `None` when no card-naming choice is owed or the answer
-/// names something the offer did not.
-pub(crate) fn bind_player_card_name(
-    state: &GameState,
-    db: &CardDatabase,
-    offered: &ValidAction,
-    targets: &[TargetChoice],
-) -> Option<Action> {
-    let options = offered.prompts.iter().find_map(|prompt| match prompt {
-        Prompt::Option { slot, options, .. } if slot == CHOICE_SLOT => Some(options),
-        _ => None,
-    })?;
-    pending_player_choice(state)?.question.card_name()?;
-    let answer = chosen_for(targets, CHOICE_SLOT).first()?;
-    if !options.iter().any(|option| &option.id == answer) {
-        return None;
-    }
-    let functional_id = FunctionalId::try_from((*answer).clone()).ok()?;
-    Some(Action::AnswerCardName {
-        card: db.card_id(&functional_id)?,
-    })
-}
-
-/// Map a returned answer to a sacrifice onto [`Action::AnswerPermanents`].
-///
-/// The permanent counterpart of [`bind_player_choice`], and the same reject-stale
-/// discipline: only ids the offer itself listed count, the candidate list is re-derived
-/// from the engine rather than trusted from the prompt, and the engine re-checks the
-/// whole selection against its own bounds afterwards.
-pub(crate) fn bind_player_permanents(
-    state: &GameState,
-    db: &CardDatabase,
-    offered: &ValidAction,
-    targets: &[TargetChoice],
-) -> Option<Action> {
-    let candidates = offered.prompts.iter().find_map(|prompt| match prompt {
-        Prompt::SelectFromZone {
-            slot, candidates, ..
-        } if slot == CHOICE_SLOT => Some(candidates),
-        _ => None,
-    })?;
-    let request = pending_player_choice(state)?.question.permanents()?;
-    let available = permanent_choice_candidates(state, request, db);
-    let mut chosen = Vec::new();
-    for id in chosen_for(targets, CHOICE_SLOT) {
-        if !candidates.contains(id) {
-            return None;
-        }
-        let permanent = available
-            .iter()
-            .copied()
-            .find(|perm| permanent_entity_id(*perm) == *id)?;
-        chosen.push(permanent);
-    }
-    Some(Action::AnswerPermanents { chosen })
-}
-
-/// Map a returned answer to the card ordering onto [`Action::AnswerOrder`].
-///
-/// The same reject-stale discipline the other answers follow: only ids the offer itself
-/// listed count, and the engine is asked whether an ordering is owed at all before one is
-/// built. **The submitted order is carried through untouched** — it is the whole answer,
-/// so re-sorting here would silently bottom the cards somewhere else. The engine
-/// independently re-derives the remainder and rejects anything that is not a permutation
-/// of it, so nothing here is the last word.
-pub(crate) fn bind_player_order(
-    state: &GameState,
-    offered: &ValidAction,
-    targets: &[TargetChoice],
-) -> Option<Action> {
-    let items = offered.prompts.iter().find_map(|prompt| match prompt {
-        Prompt::Order { slot, items, .. } if slot == CHOICE_SLOT => Some(items),
-        _ => None,
-    })?;
-    let request = pending_player_choice(state)?.question.order()?;
-    let available = order_candidates(state, request);
-    let mut order = Vec::new();
-    for id in chosen_for(targets, CHOICE_SLOT) {
-        if !items.contains(id) {
-            return None;
-        }
-        let inst = available
-            .iter()
-            .find(|inst| card_entity_id(inst.id) == *id)?;
-        order.push(inst.id);
-    }
-    Some(Action::AnswerOrder { order })
-}
-
-/// Map a returned answer to the CR 616.1 ordering choice onto
-/// [`Action::AnswerReplacement`].
-///
-/// The same reject-stale discipline the other three answers follow: only an option id
-/// the offer itself listed counts, and the engine is asked whether an ordering choice is
-/// owed at all before one is built. The id *is* the index, so the parse is the binding;
-/// the engine independently re-derives the option list and rejects an index past its end.
-pub(crate) fn bind_player_replacement(
-    state: &GameState,
-    offered: &ValidAction,
-    targets: &[TargetChoice],
-) -> Option<Action> {
-    let options = offered.prompts.iter().find_map(|prompt| match prompt {
-        Prompt::Option { slot, options, .. } if slot == CHOICE_SLOT => Some(options),
-        _ => None,
-    })?;
-    pending_player_choice(state)?.question.replacement()?;
-    let answer = chosen_for(targets, CHOICE_SLOT).first()?;
-    if !options.iter().any(|option| &option.id == answer) {
-        return None;
-    }
-    Some(Action::AnswerReplacement {
-        index: answer.parse().ok()?,
-    })
-}
-
-/// Map a returned answer to the `player_choice` action onto the concrete
-/// [`Action::AnswerChoice`] (issue #604): the single `choice`
-/// [`Prompt::SelectFromZone`] slot names cards from its freshly recomputed candidates,
-/// **in the order the client sent them** — which is the order a scry puts them on the
-/// bottom in, so re-sorting here would silently answer a different question.
-///
-/// An unanswered slot is a legal *empty* selection whenever the prompt's advertised
-/// minimum is zero (declining to scry, failing to find); the engine re-checks the whole
-/// selection against the choice's own bounds anyway
-/// ([`answer_is_legal`](sage_engine::apply_action)), so nothing here is the last word.
-/// `None` only when the answer names an id the offer did not.
-pub(crate) fn bind_player_choice(
-    state: &GameState,
-    db: &CardDatabase,
-    offered: &ValidAction,
-    targets: &[TargetChoice],
-) -> Option<Action> {
-    let candidates = offered.prompts.iter().find_map(|prompt| match prompt {
-        Prompt::SelectFromZone {
-            slot, candidates, ..
-        } if slot == CHOICE_SLOT => Some(candidates),
-        _ => None,
-    })?;
-    let request = pending_player_choice(state)?.question.cards()?;
-    let available = choice_candidates(state, request, db);
-    let mut chosen = Vec::new();
-    for id in chosen_for(targets, CHOICE_SLOT) {
-        if !candidates.contains(id) {
-            return None;
-        }
-        let inst = available
-            .iter()
-            .find(|inst| card_entity_id(inst.id) == *id)?;
-        chosen.push(inst.id);
-    }
-    Some(Action::AnswerChoice { chosen })
 }
 
 /// The cards `viewer` is currently being shown from a hidden zone: the candidates of
@@ -620,8 +512,10 @@ pub(crate) fn revealed_to(state: &GameState, db: &CardDatabase, viewer: PlayerId
         | ChoiceQuestion::Color(_)
         | ChoiceQuestion::CardName(_)
         | ChoiceQuestion::Replacement(_)
-        // The battlefield is public: a sacrifice reveals nothing to anybody.
-        | ChoiceQuestion::Permanents(_) => Vec::new(),
+        // The battlefield is public: a sacrifice, and a permanent named as a card
+        // enters, reveal nothing to anybody.
+        | ChoiceQuestion::Permanents(_)
+        | ChoiceQuestion::Permanent(_) => Vec::new(),
     };
     shown
         .into_iter()
@@ -629,56 +523,8 @@ pub(crate) fn revealed_to(state: &GameState, db: &CardDatabase, viewer: PlayerId
         .collect()
 }
 
-/// Map a returned answer to a color choice onto [`Action::AnswerColor`].
-///
-/// The same reject-stale discipline the other two answers follow: only an option id the
-/// offer itself listed counts, and the engine is asked whether a color choice is owed at
-/// all before one is built. `None` when no color choice is owed or the answer names
-/// something the offer did not.
-pub(crate) fn bind_player_color(
-    state: &GameState,
-    offered: &ValidAction,
-    targets: &[TargetChoice],
-) -> Option<Action> {
-    let options = offered.prompts.iter().find_map(|prompt| match prompt {
-        Prompt::Option { slot, options, .. } if slot == CHOICE_SLOT => Some(options),
-        _ => None,
-    })?;
-    pending_player_choice(state)?.question.color()?;
-    let answer = chosen_for(targets, CHOICE_SLOT).first()?;
-    if !options.iter().any(|option| &option.id == answer) {
-        return None;
-    }
-    let (_, _, color) = COLOR_OPTIONS.iter().find(|(id, _, _)| id == answer)?;
-    Some(Action::AnswerColor { color: *color })
-}
-
-/// Map a returned answer to the yes-or-no of an optional effect onto
-/// [`Action::AnswerConfirm`] (issue #610).
-///
-/// The slot's answer is one option id, and only an id the offer itself listed counts:
-/// an answer naming an accept the server did not offer — because the cost was not
-/// payable when the view was built — is rejected rather than quietly read as a decline,
-/// the same reject-stale discipline the card selection follows. `None` when no yes-or-no
-/// is owed or the answer names nothing the offer did.
-pub(crate) fn bind_player_confirm(
-    state: &GameState,
-    offered: &ValidAction,
-    targets: &[TargetChoice],
-) -> Option<Action> {
-    let options = offered.prompts.iter().find_map(|prompt| match prompt {
-        Prompt::Option { slot, options, .. } if slot == CHOICE_SLOT => Some(options),
-        _ => None,
-    })?;
-    pending_player_choice(state)?.question.confirm()?;
-    let answer = chosen_for(targets, CHOICE_SLOT).first()?;
-    if !options.iter().any(|option| &option.id == answer) {
-        return None;
-    }
-    Some(Action::AnswerConfirm {
-        accept: answer == ACCEPT_OPTION,
-    })
-}
+mod bind;
+pub(crate) use bind::*;
 
 #[cfg(test)]
 mod tests;

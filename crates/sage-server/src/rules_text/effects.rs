@@ -623,6 +623,26 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             "prevent all {}damage that would be dealt this turn",
             if damage.combat_only { "combat " } else { "" },
         ),
+        // CR 603.7, in the order a card prints it: the event it waits for, then what
+        // happens when it comes. The `next` and the `this turn` are both facts about the
+        // ability rather than authored words, so the sentence states them.
+        Effect::CreateDelayedTrigger { trigger } => {
+            let DelayedCondition::NextSpellCast(spell) = trigger.event;
+            format!(
+                "when you next cast {} this turn, {}",
+                observed_spell_noun(spell),
+                clauses("that spell", &trigger.effects),
+            )
+        }
+        // CR 707.10. The copy's targets are the second sentence a card prints, not a
+        // clause of the first, because they are a separate permission.
+        Effect::CopySpell { new_targets, .. } => {
+            let mut clause = "copy that spell".to_string();
+            if *new_targets {
+                clause.push_str(". You may choose new targets for the copy");
+            }
+            clause
+        }
     }
 }
 

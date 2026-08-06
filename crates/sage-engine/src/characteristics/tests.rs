@@ -29,6 +29,7 @@ fn place(state: &mut GameState, card: CardId) -> PermanentId {
         attached_to: None,
         chosen_color: None,
         named_card: None,
+        copied: None,
     });
     id
 }

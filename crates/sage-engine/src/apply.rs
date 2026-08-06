@@ -101,6 +101,7 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         Action::AnswerCardName { card } => apply_answer_card_name(&mut next, *card, db),
         Action::AnswerOrder { order } => apply_answer_order(&mut next, order, db),
         Action::AnswerPermanents { chosen } => apply_answer_permanents(&mut next, chosen, db),
+        Action::AnswerPermanent { chosen } => apply_answer_permanent(&mut next, *chosen, db),
         Action::Discard { card } => apply_discard(&mut next, *card, db),
         Action::Mulligan => apply_mulligan(&mut next),
         Action::Keep { bottom } => apply_keep(&mut next, bottom),
@@ -129,7 +130,16 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
     // 5. Collect triggers by diffing before/after and put each on the stack. They
     //    observe the post-replacement state (the entered permanent already carries
     //    its "as enters" tapped state / counters, CR 614.12).
-    for trigger in collect_triggers(state, &next, db) {
+    //    A **delayed** triggered ability (CR 603.7) is collected from a fourth source
+    //    list that is not an object, so it is a sibling call rather than a branch inside
+    //    the collector — and firing spends it (CR 603.7b: `the next time`, once), which is
+    //    the one thing the pure collector cannot do for itself.
+    let mut collected = collect_triggers(state, &next, db);
+    for (spent, trigger) in crate::delayed::delayed_triggers_fired(state, &next, db) {
+        next.delayed_triggers.retain(|pending| pending.id != spent);
+        collected.push(trigger);
+    }
+    for trigger in collected {
         // CR 603.3c: a triggered ability that requires targets and has no legal
         // choice for one of its slots is removed from the stack — so it never goes on
         // in the first place here. Checked against the *controller's* legal sets,
@@ -139,9 +149,13 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
             .iter()
             .filter_map(Effect::target_spec)
             .collect();
-        let unanswerable = specs.iter().any(|&spec| {
-            crate::actions::legal_targets_for_spec(spec, &next, trigger.controller, db).is_empty()
-        });
+        // A trigger the event already aimed (CR 603.7c) is not looking for a legal
+        // choice — it has one — so CR 603.3c has nothing to say about it.
+        let unanswerable = trigger.targets.is_empty()
+            && specs.iter().any(|&spec| {
+                crate::actions::legal_targets_for_spec(spec, &next, trigger.controller, db)
+                    .is_empty()
+            });
         if unanswerable {
             continue;
         }
@@ -159,8 +173,10 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
             },
             // A trigger arrives **unaimed** (CR 603.3d): the game put it here, so its
             // controller has had no chance to choose. When it declares target slots,
-            // step 6 hands them priority to fill them before anyone else acts.
-            targets: Vec::new(),
+            // step 6 hands them priority to fill them before anyone else acts. The
+            // exception is a **delayed** ability, whose slot the trigger event itself
+            // filled (CR 603.7c) — there is nothing for its controller to decide.
+            targets: trigger.targets,
             // And unpaid for: a trigger has no cost (CR 603.3), so there is no payment to
             // record and nothing for an amount read off one to find.
             paid: crate::PaidCost::default(),

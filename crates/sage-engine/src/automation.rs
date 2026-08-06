@@ -226,6 +226,7 @@ mod tests {
             attached_to: None,
             chosen_color: None,
             named_card: None,
+            copied: None,
         });
         PermanentId(id)
     }

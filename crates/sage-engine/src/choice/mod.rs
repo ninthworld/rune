@@ -49,7 +49,7 @@ pub(crate) use optional::take_confirmed_effects;
 pub use optional::{confirm_is_payable, ConfirmRequest};
 pub(crate) use outcome::{
     apply_card_name_outcome, apply_choice_outcome, apply_color_outcome, apply_order_outcome,
-    discard_to_cost,
+    apply_permanent_outcome, discard_to_cost,
 };
 pub(crate) use permanents::{answer_permanents_is_legal, apply_permanent_choice};
 pub use permanents::{
@@ -155,6 +155,17 @@ pub enum ChoiceQuestion {
     /// list of [`CardInstance`](crate::id::CardInstance)s and a token has no card behind
     /// it (CR 111), so a board full of tokens would be a board nobody could sacrifice.
     Permanents(PermanentRequest),
+    /// Name **one permanent** on the battlefield — the `choose a creature` of a card that
+    /// enters as a copy of it ([`CopyChoiceRequest`]). Answered with
+    /// [`Action::AnswerPermanent`](crate::Action).
+    ///
+    /// Distinct from [`Permanents`](Self::Permanents), whose answer is a *selection* of
+    /// the chooser's own permanents sized by a count: this one names a single object of a
+    /// printed class, may be declined outright, and moves nothing.
+    ///
+    /// It is a **choice, not a target** (CR 115.1): nothing is aimed, no slot is filled at
+    /// announcement, and hexproof has nothing to say about it.
+    Permanent(CopyChoiceRequest),
 }
 
 impl ChoiceQuestion {
@@ -170,7 +181,8 @@ impl ChoiceQuestion {
             | ChoiceQuestion::CardName(_)
             | ChoiceQuestion::Replacement(_)
             | ChoiceQuestion::Order(_)
-            | ChoiceQuestion::Permanents(_) => None,
+            | ChoiceQuestion::Permanents(_)
+            | ChoiceQuestion::Permanent(_) => None,
         }
     }
 
@@ -184,7 +196,8 @@ impl ChoiceQuestion {
             | ChoiceQuestion::CardName(_)
             | ChoiceQuestion::Replacement(_)
             | ChoiceQuestion::Order(_)
-            | ChoiceQuestion::Permanents(_) => None,
+            | ChoiceQuestion::Permanents(_)
+            | ChoiceQuestion::Permanent(_) => None,
         }
     }
 
@@ -198,7 +211,8 @@ impl ChoiceQuestion {
             | ChoiceQuestion::CardName(_)
             | ChoiceQuestion::Replacement(_)
             | ChoiceQuestion::Order(_)
-            | ChoiceQuestion::Permanents(_) => None,
+            | ChoiceQuestion::Permanents(_)
+            | ChoiceQuestion::Permanent(_) => None,
         }
     }
 
@@ -212,7 +226,8 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Color(_)
             | ChoiceQuestion::Replacement(_)
             | ChoiceQuestion::Order(_)
-            | ChoiceQuestion::Permanents(_) => None,
+            | ChoiceQuestion::Permanents(_)
+            | ChoiceQuestion::Permanent(_) => None,
         }
     }
 
@@ -226,7 +241,8 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Color(_)
             | ChoiceQuestion::CardName(_)
             | ChoiceQuestion::Replacement(_)
-            | ChoiceQuestion::Permanents(_) => None,
+            | ChoiceQuestion::Permanents(_)
+            | ChoiceQuestion::Permanent(_) => None,
         }
     }
 
@@ -240,7 +256,8 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Color(_)
             | ChoiceQuestion::CardName(_)
             | ChoiceQuestion::Replacement(_)
-            | ChoiceQuestion::Order(_) => None,
+            | ChoiceQuestion::Order(_)
+            | ChoiceQuestion::Permanent(_) => None,
         }
     }
 
@@ -254,9 +271,68 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Color(_)
             | ChoiceQuestion::CardName(_)
             | ChoiceQuestion::Order(_)
+            | ChoiceQuestion::Permanents(_)
+            | ChoiceQuestion::Permanent(_) => None,
+        }
+    }
+
+    /// The permanent-naming request this question asks, or `None` when it is not one.
+    #[must_use]
+    pub fn permanent(&self) -> Option<&CopyChoiceRequest> {
+        match self {
+            ChoiceQuestion::Permanent(request) => Some(request),
+            ChoiceQuestion::Cards(_)
+            | ChoiceQuestion::Confirm(_)
+            | ChoiceQuestion::Color(_)
+            | ChoiceQuestion::CardName(_)
+            | ChoiceQuestion::Replacement(_)
+            | ChoiceQuestion::Order(_)
             | ChoiceQuestion::Permanents(_) => None,
         }
     }
+}
+
+/// A permanent-naming question ([`ChoiceQuestion::Permanent`]): *choose a creature*, and
+/// what the answer is then used for.
+///
+/// It carries a **class** rather than a candidate list, in the same relationship
+/// [`ChoiceRequest`] has to [`choice_candidates`]: the answerable set is recomputed from
+/// the battlefield on every read ([`copy_choice_candidates`](crate::copy_choice_candidates)),
+/// so an answer is validated against the board that exists now. It can afford to be —
+/// while the question is owed nothing else in the game is legal.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CopyChoiceRequest {
+    /// Which permanents may be named.
+    pub of: crate::copy::CopyClass,
+    /// Whether naming **nothing** is a legal answer — the `You may have …` of a printed
+    /// `enters as a copy`. A mandatory question with an empty board is answered with
+    /// nothing regardless; this is about the decision, not about the candidates.
+    pub optional: bool,
+    /// What becomes of the answer.
+    pub outcome: CopyChoiceOutcome,
+}
+
+/// What a named permanent is *for* — the counterpart of [`ColorOutcome`] for the
+/// permanent-naming question.
+///
+/// One variant today, and the enum exists for the reason [`ColorOutcome`] does: the
+/// *asking* is what is shared, and splitting on the outcome keeps the queue, the routing,
+/// the action, and the priority hand-off single.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CopyChoiceOutcome {
+    /// Record the named permanent's **copiable values** (CR 707.2) on a permanent that is
+    /// entering the battlefield, and complete that entry.
+    ///
+    /// While this is owed the card is on the battlefield's doorstep and in no zone at all,
+    /// exactly as it is for a colour named on entry — which is what makes "the permanent
+    /// is never briefly on the battlefield as itself before becoming a copy" (CR 707.5)
+    /// true by construction rather than by ordering.
+    RecordOnEntry {
+        /// The arrival waiting on the answer.
+        entry: crate::replacement::PendingEntry,
+        /// Whether the entering permanent is the copy, or its host is.
+        subject: crate::copy::CopySubject,
+    },
 }
 
 /// A card-ordering question ([`ChoiceQuestion::Order`]): *in which order do these go on

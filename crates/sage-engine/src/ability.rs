@@ -173,6 +173,41 @@ pub enum Ability {
         /// Which cards, in whose graveyards, the power is equal to a count of.
         count_of: GraveyardCount,
     },
+    /// A **copy effect** fixed as this permanent enters (CR 614.12 + CR 707): its
+    /// controller names a permanent, and from then on either this permanent or the one it
+    /// is attached to has that permanent's copiable values (CR 613 layer 1).
+    ///
+    /// Two printed shapes ride this one variant, and [`subject`](Self::EntersAsCopy::subject)
+    /// is the whole difference between them:
+    ///
+    /// - `You may have this creature enter as a copy of a creature you control` — the
+    ///   entering permanent *is* the copy (CR 707.5). It becomes one **as** it enters and
+    ///   not afterwards, so its enters-the-battlefield triggers are the copied ones and a
+    ///   0/0 that copies a 2/2 was never a 0/0 on the battlefield.
+    /// - `As this Aura enters, choose a creature. Enchanted creature is a copy of the
+    ///   chosen creature` — the *host* is the copy, for exactly as long as the Aura is
+    ///   attached to it (CR 707.2c: a copy effect from a static ability determines its
+    ///   copiable values only when it first starts to apply, which is why the answer is
+    ///   snapshotted here rather than re-read).
+    ///
+    /// Like [`Self::EntersChoosingColor`] it is a **question**, not a modification, so the
+    /// CR 614 replacement layer does not collect it and there is nothing to order it
+    /// against (ADR 0019): the card waits off the battlefield until the answer comes back,
+    /// and the permanent that then enters already carries its copiable values. The answer
+    /// lives on [`Permanent::copied`](crate::Permanent). Deserialized as
+    /// `{"type":"enters_as_copy","of":"creature_you_control","optional":true}`.
+    EntersAsCopy {
+        /// Which permanents may be named.
+        of: crate::copy::CopyClass,
+        /// What becomes the copy — this permanent, or the one it is attached to.
+        #[serde(default)]
+        subject: crate::copy::CopySubject,
+        /// Whether the controller may decline — the `You may have …` of every printed
+        /// `enters as a copy`. A mandatory choice with no legal answer simply chooses
+        /// nothing, so this is about the *decision*, not about the empty board.
+        #[serde(default)]
+        optional: bool,
+    },
     /// A **static ability** (CR 604.3): a continuous effect that applies for as long
     /// as this permanent is on the battlefield, with nothing ever put on the stack —
     /// an anthem (`Creatures you control get +1/+1.`) or a lord (`Other Elves you

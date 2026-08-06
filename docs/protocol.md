@@ -356,6 +356,13 @@ opaque strings. The web client uses `functional_id` as the key of its client-loc
 cache (ADR 0012) — a pure presentation enrichment; the wire contract is unchanged and a
 client that ignores the field renders completely without it.
 
+For a **battlefield permanent** every one of these fields is the permanent's *current*
+answer, not its card's printed one. That includes a **copy** (CR 707, CR 613 layer 1): a
+permanent that is a copy of something else projects the copied name, mana cost, type line,
+card types, rules text, and power/toughness, and there is no copy badge or second identity
+on the wire — the client is told what the permanent is and draws it. `id` is still the
+permanent's own; only the characteristics come from elsewhere.
+
 `color_identity` (issue #700) is what a card *belongs to*: its colours, the colours of the
 mana symbols in its cost, and the colours of the mana symbols in its rules text. It is stated
 for the same reason `card_types` is — the alternative is a client deriving it — and it is
