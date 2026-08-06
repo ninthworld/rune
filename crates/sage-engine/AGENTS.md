@@ -40,13 +40,14 @@ they control (filtered by card type, by subtype, optionally excluding the source
 count *or any number*), discarding cards, and exiling cards from their own graveyard. A
 picked payment rides on the action, in `Action::ActivateAbility`'s
 `payment` list, exactly as a cast's additional cost rides on `Action::CastSpell`'s; mana
-never does, because an activation pays it from the pool. **What a payment settled is
-recorded as it is paid**, on `StackObject::paid` beside the targets: how many permanents it
-sacrificed, and the power the sacrificed creature had. A cost is paid as the object goes on
-the stack (CR 601.2h), so by resolution those permanents are gone and the numbers could not
-be recovered from anywhere — CR 608.2h's last-known information, written down while it was
-still current. Exiling from any zone but a graveyard, and *optional* non-mana costs, are
-still unwritable.
+never does, because an activation pays it from the pool. A `may` charges the same vocabulary
+minus every component that names the source (`OptionalCost`), answered mid-resolution
+instead. **What a payment settled is recorded as it is paid**, on `StackObject::paid` beside
+the targets: how many permanents it sacrificed, and the power the sacrificed creature had. A
+cost is paid as the object goes on the stack (CR 601.2h), so by resolution those permanents
+are gone and the numbers could not be recovered from anywhere — CR 608.2h's last-known
+information, written down while it was still current. Exiling from any zone but a graveyard
+is still unwritable.
 `TriggerCondition` observes zone changes and attack
 declarations (its own source's and, through `ObservedPermanent`, another permanent's), a
 draw by its controller, an activation that uses the stack — never a mana ability, which
@@ -298,11 +299,16 @@ taking is answered — so a `Resume` travels onto the question that follows.
 An accepted optional effect is *spliced onto the front of
 the remainder*, not applied on the spot; declining is the same path with nothing spliced,
 which is why "a decline leaves the game as if the effect were absent" needs no proof. An
-optional **cost** is mana, charged from the chooser's pool, and is the one place mana
-moves outside the cast path: while such a question is owed its chooser may activate mana
-abilities (CR 605.3a) and nothing else. Whether it is *posed* is judged against the mana
-the board could still make (`potential_mana_pool`, shared with the idle-seat predicate);
-whether accepting is *legal* is judged against the pool as it stands.
+optional **cost** is mana, a permanent the chooser picks, or a discard (`OptionalCost`);
+a cost naming the **source** does not parse, because the queue carries no source. Mana is
+charged from the chooser's pool, the one place mana moves outside the cast path; the other
+two are decisions, so accepting poses one of the questions above and hangs the whole
+remainder behind it — the cost is therefore paid before what it bought, and the sacrifice
+is a real death. While a costed question is owed its chooser may activate mana abilities
+(CR 605.3a) and nothing else, and a picked cost does not widen that. A mana cost is
+*posed* against the mana the board could still make (`potential_mana_pool`, shared with
+the idle-seat predicate) and *accepted* against the pool as it stands; a picked payment
+has no such gap, so one construction of its request answers both.
 
 **Control is CR 613 layer 2, and it is computed** (ADR 0005 §1/§3). `Permanent::controller`
 is the *base* controller, not the answer: every rule that asks who controls a permanent —

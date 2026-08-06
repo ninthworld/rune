@@ -57,13 +57,14 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         return crate::choice::answer_permanents_is_legal(state, chosen, db);
     }
 
-    // 1a-bis. A yes-or-no answer is validated against the *pool as it stands*: accepting
-    //     an optional cost is legal only while the chooser can actually pay it, which is
+    // 1a-bis. A yes-or-no answer is validated against the board *as it stands*: accepting
+    //     an optional cost is legal only while the chooser can actually pay it — the pool
+    //     for mana, something of the named class for a sacrifice or a discard — which is
     //     the same predicate the offer is built from ([`crate::confirm_is_payable`]), so
     //     the offer and the charge can never disagree. Declining needs nothing and is
     //     always legal — the reason an unpayable cost never stalls the game.
     if let Action::AnswerConfirm { accept } = action {
-        return !accept || crate::confirm_is_payable(state);
+        return !accept || crate::confirm_is_payable(state, db);
     }
 
     // 1a-ter. A CR 616.1 ordering answer names a *position* in the option list the

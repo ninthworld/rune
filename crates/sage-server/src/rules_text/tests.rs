@@ -11,6 +11,13 @@ pub(super) fn bundled() -> CardDatabase {
     CardDatabase::bundled().unwrap()
 }
 
+/// An optional effect's mana cost, for the question the offer is worded as.
+fn mana_cost(mana: &str) -> OptionalCost {
+    OptionalCost::Mana {
+        mana: mana.to_string(),
+    }
+}
+
 /// The generated text of the card with this authored identity.
 pub(super) fn text_of(db: &CardDatabase, functional_id: &str) -> String {
     let id = db
@@ -955,7 +962,7 @@ fn issue_610_an_optional_effect_reads_as_the_card_prints_it() {
             {"schema_version":1,"functional_id":"test_mentor","name":"Test Mentor",
              "types":["creature"],"mana_cost":"{2}{W}","power":2,"toughness":2,
              "abilities":[{"type":"triggered","event":"self_enters_battlefield",
-               "effects":[{"kind":"may","cost":"{1}",
+               "effects":[{"kind":"may","cost":{"kind":"mana","mana":"{1}"},
                            "effects":[{"kind":"draw_card","count":1}]},
                           {"kind":"gain_life","player_ref":"controller","amount":2}]}]},
             {"schema_version":1,"functional_id":"test_almsgiver","name":"Test Almsgiver",
@@ -985,14 +992,27 @@ fn issue_610_an_optional_effect_reads_as_the_card_prints_it() {
 }
 
 #[test]
+fn issue_744_an_optional_cost_that_is_not_mana_reads_as_the_card_prints_it() {
+    // The printed sentence, from a bundled card: the payment is a verb the player does
+    // rather than a symbol they pay, and it takes the same "If you do" the mana form
+    // takes because that is how the card writes it.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "brawl_bash_ogre"),
+        "Menace\nWhenever Brawl-Bash Ogre attacks, you may sacrifice another creature. \
+         If you do, Brawl-Bash Ogre gets +2/+2 until end of turn."
+    );
+}
+
+#[test]
 fn issue_610_the_optional_question_is_composed_from_the_effects_it_offers() {
     // The words on the button a player answers with come from the same vocabulary as
     // the printed sentence, so the offer and the card can never describe it differently.
     let draw = vec![Effect::DrawCard { count: 1 }];
     assert_eq!(optional_effect_question(None, &draw), "Draw a card?");
     assert_eq!(
-        optional_effect_question(Some("{1}"), &draw),
-        "Pay {1} to draw a card?"
+        optional_effect_question(Some(&mana_cost("{1}")), &draw),
+        "Pay {1}? If you do, draw a card"
     );
 
     let gain = vec![Effect::GainLife {
@@ -1001,8 +1021,8 @@ fn issue_610_the_optional_question_is_composed_from_the_effects_it_offers() {
     }];
     assert_eq!(optional_effect_question(None, &gain), "You gain 3 life?");
     assert_eq!(
-        optional_effect_question(Some("{W}"), &gain),
-        "Pay {W} to gain 3 life?"
+        optional_effect_question(Some(&mana_cost("{W}")), &gain),
+        "Pay {W}? If you do, you gain 3 life"
     );
 }
 

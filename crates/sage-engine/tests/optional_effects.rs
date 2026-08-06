@@ -40,7 +40,7 @@ const DEFINITIONS: &str = r#"[
      "spell_effects":[{"kind":"gain_life","player_ref":"controller","amount":2}]},
     {"schema_version":1,"functional_id":"test_may_pay_draw","name":"Test May Pay Draw",
      "types":["sorcery"],"mana_cost":"",
-     "spell_effects":[{"kind":"may","cost":"{G}","effects":[{"kind":"draw_card","count":1}]},
+     "spell_effects":[{"kind":"may","cost":{"kind":"mana","mana":"{G}"},"effects":[{"kind":"draw_card","count":1}]},
                       {"kind":"gain_life","player_ref":"controller","amount":2}]},
     {"schema_version":1,"functional_id":"test_watcher","name":"Test Watcher",
      "types":["creature"],"mana_cost":"{2}","power":1,"toughness":1,
@@ -306,7 +306,7 @@ fn issue_610_accepting_charges_the_cost_and_an_unpaid_acceptance_is_illegal() {
     stock_library(&mut state, &db, 3);
     state.players[0].mana_pool.add(sage_engine::Color::Green, 1);
     let owed = cast(&state, &db, "test_may_pay_draw");
-    assert!(sage_engine::confirm_is_payable(&owed));
+    assert!(sage_engine::confirm_is_payable(&owed, &db));
 
     let paid = answer(&owed, &db, true);
     assert_eq!(paid.players[0].hand.len(), 1, "the card was drawn");
@@ -316,7 +316,7 @@ fn issue_610_accepting_charges_the_cost_and_an_unpaid_acceptance_is_illegal() {
     // The same question with an empty pool: no acceptance, and none to be forced.
     let mut broke = owed.clone();
     broke.players[0].mana_pool.green = 0;
-    assert!(!sage_engine::confirm_is_payable(&broke));
+    assert!(!sage_engine::confirm_is_payable(&broke, &db));
     assert_eq!(
         valid_actions(&broke, &db),
         vec![Action::AnswerConfirm { accept: false }, Action::Concede],
@@ -367,7 +367,7 @@ fn issue_610_a_payer_may_float_mana_while_the_question_is_owed() {
         "mana it could still make is why this is worth asking",
     );
     assert!(
-        !sage_engine::confirm_is_payable(&owed),
+        !sage_engine::confirm_is_payable(&owed, &db),
         "but not yet paid for"
     );
     let tap = Action::ActivateAbility {
@@ -392,7 +392,7 @@ fn issue_610_a_payer_may_float_mana_while_the_question_is_owed() {
         sage_engine::pending_player_choice(&floated).is_some(),
         "floating mana does not answer the question",
     );
-    assert!(sage_engine::confirm_is_payable(&floated));
+    assert!(sage_engine::confirm_is_payable(&floated, &db));
 
     let paid = answer(&floated, &db, true);
     assert_eq!(paid.players[0].hand.len(), 1);

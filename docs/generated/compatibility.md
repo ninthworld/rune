@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (240)
+## Supported cards (241)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -40,6 +40,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `boggart_brute` | Boggart Brute | functional definition |
 | `bogstomper` | Bogstomper | functional definition |
 | `bone_to_ash` | Bone to Ash | functional definition |
+| `brawl_bash_ogre` | Brawl-Bash Ogre | functional definition |
 | `bristling_boar` | Bristling Boar | functional definition |
 | `cancel` | Cancel | functional definition |
 | `catalyst_elemental` | Catalyst Elemental | functional definition |
@@ -267,7 +268,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Combat damage assigned by anything but the assigning creature's own power or toughness | an attacker or blocker assigns its current power, or its current toughness while a continuous effect names that one instead, read at the single place the combat-damage step asks how much a creature assigns; no other characteristic can be named, nothing assigns a fixed amount or a count, and nothing reads another object's characteristic |
 | Conditions other than a permanent count, a mill, a discard, life gained this turn, or what one permanent has attacked, blocked, or damaged | a permanent count is a tally of a class and cannot require its members to have distinct names |
 | Cost modification of another player's spells, or of an ability's activation cost | a permanent continuously takes generic mana off, or puts it on, the cost of a class of spell its own controller casts (CR 601.2f), read wherever a cast's cost is read; nothing reaches a spell another player casts, no modification applies to an activated ability's cost, and a coloured or colourless requirement is never changed |
-| Costs paid by exiling from anywhere but a graveyard, or by choosing to pay at all | a cast and an activation each carry the sacrifices, discards, and graveyard exiles their cost names on the action — a fixed number of permanents or any number of them, and always the payer's own — but a cost exiles only out of the payer's own graveyard, never from a hand, a library, or the battlefield, and every non-mana cost is mandatory rather than an option the player may decline |
+| Costs paid by exiling from anywhere but a graveyard | a cast and an activation each carry the sacrifices, discards, and graveyard exiles their cost names on the action — a fixed number of permanents or any number of them, and always the payer's own — and an optional effect asks for its own mid-resolution, from the same vocabulary minus every component that names the source; a cost exiles only out of the payer's own graveyard, never from a hand, a library, or the battlefield |
 | Damage prevention beyond a blanket shield for the turn | a shield prevents all damage — or all combat damage — for the rest of the turn, consulted at the one seam damage is dealt, and a spell may declare its own damage unpreventable to defeat it; nothing prevents a fixed amount, names a recipient or a source, redirects damage, or lasts anything but the turn |
 | Effects that ask a player to name a type | a permanent records the colour and the card its controller named as it entered — the card as a functional identity chosen from the catalog, never a string — but a card or creature type has no recorded identity, only a nonbasic land may be named, and nothing on a spell records a choice at all |
 | Effects that let a player choose the order of the cards a scry keeps on top | a look bottoms its rest in an order the looker picks or at random, as the card says, but the cards a scry leaves on top stay in their printed order |
@@ -282,7 +283,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Mana filtering | mana is produced and spent, never converted; nothing changes the colour of mana already in a pool |
 | Modal double-faced cards, and melding | a card has an ordered list of faces and a permanent turns over between them (CR 712), but the second face is only ever reached by transforming: it carries no mana cost, the catalog validator refuses one, and no announcement offers a card as anything but its front face — so a card whose two faces are two things you may cast is unwritable, and nothing combines two cards into one |
 | Modes beyond one chosen from a spell's printed list | a spell chooses exactly one of between two and four printed modes as it is announced, and the chosen mode alone decides which effects resolve and which targets are asked for; no ability is modal, nothing chooses two modes or repeats one, and a mode carries no cost of its own |
-| Optional costs paid with anything but mana | an optional effect's cost is a mana payment; sacrificing, discarding, or exiling to pay is unwritable |
+| Optional costs paid by spending the asking permanent itself | an optional effect's cost is mana, a permanent the chooser picks, or a discard; a cost that names the source — tapping it, sacrificing it, moving its loyalty, removing counters from it — is unwritable, because the question is answered from a queue that carries no source |
 | Playing a card from a zone other than the hand, the command zone, or a permitted graveyard | a graveyard is reached three ways — a one-turn permission to cast from it, a continuous permission to play lands from it, and an activated or triggered ability that returns its own card out of it — but no other zone is reached at all: no per-turn exile permission, nothing played off the top of a library, no way to cast without paying a mana cost, and no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure) |
 | Protection | there is no protection layer: nothing stops a spell, a block, an aura, or damage by a quality the way CR 702.16 does |
 | Reflexive triggers, and conditional branches that choose a target | an optional effect declares the target group of the one effect it wraps, but a conditional's branches, a wrapper over two targeting effects, and a "when you do" aimed after a cost is paid have no group one announcement could fill |

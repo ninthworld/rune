@@ -57,6 +57,29 @@ can be let through a freeze. This is also the whole of the payment vocabulary: a
 cost is mana, and paying by sacrificing or discarding is listed in the exclusions rather
 than half-modeled.
 
+**5a. Revised (issue #744): the cost is the activation vocabulary, and a payment the
+player *picks* is a second question.** The last sentence of decision 5 was a scoping call,
+not a finding, and Brawl-Bash Ogre is the card that closes it. `Effect::May::cost` is an
+`OptionalCost` — mana, a sacrifice, or a discard — which is `Cost` minus every component
+whose payment is the source itself (tap it, move its loyalty, sacrifice it, take counters
+off it). Those four are *unwritable* rather than rejected: they fail to parse, in
+`build.rs` and in the loader, because the question is answered from a queue that carries no
+source and a spell never had one. That is the exclusion entry, narrowed to what is actually
+still missing.
+
+The mana form is unchanged. The other two cannot be charged the way mana is, because
+*which* permanent and *which* cards is a decision — so accepting poses that decision as an
+ordinary `ChoiceQuestion` (the same `Permanents` shape a mandatory sacrifice uses, the same
+`Cards` shape a discard uses) and hangs the whole remainder, spliced effects and all,
+behind it. Three properties fall out of that placement rather than being arranged:
+
+- **The cost is paid before what it bought.** The wrapped effects are already on the front
+  of the remainder when the payment question is posed, so they resume after it is answered.
+- **The sacrifice is a real death.** It runs through the one leaves-battlefield seam, so a
+  dies trigger sees a creature eaten by an optional cost exactly as it sees one destroyed.
+- **The freeze does not widen.** While the payment itself is owed, nothing at all is legal
+  but answering it — not even a mana ability, which a sacrifice has no use for.
+
 **6. Two payability questions, deliberately different.** Whether the question is *posed*
 is judged against the mana the seat could still make if it tapped out; whether an
 acceptance is *legal* is judged against the pool as it stands. The first uses the
@@ -64,6 +87,15 @@ over-estimate the idle-seat predicate already made (now one shared function, so 
 has a single answer to "what could this board pay for"). Both err the same way — toward
 offering a decision that turns out unaffordable, never toward silently taking one away —
 and the gap between them is exactly the window in which a player taps lands.
+
+**6a. A picked payment has no gap, and one function answers both questions for it**
+(issue #744). Tapping a land cannot conjure a creature to sacrifice or a card to discard,
+so "could they pay" and "can they pay" are the same question there, and both are answered
+by building the payment's own request and asking whether its clamped maximum still covers
+what the cost demands — the engine's single signal for "there is nothing here", reused. The
+offer, the acceptance gate, and the question the acceptance then poses are read off that
+one construction, so the class the player is offered can never differ from the class the
+engine checked before offering them the choice.
 
 **7. The wire adds no shape.** The yes-or-no rides the `option` prompt the mulligan
 decision already uses, on the same `choice` slot the card selection uses, under the same
@@ -121,6 +153,13 @@ are selector work, not control-flow work.
 
 Gravedigger and Reclamation Sage — the two cards decision 9a was drawn for — are authored
 against the vocabulary as it stands, with no new effect variant between them.
+
+Brawl-Bash Ogre, the card decision 5a was drawn for, needed no new effect variant either:
+a cost field widened, and the question its acceptance poses was already built for
+Fraying Omnipotence. Ajani's Last Stand — the other card the exclusion blocked — is still
+out, and its optional cost is the smaller of the two reasons: it sacrifices *the source*,
+which 5a leaves unwritable, and its second ability triggers on the card being discarded
+from a hand, which nothing in the engine observes at all.
 
 The cost is that `GameState` now has a state in which a player may act *and* an object is
 part-way through resolving *and* what they may do is neither answering nor passing but

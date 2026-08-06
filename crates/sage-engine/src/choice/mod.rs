@@ -39,13 +39,17 @@
 //! revealed hand may be shown to) and on the log, which records counts and never card
 //! identities. See `docs/decisions/0013-mid-resolution-player-choices.md`.
 
+mod optional;
 mod outcome;
 mod permanents;
 mod posing;
 
+use optional::cost_could_be_paid;
+pub(crate) use optional::take_confirmed_effects;
+pub use optional::{confirm_is_payable, ConfirmRequest};
 pub(crate) use outcome::{
     apply_card_name_outcome, apply_choice_outcome, apply_color_outcome, apply_order_outcome,
-    discard_to_cost, take_confirmed_effects,
+    discard_to_cost,
 };
 pub(crate) use permanents::{answer_permanents_is_legal, apply_permanent_choice};
 pub use permanents::{
@@ -53,7 +57,7 @@ pub use permanents::{
 };
 pub(crate) use posing::{attach_resume, choices_for_effect, pose_choices};
 
-use crate::ability::{BottomOrder, CardFilter, Effect, FoundDestination, Target};
+use crate::ability::{BottomOrder, CardFilter, Effect, FoundDestination, OptionalCost, Target};
 use crate::card_type::{CardType, Supertype};
 use crate::id::{CardId, CardInstance, CardInstanceId, PlayerId};
 use crate::mana::Color;
@@ -422,36 +426,6 @@ pub fn named_card_candidates(db: &CardDatabase, class: NamedCardClass) -> Vec<Ca
         .collect()
 }
 
-/// The question an optional effect asks: *do you want this, and will you pay for it?*
-///
-/// Carries what happens on a **yes** and nothing about what happens on a no, because a
-/// no is the absence of an event: the effects here are simply not applied, and the rest
-/// of the resolution — which rides on [`PendingChoice::resume`], not here — is
-/// untouched either way.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ConfirmRequest {
-    /// The mana cost accepting charges, in `{...}` notation, or `None` for a free
-    /// `you may`. Paid from the chooser's pool at the moment they accept, through the
-    /// same [`ManaPool::pay`](crate::ManaPool::pay) seam a cast uses.
-    pub cost: Option<String>,
-    /// The effects applied on acceptance, in order. They are spliced onto the front of
-    /// the suspended remainder rather than applied here, so accepting resumes down
-    /// exactly one code path and an accepted effect that poses a *further* choice
-    /// suspends again without any special case.
-    pub effects: Vec<Effect>,
-    /// The targets the announcement chose for those effects (CR 601.2c), in slot
-    /// order — a `may` declares the group of the one effect it wraps
-    /// ([`Effect::target_group`]), so "you may destroy target artifact" arrives here
-    /// already aimed.
-    ///
-    /// They ride the request rather than the [`Resume`] because they belong to the
-    /// offer: accepting splices them onto the front of the remaining targets exactly
-    /// as it splices the effects, and declining drops both together. Leaving them in
-    /// the remainder would hand a declined offer's target to whatever effect came
-    /// next.
-    pub targets: Vec<Target>,
-}
-
 /// A card-selection question ([`ChoiceQuestion::Cards`]): which cards, from where, how
 /// many, and what becomes of them.
 ///
@@ -748,41 +722,6 @@ pub(crate) fn order_answer_is_legal(state: &GameState, order: &[CardInstanceId])
         .enumerate()
         .all(|(index, id)| !order[..index].contains(id));
     distinct && order.iter().all(|id| cards.iter().any(|c| c.id == *id))
-}
-
-/// Whether the pending yes-or-no can currently be answered **yes**: it is a
-/// [`ChoiceQuestion::Confirm`], and its cost (if it has one) is payable from the
-/// chooser's mana pool as it stands right now.
-///
-/// The counterpart of [`choice_bounds`] for a confirmation — the fact a projection needs
-/// in order to offer "yes" only when the engine would accept it, and the fact
-/// [`crate::apply_action`]'s gate re-derives before charging anyone. `false` when no
-/// choice is owed or the owed one is a card selection.
-///
-/// Read against the pool *now*, deliberately: a chooser owed a payment may still tap
-/// lands (CR 605.3a), so this flips from `false` to `true` as they float mana, and the
-/// offer follows.
-#[must_use]
-pub fn confirm_is_payable(state: &GameState) -> bool {
-    let Some(pending) = pending_player_choice(state) else {
-        return false;
-    };
-    let Some(request) = pending.question.confirm() else {
-        return false;
-    };
-    cost_is_payable_from_pool(state, pending.chooser, request.cost.as_deref())
-}
-
-/// Whether `player`'s pool covers `cost` as it stands. `true` for a free choice
-/// (`None`), and for a seat that has left the game there is no pool and so no payment.
-fn cost_is_payable_from_pool(state: &GameState, player: PlayerId, cost: Option<&str>) -> bool {
-    let Some(cost) = cost else {
-        return true;
-    };
-    state
-        .players
-        .get(player.0)
-        .is_some_and(|p| p.mana_pool.can_pay(&crate::mana::parse_mana_cost(cost)))
 }
 
 /// Whether the printed card `card` satisfies `filter`.

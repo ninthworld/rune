@@ -1533,7 +1533,7 @@ and still say where its ability works. Spit Flame:
 ```json
 { "type": "triggered",
   "event": { "permanent_enters": { "scope": "creatures_you_control", "subtype": "Dragon" } },
-  "effects": [{ "kind": "may", "cost": "{R}",
+  "effects": [{ "kind": "may", "cost": { "kind": "mana", "mana": "{R}" },
                 "effects": [{ "kind": "return_self_from_graveyard", "destination": "hand" }] }] }
 ```
 
@@ -2043,21 +2043,41 @@ engine applies.
 
 ```json
 { "kind": "may", "effects": [{ "kind": "draw_card", "count": 1 }] }
-{ "kind": "may", "cost": "{1}",
+{ "kind": "may", "cost": { "kind": "mana", "mana": "{1}" },
   "effects": [{ "kind": "draw_card", "count": 1 }] }
+{ "kind": "may", "cost": { "kind": "sacrifice", "card_type": "creature", "another": true },
+  "effects": [{ "kind": "pump_self", "power": 2, "toughness": 2 }] }
 ```
 
 - The first reads "you may draw a card"; the second, "you may pay {1}. If you do, draw a
-  card". Rules text is composed from the wrapped effects, so the printed sentence and the
-  question the player is asked are the same words.
+  card"; the third, "you may sacrifice another creature. If you do, …". Rules text is
+  composed from the wrapped effects and the cost, so the printed sentence and the question
+  the player is asked are the same words.
 - **The controller answers**, whoever else the surrounding ability names and whoever holds
   priority. A trigger that goes on the stack during an opponent's turn still asks its own
   controller.
-- `cost` is a mana cost in the same `{...}` notation an activation cost uses, paid from
-  the controller's pool. While the question is owed they may activate **mana abilities**
-  and nothing else (CR 605.3a), so a cost is payable if the board could still make the
-  mana. A cost no amount of tapping could pay is never asked at all — it is declined, and
-  recorded as declined.
+- `cost` is a tagged object, and the vocabulary is the activation cost's minus every
+  component that names the source (issue #744):
+
+  | `kind` | Fields | Reads as |
+  | --- | --- | --- |
+  | `mana` | `mana` (the `{...}` string) | `you may pay {1}` |
+  | `sacrifice` | `card_type`, `subtype`, `another` — all optional | `you may sacrifice another creature` |
+  | `discard` | `count` | `you may discard a card` |
+
+  `tap`, `loyalty`, `sacrifice_this`, and `remove_counters` are **not** accepted here and
+  fail to parse: the question is answered from a queue that carries no source, and by then
+  the object that asked may have left. That is the narrowed exclusion entry.
+- **Mana is charged on the answer; a picked payment is a second question.** Accepting a
+  `sacrifice` or a `discard` poses the ordinary selection over the battlefield or the hand
+  and hangs the wrapped effects behind it, so the cost is always paid before what it bought
+  and a sacrificed permanent dies down the same seam every other sacrifice uses. `another`
+  excludes the permanent whose ability asked, resolved when the question was posed.
+- While the question is owed the chooser may activate **mana abilities** and nothing else
+  (CR 605.3a) — a sacrifice cost does not widen that — so a mana cost is payable if the
+  board could still make the mana. **A cost nothing could pay is never asked at all**: no
+  mana any tapping could make, no permanent of the named class, not enough cards in hand.
+  It is declined, and recorded as declined.
 - **Declining is not a fizzle.** The wrapped effects are skipped; every other effect of
   the same ability, and the spell's own trip to its final zone (CR 608.3), happen exactly
   as if the `may` were not there.

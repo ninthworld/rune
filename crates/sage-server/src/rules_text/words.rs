@@ -102,6 +102,29 @@ pub(super) fn sacrifice_clause(noun: &str, count: SacrificeCount, another: bool)
     }
 }
 
+/// What accepting an optional effect costs, as the **verb phrase** a card prints inside
+/// a sentence: `pay {1}`, `sacrifice another creature`, `discard a card`.
+///
+/// The cost line's own words ([`cost_symbol`]) with the one difference the position makes.
+/// A cost written before a colon is a noun-ish label — `{1}`, `Sacrifice another
+/// creature` — while a cost written after `you may` is something the player *does*, so
+/// the mana gains its verb and the rest lose their capital. Nothing else is re-worded:
+/// one vocabulary, so the printed sentence and the button that answers it cannot describe
+/// the same payment two different ways.
+pub(crate) fn optional_cost_phrase(cost: &OptionalCost) -> String {
+    match cost.mana() {
+        Some(mana) => format!("pay {mana}"),
+        None => {
+            let symbol = cost_symbol(&cost.as_activation_cost());
+            let mut chars = symbol.chars();
+            match chars.next() {
+                Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        }
+    }
+}
+
 /// The class of card an exile cost takes, as the adjective a card writes before "card":
 /// the `creature` of `Exile a creature card from your graveyard`. `None` for the
 /// unrestricted class, which a card writes as plain "a card" with no adjective at all.
@@ -128,7 +151,10 @@ fn plural(noun: &str) -> String {
 ///
 /// The same subtype-wins-over-type ordering [`count_noun`](super::effects::count_noun)
 /// uses, because a card writes the class the same way wherever it appears.
-fn sacrifice_noun(card_type: Option<CardType>, subtype: Option<&str>) -> String {
+///
+/// Crate-visible because the prompt a sacrifice is *answered* on names the same class the
+/// cost line names, and two spellings of one class would be two things to keep in step.
+pub(crate) fn sacrifice_noun(card_type: Option<CardType>, subtype: Option<&str>) -> String {
     match (subtype, card_type) {
         (Some(subtype), Some(card_type)) => format!("{subtype} {}", card_type_word(card_type)),
         (Some(subtype), None) => subtype.to_string(),

@@ -223,7 +223,7 @@ fn mentor_of_the_meek_notices_a_small_arrival_and_ignores_a_large_one() {
         confirm_owed(&small),
         "a power-2 arrival owes its controller the may-pay question"
     );
-    assert!(sage_engine::confirm_is_payable(&small));
+    assert!(sage_engine::confirm_is_payable(&small, &db));
     let drawn = apply_action(&small, &Action::AnswerConfirm { accept: true }, &db);
     assert_eq!(
         hand(&drawn, PlayerId(0)),

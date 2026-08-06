@@ -1,5 +1,6 @@
 //! What an activated ability charges to activate (CR 118): tapping, mana, loyalty, and
-//! the three costs whose payment the activating player **chooses**.
+//! the three costs whose payment the activating player **chooses** — plus the subset of
+//! that vocabulary an optional effect may charge mid-resolution ([`OptionalCost`]).
 
 use super::*;
 
@@ -234,6 +235,113 @@ pub enum Cost {
         /// How many cards are discarded. At least one on every printed card.
         count: u8,
     },
+}
+
+/// What accepting a `you may …` charges (CR 608.2) — the activation vocabulary minus
+/// every cost whose payment is the **source itself**.
+///
+/// A separate enum from [`Cost`] rather than a reuse of it, and the line between them is
+/// not the payment but the *moment*. An activation cost is paid by the player taking an
+/// action, with the source in front of them: tapping it, moving its loyalty, sacrificing
+/// it, taking counters off it are all things they can point at. An optional cost is paid
+/// in the middle of somebody's resolution, from a question on a queue that carries no
+/// source — the object that asked may already have left (CR 608.2), and a spell never had
+/// a permanent to begin with. Those four costs are therefore not *rejected* here, they are
+/// unwritable: `{"kind":"tap"}` under a `may` fails to parse, in `build.rs` and in the
+/// loader, rather than authoring a card that looks fine and resolves into nothing.
+///
+/// What is left is exactly the three payments a player can make with no source to name,
+/// deserialized with the same internal `kind` tag a [`Cost`] uses:
+/// `{"kind":"mana","mana":"{1}"}`, `{"kind":"sacrifice","card_type":"creature",
+/// "another":true}`, `{"kind":"discard","count":1}`.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum OptionalCost {
+    /// Pay mana — the `you may pay {1}` of a card that offers a draw for a mana.
+    ///
+    /// Charged from the chooser's pool at the moment they accept, through the one
+    /// [`ManaPool::pay`](crate::ManaPool::pay) seam a cast and an activation use. This is
+    /// the only place mana moves outside the cast and activation paths, and the reason a
+    /// player owed this question may still activate mana abilities (CR 605.3a).
+    Mana {
+        /// The mana cost in curly-brace notation, named `mana` for the reason
+        /// [`Cost::Mana`]'s field is.
+        mana: String,
+    },
+    /// **Sacrifice a permanent the chooser picks** (CR 701.17) — the `you may sacrifice
+    /// another creature` of a creature that eats a friend for a pump.
+    ///
+    /// Unlike its activation-cost sibling the payment does *not* ride on the action:
+    /// there is no announcement to carry it, because the question is asked while an
+    /// object resolves. Accepting poses a second question — the ordinary
+    /// [`ChoiceQuestion::Permanents`](crate::ChoiceQuestion) a mandatory sacrifice uses —
+    /// and the wrapped effects wait behind it, so the payment happens before what it
+    /// bought, down the same real-death seam (CR 701.17b).
+    Sacrifice {
+        /// The card type a matching permanent must have — the `creature` of `sacrifice
+        /// another creature`. Absent means any type.
+        #[serde(default)]
+        card_type: Option<CardType>,
+        /// The printed subtype a matching permanent must have — the `Goblin` of
+        /// `sacrifice a Goblin`. Absent means any subtype.
+        #[serde(default)]
+        subtype: Option<String>,
+        /// Whether the source is excluded — the **another** of `sacrifice another
+        /// creature`. Answered against the permanent the asking ability came from,
+        /// resolved when the question is posed.
+        #[serde(default)]
+        another: bool,
+    },
+    /// **Discard `count` cards** from the chooser's hand (CR 701.8) — the hand
+    /// counterpart of [`Self::Sacrifice`], paid the same way through a
+    /// [`ChoiceQuestion::Cards`](crate::ChoiceQuestion) posed on acceptance.
+    Discard {
+        /// How many cards are discarded. At least one on every printed card.
+        count: u8,
+    },
+}
+
+impl OptionalCost {
+    /// The activation-cost component this payment is.
+    ///
+    /// Exists for one reason: the words. "Sacrifice another creature" is one phrase
+    /// whether a card prints it before a colon or after a `you may`, and the formatter
+    /// that writes it (the server's `cost_symbol`) is already written once against
+    /// [`Cost`]. Mapping onto that enum keeps the printed cost line, the offer's label,
+    /// and the prompt the payment is answered on one string rather than three that have
+    /// to be kept in step.
+    #[must_use]
+    pub fn as_activation_cost(&self) -> Cost {
+        match self {
+            OptionalCost::Mana { mana } => Cost::Mana { mana: mana.clone() },
+            OptionalCost::Sacrifice {
+                card_type,
+                subtype,
+                another,
+            } => Cost::Sacrifice {
+                card_type: *card_type,
+                subtype: subtype.clone(),
+                another: *another,
+                // An optional cost takes exactly one permanent: the open form is a
+                // decision about *how many*, and a `you may` already asks one decision.
+                count: SacrificeCount::Exactly(1),
+            },
+            OptionalCost::Discard { count } => Cost::Discard { count: *count },
+        }
+    }
+
+    /// The mana this cost charges, or `None` for one paid with something else.
+    ///
+    /// The one question two different callers ask — whether the offer is judged against a
+    /// mana pool, and whether accepting charges one — so it is answered here rather than
+    /// matched for at each of them.
+    #[must_use]
+    pub fn mana(&self) -> Option<&str> {
+        match self {
+            OptionalCost::Mana { mana } => Some(mana),
+            OptionalCost::Sacrifice { .. } | OptionalCost::Discard { .. } => None,
+        }
+    }
 }
 
 impl Cost {

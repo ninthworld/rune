@@ -369,37 +369,3 @@ pub(crate) fn apply_card_name_outcome(
     entry.named_card = Some(named);
     state.begin_battlefield_entry(entry, db);
 }
-
-/// Answer the pending yes-or-no: hand the accepted effects back to be spliced onto the
-/// front of the suspended remainder, or `None` for a decline.
-///
-/// Charging for the acceptance happens here too, because the charge and the answer are
-/// one act — a `yes` that could not pay would be a `no` that had already moved cards.
-/// The caller has established payability ([`confirm_is_payable`]); an unpayable cost
-/// reaching here is treated as a decline rather than granting a free effect.
-pub(crate) fn take_confirmed_effects(
-    state: &mut GameState,
-    chooser: PlayerId,
-    request: &ConfirmRequest,
-    accept: bool,
-) -> Option<Vec<Effect>> {
-    if !accept {
-        state.record_event(GameEvent::OptionalDeclined { player: chooser });
-        return None;
-    }
-    if let Some(cost) = &request.cost {
-        let paid = state
-            .players
-            .get(chooser.0)
-            .and_then(|player| player.mana_pool.pay(&crate::mana::parse_mana_cost(cost)));
-        match (paid, state.players.get_mut(chooser.0)) {
-            (Some(pool), Some(player)) => player.mana_pool = pool,
-            _ => {
-                state.record_event(GameEvent::OptionalDeclined { player: chooser });
-                return None;
-            }
-        }
-    }
-    state.record_event(GameEvent::OptionalApplied { player: chooser });
-    Some(request.effects.clone())
-}

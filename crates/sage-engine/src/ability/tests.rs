@@ -956,7 +956,7 @@ fn issue_723_a_triggered_ability_functions_from_a_graveyard_by_the_same_derivati
     // derivation reads the whole effect tree rather than the top-level list.
     let json = r#"{"type":"triggered",
         "event":{"permanent_enters":{"scope":"creatures_you_control","subtype":"Dragon"}},
-        "effects":[{"kind":"may","cost":"{R}","effects":[
+        "effects":[{"kind":"may","cost":{"kind":"mana","mana":"{R}"},"effects":[
             {"kind":"return_self_from_graveyard","destination":"hand"}]}]}"#;
     let ability: Ability = serde_json::from_str(json).unwrap();
     assert!(is_graveyard_ability(&ability));
@@ -965,7 +965,7 @@ fn issue_723_a_triggered_ability_functions_from_a_graveyard_by_the_same_derivati
     // never mistaken for one that fires out of a graveyard.
     let watcher = r#"{"type":"triggered",
         "event":{"permanent_enters":{"scope":"creatures_you_control","subtype":"Dragon"}},
-        "effects":[{"kind":"may","cost":"{R}","effects":[{"kind":"draw_card","count":1}]}]}"#;
+        "effects":[{"kind":"may","cost":{"kind":"mana","mana":"{R}"},"effects":[{"kind":"draw_card","count":1}]}]}"#;
     assert!(!is_graveyard_ability(
         &serde_json::from_str::<Ability>(watcher).unwrap()
     ));

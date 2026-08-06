@@ -27,7 +27,7 @@ use sage_engine::{
     CombatRestriction, Condition, Cost, CostModification, CountScope, CounterKind,
     DamageCharacteristic, DamageSubject, DerivedAmount, DestroyAffects, Effect, EnteringFilter,
     FoundDestination, GraveyardCardClass, GraveyardCount, GraveyardScope, HalvedTotal, Keyword,
-    ManaRestriction, MassAffects, NamedCardClass, ObservedPermanent, ObservedSpell,
+    ManaRestriction, MassAffects, NamedCardClass, ObservedPermanent, ObservedSpell, OptionalCost,
     PermanentAmount, PermanentCount, PlayerModification, PlayerRef, ReplacementEffect,
     SacrificeCount, SpellMode, SpellTrait, StaticAffects, StaticCondition, StaticModification,
     TargetCount, TargetSpec, TokenData, TriggerCondition, TriggerStep, TurnScope,

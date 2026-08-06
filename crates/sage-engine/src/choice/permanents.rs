@@ -36,6 +36,22 @@ pub struct PermanentRequest {
     /// of "sacrifices half the creatures they control". Absent offers every permanent
     /// they control.
     pub card_type: Option<CardType>,
+    /// Restrict the offer further to permanents with this **printed** subtype — the
+    /// `Goblin` of `sacrifice a Goblin`. Absent asks nothing about subtypes.
+    ///
+    /// Only a *cost* has ever named one: the mandatory sacrifices in the IR count a class
+    /// by card type. It lives on the request rather than beside it because the request is
+    /// the whole of what a question asks, and a filter the candidate list applies but the
+    /// question does not carry would be a second place the class is written down.
+    pub subtype: Option<String>,
+    /// The one permanent the offer excludes — the **another** of `sacrifice another
+    /// creature`, resolved to the asking ability's source when the question was posed.
+    ///
+    /// A permanent id rather than a flag, for the reason
+    /// [`ChoiceRequest::source_card`](super::ChoiceRequest::source_card) is a card id:
+    /// the source may leave the battlefield before the answer is given, and a question
+    /// that had to look it up again could quietly stop excluding it.
+    pub except: Option<PermanentId>,
     /// The fewest permanents a legal answer may name, before clamping to what is
     /// actually there ([`permanent_choice_bounds`]).
     pub min: u32,
@@ -66,8 +82,9 @@ pub enum PermanentOutcome {
 /// snapshotted when the question was posed.
 ///
 /// Control is read through the one CR 613 layer-2 path, so a creature the subject has
-/// gained control of is theirs to sacrifice and one they have lost is not. The type is
-/// read off the printed face, consistent with every other type test in the engine.
+/// gained control of is theirs to sacrifice and one they have lost is not. The type and
+/// the subtype are read off the printed face, consistent with every other class test in
+/// the engine, and the excluded permanent is dropped by id.
 #[must_use]
 pub fn permanent_choice_candidates(
     state: &GameState,
@@ -78,11 +95,19 @@ pub fn permanent_choice_candidates(
         .battlefield
         .iter()
         .filter(|perm| crate::characteristics::controller_of(state, perm) == request.subject)
+        .filter(|perm| request.except != Some(perm.id))
         .filter(|perm| {
             request.card_type.is_none_or(|card_type| {
                 perm.printed
                     .face(db)
                     .is_some_and(|face| face.has_type(card_type))
+            })
+        })
+        .filter(|perm| {
+            request.subtype.as_deref().is_none_or(|subtype| {
+                perm.printed
+                    .face(db)
+                    .is_some_and(|face| face.has_subtype(subtype))
             })
         })
         .map(|perm| perm.id)

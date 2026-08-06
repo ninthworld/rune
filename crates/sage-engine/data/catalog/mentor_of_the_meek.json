@@ -28,7 +28,10 @@
       "effects": [
         {
           "kind": "may",
-          "cost": "{1}",
+          "cost": {
+            "kind": "mana",
+            "mana": "{1}"
+          },
           "effects": [
             {
               "kind": "draw_card",

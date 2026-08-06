@@ -890,6 +890,11 @@
     "rarity": "mythic"
   },
   {
+    "functional_id": "brawl_bash_ogre",
+    "collector_number": "213",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "draconic_disciple",
     "collector_number": "215",
     "rarity": "uncommon"

@@ -282,7 +282,7 @@ fn issue_610_an_optional_cost_projects_as_an_option_whose_accept_follows_the_poo
         r#"[
             {"schema_version":1,"functional_id":"test_offer","name":"Test Offer",
              "types":["sorcery"],"mana_cost":"",
-             "spell_effects":[{"kind":"may","cost":"{G}",
+             "spell_effects":[{"kind":"may","cost":{"kind":"mana","mana":"{G}"},
                                "effects":[{"kind":"draw_card","count":1}]}]},
             {"schema_version":1,"functional_id":"test_wood","name":"Test Wood",
              "types":["land"],"mana_cost":"",
@@ -331,10 +331,10 @@ fn issue_610_an_optional_cost_projects_as_an_option_whose_accept_follows_the_poo
 
     let view = personalized_view(&state, &db, PlayerId(0));
     let action = choice_action(&view).expect("the caster is asked");
-    assert_eq!(action.label, "Pay {G} to draw a card?");
+    assert_eq!(action.label, "Pay {G}? If you do, draw a card");
     assert_eq!(
         option_prompt(action),
-        ("Pay {G} to draw a card?", vec![DECLINE_OPTION]),
+        ("Pay {G}? If you do, draw a card", vec![DECLINE_OPTION]),
         "with nothing floating there is only one answer to give",
     );
     assert!(
@@ -704,4 +704,92 @@ fn issue_746_the_library_ordering_projects_as_an_order_prompt_over_the_remainder
         ..Default::default()
     };
     assert!(resolve_action(&state, &db, PlayerId(0), &forged).is_none());
+}
+
+#[test]
+fn issue_744_a_sacrifice_cost_is_offered_and_paid_in_the_words_the_card_prints() {
+    // An optional cost that is not mana projects with no new wire shape at all: the
+    // offer is the same `option` prompt, labelled with the payment as the card writes
+    // it, and accepting owes the same battlefield `select_from_zone` a mandatory
+    // sacrifice rides on.
+    let db = CardDatabase::from_json(
+        r#"[
+            {"schema_version":1,"functional_id":"test_bargain","name":"Test Bargain",
+             "types":["sorcery"],"mana_cost":"",
+             "spell_effects":[{"kind":"may",
+                               "cost":{"kind":"sacrifice","card_type":"creature"},
+                               "effects":[{"kind":"draw_card","count":1}]}]},
+            {"schema_version":1,"functional_id":"test_bear","name":"Test Bear",
+             "types":["creature"],"mana_cost":"","power":2,"toughness":2}
+        ]"#,
+    )
+    .unwrap();
+    let card = |slug: &str| {
+        db.card_id(&sage_engine::FunctionalId::try_from(slug.to_string()).unwrap())
+            .unwrap()
+    };
+
+    let mut state = main_phase();
+    let bear = PermanentId(state.mint_id());
+    let instance = state.new_instance(card("test_bear"));
+    state.battlefield.push(sage_engine::Permanent {
+        id: bear,
+        instance: instance.id,
+        printed: card("test_bear").into(),
+        controller: PlayerId(0),
+        ..Default::default()
+    });
+    state.players[0].library = vec![state.new_instance(card("test_bear"))];
+    let spell = state.new_instance(card("test_bargain"));
+    state.players[0].hand.push(spell);
+    let state = sage_engine::apply_action(
+        &state,
+        &Action::CastSpell {
+            card: spell,
+            mode: None,
+            x: None,
+            targets: Vec::new(),
+            payment: Vec::new(),
+        },
+        &db,
+    );
+    let state = sage_engine::apply_action(&state, &Action::PassPriority, &db);
+    let state = sage_engine::apply_action(&state, &Action::PassPriority, &db);
+
+    let view = personalized_view(&state, &db, PlayerId(0));
+    let action = choice_action(&view).expect("the caster is asked");
+    assert_eq!(
+        option_prompt(action),
+        (
+            "Sacrifice a creature? If you do, draw a card",
+            vec![ACCEPT_OPTION, DECLINE_OPTION]
+        ),
+        "a creature to spend makes the acceptance real",
+    );
+    let Prompt::Option { options, .. } = &action.prompts[0] else {
+        panic!("the yes-or-no is an option prompt");
+    };
+    assert_eq!(
+        options[0].label, "Sacrifice a creature",
+        "the button says what the card says",
+    );
+
+    // Accepting owes the payment, over the battlefield, with the engine's candidates.
+    let accepted = sage_engine::apply_action(&state, &Action::AnswerConfirm { accept: true }, &db);
+    let view = personalized_view(&accepted, &db, PlayerId(0));
+    let action = choice_action(&view).expect("the payment is owed");
+    let Prompt::SelectFromZone {
+        prompt,
+        zone,
+        count,
+        candidates,
+        ..
+    } = &action.prompts[0]
+    else {
+        panic!("the payment is a select_from_zone");
+    };
+    assert_eq!(prompt, "Sacrifice 1 creature");
+    assert_eq!(zone, "battlefield");
+    assert_eq!(*count, 1);
+    assert_eq!(candidates, &vec![permanent_entity_id(bear)]);
 }

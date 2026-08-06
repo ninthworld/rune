@@ -235,7 +235,7 @@ pub(crate) fn apply_activate_ability(
                 state,
                 effect,
                 controller,
-                None,
+                Some(crate::stack::AbilitySource::Permanent(permanent)),
                 &[],
                 crate::Resolution::default(),
                 db,

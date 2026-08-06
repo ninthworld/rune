@@ -757,7 +757,9 @@ pub enum Effect {
         attacking: bool,
     },
     /// **You may** apply `effects`, and — when `cost` is present — only if you pay it:
-    /// `you may draw a card`, and `you may pay {1}. If you do, draw a card`.
+    /// `you may draw a card`, `you may pay {1}. If you do, draw a card`, and `you may
+    /// sacrifice another creature. If you do, this creature gets +2/+2 until end of
+    /// turn`.
     ///
     /// The first effect in the IR whose mid-resolution question is a *decision* rather
     /// than a selection (CR 608.2). It suspends resolution and asks the ability's
@@ -767,8 +769,9 @@ pub enum Effect {
     ///
     /// Declining is not a fizzle: it skips these effects and nothing else, so an
     /// optional effect sitting between two mandatory ones leaves both of them intact.
-    /// A cost the controller could not pay under any tapping is never posed at all —
-    /// it is declined outright — and either way the log records that the question was
+    /// A cost the controller could not pay — no mana any tapping could make, no
+    /// permanent of the named class, not enough cards in hand — is never posed at all,
+    /// it is declined outright, and either way the log records that the question was
     /// asked and answered, so a declined effect never reads as one that was silently
     /// dropped.
     ///
@@ -787,17 +790,18 @@ pub enum Effect {
     /// ordinary CR 608.2b path: an object whose every target is illegal never resolves
     /// and the question is never asked at all.
     May {
-        /// The mana cost the controller pays to apply the effects, in the same
-        /// `{...}` notation an activation cost is written in. Absent for a plain
-        /// `you may …`, which asks only for a yes.
+        /// What accepting charges, or absent for a plain `you may …` that asks only for
+        /// a yes.
         ///
-        /// Paid from the controller's mana pool through the one
-        /// [`ManaPool::pay`](crate::ManaPool::pay) seam a cast and an activation use,
-        /// so the three can never disagree about what a cost string means. A player
-        /// asked to pay here may still activate mana abilities to do it (CR 605.3a),
-        /// which is the one thing that stays legal while a choice is owed.
+        /// The [`OptionalCost`] vocabulary: mana, a permanent the chooser picks, or a
+        /// discard. A mana cost is charged from the pool as the answer is given; the
+        /// other two are *questions of their own*, posed on acceptance and answered
+        /// before the wrapped effects run, so the payment always precedes what it bought.
+        /// Whichever it is, a cost the controller could not pay is never posed at all
+        /// (see below) and a player asked to pay may still activate mana abilities
+        /// (CR 605.3a) — the one thing that stays legal while a choice is owed.
         #[serde(default)]
-        cost: Option<String>,
+        cost: Option<OptionalCost>,
         /// What happens on acceptance, applied in order and in the surrounding
         /// object's frame — the same controller and the same source permanent the
         /// enclosing effects resolve in.

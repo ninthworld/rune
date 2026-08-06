@@ -32,8 +32,8 @@
     "blocker": "a permanent continuously takes generic mana off, or puts it on, the cost of a class of spell its own controller casts (CR 601.2f), read wherever a cast's cost is read; nothing reaches a spell another player casts, no modification applies to an activated ability's cost, and a coloured or colourless requirement is never changed"
   },
   {
-    "name": "Costs paid by exiling from anywhere but a graveyard, or by choosing to pay at all",
-    "blocker": "a cast and an activation each carry the sacrifices, discards, and graveyard exiles their cost names on the action — a fixed number of permanents or any number of them, and always the payer's own — but a cost exiles only out of the payer's own graveyard, never from a hand, a library, or the battlefield, and every non-mana cost is mandatory rather than an option the player may decline"
+    "name": "Costs paid by exiling from anywhere but a graveyard",
+    "blocker": "a cast and an activation each carry the sacrifices, discards, and graveyard exiles their cost names on the action — a fixed number of permanents or any number of them, and always the payer's own — and an optional effect asks for its own mid-resolution, from the same vocabulary minus every component that names the source; a cost exiles only out of the payer's own graveyard, never from a hand, a library, or the battlefield"
   },
   {
     "name": "Damage prevention beyond a blanket shield for the turn",
@@ -100,8 +100,8 @@
     "blocker": "an optional effect declares the target group of the one effect it wraps, but a conditional's branches, a wrapper over two targeting effects, and a \"when you do\" aimed after a cost is paid have no group one announcement could fill"
   },
   {
-    "name": "Optional costs paid with anything but mana",
-    "blocker": "an optional effect's cost is a mana payment; sacrificing, discarding, or exiling to pay is unwritable"
+    "name": "Optional costs paid by spending the asking permanent itself",
+    "blocker": "an optional effect's cost is mana, a permanent the chooser picks, or a discard; a cost that names the source — tapping it, sacrificing it, moving its loyalty, removing counters from it — is unwritable, because the question is answered from a queue that carries no source"
   },
   {
     "name": "Protection",

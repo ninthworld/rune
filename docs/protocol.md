@@ -1010,7 +1010,11 @@ distinguish it from a card selection:
   abilities** (CR 605.3a: a player asked to pay during resolution may make mana), marked
   as usual with `mana_ability`. Activating one answers nothing — the question stays owed —
   but `accept` appears once the pool can pay. No other action, and no other seat, becomes
-  legal.
+  legal. A cost paid by **sacrificing or discarding** (issue #744) does not widen that:
+  its `accept` is labelled with the payment as the card writes it ("Sacrifice another
+  creature"), and accepting owes the payment as the *next* `player_choice` — the ordinary
+  `select_from_zone` over the battlefield or the hand — which is answered before the
+  effects the payment bought happen. Nothing else is legal while that one is owed.
 - Nothing is revealed: a yes-or-no is about an effect, not a zone, so `revealed` stays
   empty.
 

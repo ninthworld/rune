@@ -98,6 +98,12 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             // through, and only because a mana ability uses no stack and hands nobody
             // priority. Anything else would let the game move under a question that is
             // still owed.
+            //
+            // A cost paid by sacrificing or discarding does not widen that by a single
+            // action: it is asked of a player who may still be holding mana abilities,
+            // so the permission is the same one, and what the cost is paid *with* is
+            // asked afterwards as its own question, where nothing at all is legal but
+            // the answer.
             if pending
                 .question
                 .confirm()

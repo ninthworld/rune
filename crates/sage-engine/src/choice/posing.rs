@@ -8,30 +8,6 @@
 
 use super::*;
 
-/// Whether `player` could pay `cost` if they tapped everything they have — their pool
-/// plus every point of mana their untapped sources could still add.
-///
-/// This, not the current pool, is what decides whether an optional cost is *posed*: a
-/// player with an empty pool and two untapped Forests can pay `{1}`, and auto-declining
-/// them would take away a decision the rules give them. The estimate is the same
-/// deliberate over-estimate [`crate::priority_has_no_meaningful_action`] makes — every
-/// mana ability of every untapped source, as though one permanent could be tapped for
-/// all of them — and errs in the same safe direction: it can only ever *offer* a choice
-/// that turns out unpayable, which the chooser simply declines, never withhold one they
-/// could have taken.
-fn cost_could_be_paid(
-    state: &GameState,
-    player: PlayerId,
-    cost: Option<&str>,
-    db: &CardDatabase,
-) -> bool {
-    let Some(cost) = cost else {
-        return true;
-    };
-    crate::actions::potential_mana_pool(state, player, db)
-        .can_pay(&crate::mana::parse_mana_cost(cost))
-}
-
 /// Pose `choices`, or settle the ones that have no legal answer outright.
 ///
 /// Returns whether anything was actually queued — i.e. whether the caller must suspend.
@@ -68,7 +44,7 @@ pub(crate) fn pose_choices(
                 }
             }
             ChoiceQuestion::Confirm(request) => {
-                if !cost_could_be_paid(state, chooser, request.cost.as_deref(), db) {
+                if !cost_could_be_paid(state, chooser, request, db) {
                     state.record_event(GameEvent::OptionalDeclined { player: chooser });
                     continue;
                 }
@@ -129,6 +105,12 @@ pub(crate) fn attach_resume(state: &mut GameState, resume: Resume) {
 /// than a seat derived here — and an optional effect's chosen target is carried into
 /// the question it poses.
 ///
+/// `source` is what the suspended ability came from (CR 113.3), and both things read off
+/// it are resolved **here, as the question is posed**, for the same reason: the source
+/// may be gone by the time the answer is given. Its printed card answers a
+/// `same_name_as_source` filter, and the permanent itself is the `another` a sacrifice
+/// cost excludes.
+///
 /// `resolution` and `db` are here for the verbs whose *size* is derived (CR 608.2): a
 /// search whose size is a [`DerivedAmount`](crate::DerivedAmount), the number of cards to
 /// discard, and the number of permanents to sacrifice are all read as the question is
@@ -139,11 +121,22 @@ pub(crate) fn choices_for_effect(
     state: &GameState,
     effect: &Effect,
     controller: PlayerId,
-    source_card: Option<CardId>,
+    source: Option<crate::stack::AbilitySource>,
     targets: &[Target],
     resolution: crate::resolve::Resolution,
     db: &crate::card::CardDatabase,
 ) -> Option<Vec<(PlayerId, ChoiceQuestion)>> {
+    let source_permanent = source.and_then(crate::stack::AbilitySource::permanent);
+    // The printed card a `same_name_as_source` filter compares against. A token has no
+    // card to compare against, and no card in a library or a hand can share an identity
+    // it has not got (CR 111), so it simply matches nothing.
+    let source_card = source_permanent.and_then(|id| {
+        state
+            .battlefield
+            .iter()
+            .find(|perm| perm.id == id)
+            .and_then(|perm| perm.printed.card())
+    });
     let target = targets.first().copied();
     match effect {
         Effect::Discard {
@@ -237,6 +230,11 @@ pub(crate) fn choices_for_effect(
                             ChoiceQuestion::Permanents(PermanentRequest {
                                 subject,
                                 card_type: *card_type,
+                                // A mandatory sacrifice names a card type and never a
+                                // subtype, and it excludes nothing: "sacrifice half the
+                                // creatures you control" counts the source among them.
+                                subtype: None,
+                                except: None,
                                 min: count,
                                 max: count,
                                 outcome: PermanentOutcome::Sacrifice,
@@ -353,6 +351,7 @@ pub(crate) fn choices_for_effect(
             controller,
             ChoiceQuestion::Confirm(ConfirmRequest {
                 cost: cost.clone(),
+                source: source_permanent,
                 effects: effects.clone(),
                 targets: targets.to_vec(),
             }),

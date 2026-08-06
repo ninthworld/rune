@@ -591,17 +591,6 @@ pub(crate) fn apply_effects_with_targets(
     resolution: Resolution,
     db: &CardDatabase,
 ) -> bool {
-    // The printed card a `same_name_as_source` filter compares against, resolved now
-    // because the source permanent may be gone by the time the choice is answered.
-    // A token has no card to compare against, and no card in a library or hand can
-    // share an identity it has not got (CR 111), so it simply matches nothing.
-    let source_card = source.and_then(AbilitySource::permanent).and_then(|id| {
-        state
-            .battlefield
-            .iter()
-            .find(|perm| perm.id == id)
-            .and_then(|perm| perm.printed.card())
-    });
     // A work queue rather than a walk over a fixed list, because a conditional's chosen
     // branch is *spliced in front of what is left*: the branch then travels through the
     // same targeting, choice-posing, and suspension machinery every other effect does,
@@ -660,13 +649,7 @@ pub(crate) fn apply_effects_with_targets(
         // outright inside `pose_choices`, so an empty hand, an empty library, or a board
         // with nothing of the named class never suspends anything.
         if let Some(choices) = crate::choice::choices_for_effect(
-            state,
-            &effect,
-            controller,
-            source_card,
-            &taken,
-            resolution,
-            db,
+            state, &effect, controller, source, &taken, resolution, db,
         ) {
             if crate::choice::pose_choices(state, choices, db) {
                 crate::choice::attach_resume(

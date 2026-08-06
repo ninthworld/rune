@@ -244,6 +244,14 @@ pub(crate) fn apply_answer_replacement(state: &mut GameState, index: u8, db: &Ca
 /// aimed at it. The wrapped effect re-checks it on the way through (CR 608.2c), so a
 /// target that has become illegal is skipped rather than applied.
 ///
+/// A cost whose payment the chooser **picks** — a sacrifice, a discard — is not paid
+/// here either: accepting poses that selection as an ordinary choice and hangs the whole
+/// remainder, spliced effects and all, behind it. Three things follow, and they are the
+/// reason the payment is a question rather than a field on the answer: the cost is paid
+/// before the effects it bought, a permanent sacrificed to it dies down the one
+/// leaves-battlefield seam every other sacrifice uses, and the player picks *which* one
+/// with the same action a mandatory sacrifice is answered by.
+///
 /// Paying happens in [`take_confirmed_effects`], atomically with the acceptance.
 /// Legality — including whether the cost is payable at all — has already been
 /// established by [`crate::apply_action`]'s gate. An answer with no yes-or-no pending is
@@ -256,17 +264,30 @@ pub(crate) fn apply_answer_confirm(state: &mut GameState, accept: bool, db: &Car
     let ChoiceQuestion::Confirm(request) = &answered.question else {
         return;
     };
-    let taken = take_confirmed_effects(state, answered.chooser, request, accept);
+    let taken = take_confirmed_effects(state, answered.chooser, request, accept, db);
     // A confirmation is the only choice its effect poses, so it always carries the
     // remainder; without one there is nothing left to resolve and nothing to splice on.
-    if let Some(mut resume) = answered.resume {
-        if let Some(mut effects) = taken {
-            effects.append(&mut resume.effects);
-            resume.effects = effects;
-            let mut targets = request.targets.clone();
-            targets.append(&mut resume.targets);
-            resume.targets = targets;
-        }
-        resume_after_choice(state, resume, db);
+    let Some(mut resume) = answered.resume else {
+        return;
+    };
+    let mut owed = None;
+    if let Some(accepted) = taken {
+        let mut effects = accepted.effects;
+        effects.append(&mut resume.effects);
+        resume.effects = effects;
+        let mut targets = request.targets.clone();
+        targets.append(&mut resume.targets);
+        resume.targets = targets;
+        owed = accepted.payment;
     }
+    // The payment was established as answerable before the acceptance was recorded, so
+    // `pose_choices` queues it; the `else` is the honest handling of a question that
+    // turned out to have no answer after all, and resolves rather than stalling.
+    if let Some(payment) = owed {
+        if crate::choice::pose_choices(state, vec![payment], db) {
+            crate::choice::attach_resume(state, resume);
+            return;
+        }
+    }
+    resume_after_choice(state, resume, db);
 }

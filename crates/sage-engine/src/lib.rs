@@ -51,9 +51,10 @@ pub use ability::{
     BottomOrder, CardFilter, Chooser, Condition, Cost, CostModification, CountScope, DamageSubject,
     DerivedAmount, DestroyAffects, Effect, FoundDestination, GraveyardCardClass, GraveyardCount,
     GraveyardScope, HalvedTotal, ManaRestriction, MassAffects, ObservedActivation,
-    ObservedPermanent, ObservedSpell, PermanentAmount, PermanentCount, PlayerModification,
-    PlayerRef, SacrificeCount, StaticAffects, StaticCondition, StaticModification, Target,
-    TargetCount, TargetGroup, TargetSpec, TriggerCondition, TriggerStep, TurnScope,
+    ObservedPermanent, ObservedSpell, OptionalCost, PermanentAmount, PermanentCount,
+    PlayerModification, PlayerRef, SacrificeCount, StaticAffects, StaticCondition,
+    StaticModification, Target, TargetCount, TargetGroup, TargetSpec, TriggerCondition,
+    TriggerStep, TurnScope,
 };
 pub use actions::{
     activation_discard_cost, activation_exile_cost, activation_sacrifice_cost,

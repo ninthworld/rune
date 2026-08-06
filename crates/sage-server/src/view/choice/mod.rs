@@ -57,7 +57,7 @@ pub(crate) fn player_choice_prompts(state: &GameState, db: &CardDatabase) -> Vec
     };
     match &pending.question {
         ChoiceQuestion::Cards(request) => vec![card_choice_prompt(state, db, request)],
-        ChoiceQuestion::Confirm(request) => vec![confirm_prompt(state, request)],
+        ChoiceQuestion::Confirm(request) => vec![confirm_prompt(state, db, request)],
         ChoiceQuestion::Color(request) => vec![color_prompt(request, db)],
         ChoiceQuestion::Replacement(_) => vec![replacement_prompt(state, db)],
         ChoiceQuestion::Order(request) => vec![card_order_prompt(state, request)],
@@ -105,17 +105,17 @@ fn permanent_choice_prompt(
 fn permanent_choice_question(request: &PermanentRequest, max: u32) -> String {
     // The class the card names, in the same word its rules text uses, pluralized where
     // English wants it — nothing here invents a noun the printed sentence does not have.
-    let singular = match request.card_type {
-        Some(card_type) => crate::rules_text::card_type_word(card_type),
-        None => "permanent",
-    };
+    let singular = crate::rules_text::sacrifice_noun(request.card_type, request.subtype.as_deref());
     let noun = if max == 1 {
-        singular.to_string()
+        singular
     } else {
         format!("{singular}s")
     };
-    match request.outcome {
-        PermanentOutcome::Sacrifice => format!("Sacrifice {max} {noun}"),
+    match (request.outcome, request.except) {
+        // A question that excludes the asking permanent is the `another` of a cost, and
+        // reads as the card writes it rather than as a count of one.
+        (PermanentOutcome::Sacrifice, Some(_)) if max == 1 => format!("Sacrifice another {noun}"),
+        (PermanentOutcome::Sacrifice, _) => format!("Sacrifice {max} {noun}"),
     }
 }
 
@@ -315,13 +315,17 @@ fn color_mana_count(amount: u8) -> String {
 /// honest rendering of the position they are in: they may still tap lands (CR 605.3a,
 /// offered alongside this action), and the acceptance reappears the moment the mana is
 /// there.
-fn confirm_prompt(state: &GameState, request: &ConfirmRequest) -> Prompt {
+fn confirm_prompt(state: &GameState, db: &CardDatabase, request: &ConfirmRequest) -> Prompt {
     let mut options = Vec::new();
-    if confirm_is_payable(state) {
+    if confirm_is_payable(state, db) {
         options.push(PromptOption {
             id: ACCEPT_OPTION.to_string(),
+            // The payment in the words the card writes it in — "Pay {1}", "Sacrifice
+            // another creature" — so the button and the printed sentence are one phrase.
             label: match &request.cost {
-                Some(cost) => format!("Pay {cost}"),
+                Some(cost) => {
+                    crate::rules_text::sentence_case(&crate::rules_text::optional_cost_phrase(cost))
+                }
                 None => "Yes".to_string(),
             },
             requires: Vec::new(),
@@ -334,7 +338,7 @@ fn confirm_prompt(state: &GameState, request: &ConfirmRequest) -> Prompt {
     });
     Prompt::Option {
         slot: CHOICE_SLOT.to_string(),
-        prompt: optional_effect_question(request.cost.as_deref(), &request.effects),
+        prompt: optional_effect_question(request.cost.as_ref(), &request.effects),
         options,
     }
 }
@@ -413,7 +417,7 @@ pub(crate) fn player_choice_label(state: &GameState, db: &CardDatabase) -> Strin
             choice_prompt_text(state, request, min, max)
         }
         Some(ChoiceQuestion::Confirm(request)) => {
-            optional_effect_question(request.cost.as_deref(), &request.effects)
+            optional_effect_question(request.cost.as_ref(), &request.effects)
         }
         Some(ChoiceQuestion::Color(request)) => color_question(request, db),
         Some(ChoiceQuestion::Replacement(_)) => replacement_question(),
