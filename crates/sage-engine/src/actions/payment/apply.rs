@@ -78,15 +78,22 @@ pub(crate) fn payment_covers_cast(
     state: &GameState,
     db: &CardDatabase,
     card: CardInstance,
+    x: Option<u32>,
     payment: &[CostPayment],
 ) -> bool {
-    let Some((cost, purpose_subtypes)) = cast_cost(state, db, card) else {
+    let Some((cost, purpose_subtypes)) = cast_cost(state, db, card, x) else {
         return false;
     };
     if !discards_pay_the_additional_cost(state, db, card, &discards_of(payment)) {
         return false;
     }
     if !sacrifices_pay_the_additional_cost(state, db, card, &sacrifices_of(payment)) {
+        return false;
+    }
+    // No additional *cast* cost exiles anything — that shape exists only on an activation
+    // (CR 601.2b) — so an exile entry here pays nothing and is refused rather than
+    // dropped, for the reason a mana entry on an activation is.
+    if !super::super::definition::exiles_of(payment).is_empty() {
         return false;
     }
     let mut scratch = state.clone();
@@ -140,8 +147,8 @@ fn discards_pay_the_additional_cost(
 ///
 /// The permanent counterpart of [`discards_pay_the_additional_cost`], exact in the same
 /// two directions: a card with no sacrifice cost accepts no sacrifices at all, and one
-/// with a sacrifice cost is paid by exactly one permanent — never fewer, and never more,
-/// since over-paying a cost is not something a player may choose to do.
+/// with a sacrifice cost is paid by exactly that many permanents — never fewer, and
+/// never more, since over-paying a cost is not something a player may choose to do.
 ///
 /// Each named permanent must be **on the battlefield, controlled by the caster**
 /// (CR 701.17b), of the type the cost names, and named only once. Unlike the discard
@@ -153,27 +160,19 @@ fn sacrifices_pay_the_additional_cost(
     card: CardInstance,
     sacrifices: &[crate::id::PermanentId],
 ) -> bool {
-    let owed = db
-        .card(card.card)
-        .and_then(|data| data.additional_cost)
-        .and_then(crate::AdditionalCost::sacrifice_type);
-    let Some(card_type) = owed else {
+    let owed = db.card(card.card).and_then(|data| data.additional_cost);
+    let Some((card_type, count)) = owed.and_then(|cost| {
+        cost.sacrifice_type()
+            .zip(Some(cost.sacrifice_count().unwrap_or_default()))
+    }) else {
         return sacrifices.is_empty();
     };
-    if sacrifices.len() != 1 {
-        return false;
-    }
-    sacrifices.iter().enumerate().all(|(i, &named)| {
-        !sacrifices[..i].contains(&named)
-            && state.battlefield.iter().any(|perm| {
-                perm.id == named
-                    && crate::characteristics::controller_of(state, perm) == state.priority
-                    && perm
-                        .printed
-                        .face(db)
-                        .is_some_and(|face| face.has_type(card_type))
-            })
-    })
+    let candidates = state.sacrifice_candidates_for_cast(state.priority, card_type, db);
+    count.is_paid_by(sacrifices.len())
+        && sacrifices
+            .iter()
+            .enumerate()
+            .all(|(i, named)| !sacrifices[..i].contains(named) && candidates.contains(named))
 }
 
 #[cfg(test)]
@@ -215,10 +214,13 @@ mod tests {
             attacking: None,
             blocking: Vec::new(),
             skips_untap: false,
+            dealt_damage: false,
             damage: 0,
             counters: Default::default(),
             attached_to: None,
             chosen_color: None,
+            named_card: None,
+            copied: None,
         });
         id
     }
@@ -254,6 +256,8 @@ mod tests {
         let (state, database, lands, spell) = board(2);
         let cast = Action::CastSpell {
             card: spell,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: tap_all(&lands),
         };
@@ -279,6 +283,8 @@ mod tests {
         // One Forest against {1}{G}: short by one.
         let short = Action::CastSpell {
             card: spell,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: vec![CostPayment::Mana(ManaSource {
                 permanent: lands[0],
@@ -308,6 +314,8 @@ mod tests {
         let (state, database, lands, spell) = board(2);
         let doubled = Action::CastSpell {
             card: spell,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: vec![
                 CostPayment::Mana(ManaSource {
@@ -354,6 +362,8 @@ mod tests {
             &state,
             &Action::CastSpell {
                 card: spell,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment: indices
                     .into_iter()
@@ -391,6 +401,8 @@ mod tests {
             &state,
             &Action::CastSpell {
                 card: spell,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment: tap_all(&lands),
             },
@@ -418,6 +430,8 @@ mod tests {
             &state,
             &Action::CastSpell {
                 card: spell,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment: Vec::new(),
             },
@@ -436,6 +450,8 @@ mod tests {
         assert!(
             valid_actions(&state, &database).contains(&Action::CastSpell {
                 card: spell,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment: Vec::new(),
             }),
@@ -452,6 +468,8 @@ mod tests {
             &state,
             &Action::CastSpell {
                 card: spell,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment: Vec::new(),
             },

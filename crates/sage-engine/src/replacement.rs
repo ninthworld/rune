@@ -1,4 +1,5 @@
-//! Replacement effects (CR 614): modifying an event *before* it happens.
+//! Replacement and prevention effects (CR 614, CR 615): modifying an event *before* it
+//! happens.
 //!
 //! Everything else in the engine reacts to an event after the fact — a trigger is
 //! collected by diffing the state a change produced, a state-based action tidies up a
@@ -42,13 +43,43 @@
 //! modeled; nothing outside these two produces a replacement effect, and the
 //! compatibility report's exclusion says so.
 //!
+//! ## The second event: damage (CR 615)
+//!
+//! [`PendingDamage`] is damage described before it lands — who or what would take it,
+//! how much, and whether it is **combat** damage — and it is consulted by the same kind
+//! of layer at the one seam damage is dealt
+//! ([`GameState::deal_damage`](crate::GameState)). Prevention is a replacement effect
+//! (CR 615.1): the damage that is prevented is never dealt at all, so it is never marked
+//! on a permanent (CR 120.3d), never feeds the lethal-damage state-based action
+//! (CR 704.5g), never becomes life loss (CR 120.3a), and gains a lifelink source nothing
+//! (CR 702.15e).
+//!
+//! Two things make it a smaller layer than the entry event rather than a copy of it, and
+//! both are facts about the shields a card can print today rather than shortcuts:
+//!
+//! - **A shield is not one-shot.** `Prevent all combat damage that would be dealt this
+//!   turn` covers every damage event for the rest of the turn, so it lives in
+//!   [`GameState::prevention`](crate::GameState) — a duration, expiring in the cleanup
+//!   step beside the pump it is authored like (CR 514.2) — rather than in the one-shot
+//!   [`GameState::replacements`](crate::GameState) list, which a single application
+//!   spends.
+//! - **No one is asked to order them.** Every shield modeled prevents *all* of the
+//!   damage it applies to, so two applicable shields produce the same event in either
+//!   order and the CR 616.1 question has no answer that could differ. A shield that
+//!   prevents only part of the damage is what would make the order observable, and it
+//!   would ask through the same queue an entry's ordering does.
+//!
 //! ## What is not here
 //!
-//! Only the battlefield-**entry** event is replaceable. A permanent *leaving* the
-//! battlefield, damage being dealt, a card being drawn, and life being gained are all
-//! events a printed card can replace, and none of them routes through this layer yet.
-//! Adding one is a variant of the event value plus its seam — the collector, the
-//! ordering choice, and the never-twice rule are already shared.
+//! Two events are replaceable: a permanent **entering** the battlefield, and **damage**
+//! being dealt. A permanent *leaving* the battlefield, a card being drawn, and life
+//! being gained are all events a printed card can replace, and none of them routes
+//! through this layer yet. Adding one is a variant of the event value plus its seam —
+//! the collector, the ordering choice, and the never-twice rule are already shared.
+//!
+//! Damage that **can't be prevented** is not here either: it is a fact about the damage
+//! event that the shield would have to read, and the one M19 card that prints it needs
+//! `X` before it needs prevention.
 //!
 //! [`Ability::EntersChoosingColor`] is deliberately *not* one of the replacements
 //! collected here even though CR 614.12 calls it one. It is not a modification anybody
@@ -59,6 +90,7 @@
 use serde::Deserialize;
 
 use crate::ability::Ability;
+use crate::card::Face;
 use crate::card_type::CardType;
 use crate::combat::AttackTarget;
 use crate::id::{CardInstance, PermanentId, PlayerId};
@@ -104,21 +136,25 @@ impl EnteringObject {
         matches!(self, Self::Token(_))
     }
 
-    /// The printed characteristics of whatever is entering, borrowed from whichever
-    /// source has them. `None` only for a card handle the database does not know.
+    /// The printed characteristics of whatever is entering, on the face it is entering
+    /// with. `None` for a card handle the database does not know, and for a face the
+    /// card has not got.
     #[must_use]
-    pub fn face<'a>(&'a self, db: &'a CardDatabase) -> Option<PrintedFace<'a>> {
+    pub fn face<'a>(&'a self, db: &'a CardDatabase, face: Face) -> Option<PrintedFace<'a>> {
         match self {
-            Self::Card(card) => db.card(card.card).map(PrintedFace::Card),
+            Self::Card(card) => db.card(card.card).and_then(|data| data.face(face)),
             Self::Token(token) => Some(PrintedFace::Token(token)),
         }
     }
 
-    /// What the permanent's [`Printed`] will be once it arrives.
+    /// What the permanent's [`Printed`] will be once it arrives, with `face` up.
     #[must_use]
-    pub fn printed(&self) -> Printed {
+    pub fn printed(&self, face: Face) -> Printed {
         match self {
-            Self::Card(card) => Printed::Card(card.card),
+            Self::Card(card) => Printed::Card {
+                card: card.card,
+                face,
+            },
             Self::Token(token) => Printed::Token(token.clone()),
         }
     }
@@ -140,6 +176,18 @@ impl EnteringObject {
 pub struct PendingEntry {
     /// What is entering.
     pub object: EnteringObject,
+    /// **Which face it arrives with** (CR 712.4a). [`Face::Front`] for every ordinary
+    /// arrival — a card put onto the battlefield by any road is front-face up, because a
+    /// card outside the battlefield has only its front face's characteristics.
+    ///
+    /// The one road that says otherwise is an effect that returns a card to the
+    /// battlefield *transformed*
+    /// ([`Effect::ExileSelfAndReturnTransformed`](crate::Effect)): the permanent that
+    /// arrives is a new object (CR 400.7), and this is where it is told which side is up
+    /// before anything — a replacement, an entry trigger, a state-based action — has
+    /// looked at it. A planeswalker back face therefore enters with its own starting
+    /// loyalty rather than the front face's absent one.
+    pub face: Face,
     /// The player it enters under — and, being the affected object's controller, the
     /// one who orders the applicable replacements (CR 616.1).
     pub controller: PlayerId,
@@ -169,6 +217,33 @@ pub struct PendingEntry {
     /// twice. This is what terminates the loop: a modification that leaves the entry
     /// still matching the effect that made it would otherwise be applied forever.
     pub applied: Vec<ReplacementOption>,
+    /// The colour the entering permanent's controller named, for a card that asks
+    /// (CR 614.12, [`Ability::EntersChoosingColor`](crate::Ability)) — `None` until they
+    /// have.
+    ///
+    /// An **answer slot on the event**, not a modification to it: the entry seam refuses
+    /// to finish while a card that asks has an empty one, so the permanent is never on
+    /// the battlefield without its colour, and answering fills the slot and hands the
+    /// same event back. That is what makes the two questions a card could ask compose
+    /// with each other and with the replacement loop, with no branch anywhere saying
+    /// which came first — and what makes the whole thing terminate, because a filled slot
+    /// is never emptied.
+    pub chosen_color: Option<crate::mana::Color>,
+    /// The card the entering permanent's controller named, for a card that asks
+    /// (CR 614.12, [`Ability::EntersNamingCard`](crate::Ability)) — `None` until they
+    /// have. [`Self::chosen_color`]'s sibling in every respect, including why it is here.
+    pub named_card: Option<crate::id::CardId>,
+    /// The **copy decision** its controller made as it entered (CR 707.5 / CR 614.12), for
+    /// a card that declares [`Ability::EntersAsCopy`](crate::Ability).
+    ///
+    /// Three states rather than two, which is why it is nested: `None` is *not yet asked*,
+    /// `Some(None)` is *asked and declined* (or answered with nothing on an empty board),
+    /// and `Some(Some(values))` is the snapshot taken (CR 707.2b). A decline has to be
+    /// distinguishable from an unasked question, or re-entering the entry seam would pose
+    /// the same `you may` again for ever.
+    ///
+    /// [`Self::chosen_color`]'s sibling in every other respect, including why it is here.
+    pub copied: Option<Option<crate::copy::CopiedValues>>,
 }
 
 /// One replacement effect that could apply to an event, named by where it comes from.
@@ -281,7 +356,7 @@ impl EnteringFilter {
             // not on the battlefield has no computed characteristics to read anyway.
             Some(wanted) => entry
                 .object
-                .face(db)
+                .face(db, entry.face)
                 .is_some_and(|face| face.has_type(wanted)),
             None => true,
         }
@@ -317,9 +392,9 @@ fn is_entry_self_replacement(ability: &Ability) -> bool {
 /// **not** take the state: the object is not on the battlefield and carries no id yet,
 /// so no continuous effect can be keyed to it and the CR 613 layer-6 gate that accessor
 /// applies is inert here by construction.
-fn entering_abilities(db: &CardDatabase, object: &EnteringObject) -> Vec<Ability> {
+fn entering_abilities(db: &CardDatabase, object: &EnteringObject, face: Face) -> Vec<Ability> {
     match object {
-        EnteringObject::Card(card) => crate::card::abilities_of(db, card.card),
+        EnteringObject::Card(card) => crate::card::abilities_of_face(db, card.card, face),
         EnteringObject::Token(token) => token.abilities.clone(),
     }
 }
@@ -344,7 +419,10 @@ pub(crate) fn applicable_to_entry(
     entry: &PendingEntry,
 ) -> Vec<ReplacementOption> {
     let mut options = Vec::new();
-    for (index, ability) in entering_abilities(db, &entry.object).iter().enumerate() {
+    for (index, ability) in entering_abilities(db, &entry.object, entry.face)
+        .iter()
+        .enumerate()
+    {
         let option = ReplacementOption::SelfReplacement(index);
         if is_entry_self_replacement(ability) && !entry.applied.contains(&option) {
             options.push(option);
@@ -379,7 +457,7 @@ pub fn pending_replacement_options(
     else {
         return Vec::new();
     };
-    let abilities = entering_abilities(db, &request.entry.object);
+    let abilities = entering_abilities(db, &request.entry.object, request.entry.face);
     applicable_to_entry(state, db, &request.entry)
         .into_iter()
         .filter_map(|option| match option {
@@ -423,7 +501,9 @@ pub(crate) fn apply_to_entry(
     entry.applied.push(option);
     match option {
         ReplacementOption::SelfReplacement(index) => {
-            let ability = entering_abilities(db, &entry.object).into_iter().nth(index);
+            let ability = entering_abilities(db, &entry.object, entry.face)
+                .into_iter()
+                .nth(index);
             match ability {
                 Some(Ability::EntersTapped) => entry.tapped = true,
                 Some(Ability::EntersWithCounters { counter, count }) => {
@@ -469,5 +549,147 @@ fn exile_entering(state: &mut GameState, entry: &PendingEntry) {
         state.players.get_mut(entry.controller.0),
     ) {
         owner.exile.push(card);
+    }
+}
+
+// ----- the damage event (CR 615) ---------------------------------------------
+
+/// Who or what damage would be dealt to (CR 120.3): a player, or a permanent.
+///
+/// The recipient half of [`PendingDamage`], and deliberately not
+/// [`DamageTarget`](crate::DamageTarget): that one is the *log's* vocabulary and carries
+/// a permanent's rendered identity, which is a fact about an object that has already
+/// been dealt damage. This one names an object the damage has not reached yet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DamageRecipient {
+    /// A player, who would lose that much life (CR 120.3a).
+    Player(PlayerId),
+    /// A permanent, which would have that much damage marked on it (CR 120.3d) — or,
+    /// for a planeswalker, that much loyalty removed (CR 120.3c).
+    Permanent(PermanentId),
+}
+
+/// Damage described **before it is dealt** — the event a prevention shield is consulted
+/// about (CR 615.1), and the counterpart of [`PendingEntry`] for the second replaceable
+/// event.
+///
+/// It carries the one fact about damage that cannot be recovered from the recipient:
+/// whether it is **combat** damage (CR 510.1). A blocked creature's 3 and a burn spell's
+/// 3 are the same 3 by the time either is marked, and `Prevent all combat damage that
+/// would be dealt this turn` distinguishes exactly those two. So the caller that knows
+/// says so here, and every road funnels into the one seam that asks
+/// ([`GameState::deal_damage`](crate::GameState)).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PendingDamage {
+    /// What would take the damage.
+    pub recipient: DamageRecipient,
+    /// How much would be dealt, before any of it is prevented.
+    pub amount: u32,
+    /// Whether this is combat damage (CR 510.1) — dealt by a creature in the
+    /// combat-damage step, which includes a trampler's excess and a blocker's swing
+    /// back. Damage from a spell, an ability, or a fight (CR 701.12) is not.
+    pub combat: bool,
+    /// Whether **no prevention shield may apply** to this damage (CR 615.1) — the
+    /// `the damage can't be prevented` a spell declares about its own damage.
+    ///
+    /// A fact about the damage rather than about the shield, and carried here for
+    /// exactly the reason [`Self::combat`] is: by the time the amount is being marked,
+    /// nothing about the recipient could tell you where it came from. The resolving
+    /// object says so as it describes the event, and the one seam that consults shields
+    /// reads it.
+    ///
+    /// `false` everywhere but the handful of spells that print the clause, so a game
+    /// with none behaves byte-for-byte as it did before this field existed.
+    pub unpreventable: bool,
+}
+
+impl PendingDamage {
+    /// Non-combat damage to a player (CR 120.3a) — a burn spell, an ability, a drain.
+    #[must_use]
+    pub fn to_player(player: PlayerId, amount: u32) -> Self {
+        Self {
+            recipient: DamageRecipient::Player(player),
+            amount,
+            combat: false,
+            unpreventable: false,
+        }
+    }
+
+    /// Non-combat damage to a permanent (CR 120.3c/d) — a burn spell, an ability, or
+    /// the damage a fight deals (CR 701.12).
+    #[must_use]
+    pub fn to_permanent(permanent: PermanentId, amount: u32) -> Self {
+        Self {
+            recipient: DamageRecipient::Permanent(permanent),
+            amount,
+            combat: false,
+            unpreventable: false,
+        }
+    }
+
+    /// The same damage, dealt in the combat-damage step (CR 510.1). Written as a
+    /// modifier on the recipient rather than as a second pair of constructors, because
+    /// combat-ness is the *only* thing the two roads disagree about.
+    #[must_use]
+    pub fn in_combat(mut self) -> Self {
+        self.combat = true;
+        self
+    }
+
+    /// The same damage, declared unpreventable by the object dealing it (CR 615.1).
+    ///
+    /// Written as a modifier for [`Self::in_combat`]'s reason: it is one more thing the
+    /// caller knows and the recipient cannot be asked, and neither constructor should
+    /// grow a second pair for it.
+    #[must_use]
+    pub fn unpreventable(mut self) -> Self {
+        self.unpreventable = true;
+        self
+    }
+}
+
+/// Which damage events a prevention shield applies to.
+///
+/// The [`EnteringFilter`] of the damage event, and the same shape for the same reason:
+/// a product of independent restrictions, each defaulting to "no restriction", so an
+/// omitted filter prevents every damage event there is.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+pub struct DamageFilter {
+    /// Restrict to **combat** damage (CR 510.1) — Root Snare's `all combat damage`.
+    /// `false` covers damage from every source, combat or not.
+    #[serde(default)]
+    pub combat_only: bool,
+}
+
+impl DamageFilter {
+    /// Whether `damage` is the kind of damage event this shield prevents.
+    #[must_use]
+    pub(crate) fn matches(&self, damage: &PendingDamage) -> bool {
+        !self.combat_only || damage.combat
+    }
+}
+
+/// How much of `damage` is actually dealt once every prevention shield in force has been
+/// applied to it (CR 615.1).
+///
+/// One applicable shield is the whole answer: every shield a card can print today
+/// prevents *all* of the damage it applies to, so a second one has nothing left to
+/// prevent and the CR 616.1 ordering question — which a partial shield would make
+/// observable — has no answer that could differ. The moment a shield prevents an amount
+/// rather than everything, this becomes a fold and that question joins the choice queue.
+#[must_use]
+pub(crate) fn after_prevention(state: &GameState, damage: &PendingDamage) -> u32 {
+    // CR 615.1: damage that can't be prevented defeats every shield at once, however
+    // many there are and whatever each of them says. Checked ahead of the shields rather
+    // than inside `DamageFilter::matches`, because it is a property of the damage and not
+    // a restriction on the shield — a filter that had to know about it would be the
+    // wrong half of the sentence answering.
+    if damage.unpreventable {
+        return damage.amount;
+    }
+    if state.prevention.iter().any(|shield| shield.matches(damage)) {
+        0
+    } else {
+        damage.amount
     }
 }

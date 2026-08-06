@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "functional_id": "scapeshift",
+  "name": "Scapeshift",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{2}{G}{G}",
+  "colors": [
+    "green"
+  ],
+  "spell_effects": [
+    {
+      "kind": "sacrifice",
+      "player_ref": "controller",
+      "card_type": "land"
+    },
+    {
+      "kind": "search_library",
+      "take": 0,
+      "take_amount": {
+        "source": "sacrificed_this_way"
+      },
+      "filter": {
+        "kind": "land"
+      },
+      "destination": "battlefield_tapped"
+    }
+  ]
+}

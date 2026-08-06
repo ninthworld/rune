@@ -47,10 +47,13 @@ fn put_on_battlefield(state: &mut GameState, card: CardId) -> PermanentId {
         attacking: None,
         blocking: Vec::new(),
         skips_untap: false,
+        dealt_damage: false,
         damage: 0,
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
+        copied: None,
     });
     PermanentId(id)
 }
@@ -340,6 +343,8 @@ fn enchantment_id(db: &CardDatabase) -> CardId {
 fn cast_offered(state: &GameState, db: &CardDatabase, inst: CardInstance) -> bool {
     valid_actions(state, db).contains(&Action::CastSpell {
         card: inst,
+        mode: None,
+        x: None,
         targets: Vec::new(),
         payment: Vec::new(),
     })
@@ -373,9 +378,14 @@ fn issue_147_instant_castable_with_a_nonempty_stack_and_off_turn_cr_117_1a() {
     let sid = mid_stack.mint_id();
     let other = mid_stack.new_instance(instant_id(&db));
     mid_stack.stack.push(StackObject {
+        paid: Default::default(),
         id: StackId(sid),
         controller: PlayerId(0),
-        kind: StackObjectKind::Spell { card: other },
+        kind: StackObjectKind::Spell {
+            card: other,
+            mode: None,
+            x: None,
+        },
         targets: Vec::new(),
     });
     assert!(!mid_stack.stack.is_empty());
@@ -416,9 +426,14 @@ fn issue_147_sorcery_not_offered_off_turn_or_mid_stack_cr_304_1() {
     let sid = mid_stack.mint_id();
     let other = mid_stack.new_instance(instant_id(&db));
     mid_stack.stack.push(StackObject {
+        paid: Default::default(),
         id: StackId(sid),
         controller: PlayerId(0),
-        kind: StackObjectKind::Spell { card: other },
+        kind: StackObjectKind::Spell {
+            card: other,
+            mode: None,
+            x: None,
+        },
         targets: Vec::new(),
     });
     assert!(!cast_offered(&mid_stack, &db, sorcery));
@@ -442,9 +457,14 @@ fn issue_147_artifact_and_enchantment_cast_at_sorcery_speed_and_enter_battlefiel
         let sid = mid_stack.mint_id();
         let other = mid_stack.new_instance(instant_id(&db));
         mid_stack.stack.push(StackObject {
+            paid: Default::default(),
             id: StackId(sid),
             controller: PlayerId(0),
-            kind: StackObjectKind::Spell { card: other },
+            kind: StackObjectKind::Spell {
+                card: other,
+                mode: None,
+                x: None,
+            },
             targets: Vec::new(),
         });
         assert!(!cast_offered(&mid_stack, &db, inst));
@@ -454,6 +474,8 @@ fn issue_147_artifact_and_enchantment_cast_at_sorcery_speed_and_enter_battlefiel
             &state,
             &Action::CastSpell {
                 card: inst,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment: Vec::new(),
             },
@@ -492,6 +514,8 @@ fn issue_147_cast_instant_resolves_after_a_later_instant_lifo_cr_608_1() {
         &state,
         &Action::CastSpell {
             card: a,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -502,6 +526,8 @@ fn issue_147_cast_instant_resolves_after_a_later_instant_lifo_cr_608_1() {
         &state,
         &Action::CastSpell {
             card: b,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -594,6 +620,8 @@ fn issue_152_aura_castable_only_with_a_legal_enchant_target_cr_303_4c() {
         &db,
         &Action::CastSpell {
             card: aura,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -625,9 +653,14 @@ fn counterspell_over_a_creature_spell() -> (GameState, CardInstance, StackId) {
     let boar = state.new_instance(creature_id());
     let sid = StackId(state.mint_id());
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: sid,
         controller: PlayerId(1),
-        kind: StackObjectKind::Spell { card: boar },
+        kind: StackObjectKind::Spell {
+            card: boar,
+            mode: None,
+            x: None,
+        },
         targets: Vec::new(),
     });
     let negation = state.new_instance(counterspell_id());
@@ -647,6 +680,8 @@ fn issue_148_targeted_cast_advertised_once_with_the_spell_on_stack_as_a_candidat
 
     let cast = Action::CastSpell {
         card: negation,
+        mode: None,
+        x: None,
         targets: Vec::new(),
         payment: Vec::new(),
     };
@@ -689,6 +724,7 @@ fn issue_148_counterspell_cannot_target_an_ability_on_the_stack_cr_605_3() {
     state.step = Step::PrecombatMain;
     let sid = StackId(state.mint_id());
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: sid,
         controller: PlayerId(1),
         kind: StackObjectKind::Ability {
@@ -722,6 +758,8 @@ fn issue_148_a_cast_with_an_illegal_spell_target_is_a_no_op() {
         &state,
         &Action::CastSpell {
             card: negation,
+            mode: None,
+            x: None,
             targets: vec![Target::Spell(StackId(99_999))],
             payment: Vec::new(),
         },

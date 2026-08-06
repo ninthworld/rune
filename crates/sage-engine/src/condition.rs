@@ -26,18 +26,27 @@
 //! discipline the life-gain and cast trigger conditions already follow (ADR 0007),
 //! applied to a window this module chooses.
 
-use crate::ability::{CardFilter, Condition, CountScope, DerivedAmount, PermanentCount};
-use crate::id::PlayerId;
+use crate::ability::{
+    CardFilter, Condition, CountScope, DerivedAmount, GraveyardCount, GraveyardScope, HalvedTotal,
+    PermanentCount,
+};
+use crate::id::{PermanentId, PlayerId};
 use crate::state::{GameEvent, GameState};
 use crate::CardDatabase;
 
-/// Whether `condition` holds for an object controlled by `controller`, resolving in a
-/// window that began at log sequence `resolution_start`.
+/// Whether `condition` holds for an object controlled by `controller` whose source is the
+/// permanent `source`, resolving in a window that began at log sequence
+/// `resolution_start`.
+///
+/// `source` is `None` for every object that is not an ability of a permanent — a spell,
+/// an emblem's ability, a graveyard activation — and a condition about the source is
+/// simply false for those, the same no-op a self-referential effect gives them.
 #[must_use]
 pub(crate) fn condition_holds(
     state: &GameState,
     condition: &Condition,
     controller: PlayerId,
+    source: Option<PermanentId>,
     resolution_start: u64,
     db: &CardDatabase,
 ) -> bool {
@@ -59,7 +68,39 @@ pub(crate) fn condition_holds(
         Condition::GainedLifeThisTurn { amount } => {
             life_gained_this_turn(state, controller) >= *amount
         }
+        Condition::AttackedOrBlockedThisTurn => {
+            source.is_some_and(|id| attacked_or_blocked_this_turn(state, id))
+        }
     }
+}
+
+/// Whether the permanent `id` was named in an attacker or a blocker declaration this turn
+/// (CR 508.1 / CR 509.1).
+///
+/// Read from the recorded declarations over the turn's window, for the reason
+/// [`Condition::AttackedOrBlockedThisTurn`] gives: combat clears
+/// [`Permanent::attacking`](crate::Permanent) and
+/// [`Permanent::blocking`](crate::Permanent) at end of combat (CR 511.3), so by the end
+/// step the board no longer remembers what the declaration said and the log is the only
+/// place the fact still lives.
+///
+/// A [`PermanentId`] is minted fresh on every battlefield entry and never reused, so
+/// matching on it is exact: a creature that attacked, died, and was returned is a new
+/// object that has not attacked, which is what the printed card means.
+#[must_use]
+fn attacked_or_blocked_this_turn(state: &GameState, id: PermanentId) -> bool {
+    events_since(state, turn_start(state)).any(|event| match event {
+        GameEvent::AttackersDeclared { attackers, .. } => {
+            attackers.iter().any(|logged| logged.permanent == id)
+        }
+        // A blocker is the *first* half of each recorded pair; the second is the attacker
+        // it was assigned to, which this condition already counts through the attacker
+        // declaration that named it.
+        GameEvent::BlockersDeclared { blocks, .. } => {
+            blocks.iter().any(|(blocker, _)| blocker.permanent == id)
+        }
+        _ => false,
+    })
 }
 
 /// How many permanents `wanted` names, for an object controlled by `controller`.
@@ -146,28 +187,76 @@ fn permanents_matching<'a>(
     })
 }
 
+/// How many cards in a graveyard `wanted` names, for an object controlled by
+/// `controller`.
+///
+/// The graveyard counterpart of [`count_permanents`], and the one counter here that is
+/// *not* read once: its only caller is the characteristic-defining power of CR 604.3,
+/// which asks again on every read of the permanent (see
+/// [`Ability::DefinedPower`](crate::Ability)). It is safe to call from inside the layer
+/// system for a stronger reason than that one is — a graveyard holds cards, which have no
+/// computed characteristics to recurse through.
+#[must_use]
+pub(crate) fn count_graveyard_cards(
+    state: &GameState,
+    wanted: &GraveyardCount,
+    controller: PlayerId,
+    db: &CardDatabase,
+) -> u32 {
+    let matching = state
+        .players
+        .iter()
+        .enumerate()
+        .filter(|(seat, _)| match wanted.scope {
+            GraveyardScope::Yours => PlayerId(*seat) == controller,
+            GraveyardScope::Any => true,
+        })
+        .flat_map(|(_, player)| player.graveyard.iter())
+        .filter(|inst| card_matches(db, inst.card, &wanted.filter))
+        .count();
+    u32::try_from(matching).unwrap_or(u32::MAX)
+}
+
 /// The number a [`DerivedAmount`] names, for an object controlled by `controller`
-/// resolving in a window that began at log sequence `resolution_start`.
+/// resolving as described by `resolution` — its log window, the X it announced, and what
+/// its cost payment recorded.
 ///
 /// Taken **once**, where it is called (CR 608.2): every caller turns the answer into a
-/// fixed number — cards drawn, or a timestamped power/toughness modifier — and nothing
-/// re-reads the source afterwards.
+/// fixed number — cards drawn, damage dealt, life lost, cards to discard, or a timestamped
+/// power/toughness modifier — and nothing re-reads the source afterwards.
+///
+/// Some of the sources read the game: the board, or the events a window recorded. The two
+/// that read the [`Resolution`](crate::Resolution) itself read neither, and could not —
+/// the power the cost sacrificed was settled at announcement and its object is gone, and
+/// the count an open sacrifice settled on is a live answer no zone or log still holds.
+///
+/// **Two seats, because two different questions are asked.** Most sources are relative to
+/// the object's `controller` — `you` means the caster wherever the effect lands. A
+/// halved total ([`DerivedAmount::HalfRoundedUp`]) is relative to `subject`, the player
+/// the effect names, because the whole content of `each player loses half their life` is
+/// that each of them reads their own. An effect with no player subject passes the
+/// controller for both.
 #[must_use]
 pub(crate) fn derived_amount(
     state: &GameState,
     amount: &DerivedAmount,
     controller: PlayerId,
-    resolution_start: u64,
+    subject: PlayerId,
+    resolution: crate::resolve::Resolution,
     db: &CardDatabase,
 ) -> u32 {
     match amount {
+        // CR 601.2b: the value its controller announced, already fixed. Zero for an
+        // object that announced none — an effect asking for an X it never had should do
+        // nothing rather than guess at one.
+        DerivedAmount::AnnouncedX => resolution.announced_x.unwrap_or(0),
         DerivedAmount::LifeGainedThisTurn => life_gained_this_turn(state, controller),
         // Every card this resolution milled, whoever's library it came from — see
         // [`DerivedAmount::MilledThisWay`] for why the seat is not a field. A resolution
         // that milled nothing counts nothing, which is the zero a card that draws "for
         // each land milled this way" wants off an empty library.
         DerivedAmount::MilledThisWay { filter } => {
-            let milled = events_since(state, resolution_start)
+            let milled = events_since(state, resolution.start)
                 .filter_map(|event| match event {
                     GameEvent::CardsMilled { cards, .. } => Some(cards),
                     _ => None,
@@ -188,6 +277,58 @@ pub(crate) fn derived_amount(
                 .max()
                 .unwrap_or(0)
         }
+        // Read off what this resolution has already done, not off the board or the log
+        // (CR 701.17): a sacrificed land is in a graveyard among every other land, and
+        // only a creature's departure is an event. Zero when the sacrifice took nothing —
+        // answered with none, or never posed at all — which is what makes `Sacrifice any
+        // number of lands` a legal, blank spell on an empty board.
+        DerivedAmount::SacrificedThisWay => resolution.sacrificed,
+        // CR 608.2h last-known information, and clamped at zero because damage is never
+        // negative (CR 120.1): a creature sacrificed at −1/−1 throws nothing.
+        DerivedAmount::SacrificedCreaturePower => resolution
+            .paid
+            .sacrificed_power
+            .and_then(|power| u32::try_from(power).ok())
+            .unwrap_or(0),
+        // Half, rounded up: `(n + 1) / 2` in integer arithmetic, which is the whole of
+        // "round up each time" — 7 halves to 4, 8 halves to 4, and 0 halves to 0.
+        DerivedAmount::HalfRoundedUp { of } => {
+            let total = halved_total(state, *of, subject, db);
+            total.saturating_add(1) / 2
+        }
+    }
+}
+
+/// The number a [`HalvedTotal`] names for `subject`, **before** it is halved.
+///
+/// Split out so the rounding lives in exactly one place: every total here is a plain
+/// count of something, and which way the halving rounds is not a property of any of them.
+#[must_use]
+fn halved_total(
+    state: &GameState,
+    total: HalvedTotal,
+    subject: PlayerId,
+    db: &CardDatabase,
+) -> u32 {
+    let Some(player) = state.players.get(subject.0) else {
+        return 0;
+    };
+    match total {
+        // A negative life total has no half to lose (CR 119.1); the player is already
+        // dead to the CR 704.5a state-based action either way.
+        HalvedTotal::LifeTotal => u32::try_from(player.life).unwrap_or(0),
+        HalvedTotal::HandSize => u32::try_from(player.hand.len()).unwrap_or(u32::MAX),
+        // "The creatures they control" is the subject's own class, so it is counted
+        // through the one selector with the subject standing in as the reference seat.
+        HalvedTotal::CreaturesControlled => count_permanents(
+            state,
+            &PermanentCount {
+                card_type: Some(crate::card_type::CardType::Creature),
+                ..PermanentCount::default()
+            },
+            subject,
+            db,
+        ),
     }
 }
 
@@ -246,6 +387,9 @@ fn turn_start(state: &GameState) -> u64 {
         })
         .map_or(0, |entry| entry.sequence + 1)
 }
+
+#[cfg(test)]
+mod tests;
 
 /// Whether the printed card `card` satisfies `filter`.
 ///

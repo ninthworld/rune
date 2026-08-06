@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "functional_id": "ghostform",
+  "name": "Ghostform",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{1}{U}",
+  "colors": [
+    "blue"
+  ],
+  "spell_effects": [
+    {
+      "kind": "restrict",
+      "target": "any_creature",
+      "targets": {
+        "up_to": 2
+      },
+      "restriction": "cant_be_blocked"
+    }
+  ]
+}

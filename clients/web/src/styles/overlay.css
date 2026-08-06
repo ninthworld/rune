@@ -89,11 +89,74 @@
 }
 
 .zone-slot {
+  position: relative;
   display: block;
   padding: 3px;
   background: none;
   border: 2px solid transparent;
   border-radius: 9px;
+  cursor: default;
+}
+
+/* Where this card sits in the order being assembled (§6.7). It is the position and
+   nothing else, which is why taking a card back out renumbers the rest for free; the
+   same number is in the card's own accessible name, so the badge is never the only
+   copy of it. */
+.zone-ord {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  background: linear-gradient(180deg, #4a7cb8 0, #2e5c94 100%);
+  border: 1px solid #6d9ad4;
+  border-radius: 999px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 2px 6px rgba(0, 0, 0, 0.5);
+  color: #f2f6fa;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* the commit, and the one sentence the surface needs: which end of the order is which */
+.zone-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  padding: 9px 12px;
+  background: var(--well);
+  border-top: 1px solid var(--line-soft);
+  box-shadow: var(--well-lit);
+}
+
+.zone-note {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: #b6bcc6;
+}
+
+.zone-note b {
+  margin-left: 6px;
+  color: #8b8f98;
+  font-weight: 600;
+}
+
+.zone-foot .action-done {
+  --act-btn: #2e5c94;
+  --act-btn-line: #4a7cb8;
+  --act-btn-hover: #3a6ca8;
+  flex: none;
+}
+
+.zone-foot .action-done:disabled {
+  opacity: 0.5;
   cursor: default;
 }
 
@@ -212,6 +275,35 @@
 .peek .card {
   --s: min(calc(100cqh / 600), calc(100cqw / 430));
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.7);
+}
+
+/* the pinned card, and the one control it carries: the turn, for a card with two
+   faces (§6.7). Laid over the card's foot rather than beside it, so the drawing
+   still takes the whole of the room the scrim gives it. */
+.peek-card {
+  position: relative;
+  display: grid;
+  place-items: center;
+  cursor: default;
+}
+
+.peek-turn {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  background: var(--pane-btn);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  box-shadow: var(--lit-btn), var(--cast-btn);
+  color: #d6d8dc;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.peek-turn:hover {
+  color: #f0f2f5;
 }
 
 /* An object's own actions, at the object. The scrim takes the click that closes it and nothing

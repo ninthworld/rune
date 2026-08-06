@@ -145,6 +145,8 @@ fn on_battlefield(state: &GameState, id: PermanentId) -> bool {
 fn aimable(state: &GameState, db: &CardDatabase, card: CardInstance, victim: PermanentId) -> bool {
     let announce = Action::CastSpell {
         card,
+        mode: None,
+        x: None,
         targets: Vec::new(),
         payment: Vec::new(),
     };
@@ -273,6 +275,8 @@ fn tower_offer(tower: PermanentId) -> Action {
 fn murder_at(card: CardInstance, victim: PermanentId) -> Action {
     Action::CastSpell {
         card,
+        mode: None,
+        x: None,
         targets: vec![Target::Permanent(victim)],
         payment: Vec::new(),
     }

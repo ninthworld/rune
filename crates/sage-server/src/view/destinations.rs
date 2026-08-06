@@ -120,9 +120,14 @@ mod tests {
         let spell = state.new_instance(fixture("walking_corpse"));
         let stack_id = StackId(state.mint_id());
         state.stack.push(sage_engine::StackObject {
+            paid: Default::default(),
             id: stack_id,
             controller: PlayerId(1),
-            kind: StackObjectKind::Spell { card: spell },
+            kind: StackObjectKind::Spell {
+                card: spell,
+                mode: None,
+                x: None,
+            },
             targets: Vec::new(),
         });
         assert_eq!(

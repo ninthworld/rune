@@ -10,12 +10,20 @@
 //! `state.rs`).
 //!
 //! This module is **slice 3 of 3** (ADR 0005 §3): it seeds current
-//! characteristics from printed values, folds `+1/+1` and `-1/-1` counters into
-//! power/toughness at CR 613 **layer 7c**, and then applies simple static P/T
-//! modifications (anthem-style "+X/+Y" effects) at that same layer **after**
-//! counters, in timestamp order. Layers 1 and 3–5 (copy, text, type, color) remain
-//! deferred behind this same function signature, so callers never change as they are
-//! filled in.
+//! characteristics from printed values, lets a characteristic-defining ability
+//! (CR 604.3) *replace* the printed power at CR 613 **layer 7a**, folds `+1/+1` and
+//! `-1/-1` counters into power/toughness at **layer 7c**, and then applies simple
+//! static P/T modifications (anthem-style "+X/+Y" effects) at that same layer
+//! **after** counters, in timestamp order. Layers 3–5 (text, type, color) remain deferred
+//! behind this same function signature, so callers never change as they are filled in.
+//!
+//! **Layer 1 — the copiable values — is where the seed comes from.** A copy effect
+//! (CR 613.2a, CR 707) does not overwrite a characteristic; it changes which printed face
+//! everything else is computed *from*, so it is one call at the top of [`characteristics`]
+//! ([`copiable_printed`](crate::copy)) and no stage of its own. That is what puts it ahead
+//! of every layer below by construction rather than by ordering, and it is why a copy's
+//! counters, damage, and control are untouched by the copying (CR 707.2: they are not
+//! copiable values).
 //!
 //! **Layer 2 — control — is [`controller_of`], not [`characteristics`].** Control is
 //! not a characteristic (CR 109.3) and has no place in the [`Characteristics`] value,
@@ -23,19 +31,31 @@
 //! timestamps, and every later layer is read against its answer. Keeping it a separate,
 //! non-recursive function is what lets the layer-6 and layer-7c selectors ask "does this
 //! permanent's controller match?" from inside the very computation they are part of.
+//!
+//! **A rule modification is in no layer at all**, and is read by its own question in
+//! [`rules_modifying`] — [`assigns_combat_damage_by`], [`attacks_as_though_no_defender`].
+//! Control is kept out of [`Characteristics`] because CR 109.3 says it is not one; these
+//! are kept out because being invisible to every other reader *is* the effect. A creature
+//! that assigns combat damage by its toughness has exactly the power it had, and a
+//! creature attacking as though it had no defender still has defender — including for the
+//! ability that granted the permission.
 mod continuous;
 mod layer_seven;
 mod layer_six;
 mod layer_two;
+mod rules_modifying;
 
 use continuous::*;
 use layer_seven::*;
-pub use layer_six::loses_all_abilities;
 use layer_six::*;
+pub(crate) use layer_six::{current_abilities, stored_abilities};
 pub use layer_two::{controller_of, controller_of_id};
+pub use rules_modifying::{assigns_combat_damage_by, attacks_as_though_no_defender};
 
 use crate::ability::{Ability, StaticAffects, StaticCondition};
-use crate::card::{abilities_of_permanent, CardDatabase, CombatRestriction, Keyword};
+use crate::card::{
+    abilities_of_permanent, stored_abilities_of_permanent, CardDatabase, CombatRestriction, Keyword,
+};
 use crate::card_type::{CardType, Supertype};
 use crate::id::{PermanentId, PlayerId};
 use crate::state::{
@@ -84,9 +104,10 @@ pub struct Characteristics {
     /// printed seed and the computed value, except that nothing modifies this one: no
     /// layer changes printed loyalty, so it is carried through unchanged.
     pub loyalty: Option<u32>,
-    /// The permanent's current ability set, unioning data-driven and scripted
-    /// sources via [`abilities_of`] — **empty** while a CR 613 layer-6 effect has it
-    /// losing all abilities ([`loses_all_abilities`]).
+    /// The permanent's current ability set at CR 613 **layer 6**: the data-driven and
+    /// scripted sources [`abilities_of`] unions, plus every ability granted to it — by an
+    /// Aura, by an Equipment, or by a spell — and minus everything a loses-all took away
+    /// before the grant's timestamp ([`current_abilities`]).
     pub abilities: Vec<Ability>,
     /// The permanent's *current* keyword abilities (CR 702): its printed
     /// [`CardData::keywords`](crate::CardData::keywords) unioned with any granted by
@@ -137,26 +158,45 @@ pub fn characteristics(
     let Some(perm) = state.battlefield.iter().find(|p| p.id == permanent) else {
         return Characteristics::default();
     };
-    let Some(face) = perm.printed.face(db) else {
+    // CR 613 layer 1 (CR 613.2a): copy effects are applied first, and they are applied by
+    // choosing a different printed seed. Everything below — the counters at 7c, the
+    // grants at 6, the anthems at 7c — then runs on the copied values, which is what
+    // makes a copied 2/2 with two `+1/+1` counters a 4/4 rather than the copying card's
+    // printed 0/0 plus two.
+    let Some(face) = crate::copy::copiable_printed(state, perm).face(db) else {
         return Characteristics::default();
     };
     // CR 613 layer 7c: `+1/+1` and `-1/-1` counters adjust power and toughness
     // by the same signed amount. They only apply to a permanent that has P/T; a
-    // permanent with no printed power/toughness (`None`) stays `None`.
+    // permanent with no printed power/toughness (`None`) stays `None`. Counters are
+    // **not** a copiable value (CR 707.2), so they are the copying permanent's own and are
+    // folded onto the copied power here, at layer 7c, well after layer 1.
     let counter_delta = pt_counter_delta(perm);
     // CR 613 layer 7c (after counters, ADR 0005 §3): static `+X/+Y` modifiers in
     // force apply in timestamp order. `is_creature` gates anthem-style selectors;
     // current type equals printed type until the type layers (1–6) land.
     let is_creature = face.has_type(CardType::Creature);
     let (static_power, static_toughness) = static_pt_delta(state, perm, is_creature, db);
+    // CR 613 layer 6, the non-keyword half: the accessor answers an empty list for a
+    // permanent that has lost all its abilities. Computed before layer 7 because 7a
+    // reads it — a defining ability that layer 6 removed does not define anything.
+    let abilities = abilities_of_permanent(state, db, perm);
+    // CR 613 layer 7a (CR 604.3): a characteristic-defining ability replaces the printed
+    // power outright, ahead of the counters and modifiers below, which then apply to
+    // *its* answer. Absent on all but a handful of cards, and then the printed seed
+    // stands.
+    let base_power = defined_power(state, perm, &abilities, db);
     Characteristics {
         supertypes: face.supertypes().to_vec(),
         types: face.types().to_vec(),
         subtypes: face.subtypes().to_vec(),
         mana_cost: face.mana_cost().to_string(),
-        power: face
-            .power()
-            .map(|p| p.saturating_add(counter_delta).saturating_add(static_power)),
+        power: face.power().map(|printed| {
+            base_power
+                .unwrap_or(printed)
+                .saturating_add(counter_delta)
+                .saturating_add(static_power)
+        }),
         toughness: face.toughness().map(|t| {
             t.saturating_add(counter_delta)
                 .saturating_add(static_toughness)
@@ -164,9 +204,7 @@ pub fn characteristics(
         // Printed starting loyalty (CR 306.5b), carried through untouched: no layer
         // modifies it, and *current* loyalty is the counter count, not this.
         loyalty: face.loyalty(),
-        // CR 613 layer 6 again, the non-keyword half: the accessor answers `None` for
-        // everything on a permanent that has lost all its abilities.
-        abilities: abilities_of_permanent(state, db, perm),
+        abilities,
         // CR 613 layer 6 (CR 613.1f): the printed keywords unioned with any granted
         // continuously. Seeded from the printed set so a granted keyword sits beside
         // the printed ones and is read the same way everywhere.

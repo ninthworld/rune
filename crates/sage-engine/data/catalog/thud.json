@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "functional_id": "thud",
+  "name": "Thud",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{R}",
+  "colors": [
+    "red"
+  ],
+  "additional_cost": {
+    "kind": "sacrifice",
+    "card_type": "creature"
+  },
+  "spell_effects": [
+    {
+      "kind": "deal_damage_by_amount",
+      "target": "any_target",
+      "amount": {
+        "source": "sacrificed_creature_power"
+      }
+    }
+  ]
+}

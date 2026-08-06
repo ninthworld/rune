@@ -24,7 +24,7 @@
  *
  * Three things are mounted here rather than per screen, because a card is a card everywhere: the
  * pip gradients every pip on the page points at, the press-to-read gesture, and the card it
- * opens.
+ * opens — which is also where a card with two faces turns over (§6.7).
  */
 import { useCallback, useState } from 'react'
 
@@ -35,7 +35,7 @@ import { Board } from './ui/game/Board'
 import { Connect } from './ui/Connect'
 import { Pregame } from './ui/pregame/Pregame'
 import { Settings } from './ui/Settings'
-import { Card } from './ui/card/Card'
+import { Peek } from './ui/card/Peek'
 import { PipDefs } from './ui/card/Pips'
 import { PeekContext } from './ui/card/peek'
 import { heldSession, useSession } from './useSession'
@@ -138,11 +138,9 @@ export function App() {
       {screen}
       {notices}
       {settings}
-      {peeked && (
-        <div className="peek" onClick={() => setPeeked(undefined)}>
-          <Card face={peeked} />
-        </div>
-      )}
+      {/* Remounted per card, so a card pinned after a two-faced one opens on the side that is
+          up rather than on whatever the last one was turned to. */}
+      {peeked && <Peek key={peeked.id} face={peeked} onClose={() => setPeeked(undefined)} />}
       <PipDefs />
     </PeekContext.Provider>
   )

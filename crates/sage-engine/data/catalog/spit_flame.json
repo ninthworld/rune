@@ -28,7 +28,10 @@
       "effects": [
         {
           "kind": "may",
-          "cost": "{R}",
+          "cost": {
+            "kind": "mana",
+            "mana": "{R}"
+          },
           "effects": [
             {
               "kind": "return_self_from_graveyard",

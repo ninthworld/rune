@@ -42,6 +42,25 @@ use std::fmt;
 /// migrated under one forcing function instead of half-loading.
 pub const SCHEMA_VERSION: u32 = 1;
 
+/// The most modes a modal card may print (CR 700.2).
+///
+/// A rules-free bound with a presentation reason, and it is stated here rather than
+/// worked around later: a mode is a numbered row in a dock band of fixed height, sized
+/// to hold three of them at the text floor (`docs/client-design.md` §6.7). A fourth is
+/// not a layout to degrade at render time — degrading would mean truncating a mode a
+/// player has to read before choosing it — so it is a card the catalog refuses. Every
+/// modal card in the catalog has two.
+///
+/// **Three is the real ceiling, not a stopgap.** No *choose one* card prints four modes:
+/// the Charm cycle is three, and the four-mode cards are the Commands, which are "choose
+/// two" of four — a different question that needs a surface of its own with a tally of
+/// what has been picked, and which will size its own band when the engine reaches it.
+pub const MAX_MODES: usize = 3;
+
+/// The fewest a modal card may print. One mode is not a choice, and a card whose single
+/// bullet was authored as a mode would pose a question with one answer.
+const MIN_MODES: usize = 2;
+
 /// The subtype that makes a card an Aura (CR 303.4), and therefore the only kind of
 /// card an `attachment` of kind `aura` may appear on.
 const AURA_SUBTYPE: &str = "Aura";
@@ -73,9 +92,11 @@ const PERMANENT_TYPES: [&str; 6] = [
 ];
 
 mod effects;
+mod face;
 mod violation;
 
 use effects::*;
+use face::{transforms_itself, validate_back_face, validate_face};
 pub use violation::*;
 
 /// Whether `slug` is a well-formed [`FunctionalId`](crate::FunctionalId): a non-empty
@@ -150,134 +171,89 @@ pub(crate) fn validate_definition(
         });
     }
 
+    // Everything a *face* must obey, asked once per face (CR 712.2) — the printed
+    // characteristics and the effects it authors. A single-faced card asks it once; a
+    // transforming double-faced card asks it of both sides, so a back face's types,
+    // loyalty, and abilities are held to exactly the rules its front's are.
+    validate_face(&functional_id, object)?;
+
+    // The card types are needed once more below, for the one rule that is about the
+    // *card* rather than about a face: a land is played, never cast.
     let types = object
         .get("types")
         .and_then(serde_json::Value::as_array)
-        .filter(|types| !types.is_empty())
-        .ok_or_else(|| Violation::MalformedField {
-            functional_id: functional_id.clone(),
-            field: "types",
-        })?;
-
-    // A Creature carries printed power and toughness; nothing else may (ADR 0008 §5).
-    // Checked as a pair: half a P/T is as wrong as none at all on a creature.
-    let is_creature = types.iter().any(|t| t.as_str() == Some(CREATURE_TYPE));
-    let has_power = object.contains_key("power");
-    let has_toughness = object.contains_key("toughness");
-    if is_creature != (has_power && has_toughness) || has_power != has_toughness {
-        return Err(Violation::PowerToughnessMismatch {
-            functional_id,
-            creature: is_creature,
-        });
-    }
-
-    // A Planeswalker carries a printed starting loyalty and nothing else does
-    // (CR 306.5b) — the same both-directions pairing the P/T check above makes, and for
-    // the same reason: a planeswalker with none would die to CR 704.5i on arrival.
-    let is_planeswalker = types.iter().any(|t| t.as_str() == Some(PLANESWALKER_TYPE));
-    if is_planeswalker != object.contains_key("loyalty") {
-        return Err(Violation::LoyaltyMismatch {
-            functional_id,
-            planeswalker: is_planeswalker,
-        });
-    }
+        .map(Vec::as_slice)
+        .unwrap_or_default();
 
     // An additional cast cost belongs only on a card that is cast, and must actually
     // cost something. A land is played rather than cast (CR 116.2a), so no cast gate
     // would ever consult the cost; a zero-count discard is a cost in name only.
     if let Some(cost) = object.get("additional_cost") {
         let is_land = types.iter().any(|t| t.as_str() == Some(LAND_TYPE));
-        let count = cost.get("count").and_then(serde_json::Value::as_u64);
+        // A discard states its count as a bare number; a sacrifice states it as
+        // `{"exactly": n}` or `"any"`. Zero is no cost either way, and `"any"` — whose
+        // legal payments *include* zero — is a real cost because the player may pay more.
+        let count = cost
+            .get("count")
+            .and_then(|count| count.as_u64().or_else(|| count.get("exactly")?.as_u64()));
         if is_land || count == Some(0) {
             return Err(Violation::AdditionalCostIsUnpayable { functional_id });
         }
     }
 
-    // A printed combat restriction only ever restricts attacking or blocking, so it
-    // belongs only on a creature. An Aura *grants* restrictions to its host through
-    // `aura.restrictions` instead, which is why this looks only at the printed list.
-    if object.contains_key("restrictions") && !is_creature {
-        return Err(Violation::RestrictionsOnNonCreature { functional_id });
-    }
-
-    // An optional effect forwards the target group of the one effect it wraps, so it may
-    // wrap one targeting effect and no more (see [`Violation::TwoTargetsInsideOptional`]).
-    // Walked to any depth, so a `may` inside a `may` is counted too.
-    if every_effect(object)
-        .into_iter()
-        .any(optional_declares_two_targets)
-    {
-        return Err(Violation::TwoTargetsInsideOptional { functional_id });
-    }
-
-    // A conditional's branches get no such forwarding: two branches share one flat
-    // target list, so a group named in either could not be paired back onto the branch
-    // that was taken.
-    if every_effect(object)
-        .into_iter()
-        .any(conditional_wraps_a_target)
-    {
-        return Err(Violation::TargetInsideConditional { functional_id });
-    }
-
-    // A power bound is the one selector field read from computed characteristics, which
-    // the layer system cannot ask for from inside itself without recursing. Two sites are
-    // evaluated there: a static ability's condition, and an attachment's counted grant.
-    if static_condition_counts_by_power(object) {
-        return Err(Violation::PowerInStaticCondition { functional_id });
-    }
-    if attachment_counts_by_power(object) {
-        return Err(Violation::PowerInAttachmentCount { functional_id });
-    }
-
-    // CR 114.1: an emblem has no characteristics but its abilities, and only the two
-    // kinds that need neither an activation nor an entry event can function on one.
-    if every_effect(object).into_iter().any(emblem_ability_is_bad) {
-        return Err(Violation::EmblemAbilityIsNotStaticOrTriggered { functional_id });
-    }
-
-    // A layer-6 change that neither subtracts nor adds is no effect at all, and every
-    // field of one defaults — so the empty clause is the shape a typo lands on.
-    if every_effect(object)
-        .into_iter()
-        .any(ability_change_is_empty)
-    {
-        return Err(Violation::AbilityChangeIsEmpty { functional_id });
-    }
-
-    // CR 113.6: an ability functions from a graveyard *because* it returns its own card
-    // from there, so the effect belongs on an activated ability and nowhere else — and
-    // that ability may charge only mana, a card in a zone having nothing to tap,
-    // sacrifice, or spend counters from.
-    if graveyard_ability_is_bad(object) {
-        return Err(Violation::GraveyardAbilityCannotFunction { functional_id });
-    }
-
-    // At most one "up to N" target group per ability or spell, so the flat stored target
-    // list pairs back onto effects unambiguously.
-    if effect_lists(object)
-        .into_iter()
-        .any(|effects| variable_target_groups(&effects) > 1)
-    {
-        return Err(Violation::TwoVariableTargetGroups { functional_id });
-    }
-
-    // Every token a definition creates must be an object that could exist: a permanent
-    // (CR 110.1/111.7), with power and toughness exactly when it is a creature. Walked
-    // to any depth, so a `create_token` nested inside a `may` is checked too.
-    for effect in every_effect(object) {
-        if effect.get("kind").and_then(serde_json::Value::as_str) != Some("create_token") {
-            continue;
+    // CR 700.2: a modal card's effects live in its modes and nowhere else, it prints
+    // between two and MAX_MODES of them, and each of its modes does something. All three
+    // directions matter: loose spell effects beside modes would resolve whichever mode
+    // was chosen, one mode is a question with a single answer, and a fourth is a row the
+    // dock has no band for.
+    if let Some(modes) = object.get("modes").and_then(serde_json::Value::as_array) {
+        let empty_mode = modes.iter().any(|mode| {
+            mode.get("effects")
+                .and_then(serde_json::Value::as_array)
+                .is_none_or(Vec::is_empty)
+        });
+        let loose_effects = object
+            .get("spell_effects")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|effects| !effects.is_empty());
+        if modes.len() < MIN_MODES || modes.len() > MAX_MODES || empty_mode || loose_effects {
+            return Err(Violation::MalformedModes {
+                functional_id,
+                modes: modes.len(),
+            });
         }
-        validate_token(&functional_id, effect.get("token"))?;
     }
 
-    // "A spell of the chosen color" is the one trigger selector whose meaning comes from
-    // elsewhere on the same card (CR 614.12). A card that watches it without naming a
-    // colour as it enters has written a trigger that can never fire, and the engine's
-    // answer to it — notice nothing — is silent by design, so it is caught here instead.
-    if watches_the_chosen_color(object) && !object_chooses_a_color(object) {
-        return Err(Violation::ChosenColorIsNeverNamed { functional_id });
+    // CR 107.3: `{X}` is announced as a spell is cast, so it belongs in a card's mana
+    // cost and nowhere else. An activation pays out of a pool with no announcement step
+    // to fix a value in, so an `{X}` in an ability's cost is a symbol nothing would ever
+    // charge for — it would simply be ignored and the ability activated for free.
+    if let Some(cost) = ability_cost_with_x(object) {
+        return Err(Violation::XOutsideAManaCost {
+            functional_id,
+            cost,
+        });
+    }
+
+    // A spell trait that names a threshold for X is a sentence about a value the card
+    // never asks for unless its cost prints `{X}` — "if X is 5 or more" on a fixed cost
+    // is a clause that can never be true.
+    if spell_trait_needs_x(object) && !mana_cost_has_x(object) {
+        return Err(Violation::SpellTraitNeedsX { functional_id });
+    }
+
+    // An amount that reads a sacrifice back needs the sacrifice that produces it — a cost
+    // for the power one ate, an effect for how many this resolution took — or the card
+    // reads as doing something and always does nothing.
+    if reads_an_unsacrificed_amount(object) {
+        return Err(Violation::AmountIsNeverSacrificed { functional_id });
+    }
+
+    // The same pairing for the other half of CR 614.12: "permanents with the chosen name"
+    // is a selector whose referent is the card's own naming ability, and a card that
+    // selects on it without one has written a class nothing can ever join.
+    if selects_the_named_card(object) && !object_names_a_card(object) {
+        return Err(Violation::ChosenNameIsNeverNamed { functional_id });
     }
 
     // An `attachment` block is the Aura ability (CR 303.4) or the Equipment's equip
@@ -313,6 +289,18 @@ pub(crate) fn validate_definition(
         }
     }
 
+    // CR 712.2: a transforming double-faced card's second face, held to every rule its
+    // first is held to, plus the one that is only about a back face — it has no mana
+    // cost and can never be cast (CR 712.4a).
+    validate_back_face(&functional_id, object)?;
+
+    // CR 701.28d: turning a permanent over needs somewhere to turn it to. A card that
+    // says so with no `back_face` has written an ability that can never do anything, and
+    // the engine's answer to it — leave the permanent as it is — is silent by design.
+    if transforms_itself(object) && !object.contains_key("back_face") {
+        return Err(Violation::TransformWithoutABackFace { functional_id });
+    }
+
     Ok(functional_id)
 }
 
@@ -342,3 +330,61 @@ pub(crate) fn check_printings<'a>(
 
 #[cfg(test)]
 mod tests;
+
+/// Whether this definition's printed mana cost contains an `{X}` (CR 107.3).
+fn mana_cost_has_x(object: &serde_json::Map<String, serde_json::Value>) -> bool {
+    object
+        .get("mana_cost")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|cost| cost.contains("{X}"))
+}
+
+/// The first activation cost string in this definition that contains an `{X}`, if any.
+///
+/// Walks the costs of every authored ability, including the abilities an emblem hands
+/// out — the same reach [`every_effect`] has, for the same reason.
+fn ability_cost_with_x(object: &serde_json::Map<String, serde_json::Value>) -> Option<String> {
+    fn costs_of(ability: &serde_json::Value) -> Vec<&serde_json::Value> {
+        ability
+            .get("cost")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+            .iter()
+            .collect()
+    }
+    let printed = object
+        .get("abilities")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter();
+    let granted: Vec<&serde_json::Value> = every_effect(object)
+        .into_iter()
+        .flat_map(|effect| {
+            effect
+                .get("abilities")
+                .and_then(serde_json::Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default()
+                .iter()
+        })
+        .collect();
+    printed
+        .chain(granted)
+        .flat_map(costs_of)
+        .filter_map(|cost| cost.get("mana").and_then(serde_json::Value::as_str))
+        .find(|mana| mana.contains("{X}"))
+        .map(str::to_string)
+}
+
+/// Whether any declared spell trait names an X threshold (`if_x_at_least`).
+fn spell_trait_needs_x(object: &serde_json::Map<String, serde_json::Value>) -> bool {
+    object
+        .get("spell_traits")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter()
+        .any(|declared| declared.get("if_x_at_least").is_some_and(|v| !v.is_null()))
+}

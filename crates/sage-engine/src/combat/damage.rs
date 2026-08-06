@@ -3,15 +3,22 @@ use crate::id::{PermanentId, PlayerId};
 use crate::state::GameState;
 use crate::CardDatabase;
 
+use super::assigned_combat_damage;
 use super::helpers::{
-    combat_power, deals_in_step, has_keyword, lethal_needed, push_permanent_damage,
-    push_player_damage,
+    deals_in_step, has_keyword, lethal_needed, push_permanent_damage, push_player_damage,
 };
 
 /// A single combat-damage assignment computed for a combat-damage step
 /// (CR 510.1c). Kept as data to apply *after* every assignment is computed, so
 /// all combat damage in the step is dealt at once (simultaneously, CR 510.2) — no
 /// creature leaves combat partway through the batch.
+///
+/// **Lifelink rides the assignment rather than sitting beside it.** CR 702.15e gains
+/// life equal to the damage that was *dealt*, and how much that is cannot be known until
+/// the damage has been through the one seam that deals it — a prevention shield
+/// (CR 615.1) can leave nothing of it. A separate `gain N life` entry would have been
+/// computed from the damage that was *assigned*, which is a different number the moment
+/// anything prevents any of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum CombatDamage {
     /// Combat damage a creature deals to a player: an unblocked attacker, or the
@@ -29,11 +36,14 @@ pub(crate) enum CombatDamage {
         /// ([`GameState::add_commander_damage`]); a bare life change alone would
         /// lose the "which commander dealt it" fact the 21-damage loss needs.
         source_commander: Option<PlayerId>,
+        /// The player a lifelink source's damage gains life (CR 702.15e), `None` when
+        /// the source has no lifelink.
+        lifelink: Option<PlayerId>,
     },
     /// Combat damage a creature deals to another **permanent**: an attacker to its
     /// blockers, a blocker to the attacker it blocks (CR 510.1c), or an attacker to the
     /// planeswalker it is attacking. What the damage *does* is decided at the one
-    /// damage seam it is applied through ([`GameState::deal_damage_to_permanent`]) —
+    /// damage seam it is applied through ([`GameState::deal_damage`]) —
     /// marked on a creature (CR 120.3d), loyalty removed from a planeswalker
     /// (CR 120.3c) — so this assignment stays a plain "this much, to that object".
     ToPermanent {
@@ -45,15 +55,9 @@ pub(crate) enum CombatDamage {
         /// is lethal, so the recipient is flagged for the CR 704.5h state-based
         /// action when the batch is applied.
         deathtouch: bool,
-    },
-    /// Life a lifelink source's controller gains, dealt in the *same* batch as the
-    /// damage that caused it so the gain is simultaneous with the damage event
-    /// (CR 702.15e).
-    GainLife {
-        /// The player who gains the life (the damage source's controller).
-        player: PlayerId,
-        /// How much life is gained (equal to the damage dealt).
-        amount: u32,
+        /// The player a lifelink source's damage gains life (CR 702.15e), `None` when
+        /// the source has no lifelink.
+        lifelink: Option<PlayerId>,
     },
 }
 
@@ -151,35 +155,39 @@ fn blockers_of(state: &GameState, attacker: PermanentId) -> Vec<PermanentId> {
 ///
 /// A planeswalker that has already left the battlefield produces no assignment: the
 /// `defending_player` lookup fails, and there is nothing to deal damage to.
-#[allow(clippy::too_many_arguments)]
 fn push_attack_target_damage(
     out: &mut Vec<CombatDamage>,
     state: &GameState,
     target: super::AttackTarget,
     amount: u32,
     deathtouch: bool,
-    controller: PlayerId,
-    lifelink: bool,
+    lifelink: Option<PlayerId>,
     source_commander: Option<PlayerId>,
 ) {
     match target {
         super::AttackTarget::Player(player) => {
-            push_player_damage(out, player, amount, controller, lifelink, source_commander);
+            push_player_damage(out, player, amount, lifelink, source_commander);
         }
         super::AttackTarget::Planeswalker(id) => {
             // Only a planeswalker still on the battlefield takes anything; one that has
             // died mid-combat leaves its attacker dealing damage nowhere (CR 506.4).
             if state.battlefield.iter().any(|p| p.id == id) {
-                push_permanent_damage(out, id, amount, deathtouch, controller, lifelink);
+                push_permanent_damage(out, id, amount, deathtouch, lifelink);
             }
         }
     }
 }
 
 /// Compute all combat damage for the combat-damage step `step` (CR 510.1): every
-/// attacking and blocking creature that deals in this step assigns its power as
-/// combat damage, gathered here so [`crate::apply_action`] can apply the whole
-/// batch at once (simultaneously, CR 510.2).
+/// attacking and blocking creature that deals in this step assigns
+/// [`assigned_combat_damage`] — its power (CR 510.1a), or the characteristic a
+/// continuous effect substitutes for it — gathered here so [`crate::apply_action`] can
+/// apply the whole batch at once (simultaneously, CR 510.2).
+///
+/// The substitution is read once, at the top of each creature's arm, and everything below
+/// is about the amount rather than about where it came from. That is why trample's excess
+/// and the marked damage the lethal-damage state-based action reads both follow the
+/// override with no clause of their own.
 ///
 /// `blocked` is the set of attackers blocked this combat ([`blocked_attackers`]),
 /// captured before any damage so a blocked attacker whose blockers have since died
@@ -197,7 +205,7 @@ fn push_attack_target_damage(
 ///   Player-chosen damage-assignment order is still deferred.
 /// - Each surviving blocker assigns its combat damage among the attackers it blocks
 ///   (CR 510.1c), carrying its own deathtouch/lifelink. Blocking one attacker — the
-///   ordinary case — is the whole of its power to that attacker; blocking several
+///   ordinary case — is the whole of its assignment to that attacker; blocking several
 ///   (CR 509.1a, the "block an additional creature" permission) spreads it along the
 ///   blocker's own damage assignment order, which is the order its declaration named
 ///   them in ([`Permanent::blocking`](crate::Permanent::blocking), CR 509.3).
@@ -205,13 +213,42 @@ fn push_attack_target_damage(
 /// Deathtouch is recorded on each [`CombatDamage::ToPermanent`] so the CR 704.5h
 /// state-based action can destroy a creature dealt any nonzero deathtouch damage.
 /// Pure over the immutable state.
+#[cfg(test)]
 pub(crate) fn combat_damage(
     state: &GameState,
     db: &CardDatabase,
     step: DamageStep,
     blocked: &[PermanentId],
 ) -> Vec<CombatDamage> {
+    combat_damage_and_dealers(state, db, step, blocked).0
+}
+
+/// [`combat_damage`], paired with **who assigned each entry of it** — the attribution
+/// `Palladia-Mors, the Ruiner`'s "hasn't dealt damage yet" reads
+/// ([`Permanent::dealt_damage`](crate::Permanent)).
+///
+/// A second return value rather than a `source` field on every [`CombatDamage`] because
+/// the assignment is about what one object *receives*: three creatures blocking one
+/// attacker take three separate assignments, and who dealt them is a fact about the batch,
+/// not about any one of its entries. Each pair is a creature and the **index** of an
+/// assignment pushed on its behalf, so a blocked non-trampler whose blockers all died —
+/// which assigns its damage nowhere — appears not at all.
+///
+/// The index is what makes the answer survive CR 615.1: an assignment is not yet damage
+/// dealt, and only the applier knows which of them a prevention shield let through
+/// (`apply.rs :: apply_step`). Listing a creature here says it assigned something, never
+/// that it dealt it.
+pub(crate) fn combat_damage_and_dealers(
+    state: &GameState,
+    db: &CardDatabase,
+    step: DamageStep,
+    blocked: &[PermanentId],
+) -> (Vec<CombatDamage>, Vec<(PermanentId, usize)>) {
     let mut out = Vec::new();
+    let mut dealers: Vec<(PermanentId, usize)> = Vec::new();
+    let note = |dealers: &mut Vec<(PermanentId, usize)>, id: PermanentId, assignment: usize| {
+        dealers.push((id, assignment));
+    };
     for attacker in state.battlefield.iter().filter(|p| p.attacking.is_some()) {
         // What this attacker is attacking (CR 508.1a): its damage and any trample
         // overflow route here, not to a single global defender. A planeswalker that has
@@ -221,43 +258,52 @@ pub(crate) fn combat_damage(
         let blockers = blockers_of(state, attacker.id);
         // The attacker's own strike, if it deals in this step.
         if deals_in_step(state, attacker, step, db) {
-            let power = combat_power(state, attacker.id, db);
+            let assigned = assigned_combat_damage(state, attacker.id, db);
             let deathtouch = has_keyword(state, attacker, Keyword::Deathtouch, db);
-            let lifelink = has_keyword(state, attacker, Keyword::Lifelink, db);
             let controller = crate::characteristics::controller_of(state, attacker);
+            // CR 702.15e gains the *source's controller* the life, so the keyword and
+            // the seat travel together — one `Some(seat)` rather than a flag beside a
+            // player the applier would have to pair back up.
+            let lifelink =
+                has_keyword(state, attacker, Keyword::Lifelink, db).then_some(controller);
             // CR 903.10a: whether this attacker is a commander (identified by its
             // stable instance → designation), so its damage to a player counts
             // toward the 21-combat-damage loss. `None` for an ordinary creature.
             let source_commander = state.commander_owner_of(attacker.instance);
             if !blocked.contains(&attacker.id) {
                 // Unblocked: the attacker's damage goes to what it attacks.
-                if power > 0 {
+                if assigned > 0 {
                     if let Some(target) = defender {
+                        let before = out.len();
                         push_attack_target_damage(
                             &mut out,
                             state,
                             target,
-                            power,
+                            assigned,
                             deathtouch,
-                            controller,
                             lifelink,
                             source_commander,
                         );
+                        // A planeswalker that has already left takes nothing and no
+                        // assignment is pushed, so the attacker assigned nothing — which
+                        // is exactly what the length says.
+                        if out.len() > before {
+                            note(&mut dealers, attacker.id, before);
+                        }
                     }
                 }
             } else {
                 // Blocked: spread across surviving blockers, lethal-per-blocker
                 // (deathtouch-aware); trample sends the remainder to the player.
-                let mut remaining = power;
+                let mut remaining = assigned;
                 for blocker in &blockers {
                     if remaining == 0 {
                         break;
                     }
                     let assign = remaining.min(lethal_needed(state, *blocker, db, deathtouch));
                     if assign > 0 {
-                        push_permanent_damage(
-                            &mut out, *blocker, assign, deathtouch, controller, lifelink,
-                        );
+                        push_permanent_damage(&mut out, *blocker, assign, deathtouch, lifelink);
+                        note(&mut dealers, attacker.id, out.len() - 1);
                         remaining -= assign;
                     }
                 }
@@ -268,16 +314,19 @@ pub(crate) fn combat_damage(
                 // reaches a player: loyalty is not life.
                 if remaining > 0 && has_keyword(state, attacker, Keyword::Trample, db) {
                     if let Some(target) = defender {
+                        let before = out.len();
                         push_attack_target_damage(
                             &mut out,
                             state,
                             target,
                             remaining,
                             deathtouch,
-                            controller,
                             lifelink,
                             source_commander,
                         );
+                        if out.len() > before {
+                            note(&mut dealers, attacker.id, before);
+                        }
                     }
                 }
             }
@@ -285,20 +334,20 @@ pub(crate) fn combat_damage(
     }
     // Each surviving blocker assigns its combat damage among the attackers it blocks
     // (CR 510.1c). Driven from the blocker rather than from inside the attacker loop
-    // because a blocker may block more than one attacker (CR 509.1a) and its power is
-    // one pool spread across all of them — an attacker-driven loop would hand the same
+    // because a blocker may block more than one attacker (CR 509.1a) and its assignment
+    // is one pool spread across all of them — an attacker-driven loop would hand the same
     // pool out once per attacker.
     for blocker in state.battlefield.iter().filter(|p| !p.blocking.is_empty()) {
         if !deals_in_step(state, blocker, step, db) {
             continue;
         }
-        let power = combat_power(state, blocker.id, db);
-        if power == 0 {
+        let assigned = assigned_combat_damage(state, blocker.id, db);
+        if assigned == 0 {
             continue;
         }
         let deathtouch = has_keyword(state, blocker, Keyword::Deathtouch, db);
-        let lifelink = has_keyword(state, blocker, Keyword::Lifelink, db);
-        let controller = crate::characteristics::controller_of(state, blocker);
+        let lifelink = has_keyword(state, blocker, Keyword::Lifelink, db)
+            .then_some(crate::characteristics::controller_of(state, blocker));
         // The attackers it blocks, in its own damage assignment order (CR 509.3 — the
         // order its declaration named them in), minus any that have left the
         // battlefield: an attacker that died to first strike takes nothing further.
@@ -308,7 +357,7 @@ pub(crate) fn combat_damage(
             .copied()
             .filter(|atk| state.battlefield.iter().any(|p| p.id == *atk))
             .collect();
-        let mut remaining = power;
+        let mut remaining = assigned;
         for (index, attacker) in attackers.iter().enumerate() {
             if remaining == 0 {
                 break;
@@ -316,7 +365,7 @@ pub(crate) fn combat_damage(
             // Just-lethal to each attacker before the next (CR 510.1e, deathtouch-aware),
             // and everything still unassigned to the last one in the order — which is
             // what CR 510.1d permits once every creature ahead of it has lethal, and what
-            // makes the single-attacker case a plain full-power hit, exactly as it was
+            // makes the single-attacker case a plain full-assignment hit, exactly as it was
             // before a blocker could block two.
             let assign = if index + 1 == attackers.len() {
                 remaining
@@ -324,689 +373,14 @@ pub(crate) fn combat_damage(
                 remaining.min(lethal_needed(state, *attacker, db, deathtouch))
             };
             if assign > 0 {
-                push_permanent_damage(
-                    &mut out, *attacker, assign, deathtouch, controller, lifelink,
-                );
+                push_permanent_damage(&mut out, *attacker, assign, deathtouch, lifelink);
+                note(&mut dealers, blocker.id, out.len() - 1);
                 remaining -= assign;
             }
         }
     }
-    out
+    (out, dealers)
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
-    #![allow(clippy::unwrap_used)]
-
-    use super::*;
-    use crate::fixtures::{fixture, id_in};
-    use crate::id::CardId;
-    use crate::state::Permanent;
-
-    /// A first-strike attacker and a plain blocker/attacker, as an inline catalog —
-    /// first strike and deathtouch have no clean M19 representative, so the combat
-    /// tests that need those keywords build their own definitions (ADR 0009).
-    pub(crate) fn keyword_db() -> CardDatabase {
-        let json = r#"[
-            {"schema_version":1,"functional_id":"test_duelist","name":"Test Duelist",
-             "types":["creature"],"subtypes":["Human","Knight"],"mana_cost":"{1}{W}","colors":["white"],
-             "power":2,"toughness":2,"keywords":["first_strike"]},
-            {"schema_version":1,"functional_id":"test_adder","name":"Test Adder",
-             "types":["creature"],"subtypes":["Snake"],"mana_cost":"{G}","colors":["green"],
-             "power":1,"toughness":1,"keywords":["deathtouch"]},
-            {"schema_version":1,"functional_id":"test_basilisk","name":"Test Basilisk",
-             "types":["creature"],"subtypes":["Basilisk"],"mana_cost":"{4}{G}","colors":["green"],
-             "power":4,"toughness":5},
-            {"schema_version":1,"functional_id":"test_boar","name":"Test Boar",
-             "types":["creature"],"subtypes":["Boar"],"mana_cost":"{2}{G}","colors":["green"],
-             "power":3,"toughness":2},
-            {"schema_version":1,"functional_id":"test_twinstrike","name":"Test Twinstrike",
-             "types":["creature"],"subtypes":["Cat"],"mana_cost":"{2}{W}","colors":["white"],
-             "power":2,"toughness":2,"keywords":["double_strike"]},
-            {"schema_version":1,"functional_id":"test_paragon","name":"Test Paragon",
-             "types":["creature"],"subtypes":["Human","Knight"],"mana_cost":"{2}{W}{W}","colors":["white"],
-             "power":2,"toughness":2,"keywords":["first_strike","double_strike"]}
-        ]"#;
-        CardDatabase::from_json(json).unwrap()
-    }
-
-    /// The bundled card database, for tests that need oracle data.
-    fn db() -> CardDatabase {
-        CardDatabase::bundled().unwrap()
-    }
-
-    /// Put a creature of printed card `card` on the battlefield under `controller`,
-    /// untapped, entered on turn `entered_turn`; returns its fresh id. Used to
-    /// place the keyword-bearing real cards (flying, reach, vigilance, haste).
-    pub(crate) fn creature_card(
-        state: &mut GameState,
-        card: CardId,
-        controller: crate::id::PlayerId,
-        entered_turn: u32,
-    ) -> PermanentId {
-        let inst = state.new_instance(card);
-        let id = PermanentId(state.mint_id());
-        state.battlefield.push(Permanent {
-            id,
-            instance: inst.id,
-            printed: card.into(),
-            controller,
-            tapped: false,
-            entered_turn,
-            attacking: None,
-            blocking: Vec::new(),
-            skips_untap: false,
-            damage: 0,
-            counters: Default::default(),
-            attached_to: None,
-            chosen_color: None,
-        });
-        id
-    }
-
-    /// Place an attacking creature of `card` under `controller` attacking the sole
-    /// opponent (the two-player default); returns its id.
-    fn attacker(
-        state: &mut GameState,
-        card: CardId,
-        controller: crate::id::PlayerId,
-    ) -> PermanentId {
-        let defender = crate::combat::defending_player(state).unwrap_or(crate::id::PlayerId(1));
-        attacker_of(state, card, controller, defender)
-    }
-
-    /// Place an attacking creature of `card` under `controller` attacking
-    /// `defender`; returns its id. Used by the multi-defender combat tests.
-    fn attacker_of(
-        state: &mut GameState,
-        card: CardId,
-        controller: crate::id::PlayerId,
-        defender: crate::id::PlayerId,
-    ) -> PermanentId {
-        let id = creature_card(state, card, controller, 0);
-        if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
-            perm.attacking = Some(crate::combat::AttackTarget::Player(defender));
-        }
-        id
-    }
-
-    /// Place a creature of `card` under `controller` blocking `blocks`; returns its id.
-    fn blocker(
-        state: &mut GameState,
-        card: CardId,
-        controller: crate::id::PlayerId,
-        blocks: PermanentId,
-    ) -> PermanentId {
-        let id = creature_card(state, card, controller, 0);
-        if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
-            perm.blocking = vec![blocks];
-        }
-        id
-    }
-
-    #[test]
-    fn issue_153_flying_can_be_blocked_only_by_flying_or_reach_cr_702_9c() {
-        // CR 702.9c / 702.17b: a flyer can be blocked only by flying or reach.
-        // Tested both directions: a ground creature cannot, flying and reach can.
-        let db = db();
-        let mut state = GameState::new_two_player();
-        let flyer = creature_card(
-            &mut state,
-            fixture("snapping_drake"),
-            crate::id::PlayerId(0),
-            0,
-        ); // flying
-        let ground = creature_card(
-            &mut state,
-            fixture("walking_corpse"),
-            crate::id::PlayerId(1),
-            0,
-        ); // no keyword
-        let other_flyer = creature_card(
-            &mut state,
-            fixture("snapping_drake"),
-            crate::id::PlayerId(1),
-            0,
-        );
-        let reacher = creature_card(
-            &mut state,
-            fixture("giant_spider"),
-            crate::id::PlayerId(1),
-            0,
-        ); // reach
-
-        assert!(
-            !crate::combat::blocker_can_block_attacker(&state, flyer, ground, &db),
-            "a ground creature cannot block a flyer (CR 702.9c)"
-        );
-        assert!(
-            crate::combat::blocker_can_block_attacker(&state, flyer, other_flyer, &db),
-            "a flyer can block a flyer (CR 702.9c)"
-        );
-        assert!(
-            crate::combat::blocker_can_block_attacker(&state, flyer, reacher, &db),
-            "a reach creature can block a flyer (CR 702.17b)"
-        );
-
-        // A non-flying attacker imposes no evasion constraint: the ground creature
-        // can block a ground attacker.
-        let ground_attacker = creature_card(
-            &mut state,
-            fixture("walking_corpse"),
-            crate::id::PlayerId(0),
-            0,
-        );
-        assert!(crate::combat::blocker_can_block_attacker(
-            &state,
-            ground_attacker,
-            ground,
-            &db
-        ));
-    }
-
-    #[test]
-    fn issue_153_haste_creature_is_an_attacker_candidate_cr_702_10b() {
-        // CR 702.10b: haste exempts a creature from the summoning-sickness attack
-        // restriction, so one that entered this very turn may still attack. A
-        // vanilla creature that entered this turn stays ineligible (CR 302.6).
-        let db = db();
-        let mut state = GameState::new_two_player();
-        state.turn = 2;
-        let hasty = creature_card(
-            &mut state,
-            fixture("volcanic_dragon"),
-            crate::id::PlayerId(0),
-            2,
-        ); // haste, entered this turn
-        let sick = creature_card(
-            &mut state,
-            fixture("walking_corpse"),
-            crate::id::PlayerId(0),
-            2,
-        ); // entered this turn
-
-        let candidates = crate::combat::attacker_candidates(&state, &db);
-        assert!(
-            candidates.contains(&hasty),
-            "a hasty creature attacks the turn it enters (CR 702.10b)"
-        );
-        assert!(
-            !candidates.contains(&sick),
-            "a non-hasty creature that entered this turn cannot attack (CR 302.6)"
-        );
-    }
-
-    #[test]
-    fn issue_154_first_strike_present_needs_two_damage_steps_cr_510_5() {
-        // CR 510.5: any first striker in combat means two damage steps; without one
-        // a single step suffices.
-        let db = keyword_db();
-        let mut state = GameState::new_two_player();
-        let atk = attacker(
-            &mut state,
-            id_in(&db, "test_duelist"),
-            crate::id::PlayerId(0),
-        ); // first strike
-        let _blk = blocker(
-            &mut state,
-            id_in(&db, "test_boar"),
-            crate::id::PlayerId(1),
-            atk,
-        );
-        assert!(combat_has_first_strike(&state, &db));
-
-        let mut plain = GameState::new_two_player();
-        let a = attacker(&mut plain, id_in(&db, "test_boar"), crate::id::PlayerId(0));
-        let _b = blocker(
-            &mut plain,
-            id_in(&db, "test_boar"),
-            crate::id::PlayerId(1),
-            a,
-        );
-        assert!(!combat_has_first_strike(&plain, &db));
-    }
-
-    #[test]
-    fn issue_154_first_striker_deals_only_in_the_first_step_cr_510_5() {
-        // CR 510.5: a first-strike attacker deals in the first-strike step; its
-        // vanilla blocker deals in the regular step. `deals_in_step` gates each.
-        let db = keyword_db();
-        let mut state = GameState::new_two_player();
-        let atk = attacker(
-            &mut state,
-            id_in(&db, "test_duelist"),
-            crate::id::PlayerId(0),
-        ); // first strike 2/2
-        let blk = blocker(
-            &mut state,
-            id_in(&db, "test_boar"),
-            crate::id::PlayerId(1),
-            atk,
-        ); // vanilla 3/2
-        let blocked = blocked_attackers(&state);
-
-        // First-strike step: only the attacker deals (2 to the blocker).
-        let first = combat_damage(&state, &db, DamageStep::FirstStrike, &blocked);
-        assert_eq!(
-            first,
-            vec![CombatDamage::ToPermanent {
-                permanent: blk,
-                amount: 2,
-                deathtouch: false,
-            }]
-        );
-        // Regular step: only the (still-present, in this pure call) blocker deals.
-        let regular = combat_damage(&state, &db, DamageStep::Regular, &blocked);
-        assert_eq!(
-            regular,
-            vec![CombatDamage::ToPermanent {
-                permanent: atk,
-                amount: 3,
-                deathtouch: false,
-            }]
-        );
-    }
-
-    #[test]
-    fn issue_373_double_striker_alone_needs_two_damage_steps_cr_510_5() {
-        // CR 702.4b: a double striker deals in the first-strike step, so its mere
-        // presence splits combat into two steps even when no creature has plain first
-        // strike.
-        let db = keyword_db();
-        let mut state = GameState::new_two_player();
-        let _atk = attacker(
-            &mut state,
-            id_in(&db, "test_twinstrike"),
-            crate::id::PlayerId(0),
-        ); // double strike
-        assert!(
-            combat_has_first_strike(&state, &db),
-            "a lone double striker still needs the two-step sequence (CR 510.5)"
-        );
-    }
-
-    #[test]
-    fn issue_373_unblocked_double_striker_deals_in_both_steps_cr_702_4b() {
-        // CR 702.4b: an unblocked double striker assigns its power in the first-strike
-        // step AND again in the regular step — its power to the defending player twice.
-        let db = keyword_db();
-        let mut state = GameState::new_two_player();
-        let _atk = attacker(
-            &mut state,
-            id_in(&db, "test_twinstrike"),
-            crate::id::PlayerId(0),
-        ); // 2/2 double strike
-        let blocked = blocked_attackers(&state);
-
-        let first = combat_damage(&state, &db, DamageStep::FirstStrike, &blocked);
-        assert_eq!(
-            first,
-            vec![CombatDamage::ToPlayer {
-                player: crate::id::PlayerId(1),
-                amount: 2,
-                source_commander: None,
-            }],
-            "the double striker deals in the first-strike step (CR 702.4b)"
-        );
-        let regular = combat_damage(&state, &db, DamageStep::Regular, &blocked);
-        assert_eq!(
-            regular,
-            vec![CombatDamage::ToPlayer {
-                player: crate::id::PlayerId(1),
-                amount: 2,
-                source_commander: None,
-            }],
-            "and deals its power again in the regular step (CR 702.4b)"
-        );
-    }
-
-    #[test]
-    fn cr_702_4c_double_strike_with_first_strike_deals_exactly_twice() {
-        // CR 702.4c: a creature with both first strike and double strike deals combat
-        // damage exactly twice — once per step, never a third time. Combat has only
-        // the two steps, and the creature deals its power in each, not more.
-        let db = keyword_db();
-        let mut state = GameState::new_two_player();
-        let _atk = attacker(
-            &mut state,
-            id_in(&db, "test_paragon"),
-            crate::id::PlayerId(0),
-        ); // first strike + double strike
-        let blocked = blocked_attackers(&state);
-
-        let first = combat_damage(&state, &db, DamageStep::FirstStrike, &blocked);
-        let regular = combat_damage(&state, &db, DamageStep::Regular, &blocked);
-        // One hit in each step, and there is no third step: exactly twice.
-        assert_eq!(
-            first,
-            vec![CombatDamage::ToPlayer {
-                player: crate::id::PlayerId(1),
-                amount: 2,
-                source_commander: None,
-            }],
-        );
-        assert_eq!(
-            regular,
-            vec![CombatDamage::ToPlayer {
-                player: crate::id::PlayerId(1),
-                amount: 2,
-                source_commander: None,
-            }],
-        );
-    }
-
-    #[test]
-    fn issue_154_deathtouch_makes_one_damage_lethal_for_assignment_cr_510_1e() {
-        // CR 510.1e / 702.2b: a deathtouch source needs assign only 1 to a blocker
-        // to count as lethal. A 1/1 deathtouch attacker assigns 1 to a 4/5 blocker,
-        // flagged deathtouch; the assignment records the deathtouch flag.
-        let db = keyword_db();
-        let mut state = GameState::new_two_player();
-        let atk = attacker(&mut state, id_in(&db, "test_adder"), crate::id::PlayerId(0)); // deathtouch 1/1
-        let blk = blocker(
-            &mut state,
-            id_in(&db, "test_basilisk"),
-            crate::id::PlayerId(1),
-            atk,
-        ); // 4/5
-        let blocked = blocked_attackers(&state);
-
-        let batch = combat_damage(&state, &db, DamageStep::Only, &blocked);
-        assert!(batch.contains(&CombatDamage::ToPermanent {
-            permanent: blk,
-            amount: 1,
-            deathtouch: true,
-        }));
-        // The blocker deals its 4 back to the 1/1 attacker.
-        assert!(batch.contains(&CombatDamage::ToPermanent {
-            permanent: atk,
-            amount: 4,
-            deathtouch: false,
-        }));
-    }
-
-    #[test]
-    fn issue_374_aura_granted_flying_makes_host_unblockable_and_reverts_cr_702_9c() {
-        // CR 613.1f + 702.9c: an Aura granting flying makes its host a flier, so a
-        // ground creature cannot block it — exactly as a printed flier. The grant
-        // disappears when the Aura leaves.
-        let mut state = GameState::new_two_player();
-        // M19 prints no Aura granting flying, so the shape is exercised inline
-        // (ADR 0009): a `{U}` Aura whose only grant is flying, over a ground body.
-        let db = CardDatabase::from_json(
-            r#"[
-                {"schema_version":1,"functional_id":"test_flight","name":"Test Flight",
-                 "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{U}","colors":["blue"],
-                 "attachment":{"kind":"aura","attach_to":"any_creature","keywords":["flying"]}},
-                {"schema_version":1,"functional_id":"test_corpse","name":"Test Corpse",
-                 "types":["creature"],"subtypes":["Zombie"],"mana_cost":"{1}{B}","colors":["black"],
-                 "power":2,"toughness":2}
-            ]"#,
-        )
-        .unwrap();
-        let corpse = crate::fixtures::id_in(&db, "test_corpse");
-        let host = creature_card(&mut state, corpse, crate::id::PlayerId(0), 0); // ground
-        let ground = creature_card(&mut state, corpse, crate::id::PlayerId(1), 0);
-        // Baseline: a ground creature can block a ground attacker.
-        assert!(crate::combat::blocker_can_block_attacker(
-            &state, host, ground, &db
-        ));
-
-        // Attach the flying-granting Aura to the host.
-        let aura = creature_card(
-            &mut state,
-            crate::fixtures::id_in(&db, "test_flight"),
-            crate::id::PlayerId(0),
-            0,
-        );
-        state
-            .battlefield
-            .iter_mut()
-            .find(|p| p.id == aura)
-            .unwrap()
-            .attached_to = Some(host);
-        assert!(
-            !crate::combat::blocker_can_block_attacker(&state, host, ground, &db),
-            "the enchanted creature is a flier; a ground creature cannot block it (CR 702.9c)"
-        );
-
-        // The Aura leaves: the grant reverts and the ground creature can block again.
-        state.battlefield.retain(|p| p.id != aura);
-        assert!(
-            crate::combat::blocker_can_block_attacker(&state, host, ground, &db),
-            "removing the Aura reverts the granted flying"
-        );
-    }
-
-    #[test]
-    fn issue_374_granted_deathtouch_is_lethal_in_combat_cr_510_1e() {
-        // CR 613.1f + 510.1e: a granted deathtouch behaves in combat exactly like a
-        // printed one — an attacker with deathtouch granted until end of turn needs
-        // assign only 1 to its blocker to be lethal, flagged deathtouch.
-        use crate::state::{Duration, EffectAffects, Modification, StaticEffect};
-        let db = db();
-        let mut state = GameState::new_two_player();
-        let atk = attacker(&mut state, fixture("onakke_ogre"), crate::id::PlayerId(0)); // 4/2, no keyword
-        let blk = blocker(
-            &mut state,
-            fixture("colossal_dreadmaw"),
-            crate::id::PlayerId(1),
-            atk,
-        ); // 6/6
-        let source = state.mint_id();
-        state.static_effects.push(StaticEffect {
-            source,
-            affects: EffectAffects::SpecificPermanent(atk),
-            modification: Modification::GrantKeyword(Keyword::Deathtouch),
-            duration: Duration::UntilEndOfTurn,
-        });
-        let blocked = blocked_attackers(&state);
-
-        let batch = combat_damage(&state, &db, DamageStep::Only, &blocked);
-        assert!(
-            batch.contains(&CombatDamage::ToPermanent {
-                permanent: blk,
-                amount: 1,
-                deathtouch: true,
-            }),
-            "granted deathtouch makes 1 damage lethal to the 6/6 blocker (CR 510.1e)"
-        );
-    }
-
-    #[test]
-    fn issue_154_trample_assigns_lethal_then_excess_to_the_player_cr_702_19e() {
-        // CR 702.19e: a blocked trampler assigns just-lethal to its blocker, the
-        // rest to the defending player. A 6/6 trampler over a 4/2 Ogre assigns 2
-        // (lethal) to the Ogre and 4 to player 1.
-        let db = db();
-        let mut state = GameState::new_two_player();
-        let atk = attacker(
-            &mut state,
-            fixture("colossal_dreadmaw"),
-            crate::id::PlayerId(0),
-        ); // trample 6/6
-        let blk = blocker(
-            &mut state,
-            fixture("onakke_ogre"),
-            crate::id::PlayerId(1),
-            atk,
-        ); // 4/2
-        let blocked = blocked_attackers(&state);
-
-        let batch = combat_damage(&state, &db, DamageStep::Only, &blocked);
-        assert!(batch.contains(&CombatDamage::ToPermanent {
-            permanent: blk,
-            amount: 2,
-            deathtouch: false,
-        }));
-        assert!(batch.contains(&CombatDamage::ToPlayer {
-            player: crate::id::PlayerId(1),
-            amount: 4,
-            source_commander: None,
-        }));
-    }
-
-    #[test]
-    fn issue_154_deathtouch_trample_assigns_one_per_blocker_rest_to_player() {
-        // CR 510.1e + 702.19e together: a deathtouch trampler needs assign only 1
-        // per blocker before the rest tramples over. The assignment math is verified
-        // by exercising `lethal_needed` directly against a blocker — deathtouch makes
-        // 1 lethal, otherwise its full toughness is.
-        let db = db();
-        let mut state = GameState::new_two_player();
-        let blk = creature_card(
-            &mut state,
-            fixture("giant_spider"),
-            crate::id::PlayerId(1),
-            0,
-        ); // 2/4
-        assert_eq!(
-            super::super::helpers::lethal_needed(&state, blk, &db, true),
-            1,
-            "deathtouch: 1 is lethal"
-        );
-        assert_eq!(
-            super::super::helpers::lethal_needed(&state, blk, &db, false),
-            4,
-            "without deathtouch: full toughness is lethal"
-        );
-    }
-
-    #[test]
-    fn issue_154_lifelink_gains_its_controller_life_in_the_same_batch_cr_702_15e() {
-        // CR 702.15e: a lifelink source's controller gains life equal to the damage,
-        // recorded in the same batch (so it is simultaneous when applied). An
-        // unblocked 2/1 lifelinker attacking player 1 hits for 2 and gains 2.
-        let db = db();
-        let mut state = GameState::new_two_player();
-        let _atk = attacker(
-            &mut state,
-            fixture("child_of_night"),
-            crate::id::PlayerId(0),
-        ); // lifelink 2/1
-        let blocked = blocked_attackers(&state);
-
-        let batch = combat_damage(&state, &db, DamageStep::Only, &blocked);
-        assert!(batch.contains(&CombatDamage::ToPlayer {
-            player: crate::id::PlayerId(1),
-            amount: 2,
-            source_commander: None,
-        }));
-        assert!(batch.contains(&CombatDamage::GainLife {
-            player: crate::id::PlayerId(0),
-            amount: 2,
-        }));
-    }
-
-    #[test]
-    fn issue_154_blocked_attacker_stays_blocked_when_its_blockers_leave() {
-        // CR 509.1h: an attacker recorded as blocked deals no player damage even
-        // once its blockers are gone (no trample). Removing the blocker after
-        // capturing the blocked set leaves the attacker dealing nothing.
-        let db = db();
-        let mut state = GameState::new_two_player();
-        let atk = attacker(&mut state, fixture("onakke_ogre"), crate::id::PlayerId(0)); // vanilla 3/2, no trample
-        let blk = blocker(
-            &mut state,
-            fixture("onakke_ogre"),
-            crate::id::PlayerId(1),
-            atk,
-        );
-        let blocked = blocked_attackers(&state);
-        assert_eq!(blocked, vec![atk]);
-
-        // The blocker dies before damage: remove it, keep the blocked snapshot.
-        state.battlefield.retain(|p| p.id != blk);
-        let batch = combat_damage(&state, &db, DamageStep::Only, &blocked);
-        assert!(
-            batch.is_empty(),
-            "a blocked non-trampler with no surviving blockers deals nothing"
-        );
-    }
-
-    #[test]
-    fn issue_341_split_attacks_route_damage_to_each_chosen_defender() {
-        // CR 510.1c: with attackers split across two defenders, each unblocked
-        // attacker's damage goes to *its own* chosen defender, not one global one.
-        let db = db();
-        let mut state = GameState::new_multiplayer(3);
-        // Seat 0 attacks: a 4/2 at seat 1 and a 4/2 at seat 2, both unblocked.
-        let _at1 = super::super::declaration::tests::attacker_of(
-            &mut state,
-            fixture("onakke_ogre"),
-            crate::id::PlayerId(0),
-            crate::id::PlayerId(1),
-        );
-        let _at2 = super::super::declaration::tests::attacker_of(
-            &mut state,
-            fixture("onakke_ogre"),
-            crate::id::PlayerId(0),
-            crate::id::PlayerId(2),
-        );
-        let blocked = blocked_attackers(&state);
-        assert!(blocked.is_empty());
-
-        let batch = combat_damage(&state, &db, DamageStep::Only, &blocked);
-        assert!(
-            batch.contains(&CombatDamage::ToPlayer {
-                player: crate::id::PlayerId(1),
-                amount: 4,
-                source_commander: None,
-            }),
-            "the attacker assigned to seat 1 hits seat 1"
-        );
-        assert!(
-            batch.contains(&CombatDamage::ToPlayer {
-                player: crate::id::PlayerId(2),
-                amount: 4,
-                source_commander: None,
-            }),
-            "the attacker assigned to seat 2 hits seat 2"
-        );
-    }
-
-    #[test]
-    fn issue_341_trample_overflow_routes_to_the_attackers_own_defender() {
-        // CR 702.19e: a blocked trampler's overflow goes to the player it is
-        // attacking. A 6/6 trampler at seat 2, blocked by seat 2's 4/2, assigns 2
-        // (lethal) to the blocker and tramples 4 to seat 2 — never seat 1.
-        let db = db();
-        let mut state = GameState::new_multiplayer(3);
-        let atk = super::super::declaration::tests::attacker_of(
-            &mut state,
-            fixture("colossal_dreadmaw"),
-            crate::id::PlayerId(0),
-            crate::id::PlayerId(2),
-        ); // trample 6/6
-        let blk = blocker(
-            &mut state,
-            fixture("onakke_ogre"),
-            crate::id::PlayerId(2),
-            atk,
-        ); // 4/2
-        let blocked = blocked_attackers(&state);
-
-        let batch = combat_damage(&state, &db, DamageStep::Only, &blocked);
-        assert!(batch.contains(&CombatDamage::ToPermanent {
-            permanent: blk,
-            amount: 2,
-            deathtouch: false,
-        }));
-        assert!(
-            batch.contains(&CombatDamage::ToPlayer {
-                player: crate::id::PlayerId(2),
-                amount: 4,
-                source_commander: None,
-            }),
-            "trample overflow hits the attacker's own defender (seat 2)"
-        );
-        assert!(
-            !batch.contains(&CombatDamage::ToPlayer {
-                player: crate::id::PlayerId(1),
-                amount: 4,
-                source_commander: None,
-            }),
-            "no damage leaks to the other opponent (seat 1)"
-        );
-    }
-}
+pub(crate) mod tests;

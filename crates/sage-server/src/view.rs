@@ -14,27 +14,32 @@ use sage_engine::{
     abilities_of, abilities_of_permanent, activation_taps, attacker_candidates,
     attackers_needing_damage_order, attacking_defender_of, attacking_taps,
     blocker_can_block_attacker, blocker_candidates_for, bottom_requirement, characteristics,
-    choice_bounds, choice_candidates, confirm_is_payable, declared_attackers, defender_candidates,
-    is_mana_ability, mana_ability_pips, pending_blocker_declarer, pending_player_choice,
-    pending_replacement_options, scripted_rules_text, summoning_sickness_restricts,
-    target_requirements, valid_actions, Ability, AbilityOrigin, Action, Attack, AttackTarget,
-    Block, CardData, CardDatabase, CardId, CardInstance, CardInstanceId, ChoiceOutcome,
+    choice_bounds, choice_candidates, confirm_is_payable, copiable_face, copy_choice_candidates,
+    declared_attackers, defender_candidates, is_mana_ability, mana_ability_pips,
+    named_card_candidates, order_candidates, pending_blocker_declarer, pending_player_choice,
+    pending_replacement_options, permanent_choice_bounds, permanent_choice_candidates,
+    scripted_rules_text, summoning_sickness_restricts, target_requirements, total_cast_cost,
+    valid_actions, Ability, AbilityOrigin, Action, Attack, AttackTarget, Block, CardData,
+    CardDatabase, CardId, CardInstance, CardInstanceId, CardNameRequest, ChoiceOutcome,
     ChoiceQuestion, ChoiceRequest, ChoiceZone, Color, ColorOutcome, ColorRequest, ConfirmRequest,
-    CostPayment, CounterKind, DamageOrder, DamageTarget, GameEvent, GameResult, GameState, Keyword,
-    LoggedIdentity, LoggedPermanent, LossReason, OfferedReplacement, PermanentId, Player, PlayerId,
-    PrintedFace, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
+    CopyChoiceRequest, CopyClass, CostPayment, CounterKind, DamageOrder, DamageTarget,
+    FunctionalId, GameEvent, GameResult, GameState, Keyword, LoggedIdentity, LoggedPermanent,
+    LossReason, OfferedReplacement, OrderRequest, PermanentId, PermanentOutcome, PermanentRequest,
+    Player, PlayerId, PrintedFace, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
 };
 
 use crate::rules_text::{
-    ability_text, effects_description, optional_effect_question, rules_text, token_rules_text,
+    ability_text, back_face_rules_text, effects_description, optional_effect_question, rules_text,
+    token_rules_text,
 };
 use sage_protocol::{
-    ActionDestination, CardType, CardView, ChooseAction, CommanderDamage as CommanderDamageView,
-    CommanderIdentity as CommanderIdentityView, CommanderTax as CommanderTaxView, Counter,
-    Emblem as EmblemView, GameLogEntry, GameLogEvent, GameOverReason, GameResult as GameResultView,
-    GameView, LogBlock, LogDamageTarget, LogEntity, ManaOption, MaximumHandSize, OpponentView,
-    Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, SpectatorView, StackItem,
-    StackItemKind, StackTarget, TargetChoice, TargetRequirement, ValidAction, ZonePile,
+    ActionDestination, CardFace, CardType, CardView, ChooseAction,
+    CommanderDamage as CommanderDamageView, CommanderIdentity as CommanderIdentityView,
+    CommanderTax as CommanderTaxView, Counter, Emblem as EmblemView, GameLogEntry, GameLogEvent,
+    GameOverReason, GameResult as GameResultView, GameView, LogBlock, LogDamageTarget, LogEntity,
+    ManaOption, MaximumHandSize, NumberValue, OpponentView, Permanent as PermanentView, Phase,
+    Prompt, PromptOption, SelfView, SpectatorView, StackItem, StackItemKind, StackTarget,
+    TargetChoice, TargetRequirement, ValidAction, ZonePile,
 };
 
 mod actions;
@@ -203,6 +208,12 @@ pub(crate) fn personalized_view(
             // it is a player's answer, so nothing on the board implies it and no client
             // could work it out from the card.
             chosen_color: perm.chosen_color.map(wire_color),
+            // The card named as this permanent entered (CR 614.12), resolved from the
+            // functional identity the engine recorded to that card's own catalog name.
+            // The engine stores a handle and the wire carries a name, which is the one
+            // translation this projection exists to make — and the reason a client never
+            // has to know what a `CardId` is.
+            named_card: perm.named_card.map(|card| card_name(card, db)),
         })
         .collect();
 
@@ -425,6 +436,9 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
             // Public exactly as the rest of the board is: the colour was named aloud as
             // the permanent entered (CR 614.12), so a spectator sees what the seats do.
             chosen_color: perm.chosen_color.map(wire_color),
+            // Public for the same reason, and resolved the same way: the identity the
+            // engine holds, rendered as the catalog's own name for that card.
+            named_card: perm.named_card.map(|card| card_name(card, db)),
         })
         .collect();
 
@@ -572,6 +586,25 @@ pub(crate) fn resolve_action(
             // option id that *is* the position in the engine's derived list.
             Action::AnswerReplacement { .. } => {
                 bind_player_replacement(state, &offered, &choice.targets)
+            }
+            // The CR 614.12 card-naming answer is the same slot again, with an option id
+            // that is the named card's authored identity.
+            Action::AnswerCardName { .. } => {
+                bind_player_card_name(state, db, &offered, &choice.targets)
+            }
+            // The *in any order* of a look is answered on the same slot with a
+            // permutation of the ids the `order` prompt listed, in the order sent.
+            Action::AnswerOrder { .. } => bind_player_order(state, &offered, &choice.targets),
+            // A sacrifice is answered on the same slot with permanent entity ids — a
+            // selection over the battlefield rather than over a hidden zone.
+            Action::AnswerPermanents { .. } => {
+                bind_player_permanents(state, db, &offered, &choice.targets)
+            }
+            // A permanent named as a card enters (CR 614.12) is answered on the same slot
+            // with the permanent's own entity id — or with the decline the card's "you
+            // may" earns it.
+            Action::AnswerPermanent { .. } => {
+                bind_player_permanent(state, db, &offered, &choice.targets)
             }
             _ => {
                 if !targets_fill_requirements(
@@ -768,10 +801,13 @@ mod tests {
             attacking: None,
             blocking: Vec::new(),
             skips_untap: false,
+            dealt_damage: false,
             damage: 0,
             counters: std::collections::BTreeMap::new(),
             attached_to: None,
             chosen_color: None,
+            named_card: None,
+            copied: None,
         });
         // A plain creature beside it, to prove the marker is not "every legend".
         let plain = put_permanent(

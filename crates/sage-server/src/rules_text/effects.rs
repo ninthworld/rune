@@ -28,9 +28,10 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             // with the subject, and only the second person drops the -s.
             let controls = match player_ref {
                 PlayerRef::Controller => "control",
-                PlayerRef::EachOpponent | PlayerRef::TargetPlayer | PlayerRef::TargetOpponent => {
-                    "controls"
-                }
+                PlayerRef::EachOpponent
+                | PlayerRef::EachPlayer
+                | PlayerRef::TargetPlayer
+                | PlayerRef::TargetOpponent => "controls",
             };
             let tap = format!(
                 "tap all creatures {} {controls}",
@@ -54,7 +55,41 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             )
         }
         Effect::Destroy { target } => format!("destroy {}", target_noun(*target)),
-        Effect::Exile { target } => format!("exile {}", target_noun(*target)),
+        Effect::DestroyAll { affects } => format!("destroy all {}", destroy_class(*affects)),
+        // The derived-amount damage verb, in the two shapes English gives it. An
+        // announced X reads the way a printed card writes it: the letter itself, in
+        // quantity position, not the number it turned out to be — what a *particular*
+        // cast announced is a fact about that object on the stack, and the stack entry
+        // says so. Every other source has no letter of its own, so the sentence names it
+        // after "damage equal to". Spelled out rather than wildcarded, so a new amount
+        // has to be put in one shape or the other here.
+        Effect::DealDamageByAmount { subject, amount } => match amount {
+            DerivedAmount::AnnouncedX => {
+                format!("{source} deals X damage to {}", damage_recipient(subject))
+            }
+            DerivedAmount::LifeGainedThisTurn
+            | DerivedAmount::MilledThisWay { .. }
+            | DerivedAmount::GreatestManaValue { .. }
+            | DerivedAmount::SacrificedThisWay
+            | DerivedAmount::SacrificedCreaturePower
+            | DerivedAmount::HalfRoundedUp { .. } => format!(
+                "{source} deals damage equal to {} to {}",
+                amount_noun(amount, PlayerRef::Controller),
+                damage_recipient(subject),
+            ),
+        },
+        // The life rider is a second sentence, where the card prints it, and "its" points
+        // back at the noun this one just named — which is the whole reason the two are
+        // one effect rather than two.
+        Effect::Exile { target, gain_life } => {
+            let exile = format!("exile {}", target_noun(*target));
+            match gain_life {
+                None => exile,
+                Some(PermanentAmount::Power) => {
+                    format!("{exile}. You gain life equal to its power")
+                }
+            }
+        }
         // The one clause with two target nouns in it (CR 701.12). The mutual form is the
         // printed verb *fights*, which says the power reading on its own; the one-sided
         // form has to spell it out, and "its" refers back to the first noun the sentence
@@ -102,17 +137,28 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             power,
             toughness,
             keywords,
+            abilities,
             restrictions,
         } => {
             // One subject, one duration, and as many clauses as the card prints between
-            // them: the numbers, then any keywords gained, then any combat restriction
-            // imposed. Each is a predicate the target noun and "until end of turn" wrap,
-            // which is why they join as a list rather than as separate sentences.
+            // them: the numbers, then any keywords gained, then any written-out ability,
+            // then any combat restriction imposed. Each is a predicate the target noun
+            // and "until end of turn" wrap, which is why they join as a list rather than
+            // as separate sentences.
             let mut clauses = vec![format!("gets {power:+}/{toughness:+}")];
             if !keywords.is_empty() {
                 let words: Vec<&str> = keywords.iter().map(|&kw| keyword_word(kw)).collect();
                 clauses.push(format!("gains {}", list_words(&words)));
             }
+            // Quoted, because the words inside a granted ability belong to the *host*:
+            // "this creature" in them names the creature that gained it, not the spell
+            // that handed it over.
+            clauses.extend(abilities.iter().map(|ability| {
+                format!(
+                    "gains \"{}\"",
+                    ability_text(granted_subject(*target), ability)
+                )
+            }));
             clauses.extend(restrictions.iter().map(restriction_predicate));
             let verbs = list_words(&clauses.iter().map(String::as_str).collect::<Vec<_>>());
             format!("{} {verbs} until end of turn", target_noun(*target))
@@ -136,13 +182,17 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             keyword_word(*keyword)
         ),
         // A restriction is already a predicate ("can't be blocked"), so it needs no
-        // verb of its own — only the subject and the duration around it.
+        // verb of its own — only the subject and the duration around it. The subject is
+        // where a variable-arity restriction differs from a variable-arity counter: the
+        // targets are what the sentence is *about*, so they read as "up to two target
+        // creatures" rather than as the "each of …" an object position takes.
         Effect::Restrict {
             target,
+            targets,
             restriction,
         } => format!(
             "{} {} this turn",
-            target_noun(*target),
+            target_subject(*target, *targets),
             restriction_predicate(restriction)
         ),
         Effect::RestrictAll {
@@ -293,34 +343,57 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         Effect::LookAtTop {
             count,
             take,
+            take_min,
             filter,
             destination,
+            bottom_order,
         } => format!(
-            "look at the top {} cards of your library, you may put {} from among them {}, \
-             then put the rest on the bottom of your library in a random order",
+            "look at the top {} cards of your library, {} {} from among them {}, \
+             then put the rest on the bottom of your library in {}",
             number(u32::from(*count)),
-            up_to(u32::from(*take), filter),
+            // "You may put up to one" and "put one" are the two takes, and the words have
+            // to follow the floor: a card that reads "you may" where the rules make the
+            // player take one is a card the player will misplay.
+            if *take_min == 0 { "you may put" } else { "put" },
+            take_phrase(u32::from(*take_min), u32::from(*take), filter),
             destination_phrase(*destination),
+            // The card's own two wordings, and they are different rules: one is the
+            // game's roll and the other is the looker's arrangement.
+            match bottom_order {
+                BottomOrder::Random => "a random order",
+                BottomOrder::Chosen => "any order",
+            },
         ),
         Effect::SearchLibrary {
             take,
+            take_amount,
             filter,
             destination,
-        } => format!(
-            "search your library for {}, put {} {}, then shuffle",
-            up_to(u32::from(*take), filter),
-            if *take == 1 { "it" } else { "them" },
-            destination_phrase(*destination),
-        ),
+        } => match take_amount {
+            // A card whose search size is a derived number says "up to that many" and
+            // never a figure, so the phrase names the amount rather than a count.
+            Some(amount) => format!(
+                "search your library for up to {} {}, put them {}, then shuffle",
+                amount_noun(amount, PlayerRef::Controller),
+                filter_noun(filter, true),
+                destination_phrase(*destination),
+            ),
+            None => format!(
+                "search your library for {}, put {} {}, then shuffle",
+                up_to(u32::from(*take), filter),
+                if *take == 1 { "it" } else { "them" },
+                destination_phrase(*destination),
+            ),
+        },
         // An optional effect reads as the card prints it. The costed form is two
         // sentences even inside a larger clause — "you may pay {1}. If you do, draw a
-        // card" — because that is how the condition is written on every card that has
-        // one, and running it together with "and" would read as though both halves
-        // happened.
+        // card", "you may sacrifice another creature. If you do, …" — because that is how
+        // the condition is written on every card that has one, and running it together
+        // with "and" would read as though both halves happened.
         Effect::May { cost, effects } => {
             let what = clauses(source, effects);
             match cost {
-                Some(cost) => format!("you may pay {cost}. If you do, {what}"),
+                Some(cost) => format!("you may {}. If you do, {what}", optional_cost_phrase(cost)),
                 None => format!("you may {}", without_you(&what)),
             }
         }
@@ -389,11 +462,72 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             damage_recipient(subject),
             count_noun(count_of)
         ),
+        // The three derived-number verbs of a symmetric sweeper, each one sentence in the
+        // order the card prints them. The amount carries its own "rounded up", and it is
+        // rendered against the *named* player, so "each player" gets "their" and a
+        // controller-only form would get "your".
+        Effect::LoseLifeByAmount { player_ref, amount } => format!(
+            "{} {}",
+            conjugate(*player_ref, "lose"),
+            amount_noun(amount, *player_ref)
+        ),
+        Effect::DiscardByAmount { player_ref, amount } => format!(
+            "{} {}",
+            conjugate(*player_ref, "discard"),
+            amount_noun(amount, *player_ref)
+        ),
+        // With a counted amount the class (`card_type`) is deliberately not restated: the
+        // amount's own phrase already names it — "half the creatures they control" — and
+        // printing the class twice would be two ways to say one printed clause. The **open**
+        // form has no such phrase, because "any number" is not a number read of anything,
+        // so that one names the class itself and prints as the imperative a card writes
+        // — `Sacrifice any number of lands` — exactly as the draw beside it does.
+        Effect::Sacrifice {
+            player_ref,
+            amount,
+            card_type,
+        } => match amount {
+            Some(amount) => format!(
+                "{} {}",
+                conjugate(*player_ref, "sacrifice"),
+                amount_noun(amount, *player_ref)
+            ),
+            None => {
+                let clause = format!(
+                    "{} any number of {}",
+                    conjugate(*player_ref, "sacrifice"),
+                    plural_sacrifice_noun(*card_type, None)
+                );
+                without_you(&clause).to_string()
+            }
+        },
         Effect::ExileGraveyard { player_ref } => {
             format!("exile {}'s graveyard", possessive_subject(*player_ref))
         }
+        Effect::ExileLibraryExceptBottom { target } => format!(
+            "exile all but the bottom card of {}'s library",
+            possessive_subject(*target)
+        ),
+        // CR 701.28a. The permanent turns over and is the same object, so the sentence is
+        // about the source and nothing else — there is no zone to name and nothing to
+        // say about what survives, because everything does.
+        Effect::TransformSelf => format!("transform {source}"),
+        // Two zone changes rather than a turn-over, and the sentence says so: a player
+        // reading it needs to know that what comes back is a new object, which is the
+        // difference between keeping a +1/+1 counter and losing it.
+        Effect::ExileSelfAndReturnTransformed => format!(
+            "exile {source}, then return it to the battlefield transformed under its \
+             owner's control"
+        ),
         Effect::PutOnTopOfLibrary { target } => {
             format!("put {} on top of its owner's library", target_noun(*target))
+        }
+        // The self-referential sibling of the line above, and the reason it names its
+        // source rather than a target: nothing was chosen, so the sentence has to say
+        // which permanent goes back — and "its owner's" is the card's own owner, whoever
+        // currently controls it.
+        Effect::ShuffleSelfIntoLibrary => {
+            format!("shuffle {source} into its owner's library")
         }
         // The equip action (CR 702.6b). The subject is the source — an Equipment attaches
         // *itself* — so the sentence names it, which is also what makes the dock button
@@ -426,23 +560,30 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             target_noun(*target),
             sign(*power_per),
             sign(*toughness_per),
-            amount_noun(amount),
+            amount_noun(amount, PlayerRef::Controller),
         ),
         // Named subject, unlike the fixed [`Effect::DrawCard`] beside it: a derived draw
         // is printed as the *second* clause of a sentence whose first one belongs to
         // somebody else ("target opponent mills three cards, then **you** draw …"), and a
         // bare "draw" there reads as an instruction to the opponent.
         Effect::DrawCardsByAmount { amount } => {
-            format!("you draw cards equal to {}", amount_noun(amount))
+            format!(
+                "you draw cards equal to {}",
+                amount_noun(amount, PlayerRef::Controller)
+            )
         }
         // The colors are the player's, so the sentence says how many mana and leaves
-        // the colors to them — exactly what the card says.
+        // the colors to them — exactly what the card says. Which of the two phrasings it
+        // is is the difference between one decision and several.
         Effect::AddManaAnyColor {
             amount,
+            same_color,
             restriction,
         } => {
             let mana = if *amount == 1 {
                 "add one mana of any color".to_string()
+            } else if *same_color {
+                format!("add {} mana of any one color", number(u32::from(*amount)))
             } else {
                 format!(
                     "add {} mana in any combination of colors",
@@ -491,6 +632,32 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 replacement_phrase(replacement),
             ),
         },
+        // CR 615.1, in the order a card prints it: the verb, the class of damage, and
+        // the duration — `prevent all combat damage that would be dealt this turn`.
+        Effect::PreventDamage { damage } => format!(
+            "prevent all {}damage that would be dealt this turn",
+            if damage.combat_only { "combat " } else { "" },
+        ),
+        // CR 603.7, in the order a card prints it: the event it waits for, then what
+        // happens when it comes. The `next` and the `this turn` are both facts about the
+        // ability rather than authored words, so the sentence states them.
+        Effect::CreateDelayedTrigger { trigger } => {
+            let DelayedCondition::NextSpellCast(spell) = trigger.event;
+            format!(
+                "when you next cast {} this turn, {}",
+                observed_spell_noun(spell),
+                clauses("that spell", &trigger.effects),
+            )
+        }
+        // CR 707.10. The copy's targets are the second sentence a card prints, not a
+        // clause of the first, because they are a separate permission.
+        Effect::CopySpell { new_targets, .. } => {
+            let mut clause = "copy that spell".to_string();
+            if *new_targets {
+                clause.push_str(". You may choose new targets for the copy");
+            }
+            clause
+        }
     }
 }
 
@@ -526,7 +693,7 @@ fn entering_noun(filter: &EnteringFilter) -> String {
 /// fewer than it allows.
 fn target_phrase(spec: TargetSpec, count: TargetCount) -> String {
     match count {
-        TargetCount::Exactly(1) => target_noun(spec).to_string(),
+        TargetCount::Exactly(1) => target_noun(spec),
         TargetCount::Exactly(n) => format!(
             "each of {} {}",
             number(u32::from(n)),
@@ -537,6 +704,29 @@ fn target_phrase(spec: TargetSpec, count: TargetCount) -> String {
             number(u32::from(n)),
             plural_target_noun(spec)
         ),
+    }
+}
+
+/// The same target group in **subject** position: `target creature`, `up to two target
+/// creatures`.
+///
+/// A separate function from [`target_phrase`] for the reason [`count_noun`] is separate
+/// from [`count_subject`] — English puts the group after "each of" when the effect acts
+/// *on* it and bare at the head of the sentence when the group is what the sentence is
+/// about. One function per position keeps both exhaustive over the count.
+fn target_subject(spec: TargetSpec, count: TargetCount) -> String {
+    match count {
+        TargetCount::Exactly(1) => target_noun(spec),
+        TargetCount::Exactly(n) => {
+            format!("{} {}", number(u32::from(n)), plural_target_noun(spec))
+        }
+        TargetCount::UpTo(n) => {
+            format!(
+                "up to {} {}",
+                number(u32::from(n)),
+                plural_target_noun(spec)
+            )
+        }
     }
 }
 
@@ -575,7 +765,7 @@ fn count_subject(count: &PermanentCount) -> String {
 /// amount can appear in read as one sentence apiece — "gets -X/-X …, where X is **the
 /// amount of life you gained this turn**", "draw cards equal to **the greatest mana value
 /// among artifacts you control**". Exhaustive, so a new source has to say how it reads.
-fn amount_noun(amount: &DerivedAmount) -> String {
+fn amount_noun(amount: &DerivedAmount, subject: PlayerRef) -> String {
     match amount {
         DerivedAmount::LifeGainedThisTurn => "the amount of life you gained this turn".to_string(),
         // "milled this way" is the wording the intervening-if clause already uses for the
@@ -588,7 +778,67 @@ fn amount_noun(amount: &DerivedAmount) -> String {
         DerivedAmount::GreatestManaValue { among } => {
             format!("the greatest mana value among {}", count_subject(among))
         }
+        // An announced X has no "where X is" clause at all: the card writes the letter and
+        // the player supplies the value as they cast it (CR 601.2b). Reaching this
+        // position would mean a card said "where X is X", so it says the plain letter.
+        DerivedAmount::AnnouncedX => "X".to_string(),
+        // The two amounts a sacrifice leaves behind. A card writes the first as the "that
+        // many" of a sentence whose previous clause did the sacrificing, and the second as
+        // a possessive naming the creature the cost ate.
+        DerivedAmount::SacrificedThisWay => "that many".to_string(),
+        DerivedAmount::SacrificedCreaturePower => "the sacrificed creature's power".to_string(),
+        // The one source whose phrase is about the *named player* rather than about the
+        // controller, so it is the one that takes the subject: "each player loses half
+        // **their** life", "you lose half **your** life". The rounding trails the phrase
+        // exactly where a card prints it.
+        DerivedAmount::HalfRoundedUp { of } => {
+            let total = match of {
+                HalvedTotal::LifeTotal => {
+                    format!("half {} life", possessive_pronoun(subject))
+                }
+                HalvedTotal::HandSize => {
+                    format!("half the cards in {} hand", possessive_pronoun(subject))
+                }
+                HalvedTotal::CreaturesControlled => {
+                    format!("half the creatures {} control", relative_subject(subject))
+                }
+            };
+            format!("{total}, rounded up")
+        }
     }
+}
+
+/// The class a mass destruction names, as the plural noun after "destroy all".
+fn destroy_class(affects: DestroyAffects) -> &'static str {
+    match affects {
+        DestroyAffects::EachCreature => "creatures",
+        DestroyAffects::EachArtifactOrEnchantment => "artifacts and enchantments",
+    }
+}
+
+/// The subject of a relative clause hanging off a noun — "the creatures **they**
+/// control". The third of the player-reference renderings beside [`subject_pronoun`] and
+/// [`possessive_pronoun`], and separate for the same reason those two are: English wants
+/// a different word in each position, and one function per position keeps all three
+/// exhaustive.
+fn relative_subject(player_ref: PlayerRef) -> &'static str {
+    match player_ref {
+        PlayerRef::Controller => "you",
+        PlayerRef::EachOpponent
+        | PlayerRef::EachPlayer
+        | PlayerRef::TargetPlayer
+        | PlayerRef::TargetOpponent => "they",
+    }
+}
+
+/// The cards a [`GraveyardCount`] counts, as the noun phrase after "the number of" —
+/// "instant or sorcery cards in your graveyard".
+pub(super) fn graveyard_count_noun(count: &GraveyardCount) -> String {
+    let zone = match count.scope {
+        GraveyardScope::Yours => "in your graveyard",
+        GraveyardScope::Any => "in all graveyards",
+    };
+    format!("{} {zone}", filter_noun(&count.filter, true))
 }
 
 /// A class with its power bound trailing it, where a card prints it: "creatures you
@@ -675,6 +925,11 @@ fn condition_clause(condition: &Condition) -> String {
         Condition::GainedLifeThisTurn { amount } => {
             format!("you gained {} or more life this turn", number(*amount))
         }
+        // The one condition whose subject is the source rather than its controller, so
+        // the clause says "this creature" where the others say "you".
+        Condition::AttackedOrBlockedThisTurn => {
+            "this creature attacked or blocked this turn".to_string()
+        }
     }
 }
 
@@ -683,6 +938,7 @@ fn subject_pronoun(player_ref: PlayerRef) -> &'static str {
     match player_ref {
         PlayerRef::Controller => "you",
         PlayerRef::EachOpponent => "each opponent",
+        PlayerRef::EachPlayer => "each player",
         PlayerRef::TargetPlayer => "target player",
         PlayerRef::TargetOpponent => "target opponent",
     }
@@ -692,23 +948,36 @@ fn subject_pronoun(player_ref: PlayerRef) -> &'static str {
 fn possessive_pronoun(player_ref: PlayerRef) -> &'static str {
     match player_ref {
         PlayerRef::Controller => "your",
-        PlayerRef::EachOpponent | PlayerRef::TargetPlayer | PlayerRef::TargetOpponent => "their",
+        PlayerRef::EachOpponent
+        | PlayerRef::EachPlayer
+        | PlayerRef::TargetPlayer
+        | PlayerRef::TargetOpponent => "their",
     }
 }
 
 /// The question an optional effect puts to its controller, as the words on the button
-/// they answer it with — "Draw a card?", "Pay {1} to draw a card?".
+/// they answer it with — "Draw a card?", "Pay {1}? If you do, draw a card", "Sacrifice
+/// another creature? If you do, this gets +2/+2 until end of turn".
 ///
 /// Composed from the effects themselves rather than authored per card, exactly as the
 /// card's own rules text is: one vocabulary, so the prompt and the printed sentence can
 /// never describe the same offer two different ways. The source is written as "this"
 /// because the question is asked mid-resolution, when the object that asked it may
 /// already have left the battlefield.
+///
+/// The costed form asks the *cost* and states what it buys, in the card's own two
+/// sentences, rather than folding both into one "pay X to Y?". Only the first shape
+/// survives a clause whose subject is not the player: "Sacrifice another creature to this
+/// gets +2/+2" is not English, and a card whose optional effect targets would read the
+/// same way.
 #[must_use]
-pub(crate) fn optional_effect_question(cost: Option<&str>, effects: &[Effect]) -> String {
+pub(crate) fn optional_effect_question(cost: Option<&OptionalCost>, effects: &[Effect]) -> String {
     let what = clauses("this", effects);
     match cost {
-        Some(cost) => format!("Pay {cost} to {}?", without_you(&what)),
+        Some(cost) => format!(
+            "{}? If you do, {what}",
+            sentence_case(&optional_cost_phrase(cost))
+        ),
         None => format!("{}?", sentence_case(&what)),
     }
 }
@@ -738,6 +1007,23 @@ fn up_to(count: u32, filter: &CardFilter) -> String {
         format!("up to one {}", filter_noun(filter, false))
     } else {
         format!("up to {} {}", number(count), filter_noun(filter, true))
+    }
+}
+
+/// How many cards a look takes, as the card would print it: *up to one creature card*
+/// where the take is optional, and a bare *one of them* where it is not.
+///
+/// A floor equal to the ceiling is the printed *put one of them into your hand*, and the
+/// "up to" has to go with it — the phrase is what tells a player whether they may decline,
+/// and it is the one thing on the card that the new bound changes.
+fn take_phrase(min: u32, max: u32, filter: &CardFilter) -> String {
+    if min == 0 {
+        return up_to(max, filter);
+    }
+    if max == 1 {
+        format!("one {}", filter_noun(filter, false))
+    } else {
+        format!("{} {}", number(max), filter_noun(filter, true))
     }
 }
 
@@ -789,6 +1075,7 @@ fn possessive_subject(player_ref: PlayerRef) -> &'static str {
     match player_ref {
         PlayerRef::Controller => "your own",
         PlayerRef::EachOpponent => "each opponent",
+        PlayerRef::EachPlayer => "each player",
         PlayerRef::TargetPlayer => "target player",
         PlayerRef::TargetOpponent => "target opponent",
     }
@@ -799,10 +1086,13 @@ fn possessive_subject(player_ref: PlayerRef) -> &'static str {
 /// you control", which is not how a card is written.
 fn mass_subject(affects: &MassAffects) -> String {
     match affects {
-        MassAffects::CreaturesYouControl { subtype: None } => "creatures you control".to_string(),
-        MassAffects::CreaturesYouControl {
-            subtype: Some(subtype),
-        } => format!("{subtype}s you control"),
+        MassAffects::CreaturesYouControl { subtype, min_power } => {
+            let noun = match subtype {
+                Some(subtype) => format!("{subtype}s"),
+                None => "creatures".to_string(),
+            };
+            format!("{noun} you control{}", mass_power_clause(*min_power))
+        }
         MassAffects::EachCreature => "creatures".to_string(),
         MassAffects::CreaturesYourOpponentsControl => {
             "creatures your opponents control".to_string()
@@ -820,18 +1110,29 @@ fn mass_subject(affects: &MassAffects) -> String {
 /// both exhaustive, so a new [`MassAffects`] variant must be given words for each.
 fn mass_recipient(affects: &MassAffects) -> String {
     match affects {
-        MassAffects::CreaturesYouControl { subtype: None } => {
-            "each creature you control".to_string()
+        MassAffects::CreaturesYouControl { subtype, min_power } => {
+            let noun = match subtype {
+                Some(subtype) => subtype.clone(),
+                None => "creature".to_string(),
+            };
+            format!("each {noun} you control{}", mass_power_clause(*min_power))
         }
-        MassAffects::CreaturesYouControl {
-            subtype: Some(subtype),
-        } => format!("each {subtype} you control"),
         MassAffects::EachCreature => "each creature".to_string(),
         MassAffects::CreaturesYourOpponentsControl => {
             "each creature your opponents control".to_string()
         }
         MassAffects::CreaturesWithoutFlying => "each creature without flying".to_string(),
         MassAffects::AttackingCreatures => "each attacking creature".to_string(),
+    }
+}
+
+/// The " with power 4 or greater" that trails a mass class, where a card prints it, or
+/// nothing when the class names no bound. Written once so the subject and the recipient
+/// phrasings cannot drift.
+fn mass_power_clause(min_power: Option<i32>) -> String {
+    match min_power {
+        None => String::new(),
+        Some(min) => format!(" with power {min} or greater"),
     }
 }
 
@@ -854,6 +1155,7 @@ fn player_noun(player_ref: PlayerRef) -> &'static str {
     match player_ref {
         PlayerRef::Controller => "you",
         PlayerRef::EachOpponent => "each opponent",
+        PlayerRef::EachPlayer => "each player",
         PlayerRef::TargetPlayer => "target player",
         PlayerRef::TargetOpponent => "target opponent",
     }

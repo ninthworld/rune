@@ -186,6 +186,7 @@ fn issue_345_multiplayer_combat_and_elimination_fields_round_trip_and_elide() {
         damage: 0,
         attached_to: None,
         chosen_color: None,
+        named_card: None,
         is_commander: false,
         counters: vec![],
         summoning_sick: false,
@@ -272,6 +273,7 @@ fn game_view_round_trips_through_json() {
             keywords: vec![],
             card_types: Vec::new(),
             color_identity: Vec::new(),
+            other_face: None,
         }],
         me: SelfView {
             life: 18,
@@ -311,6 +313,7 @@ fn game_view_round_trips_through_json() {
                 keywords: vec!["flying".into()],
                 card_types: Vec::new(),
                 color_identity: Vec::new(),
+                other_face: None,
             },
             tapped: true,
             attacking: false,
@@ -320,6 +323,7 @@ fn game_view_round_trips_through_json() {
             damage: 0,
             attached_to: None,
             chosen_color: None,
+            named_card: None,
             is_commander: false,
             counters: vec![Counter {
                 kind: "+1/+1".into(),
@@ -361,6 +365,7 @@ fn game_view_round_trips_through_json() {
             subject: vec!["perm_xyz".into()],
             requirements: vec![],
             prompts: vec![],
+            cost: None,
             destinations: vec![],
             token: "h:00ab".into(),
         }],
@@ -469,6 +474,7 @@ fn issue_372_command_zone_pile_round_trips_with_its_commander() {
             keywords: vec![],
             card_types: Vec::new(),
             color_identity: Vec::new(),
+            other_face: None,
         }],
     }];
     let json = serde_json::to_value(&view).unwrap();
@@ -1317,6 +1323,7 @@ fn issue_604_revealed_cards_ride_the_view_only_while_something_is_showing_them()
         keywords: Vec::new(),
         card_types: Vec::new(),
         color_identity: Vec::new(),
+        other_face: None,
     }];
     let json = serde_json::to_value(&view).unwrap();
     assert_eq!(json["revealed"][0]["id"], serde_json::json!("card_9"));

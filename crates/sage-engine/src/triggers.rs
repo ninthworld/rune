@@ -5,8 +5,7 @@
 //! calls [`collect_triggers`] and puts each resulting [`Trigger`] on the stack.
 
 use crate::ability::{
-    Ability, ActivatorScope, ObservedActivation, ObservedPermanent, ObservedSpell,
-    TriggerCondition, TurnScope,
+    Ability, ActivatorScope, ObservedActivation, ObservedPermanent, TriggerCondition, TurnScope,
 };
 use crate::card::abilities_of_permanent;
 use crate::card_type::CardType;
@@ -29,6 +28,17 @@ pub struct Trigger {
     pub controller: PlayerId,
     /// The effects the ability produces when it resolves.
     pub effects: Vec<Effect>,
+    /// The slots the **trigger event itself** filled, in slot order — empty for every
+    /// printed triggered ability, which arrives unaimed and is aimed by its controller
+    /// (CR 603.3d).
+    ///
+    /// A *delayed* ability is the exception, and the reason this field exists: `when you
+    /// next cast an instant or sorcery spell this turn, copy **that spell**` names an
+    /// object the event fixed, not one anybody chooses (CR 603.7c). Filling the slot here
+    /// is what keeps that reference out of the controller's hands while still getting the
+    /// CR 608.2b re-check every stack object runs — so a spell that has been countered
+    /// before the ability resolves is simply not copied.
+    pub targets: Vec<crate::ability::Target>,
 }
 
 /// The object a trigger condition is being evaluated for, reduced to what the
@@ -50,11 +60,19 @@ struct Watcher<'a> {
     controller: PlayerId,
 }
 
-/// Where a watching ability lives — the three source lists [`collect_triggers`] walks.
+/// Where a watching ability lives — the source lists [`collect_triggers`] walks.
 #[derive(Clone, Copy)]
 enum Origin<'a> {
     /// A permanent on the battlefield.
     Permanent(&'a Permanent),
+    /// A permanent that **left** the battlefield across this transition, read from the
+    /// snapshot that still has it (CR 603.10a, last-known information).
+    ///
+    /// The same object as [`Self::Permanent`] for every question about what it was and
+    /// what it could see; a separate variant for the one question it answers
+    /// differently, which is what the ability's source *is* now that the permanent is
+    /// gone — see [`Watcher::source`].
+    DeadPermanent(&'a Permanent),
     /// An emblem (CR 114), by its object id.
     Emblem(u64),
     /// A card in its owner's graveyard whose ability functions from there (CR 113.6).
@@ -70,10 +88,19 @@ impl<'a> Watcher<'a> {
         }
     }
 
-    /// The source permanent, or `None` for the two origins that are not one.
+    /// A watcher on a permanent that has left the battlefield across this transition.
+    fn departed(permanent: &'a Permanent, controller: PlayerId) -> Self {
+        Self {
+            origin: Origin::DeadPermanent(permanent),
+            controller,
+        }
+    }
+
+    /// The source permanent, or `None` for the two origins that are not one. A permanent
+    /// that has just left is still one — that is exactly what a dies trigger is about.
     fn permanent(self) -> Option<&'a Permanent> {
         match self.origin {
-            Origin::Permanent(perm) => Some(perm),
+            Origin::Permanent(perm) | Origin::DeadPermanent(perm) => Some(perm),
             Origin::Emblem(_) | Origin::GraveyardCard(_) => None,
         }
     }
@@ -88,6 +115,9 @@ impl<'a> Watcher<'a> {
     fn still_present(self, after: &GameState) -> bool {
         match self.origin {
             Origin::Permanent(perm) => after.battlefield.iter().any(|p| p.id == perm.id),
+            // By construction it is not: the departure pass is the only thing that
+            // builds one.
+            Origin::DeadPermanent(_) => false,
             Origin::Emblem(_) => true,
             Origin::GraveyardCard(card) => after
                 .players
@@ -97,9 +127,25 @@ impl<'a> Watcher<'a> {
     }
 
     /// This watcher as the [`AbilitySource`] a collected trigger records.
+    ///
+    /// A permanent that has left records **both** halves of what it is now
+    /// ([`AbilitySource::DeadPermanent`]): the id it had, for every effect that asks
+    /// about the permanent, and the card it became, for the one that acts on the card in
+    /// the graveyard. A **token** records only the id, because CR 111.7 leaves no card
+    /// behind for the second half to name.
     fn source(self) -> AbilitySource {
         match self.origin {
             Origin::Permanent(perm) => AbilitySource::Permanent(perm.id),
+            Origin::DeadPermanent(perm) => match perm.printed.card() {
+                Some(card) => AbilitySource::DeadPermanent {
+                    permanent: perm.id,
+                    card: crate::id::CardInstance {
+                        id: perm.instance,
+                        card,
+                    },
+                },
+                None => AbilitySource::Permanent(perm.id),
+            },
             Origin::Emblem(id) => AbilitySource::Emblem(id),
             Origin::GraveyardCard(card) => AbilitySource::GraveyardCard(card),
         }
@@ -171,7 +217,7 @@ pub fn collect_triggers(before: &GameState, after: &GameState, db: &CardDatabase
             // Read against `before`, the snapshot the permanent still exists in — and
             // therefore the one whose control-changing effects still apply to it. A
             // creature that dies while stolen dies under the thief's control.
-            Watcher::on(perm, crate::characteristics::controller_of(before, perm)),
+            Watcher::departed(perm, crate::characteristics::controller_of(before, perm)),
             // Read against `before` for the same reason the controller is: it is the
             // snapshot the permanent still exists in, and therefore the one whose
             // layer-6 effects still silenced it as it died.
@@ -253,6 +299,20 @@ pub fn pending_trigger_target_choice(state: &GameState) -> Option<StackId> {
             StackObjectKind::Ability { effects, .. } => {
                 crate::ability::minimum_targets(effects) > object.targets.len()
             }
+            // A **copy of a spell** whose controller may choose new targets (CR 707.10c)
+            // is in exactly the same position as an unaimed trigger: it is on the stack,
+            // it declares slots, and nobody has filled them. So it is answered by the same
+            // action rather than by a second aiming mechanism.
+            //
+            // "Owes targets" is still derived rather than flagged: the copy carries
+            // *whether re-aiming was offered* — a permission nothing else in the state
+            // records — and is owed an answer exactly while it has none. The seam that
+            // creates it only offers re-aiming for a spell with at least one **required**
+            // slot every one of which has a legal candidate, so an answer always exists
+            // and always fills this.
+            StackObjectKind::SpellCopy { new_targets, .. } => {
+                *new_targets && object.targets.is_empty()
+            }
             StackObjectKind::Spell { .. } => false,
         })
         .map(|object| object.id)
@@ -302,6 +362,9 @@ fn collect_from(
                     source: watcher.source(),
                     controller: watcher.controller,
                     effects: effects.clone(),
+                    // A printed trigger names nothing yet: its controller aims it once it
+                    // is on the stack (CR 603.3d).
+                    targets: Vec::new(),
                 });
             }
         }
@@ -533,34 +596,6 @@ fn on_battlefield(state: &GameState, perm: &Permanent) -> bool {
     state.battlefield.iter().any(|p| p.id == perm.id)
 }
 
-/// Whether the spell `card` is one `observes` notices, for a watcher whose source named
-/// `chosen` as it entered (CR 614.12).
-///
-/// `chosen` is threaded in rather than looked up because only one class reads it, and a
-/// watcher that named no colour — an emblem, a token, a card that never declared the
-/// choice — passes `None` and notices nothing of that class. That is the correct answer
-/// rather than a defensive one: "a spell of the chosen color" is unsatisfiable until a
-/// colour has been chosen.
-fn observed_spell_matches(
-    observes: ObservedSpell,
-    card: crate::id::CardId,
-    chosen: Option<crate::mana::Color>,
-    db: &CardDatabase,
-) -> bool {
-    let Some(data) = db.card(card) else {
-        return false;
-    };
-    match observes {
-        ObservedSpell::Enchantment => data.has_type(CardType::Enchantment),
-        ObservedSpell::InstantOrSorcery => {
-            data.has_type(CardType::Instant) || data.has_type(CardType::Sorcery)
-        }
-        // CR 105.2: a spell *is* each of its colours, so a gold spell satisfies a
-        // watcher of any one of them and a colourless spell satisfies none.
-        ObservedSpell::ChosenColor => chosen.is_some_and(|color| data.colors.contains(&color)),
-    }
-}
-
 /// How many times `condition` was met across the transition, for an ability on `perm`.
 ///
 /// A pure function of the two snapshots — never an event listener. The self-conditions
@@ -720,11 +755,11 @@ fn fire_count(
                 .filter(|event| {
                     matches!(event, GameEvent::SpellCast { player, card }
                     if *player == watcher.controller
-                        && observed_spell_matches(
-                            *spell,
-                            card.card,
-                            watcher.permanent().and_then(|perm| perm.chosen_color),
+                        && crate::card::spell_matches_class(
                             db,
+                            card.card,
+                            *spell,
+                            watcher.permanent().and_then(|perm| perm.chosen_color),
                         ))
                 })
                 .count()
@@ -787,10 +822,13 @@ mod tests {
             attacking: None,
             blocking: Vec::new(),
             skips_untap: false,
+            dealt_damage: false,
             damage: 0,
             counters: Default::default(),
             attached_to: None,
             chosen_color: None,
+            named_card: None,
+            copied: None,
         });
         let triggers = collect_triggers(&before, &after, &db);
         assert_eq!(triggers.len(), 1);
@@ -815,10 +853,13 @@ mod tests {
             attacking: None,
             blocking: Vec::new(),
             skips_untap: false,
+            dealt_damage: false,
             damage: 0,
             counters: Default::default(),
             attached_to: None,
             chosen_color: None,
+            named_card: None,
+            copied: None,
         });
         (before, id, instance)
     }
@@ -827,7 +868,8 @@ mod tests {
     fn issue_151_collect_triggers_detects_a_death_by_battlefield_to_graveyard_diff() {
         // CR 700.4 / 603.6c: the permanent left the battlefield and its instance is
         // now in a graveyard — the diff observes the death and yields the dies
-        // trigger, its source the (now-gone) permanent id.
+        // trigger, its source both halves of what the object now is (CR 603.10a): the
+        // (now-gone) permanent id, and the card it became.
         let db = lurker_db();
         let (before, id, instance) = before_with_lurker(&db);
         let mut after = before.clone();
@@ -839,7 +881,17 @@ mod tests {
 
         let triggers = collect_triggers(&before, &after, &db);
         assert_eq!(triggers.len(), 1);
-        assert_eq!(triggers[0].source, AbilitySource::Permanent(id));
+        assert_eq!(
+            triggers[0].source,
+            AbilitySource::DeadPermanent {
+                permanent: id,
+                card: crate::id::CardInstance {
+                    id: instance,
+                    card: id_in(&db, "test_lurker"),
+                },
+            }
+        );
+        assert_eq!(triggers[0].source.permanent(), Some(id));
         assert_eq!(triggers[0].controller, PlayerId(0));
         assert_eq!(triggers[0].effects, vec![Effect::DrawCard { count: 1 }]);
     }
@@ -918,10 +970,13 @@ mod tests {
             attacking: None,
             blocking: Vec::new(),
             skips_untap: false,
+            dealt_damage: false,
             damage: 0,
             counters: Default::default(),
             attached_to: None,
             chosen_color: None,
+            named_card: None,
+            copied: None,
         });
         let mut after = before.clone();
         after.turn = turn;
@@ -1066,10 +1121,13 @@ mod tests {
                 attacking: None,
                 blocking: Vec::new(),
                 skips_untap: false,
+                dealt_damage: false,
                 damage: 0,
                 counters: Default::default(),
                 attached_to: None,
                 chosen_color: None,
+                named_card: None,
+                copied: None,
             });
         }
         let mut after = before.clone();

@@ -66,6 +66,8 @@ fn cast(state: &GameState, db: &CardDatabase, slug: &str, targets: Vec<Target>) 
         &state,
         &Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets,
             payment: Vec::new(),
         },
@@ -82,6 +84,8 @@ fn candidates(state: &GameState, db: &CardDatabase, spell: CardInstance) -> Vec<
         db,
         &Action::CastSpell {
             card: spell,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -134,6 +138,8 @@ fn salvager_of_secrets_takes_back_an_instant_or_sorcery_and_nothing_else() {
         &state,
         &Action::CastSpell {
             card: salvager,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -190,6 +196,8 @@ fn macabre_waltz_returns_up_to_two_creature_cards_then_discards() {
         &db,
         &Action::CastSpell {
             card: spell,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -267,6 +275,8 @@ fn trusty_packbeast_withholds_its_trigger_with_no_artifact_in_the_graveyard() {
         &state,
         &Action::CastSpell {
             card: beast,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },

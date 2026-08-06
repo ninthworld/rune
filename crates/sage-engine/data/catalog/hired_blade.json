@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "functional_id": "hired_blade",
+  "name": "Hired Blade",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Assassin"
+  ],
+  "mana_cost": "{2}{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 2,
+  "toughness": 2,
+  "keywords": [
+    "flash"
+  ]
+}

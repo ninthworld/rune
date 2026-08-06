@@ -43,10 +43,12 @@ mod result;
 mod spectator;
 mod view;
 
-pub use action::{ManaOption, Prompt, PromptOption, TargetRequirement, ValidAction};
+pub use action::{
+    ActionCost, ManaOption, NumberValue, Prompt, PromptOption, TargetRequirement, ValidAction,
+};
 pub use card::{
-    CardType, CardView, Counter, Emblem, MaximumHandSize, OpponentView, Permanent, Phase, SelfView,
-    StackItem, StackItemKind, StackTarget, ZonePile,
+    CardFace, CardType, CardView, Counter, Emblem, MaximumHandSize, OpponentView, Permanent, Phase,
+    SelfView, StackItem, StackItemKind, StackTarget, ZonePile,
 };
 pub use catalog::{AiOption, CatalogCard, CatalogFormat, CatalogView, CATALOG_VERSION};
 pub use client::{ChooseAction, ClientMessage, SetStops, TargetChoice};

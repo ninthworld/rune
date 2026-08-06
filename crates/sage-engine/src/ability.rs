@@ -12,7 +12,7 @@
 
 use serde::Deserialize;
 
-use crate::card::{CombatRestriction, Keyword};
+use crate::card::{CombatRestriction, DamageCharacteristic, Keyword, RuleModification};
 use crate::card_type::CardType;
 use crate::id::{CardInstanceId, PermanentId, PlayerId};
 use crate::mana::Color;
@@ -56,6 +56,18 @@ pub enum Ability {
         /// Effects produced when the ability resolves (or immediately, for a
         /// mana ability — see [`is_mana_ability`]).
         effects: Vec<Effect>,
+        /// **When** it may be activated (CR 602.5d). Defaults to
+        /// [`ActivationTiming::AnyTime`], which is every ability in the catalog but the
+        /// one that prints `Activate only as a sorcery.`
+        ///
+        /// An authored field rather than a derived predicate, unlike the loyalty
+        /// (CR 606.3) and equip (CR 702.6b) timings beside it. Those two are rules
+        /// *about a kind of ability* — an ability that spends loyalty is a loyalty
+        /// ability whatever it does — so deriving them from the cost or the effect is
+        /// exact. This one is a line of printed text on one particular ability, and
+        /// nothing about that ability's cost or effect implies it.
+        #[serde(default)]
+        timing: ActivationTiming,
     },
     /// A triggered ability: when its condition is met, its effects go on the
     /// stack (e.g. `When this enters the battlefield, draw a card.`).
@@ -107,6 +119,95 @@ pub enum Ability {
     /// [`Self::EntersTapped`] is a declaration about the entry event rather than a record
     /// of one. Deserialized as `{"type":"enters_choosing_color"}`.
     EntersChoosingColor,
+    /// A choice made **as this permanent enters** (CR 614.12): its controller names a
+    /// *card*, and the answer is kept on the permanent for as long as it is on the
+    /// battlefield — the "chosen name" its other abilities read.
+    ///
+    /// [`Self::EntersChoosingColor`]'s sibling, riding the same seam for the same reason:
+    /// the card waits off the battlefield while the question is owed, so there is no
+    /// instant at which the permanent is there without an answer and no window in which
+    /// a player could respond to one.
+    ///
+    /// What differs is the answer set, and it is the whole of the project's legal
+    /// posture on naming a card. A colour is one of five and needs nothing derived; a
+    /// card name is chosen from the **catalog** ([`named_card_candidates`](crate::named_card_candidates)),
+    /// so what is recorded is a [`CardId`](crate::CardId) — a handle to a card SAGE has
+    /// defined — and never a string a player typed. SAGE ships no card name it has not
+    /// already written down, and this variant is why that stays true of a game in
+    /// progress as well as of the repository.
+    ///
+    /// The answer lives on [`Permanent::named_card`](crate::Permanent), not here.
+    /// Deserialized as `{"type":"enters_naming_card","class":"nonbasic_land"}`.
+    EntersNamingCard {
+        /// Which cards may be named — the "nonbasic land" a card puts between "name a"
+        /// and "card".
+        class: crate::choice::NamedCardClass,
+    },
+    /// A **characteristic-defining ability** (CR 604.3) that *sets* this permanent's
+    /// power to the number of cards `count_of` names — `Enigma Drake's power is equal to
+    /// the number of instant and sorcery cards in your graveyard.`
+    ///
+    /// **Not an effect, and the difference is the whole variant.** Every other amount in
+    /// the IR is taken once, where a resolution reaches it (CR 608.2), and the number
+    /// that comes out is fixed for good. This one is re-derived on *every read* of the
+    /// permanent's power: a card put into the graveyard changes it with nothing going on
+    /// the stack, no event in between, and no window in which the old number is still
+    /// showing. That is what CR 604.3 says a characteristic-defining ability is, and it
+    /// is why the number lives in the layer system rather than in an effect.
+    ///
+    /// It applies in CR 613 **layer 7a**, ahead of every other power/toughness layer, so
+    /// it *replaces* the printed power and everything else piles on top of the result: a
+    /// `+1/+1` counter (7c) still adds one, an anthem (7c) still adds its own, and a
+    /// later effect that sets base power would still overrule it (7b). Printed power is
+    /// authored as `0` on such a card — the `*` in the corner is this ability, not a
+    /// number — and is never what a reader sees.
+    ///
+    /// Only power is definable. The cards that define toughness the same way, and the
+    /// ones whose defined characteristic is a colour or a type, each add their own
+    /// variant when they arrive; a single "defines a characteristic" variant carrying a
+    /// layer number would let a card be authored that defines its power in layer 4.
+    ///
+    /// Deserialized as
+    /// `{"type":"defined_power","count_of":{"filter":{"kind":"instant_or_sorcery"}}}`.
+    DefinedPower {
+        /// Which cards, in whose graveyards, the power is equal to a count of.
+        count_of: GraveyardCount,
+    },
+    /// A **copy effect** fixed as this permanent enters (CR 614.12 + CR 707): its
+    /// controller names a permanent, and from then on either this permanent or the one it
+    /// is attached to has that permanent's copiable values (CR 613 layer 1).
+    ///
+    /// Two printed shapes ride this one variant, and [`subject`](Self::EntersAsCopy::subject)
+    /// is the whole difference between them:
+    ///
+    /// - `You may have this creature enter as a copy of a creature you control` — the
+    ///   entering permanent *is* the copy (CR 707.5). It becomes one **as** it enters and
+    ///   not afterwards, so its enters-the-battlefield triggers are the copied ones and a
+    ///   0/0 that copies a 2/2 was never a 0/0 on the battlefield.
+    /// - `As this Aura enters, choose a creature. Enchanted creature is a copy of the
+    ///   chosen creature` — the *host* is the copy, for exactly as long as the Aura is
+    ///   attached to it (CR 707.2c: a copy effect from a static ability determines its
+    ///   copiable values only when it first starts to apply, which is why the answer is
+    ///   snapshotted here rather than re-read).
+    ///
+    /// Like [`Self::EntersChoosingColor`] it is a **question**, not a modification, so the
+    /// CR 614 replacement layer does not collect it and there is nothing to order it
+    /// against (ADR 0019): the card waits off the battlefield until the answer comes back,
+    /// and the permanent that then enters already carries its copiable values. The answer
+    /// lives on [`Permanent::copied`](crate::Permanent). Deserialized as
+    /// `{"type":"enters_as_copy","of":"creature_you_control","optional":true}`.
+    EntersAsCopy {
+        /// Which permanents may be named.
+        of: crate::copy::CopyClass,
+        /// What becomes the copy — this permanent, or the one it is attached to.
+        #[serde(default)]
+        subject: crate::copy::CopySubject,
+        /// Whether the controller may decline — the `You may have …` of every printed
+        /// `enters as a copy`. A mandatory choice with no legal answer simply chooses
+        /// nothing, so this is about the *decision*, not about the empty board.
+        #[serde(default)]
+        optional: bool,
+    },
     /// A **static ability** (CR 604.3): a continuous effect that applies for as long
     /// as this permanent is on the battlefield, with nothing ever put on the stack —
     /// an anthem (`Creatures you control get +1/+1.`) or a lord (`Other Elves you
@@ -158,6 +259,38 @@ pub enum Ability {
         /// What it does to that player.
         modification: PlayerModification,
     },
+    /// A continuous ability that changes **what a spell costs to cast** (CR 601.2f) —
+    /// `Creature spells you cast with power 4 or greater cost {2} less to cast.`
+    ///
+    /// A third continuous variant beside [`Self::Static`] and [`Self::PlayerStatic`],
+    /// and separate from both for the reason they are separate from each other: its
+    /// subject is a **spell**, which is neither a permanent nor a player. A
+    /// [`StaticAffects`] names a class of permanents and a [`StaticModification`] names
+    /// a CR 613 layer; a cost modification is not a layer at all — it applies while a
+    /// spell is being cast, before the object it produces exists — so a single variant
+    /// carrying both vocabularies could express nothing but nonsense.
+    ///
+    /// Read where the question is asked ([`crate::total_cast_cost`]) rather than applied
+    /// anywhere, exactly as the other two are: it takes effect the instant its source is
+    /// on the battlefield and stops the instant it leaves, with nothing stored and
+    /// nothing to prune (ADR 0005 §1). Every road that reads a cast's cost — the offer,
+    /// the payment, and the charge — goes through that one function, so a spell is never
+    /// advertised at one price and charged another.
+    ///
+    /// The caster is always the source's **controller** — the "you cast" every printed
+    /// ability of this shape says — so there is no selector to author and none to get
+    /// wrong. A tax on *another* player's spells is a different sentence and would name
+    /// the scope here.
+    ///
+    /// Deserialized as
+    /// `{"type":"cost_modifier","spells":{"creature":{"min_power":4}},"modification":{"kind":"reduce","generic":2}}`.
+    CostModifier {
+        /// Which of its controller's spells the modification applies to — the same
+        /// closed class vocabulary a cast trigger watches.
+        spells: ObservedSpell,
+        /// How much generic mana it adds or takes off (CR 601.2f).
+        modification: CostModification,
+    },
 }
 
 /// What an [`Ability::PlayerStatic`] does to its controller.
@@ -195,6 +328,43 @@ pub enum PlayerModification {
     ///
     /// Read by [`plays_lands_from_graveyard`](crate::plays_lands_from_graveyard).
     PlayLandsFromGraveyard,
+}
+
+/// When an activated ability may be activated (CR 602.5d).
+///
+/// A two-state type rather than a bool for the reason the rest of the IR prefers one: a
+/// field called `sorcery_speed` reads as a fact about the ability, while the question is
+/// *when*, and a third timing (`Activate only during combat`) would then be a second
+/// bool that could disagree with the first.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivationTiming {
+    /// Any time its controller has priority (CR 602.2a) — the default, and what every
+    /// activated ability says unless it says otherwise.
+    #[default]
+    AnyTime,
+    /// Only when its controller could cast a sorcery: their turn, a main phase, an empty
+    /// stack. The `Activate only as a sorcery.` of a printed card, enforced by the same
+    /// single expression of "sorcery speed" the loyalty and equip gates share, so the
+    /// three cannot disagree about when that is.
+    SorcerySpeed,
+}
+
+/// Whether an ability is restricted to **sorcery speed** by its printed text
+/// (CR 602.5d) — whether it declares [`ActivationTiming::SorcerySpeed`].
+///
+/// The counterpart of [`is_loyalty_ability`] and [`is_equip_ability`] for the timing
+/// that is *authored* rather than derived. It is a predicate all the same, so the offer
+/// and the apply-time re-derivation ask one question and cannot drift.
+#[must_use]
+pub fn is_sorcery_speed_ability(ability: &Ability) -> bool {
+    matches!(
+        ability,
+        Ability::Activated {
+            timing: ActivationTiming::SorcerySpeed,
+            ..
+        }
+    )
 }
 
 /// Whether an ability is a **loyalty ability** (CR 606.1): an activated ability whose
@@ -261,9 +431,21 @@ pub fn is_equip_ability(ability: &Ability) -> bool {
 /// return this card from your graveyard to your hand` says it inside an [`Effect::May`],
 /// and an ability that functions in a graveyard only when the player pays still functions
 /// in a graveyard.
+///
+/// A trigger that watches its **own source dying** is the one exception, and it is not a
+/// hedge. Such an ability functions from the battlefield — that is where its source was
+/// when the event happened, and CR 603.6c is the rule that lets it fire on the way out —
+/// so it belongs to the battlefield pass however its effects then reach the card the
+/// permanent became. Classifying it by its effect alone would file it under the graveyard
+/// pass, which reads printed abilities off cards already sitting there and would never
+/// have seen a permanent die at all.
 #[must_use]
 pub fn is_graveyard_ability(ability: &Ability) -> bool {
     match ability {
+        Ability::Triggered {
+            event: TriggerCondition::SelfDies,
+            ..
+        } => false,
         Ability::Activated { effects, .. } | Ability::Triggered { effects, .. } => {
             returns_self_from_graveyard(effects)
         }

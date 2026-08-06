@@ -26,10 +26,10 @@ pub(crate) fn stack_item(state: &GameState, object: &StackObject, db: &CardDatab
     // is what makes a reconnect mid-resolution rebuild the same relationships.
     let targets = object.targets.iter().map(stack_target).collect();
     match &object.kind {
-        StackObjectKind::Spell { card } => StackItem {
+        StackObjectKind::Spell { card, mode, x } => StackItem {
             id: stack_entity_id(object.id),
             controller: player_id(object.controller),
-            description: card_name(card.card, db),
+            description: announced_spell_description(*card, *mode, *x, db),
             source: None,
             // The physical card being cast (CR 108.1, issue #650). The engine carries
             // the whole `CardInstance` across the stack precisely so this survives, and
@@ -43,6 +43,20 @@ pub(crate) fn stack_item(state: &GameState, object: &StackObject, db: &CardDatab
             // is the same entity id the card carried in hand and will carry on the
             // battlefield.
             card: Some(card_view(card_entity_id(card.id), card.card, db)),
+        },
+        // A **copy of a spell** (CR 707.10): a spell object with no physical card. It is
+        // rendered as the spell it copies — same name, same face, same targets — because
+        // that is what it is; the one thing it cannot carry is a `physical_card`, and that
+        // absence is the whole difference on the wire.
+        StackObjectKind::SpellCopy { card, .. } => StackItem {
+            id: stack_entity_id(object.id),
+            controller: player_id(object.controller),
+            description: format!("Copy of {}", card_name(*card, db)),
+            source: None,
+            physical_card: None,
+            kind: Some(StackItemKind::Spell),
+            targets,
+            card: Some(card_view(stack_entity_id(object.id), *card, db)),
         },
         StackObjectKind::Ability {
             source,
@@ -73,6 +87,37 @@ pub(crate) fn stack_item(state: &GameState, object: &StackObject, db: &CardDatab
             card: source_permanent(state, *source).map(|perm| permanent_card_view(state, perm, db)),
         },
     }
+}
+
+/// The spell's name, plus whatever its controller **announced** as they cast it
+/// (CR 601.2b) — the mode it chose, and the value it named for X.
+///
+/// A stack entry is the record of one *particular* cast, which is exactly why the
+/// announcement is read back here and not off the card. The card says `X`; this object
+/// says 5. Two Banefires on the stack for different values are two different things to
+/// everyone deciding whether to respond, and a modal spell whose mode is not stated is a
+/// spell nobody can answer.
+fn announced_spell_description(
+    card: sage_engine::CardInstance,
+    mode: Option<u8>,
+    x: Option<u32>,
+    db: &CardDatabase,
+) -> String {
+    let mut description = card_name(card.card, db);
+    if let Some(chosen) = db
+        .card(card.card)
+        .and_then(|data| mode.and_then(|index| data.modes.get(usize::from(index)).cloned()))
+    {
+        description.push_str(" — ");
+        description.push_str(&crate::rules_text::mode_text(
+            &card_name(card.card, db),
+            &chosen,
+        ));
+    }
+    if let Some(value) = x {
+        description.push_str(&format!(" (X={value})"));
+    }
+    description
 }
 
 /// The wire kind for an ability, from the provenance the engine recorded at the push
@@ -133,10 +178,18 @@ fn source_name(state: &GameState, source: AbilitySource, db: &CardDatabase) -> S
             // sentences use ("return Reassembling Skeleton from your graveyard …"), so
             // this is the one source that answers with a real title while off the
             // battlefield.
-            AbilitySource::GraveyardCard(card) => card_name(card.card, db),
+            // A permanent that died has a name too, and it is the card now sitting in
+            // the graveyard — which is what its own dies trigger is talking about.
+            AbilitySource::GraveyardCard(card) | AbilitySource::DeadPermanent { card, .. } => {
+                card_name(card.card, db)
+            }
             AbilitySource::Permanent(_) => "This ability's source".to_string(),
+            // A delayed ability belongs to no object at all (CR 603.7): whatever created
+            // it may be long gone, and CR 603.7e says it fires anyway — so its sentences
+            // say what it is rather than naming something that is not there.
+            AbilitySource::DelayedAbility => "A delayed ability".to_string(),
         },
-        |perm| permanent_name(perm, db),
+        |perm| permanent_name(state, perm, db),
     )
 }
 
@@ -175,6 +228,7 @@ mod tests {
     ) -> StackId {
         let id = StackId(state.mint_id());
         state.stack.push(StackObject {
+            paid: Default::default(),
             id,
             controller,
             kind,
@@ -213,7 +267,11 @@ mod tests {
         let spell = push(
             &mut state,
             PlayerId(0),
-            StackObjectKind::Spell { card: shock },
+            StackObjectKind::Spell {
+                card: shock,
+                mode: None,
+                x: None,
+            },
             vec![Target::Permanent(ogre)],
         );
         let ability = push(
@@ -302,7 +360,11 @@ mod tests {
         let bolt = push(
             &mut state,
             PlayerId(0),
-            StackObjectKind::Spell { card: twin },
+            StackObjectKind::Spell {
+                card: twin,
+                mode: None,
+                x: None,
+            },
             // One damage to the creature, one to its controller.
             vec![Target::Permanent(bear), Target::Player(PlayerId(1))],
         );
@@ -311,7 +373,11 @@ mod tests {
         push(
             &mut state,
             PlayerId(1),
-            StackObjectKind::Spell { card: counter },
+            StackObjectKind::Spell {
+                card: counter,
+                mode: None,
+                x: None,
+            },
             vec![Target::Spell(bolt)],
         );
 
@@ -408,7 +474,11 @@ mod tests {
         push(
             &mut state,
             PlayerId(0),
-            StackObjectKind::Spell { card: twin },
+            StackObjectKind::Spell {
+                card: twin,
+                mode: None,
+                x: None,
+            },
             vec![Target::Permanent(bear), Target::Player(PlayerId(1))],
         );
 

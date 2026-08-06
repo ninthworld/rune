@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { GameView, type ValidAction } from './protocol'
-import { buildChooseAction } from './submission'
+import { buildChooseAction, type Draft } from './submission'
 import {
   IDLE,
   actionsFor,
@@ -25,6 +25,7 @@ import {
   finishesPayment,
   needsChoices,
   needsConfirmation,
+  ordinalIn,
   owedActions,
   payFor,
   release,
@@ -32,11 +33,14 @@ import {
   select,
   settle,
   slotsOf,
+  stepTo,
+  stepperAt,
   stopPaying,
   submitted,
   subjects,
   unask,
   type Interaction,
+  type Slot,
 } from './interaction'
 
 const FIXTURES = join(
@@ -1064,5 +1068,300 @@ describe('a spell that asks for a target and a cost', () => {
 
     const whole: Interaction = { ...paid, draft: { ...paid.draft, t0: ['perm_angel'] } }
     expect(focus([PLUMMET], whole).ready).toBe(true)
+  })
+})
+
+/**
+ * The announcement (`docs/client-design.md` §6.7): the two choices a cast makes before it is
+ * aimed, and the one thing this module must never do for either of them.
+ */
+describe('announcing a spell', () => {
+  const MODAL: ValidAction = {
+    id: 'cast_charm',
+    type: 'cast_spell',
+    label: 'Cast Sagelight Charm',
+    subject: ['card_charm'],
+    token: 't',
+    requirements: [
+      {
+        slot: 'm0t0',
+        prompt: 'Choose target creature',
+        optional: true,
+        candidates: ['perm_bear'],
+      },
+      { slot: 'm1t0', prompt: 'Choose target player', optional: true, candidates: ['p1'] },
+    ],
+    prompts: [
+      {
+        kind: 'option',
+        slot: 'mode',
+        prompt: 'Choose one',
+        options: [
+          { id: 'mode_0', label: 'Destroy target creature.', requires: ['m0t0'] },
+          { id: 'mode_1', label: 'Target player draws a card.', requires: ['m1t0'] },
+        ],
+      },
+    ],
+  }
+
+  const FIREBALL: ValidAction = {
+    id: 'cast_fireball',
+    type: 'cast_spell',
+    label: 'Cast Fireball',
+    subject: ['card_fireball'],
+    token: 't',
+    prompts: [
+      {
+        kind: 'number',
+        slot: 'x',
+        prompt: 'Choose a value for X',
+        min: 0,
+        max: 2,
+        values: [
+          { value: 0, cost: '{R}' },
+          { value: 1, cost: '{1}{R}' },
+          { value: 2, cost: '{2}{R}' },
+        ],
+      },
+    ],
+  }
+
+  const xSlot = (draft: Draft = {}): Slot => {
+    const slot = slotsOf(FIREBALL, draft).find((each) => each.slot === 'x')
+    if (!slot) throw new Error('the fixture no longer asks for X')
+    return slot
+  }
+
+  it('draws the mode as numbered rows, and every other option choice as it always was', () => {
+    // The mode is the one option slot §6.7 gives rows of its own: it is bounded at three by the
+    // catalog's own validator and its labels are sentences. A colour choice or a card being
+    // named is neither, and a build that gave every option slot rows would put a hundred of
+    // them in a band that holds three.
+    const mode = slotsOf(MODAL, {}).find((slot) => slot.slot === 'mode')
+    expect(mode?.numbered).toBe(true)
+    expect(mode?.options.map((option) => option.label)).toEqual([
+      'Destroy target creature.',
+      'Target player draws a card.',
+    ])
+
+    const decision: ValidAction = {
+      id: 'mull',
+      type: 'mulligan_decision',
+      label: 'Keep or mulligan',
+      prompts: [
+        {
+          kind: 'option',
+          slot: 'decision',
+          prompt: 'Keep or mulligan?',
+          options: [{ id: 'keep', label: 'Keep this hand' }],
+        },
+      ],
+    }
+    expect(slotsOf(decision, {})[0]?.numbered).toBeUndefined()
+  })
+
+  it('asks the mode first, and the targets that mode owes once it is chosen', () => {
+    // "A mode decides which target slots the spell has" (`docs/protocol.md`), which the server
+    // states as `requires` — so until one is picked, only the mode is a question, and after it
+    // exactly one mode's slots are.
+    expect(slotsOf(MODAL, {}).map((slot) => slot.slot)).toEqual(['mode'])
+    expect(slotsOf(MODAL, { mode: ['mode_0'] }).map((slot) => slot.slot)).toEqual(['m0t0', 'mode'])
+    expect(slotsOf(MODAL, { mode: ['mode_1'] }).map((slot) => slot.slot)).toEqual(['m1t0', 'mode'])
+  })
+
+  it('holds the pips back until the announcement is answered', () => {
+    // The order the rules pay them (§6.7): mode, X, targets, pips. A payment line above a
+    // question nobody has answered is a bar asking for money for a spell that has not been
+    // announced — and the cost itself depends on the answer.
+    const modalPaid: ValidAction = {
+      ...MODAL,
+      prompts: [
+        ...(MODAL.prompts ?? []),
+        {
+          kind: 'pay_mana',
+          slot: 'pay_0',
+          prompt: 'Pay {U}',
+          pip: '{U}',
+          candidates: [{ id: 'perm_isle#0', source: 'perm_isle', label: '{U}', taps: true }],
+        },
+      ],
+    }
+    expect(slotsOf(modalPaid, {}).map((slot) => slot.slot)).toEqual(['mode'])
+    expect(slotsOf(modalPaid, { mode: ['mode_0'] }).map((slot) => slot.slot)).toEqual([
+      'm0t0',
+      'mode',
+      'pay_0',
+    ])
+  })
+
+  it('sends only the chosen mode’s target, when the aim was changed', () => {
+    // A player who aims one mode and then picks the other has answered a slot that mode does
+    // not own. Sending both is an answer the server must reject.
+    const both = { mode: ['mode_1'], m0t0: ['perm_bear'], m1t0: ['p1'] }
+    expect(buildChooseAction(MODAL, both).targets).toEqual([
+      { slot: 'mode', chosen: ['mode_1'] },
+      { slot: 'm1t0', chosen: ['p1'] },
+    ])
+  })
+
+  it('answers the mode with the option id the server issued', () => {
+    const armed = arm(IDLE, MODAL)
+    const chosen = answer(armed, 'mode', ['mode_1'])
+    expect(buildChooseAction(MODAL, chosen.draft)).toEqual({
+      type: 'choose_action',
+      action_id: 'cast_charm',
+      token: 't',
+      targets: [{ slot: 'mode', chosen: ['mode_1'] }],
+    })
+  })
+
+  it('carries X’s values and their costs through untouched', () => {
+    // The whole of the constraint: the server enumerates the legal values and what each costs,
+    // and this carries them. Nothing multiplies `{X}{R}` out, because working out what a spell
+    // costs is deciding what a spell costs.
+    expect(xSlot().values).toEqual([
+      { value: 0, cost: '{R}' },
+      { value: 1, cost: '{1}{R}' },
+      { value: 2, cost: '{2}{R}' },
+    ])
+    // And the range the server sent beside them, for a client that reads that instead.
+    expect(xSlot().range).toEqual({ min: 0, max: 2 })
+  })
+
+  it('stands on the server’s first value before anything is chosen', () => {
+    // "The stepper starts there" (§6.7) — at the value the server put first, which is 0 on most
+    // cards and simply is not enumerated on a card that forbids it.
+    expect(stepperAt(xSlot())).toEqual({ index: 0, value: 0, cost: '{R}' })
+    expect(stepperAt(xSlot({ x: ['2'] }))).toEqual({ index: 2, value: 2, cost: '{2}{R}' })
+  })
+
+  it('walks the enumerated values and stops at their ends', () => {
+    expect(stepTo(xSlot({ x: ['0'] }), 1)).toBe('1')
+    expect(stepTo(xSlot({ x: ['1'] }), 1)).toBe('2')
+    expect(stepTo(xSlot({ x: ['1'] }), -1)).toBe('0')
+    // The ends are the ends of the *list*, not of a range this client worked out.
+    expect(stepTo(xSlot({ x: ['2'] }), 1)).toBeUndefined()
+    expect(stepTo(xSlot({ x: ['0'] }), -1)).toBeUndefined()
+  })
+
+  it('walks a list with gaps in it without inventing what is missing', () => {
+    // A card whose legal values are 0 and 3 — because the ones between are unaffordable, or
+    // because the card says so — steps from one to the other. A stepper that added one to a
+    // number would offer 1, and the server would refuse it.
+    const gapped: ValidAction = {
+      ...FIREBALL,
+      prompts: [
+        {
+          kind: 'number',
+          slot: 'x',
+          prompt: 'Choose a value for X',
+          min: 0,
+          max: 3,
+          values: [
+            { value: 0, cost: '{R}' },
+            { value: 3, cost: '{3}{R}' },
+          ],
+        },
+      ],
+    }
+    const slot = slotsOf(gapped, { x: ['0'] })[0]
+    if (!slot) throw new Error('no slot')
+    expect(stepTo(slot, 1)).toBe('3')
+  })
+
+  it('has no stepper at all for a number that costs nothing', () => {
+    // A divided effect, or how many counters to remove: a range and no list of stops, which is
+    // the shape every `number` slot had before X.
+    const counters: ValidAction = {
+      id: 'act',
+      type: 'activate_ability',
+      label: 'Remove counters',
+      prompts: [{ kind: 'number', slot: 'n', prompt: 'How many?', min: 1, max: 4 }],
+    }
+    const slot = slotsOf(counters, {})[0]
+    if (!slot) throw new Error('no slot')
+    expect(slot.values).toBeUndefined()
+    expect(stepperAt(slot)).toBeUndefined()
+    expect(stepTo(slot, 1)).toBeUndefined()
+  })
+
+  it('sends the chosen value as the decimal string the slot is answered with', () => {
+    const armed = answer(arm(IDLE, FIREBALL), 'x', ['2'])
+    expect(focus([FIREBALL], armed).ready).toBe(true)
+    expect(buildChooseAction(FIREBALL, armed.draft).targets).toEqual([{ slot: 'x', chosen: ['2'] }])
+  })
+})
+
+/**
+ * Putting cards back in an order, answered by clicking in that order (§6.7). The rule about what
+ * a click means is this module's; the badge is the position it produces.
+ */
+describe('an ordering, answered by clicking', () => {
+  const LOOK: ValidAction = {
+    id: 'choice',
+    type: 'player_choice',
+    label: 'Choose the order',
+    token: 't',
+    prompts: [
+      {
+        kind: 'order',
+        slot: 'choice',
+        prompt: 'Choose the order these go on the bottom of your library, deepest first',
+        items: ['card_a', 'card_b', 'card_c'],
+      },
+    ],
+  }
+
+  const orderSlot = (draft: Draft): Slot => {
+    const slot = slotsOf(LOOK, draft)[0]
+    if (!slot) throw new Error('no slot')
+    return slot
+  }
+
+  it('badges each card with where it sits, in the order it was clicked', () => {
+    let held: Interaction = arm(IDLE, LOOK)
+    for (const id of ['card_c', 'card_a']) {
+      held = fill(held, orderSlot(held.draft), id, [])
+    }
+    const slot = orderSlot(held.draft)
+    expect(ordinalIn(slot, 'card_c')).toBe(1)
+    expect(ordinalIn(slot, 'card_a')).toBe(2)
+    // A card nobody has picked wears no badge at all, rather than a zero.
+    expect(ordinalIn(slot, 'card_b')).toBeUndefined()
+  })
+
+  it('takes a badged card back out and renumbers the rest', () => {
+    let held: Interaction = arm(IDLE, LOOK)
+    for (const id of ['card_a', 'card_b', 'card_c']) {
+      held = fill(held, orderSlot(held.draft), id, [])
+    }
+    held = fill(held, orderSlot(held.draft), 'card_a', [])
+    const slot = orderSlot(held.draft)
+    expect(ordinalIn(slot, 'card_a')).toBeUndefined()
+    expect(ordinalIn(slot, 'card_b')).toBe(1)
+    expect(ordinalIn(slot, 'card_c')).toBe(2)
+  })
+
+  it('is not submittable until every item has a place, and sends the order it was given', () => {
+    // "A permutation of every one of its `items`, no more and no fewer" (`docs/protocol.md`),
+    // and the first id sent is the one that ends up deepest.
+    let held: Interaction = arm(IDLE, LOOK)
+    held = fill(held, orderSlot(held.draft), 'card_b', [])
+    expect(focus([LOOK], held).ready).toBe(false)
+
+    for (const id of ['card_c', 'card_a']) {
+      held = fill(held, orderSlot(held.draft), id, [])
+    }
+    expect(focus([LOOK], held).ready).toBe(true)
+    expect(buildChooseAction(LOOK, held.draft).targets).toEqual([
+      { slot: 'choice', chosen: ['card_b', 'card_c', 'card_a'] },
+    ])
+  })
+
+  it('routes a click on one of the cards to the ordering slot', () => {
+    // The same gesture as everywhere else: the click is routed to the slot the server listed
+    // that id in, so a card in the pile answers the ordering and nothing has to know it is one.
+    const armed = arm(IDLE, LOOK)
+    expect(gestureFor([LOOK], armed, 'card_b')).toEqual({ kind: 'fill', slot: 'choice' })
   })
 })

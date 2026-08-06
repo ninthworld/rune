@@ -997,8 +997,8 @@ client deciding when a cost was covered, which is the one thing it must never do
 ### A spell asks what it is aimed at, then what it costs
 
 A cast is one action with two kinds of question — its targets and its pips — and they are asked in
-the order the rules pay them: targets are chosen as the spell is put on the stack (CR 601.2c), the
-cost is paid after (CR 601.2f–h). So the bar asks the targets first and the pips appear once they
+the order the rules pay them: a mode and an X are announced first (CR 601.2b, §6.7), targets are
+chosen as the spell is put on the stack (CR 601.2c), the cost is paid after (CR 601.2f–h). So the bar asks the targets first and the pips appear once they
 are answered. Leading with the payment put a cost line above a question nobody had answered yet, and
 a player who paid it in full still could not cast: a target slot the server did not mark *optional*
 must be filled or the submission is rejected, so **Confirm stays dark until it is** — the same
@@ -1059,6 +1059,157 @@ and pans and an arrow leaves its row immediately. It takes no pointer events at 
   tones from the same stated ids, and they disappear with the draft. It is still not the client
   stating anything about the game: every end is a `subject` the server named and a `candidate` it
   enumerated, and the picture is of the message about to be sent.
+
+---
+
+## 6.7 Announcing, ordering, and a card with two faces
+
+Five surfaces the rules reached before this document did. None of them is a new kind of screen: each
+one is a rule already stated here, applied to a question the engine did not used to ask.
+
+### The order the questions come in
+
+§6.5 said targets, then pips. The announcement steps sit ahead of both, because that is where the
+rules put them and because **a mode changes which target slots exist** — the client cannot draw a
+target question for a spell whose mode is unchosen, and the server cannot answer one.
+
+So the full order, for one cast: **mode → X → targets → pips.** A spell that has no mode and no X is
+unchanged; it simply starts at the third step, which is every spell in the catalog today.
+
+Each step is a question only while it is unanswered, exactly as a combat declaration's slots are
+(§6.5): the pips do not appear until the targets are filled, and the targets do not appear until the
+mode is picked. Nothing is drawn twice and nothing is drawn early.
+
+### A mode is a dock control, and it is numbered
+
+A mode has no object on the board to point at. It is the case §6.5 already carved out — *a subject no
+surface draws stays in the dock as a control* — so the modes are the only place they can be.
+
+They are drawn as full-width recessed rows in the bar, one per mode, each carrying the mode's
+generated text on one fitted line (§7, never truncated). The rows are **numbered, and the numeral is
+the key**: `1`, `2`, `3` choose the mode, because the keyboard already carries priority.
+
+**The bound is three.** The dock's band is fixed (§6.5 rule 5) and is computed to hold three mode
+rows at the 11px floor. A card with more modes than that is not a layout problem to solve later — it
+is a card the catalog validator should refuse, and the engine's schema is where the limit belongs.
+M19's two modal cards have two modes each.
+
+**Three, and not four, because three is where the printed cards actually stop.** An earlier draft of
+this section said four, and a fourth row is about 25px of band at the reference size — spent on every
+board, at every size, for a card that cannot exist. No *choose one* card in the game prints four
+modes: the Charm cycle is three, it is large and it recurs, so a Charm needs no schema change and no
+revisit of this section when it arrives. The four-mode cards are the Commands, and every one of them is *choose
+two* of four — a different question, which owes a tally of what has been picked and a commit that
+knows when two is enough, and which will size its own band when the engine can ask it. Sizing this
+band for a card that would be answered by a surface that does not exist is the wrong end of the
+problem.
+
+Choosing a mode is not sending anything. It is the same held intent as naming the card (§6.5), it
+draws no arrow, and Cancel drops it with everything else.
+
+### X is a stepper over a range the server enumerated
+
+X is a number and has no object either, so it is a dock control too — but it is the one place where
+the temptation to compute is real, and the answer has to be stated so it is not taken.
+
+**The client never works out what X can be.** `valid_actions` advertises the legal values and what
+each one costs, and the bar draws a stepper over exactly that list: the current value, a decrement
+and an increment that walk the enumerated values and stop at their ends, and the resulting cost
+beside it in the same two-number layout the bar already uses for printed-versus-floating (§6.5).
+
+That is a constraint on the protocol as much as on the client, and it is the point: if the server
+sent only a cost with an `X` in it, the client would have to multiply, and multiplying is deciding
+what a spell costs. It sends the values.
+
+`0` is a legal X on most cards and the stepper starts there. Where a card forbids it the server
+simply does not enumerate it, and the client is none the wiser.
+
+### Putting cards back in an order is a pile, answered by clicking in that order
+
+§6.6 already has this surface: *a pile is a dialog*, and *when the game asked the question, the
+dialog carries the answer*. Looking at the top three cards of a library opens that dialog, and the
+selection question it already supports takes the card that goes to the hand.
+
+The ordering is the second question over the same dialog, and it is answered the same way the
+declaration is: **by clicking, in order.** Each remaining card takes an ordinal badge as it is
+clicked, the badge is the position, and clicking a badged card again takes it back out of the order
+and renumbers the rest.
+
+**The footer says which end is which, in words**, because "in any order" is ambiguous on its own and
+a badge that says `1` does not say what `1` means: *the first you pick goes deepest*. That sentence
+is the only wording the surface needs, and it replaces a heading nobody would read twice.
+
+There is no drag. Dragging is a second gesture for a job one click already does, it is the gesture
+that works worst on a phone, and §6.5 rule 4 would then owe a keyboard equivalent for it anyway —
+which is the numbered click, so the numbered click is the whole answer.
+
+A remainder of one card is not a question and the server never asks it (the engine's never-stall
+rule). A remainder of two is a question, and one click settles it — but the commit is still
+explicit, because §6.5 has no auto-commit anywhere and this is not the place to invent one.
+
+### A cost the game has changed is shown changed, in the mark the card already uses
+
+Cost modification gives the bar a third number: what a spell costs *now*, which is not what is
+printed on it.
+
+**The card keeps the printed cost.** There is one drawing (§6) and no variant a caller can pass; a
+permanent's face is what the card says, and a cost that is cheaper this turn is not a fact about the
+card.
+
+**The bar carries the modified cost, and marks it when it differs from the printed one.** One mark,
+in the bar's amber, saying *that* the cost changed — with `costs now` on the number a player pays and
+`card says` on the number the card still prints, both on screen together.
+
+**The mark does not say which way it went, and that is a reversal.** An earlier draft asked for the
+P/T plaque's rule — green when the modified cost is less than printed, red when it is more (§6, state
+marks) — on the reasoning that this is the other place a printed number is overridden. Three things
+were wrong with carrying it across, and they are worth keeping because each of them is a rule this
+document states elsewhere:
+
+- **A P/T is a number and a cost is symbols.** The plaque compares two values the server sent as
+  values; a cost arrives as `{2}{G}`, and reading that as more than `{G}` means giving every symbol a
+  value and adding them up. Adding up a cost is deciding what a spell costs, which is the one thing
+  the client may not do — the same rule that makes X's legal values a wire fact.
+- **Green and red are already spoken for.** §6.5 gives the bar three tones and they mean *where in
+  the turn you are*: green on the bookends, blue in a main phase, red once combat is live. A green
+  "this is cheaper" inside a green band is a second meaning for a colour a player has already
+  learnt, and a red one during combat says nothing at all. Amber is the one hue in the band carrying
+  nothing else.
+- **The direction is already on screen.** Both costs are drawn, side by side, each labelled. A mark
+  that repeated what the two numbers say is decoration (§2.1 rule 5), and it is not worth a
+  permanent field on the wire to compute — which is what a green mark would have cost, since the
+  only honest way to have one is for the server to state the direction.
+
+Colour never carries a fact alone (§5.5). Here it carries no fact at all: the mark draws the eye to a
+number that is not what the card prints, the words say which number is which, and the modified cost
+is what a screen reader is given first.
+
+### A card with two faces draws the face that is up
+
+A transforming card has a face that is up and a face that is not, and §6 forbids both the variant
+drawing and the dropped element. So:
+
+1. **The board draws the face that is up, whole, as the only drawing.** Nothing on the board hints at
+   the other face's contents. Two faces in one box is two cards' worth of text in one card's grid,
+   and the grid would answer by shrinking both past the floor.
+2. **A mark in the dark well says there is another face** — one glyph, in the run of state marks
+   (§6), and the word for assistive technology. It says *there is another side*, not what is on it.
+3. **The preview shows the other side.** §6.6's preview follows the look and draws the card whole;
+   for a two-faced card, pinning it (hold, or Escape's counterpart on a phone) turns it over. That is
+   the same "reading must not cost a click" bargain the preview already is: the other face is Tier 3,
+   on demand, which is the correct tier for a fact you need before you cast the card and never during
+   combat.
+4. **The back face has no mana cost**, so the title bar's trailing slot is empty and the name is
+   fitted against the whole band. The existing fitting handles this with no special case, which is
+   the test of whether the anatomy in §6 was right.
+
+### A copy needs no surface at all
+
+Recorded because its absence is a decision, not an oversight: a permanent that is a copy of another
+draws as the thing it copies, because `CardView` carries the copied name, cost, types, and P/T and
+the client draws the card it is told about. It infers nothing, it compares nothing to a printed face,
+and there is no copy badge — a token that is a copy of a Bear is a Bear on the board, which is
+exactly what it is at a table.
 
 ---
 
@@ -1441,5 +1592,11 @@ because they are undecided in principle — and each names what would settle it.
 6. **Chat, and who is in the lobby.** The client draws both panels and says they carry nothing,
    which is a placement decision rather than a design for either. What a table's chat should be —
    and whether the lobby's is the same surface — is unanswered.
+7. **A turn-long effect nobody can see.** A damage prevention shield is a fact about the rest of the
+   turn that no region of the board states: the shield resolves, the log records it once, and from
+   then on combat simply does not do what it looks like it will. The same will be true of every
+   until-end-of-turn effect with no permanent behind it. It is deliberately unbuilt rather than
+   overlooked — a standing indicator is a new region and the wrong thing to design from one card.
+   Settled by: playing a game with Root Snare in it and reporting whether the log was enough.
 
 Questions raised after this document became binding go here.

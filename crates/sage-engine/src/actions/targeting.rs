@@ -57,9 +57,16 @@ pub fn target_requirements(
 ///
 /// An [`Action::ActivateAbility`] reads its activated ability's effects; an
 /// [`Action::CastSpell`] reads the cast card's cast target groups
-/// ([`crate::CardData::cast_target_groups`]) — the spell-effect target slots plus, for an
-/// Aura, its enchant restriction (CR 303.4a) — so a spell chooses targets exactly
-/// as an ability does (CR 601.2c). Every other action targets nothing.
+/// ([`crate::CardData::cast_target_groups`]) **for the mode it announced** — the
+/// spell-effect target slots plus, for an Aura, its enchant restriction (CR 303.4a) — so
+/// a spell chooses targets exactly as an ability does (CR 601.2c). Every other action
+/// targets nothing.
+///
+/// A **modal** cast that has not chosen a mode yet declares no groups at all. That is
+/// not an absence of targets, it is an absence of an answer: the mode is what says which
+/// effects the spell has, so nothing here can speak until it is chosen. The
+/// announcement gate ([`announcement_is_legal`](super::announcement_is_legal)) is what
+/// stops that silence being mistaken for "this spell targets nothing".
 pub(crate) fn action_target_groups(
     state: &GameState,
     db: &CardDatabase,
@@ -90,9 +97,13 @@ pub(crate) fn action_target_groups(
                 _ => Vec::new(),
             }
         }
-        Action::CastSpell { card, .. } => db
+        // A cast reads its groups off the card **for the mode it announced** (CR 700.2).
+        // With no mode chosen a modal card declares none, which is the ordering rule of
+        // this issue made structural: the question "what does this spell target" has no
+        // answer until the question "which of its two things does it do" has one.
+        Action::CastSpell { card, mode, .. } => db
             .card(card.card)
-            .map(crate::card::CardData::cast_target_groups)
+            .map(|data| data.cast_target_groups(*mode))
             .unwrap_or_default(),
         // A trigger's slots are the target groups of the effects it carries on the
         // stack — read from the object itself, since a triggered ability's effects
@@ -105,6 +116,16 @@ pub(crate) fn action_target_groups(
                 crate::stack::StackObjectKind::Ability { effects, .. } => {
                     effects.iter().flat_map(Effect::target_groups).collect()
                 }
+                // A **copy of a spell** whose controller may choose new targets
+                // (CR 707.10c) is aimed by the same action, so it declares the same slots
+                // the copied spell would have chosen at cast (CR 707.2 — a copy has the
+                // copied card's rules text).
+                crate::stack::StackObjectKind::SpellCopy { card, mode, .. } => db
+                    .card(*card)
+                    // The mode the original announced travels with the copy (CR 707.10),
+                    // so its slots are the ones that mode declares.
+                    .map(|data| data.cast_target_groups(*mode))
+                    .unwrap_or_default(),
                 crate::stack::StackObjectKind::Spell { .. } => Vec::new(),
             })
             .unwrap_or_default(),
@@ -164,16 +185,22 @@ pub(crate) fn legal_targets_for_spec(
         TargetSpec::AnyPermanent
         | TargetSpec::AnyNonlandPermanent
         | TargetSpec::AnyNonlandPermanentAnOpponentControls
+        // A mana-value filter narrows the battlefield rather than naming a different
+        // zone, so the universe is the same one every permanent spec draws from and the
+        // `target_is_legal` filter below is what reads the number.
+        | TargetSpec::AnyPermanentWithManaValue { .. }
         | TargetSpec::AnyCreature
         | TargetSpec::AnyCreatureYouControl
         | TargetSpec::AnyCreatureAnOpponentControls
         | TargetSpec::AnyCreatureWithFlying
+        | TargetSpec::AnyColorlessCreature
         | TargetSpec::AnyTappedCreature
         | TargetSpec::AnyArtifactCreatureYouControl
         | TargetSpec::AnyArtifact
         | TargetSpec::AnyEnchantment
         | TargetSpec::AnyArtifactOrEnchantment
         | TargetSpec::AnyArtifactEnchantmentOrCreatureWithFlying
+        | TargetSpec::AnyCreatureOrPlaneswalker
         | TargetSpec::AnyLand => permanents,
         // A graveyard is public, so its cards are enumerable exactly as the battlefield
         // is — the universe is the choosing player's own graveyard, and the
@@ -203,11 +230,19 @@ pub(crate) fn legal_targets_for_spec(
         TargetSpec::AnyTarget => players.into_iter().chain(permanents).collect(),
         // Only spells on the stack are candidates — abilities are not spells, and
         // mana abilities never use the stack (CR 605.3), so neither can be a
-        // "counter target spell" candidate.
+        // "counter target spell" candidate. A **copy** of a spell is a spell
+        // (CR 707.10) and joins the universe; the `target_is_legal` filter below is
+        // what keeps it out of the narrower `CreatureSpellOnStack` answer.
         TargetSpec::SpellOnStack | TargetSpec::CreatureSpellOnStack => state
             .stack
             .iter()
-            .filter(|o| matches!(o.kind, crate::stack::StackObjectKind::Spell { .. }))
+            .filter(|o| {
+                matches!(
+                    o.kind,
+                    crate::stack::StackObjectKind::Spell { .. }
+                        | crate::stack::StackObjectKind::SpellCopy { .. }
+                )
+            })
             .map(|o| Target::Spell(o.id))
             .collect(),
     };

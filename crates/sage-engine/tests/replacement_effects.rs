@@ -103,7 +103,7 @@ fn to_battlefield(state: &mut GameState, db: &CardDatabase, slug: &str, seat: Pl
     state.battlefield.push(sage_engine::Permanent {
         id: permanent,
         instance: instance.id,
-        printed: sage_engine::Printed::Card(instance.card),
+        printed: instance.card.into(),
         controller: seat,
         entered_turn: 0,
         ..Default::default()
@@ -420,6 +420,8 @@ fn issue_731_a_cast_creature_is_not_replaced_by_a_without_being_cast_effect() {
         &state,
         &Action::CastSpell {
             card: ghoul,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },

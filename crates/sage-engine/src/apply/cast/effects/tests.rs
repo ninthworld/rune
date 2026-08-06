@@ -42,6 +42,8 @@ fn issue_card_effects_etb_draw_end_to_end() {
         &state,
         &Action::CastSpell {
             card: scanner,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -293,6 +295,8 @@ fn issue_256_divination_draws_two_cards() {
         &state,
         &Action::CastSpell {
             card: study,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -327,6 +331,8 @@ fn issue_256_enchantment_etb_gains_life_when_it_enters() {
         &state,
         &Action::CastSpell {
             card: blessing,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -395,6 +401,8 @@ fn issue_149_life_gain_adds_to_a_low_life_total_cr_119() {
         &state,
         &Action::CastSpell {
             card: balm,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -423,6 +431,8 @@ fn issue_149_life_loss_to_exactly_zero_triggers_the_loss_cr_704_5a() {
         &state,
         &Action::CastSpell {
             card: ordeal,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -482,6 +492,8 @@ fn issue_401_rhox_oracle_draws_a_card_when_it_enters() {
         &state,
         &Action::CastSpell {
             card: oracle,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -517,6 +529,8 @@ fn issue_401_pelakka_wurm_gains_seven_life_on_etb_and_draws_when_it_dies() {
         &state,
         &Action::CastSpell {
             card: wurm,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },

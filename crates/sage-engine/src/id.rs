@@ -91,7 +91,7 @@ impl std::error::Error for FunctionalIdError {}
 /// A card keeps the same `CardId` in every zone; it is not the battlefield
 /// identity (see [`PermanentId`]) nor the per-copy identity (see
 /// [`CardInstanceId`]). Two copies of one card share one `CardId`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct CardId(pub u64);
 
 /// Documentary alias for a [`CardId`] read as "the functional definition a

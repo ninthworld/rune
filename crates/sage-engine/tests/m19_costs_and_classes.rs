@@ -76,6 +76,8 @@ fn cast(state: &GameState, db: &CardDatabase, slug: &str, targets: Vec<Target>) 
         &state,
         &Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets,
             payment: Vec::new(),
         },
@@ -245,6 +247,8 @@ fn dragons_hoard_banks_a_gold_counter_per_dragon_and_spends_one_per_card() {
         &with_dragon,
         &Action::CastSpell {
             card: dragon,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -362,6 +366,8 @@ fn resolve_creature(state: &GameState, db: &CardDatabase, slug: &str) -> GameSta
         &state,
         &Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -446,6 +452,8 @@ fn skalla_wolf_reveals_a_green_card_and_only_a_green_one() {
         &state,
         &Action::CastSpell {
             card: wolf,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -494,6 +502,8 @@ fn ajanis_influence_counters_one_creature_then_digs_for_white() {
         &db,
         &Action::CastSpell {
             card: spell,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -504,6 +514,8 @@ fn ajanis_influence_counters_one_creature_then_digs_for_white() {
         &state,
         &Action::CastSpell {
             card: spell,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(ogre)],
             payment: Vec::new(),
         },

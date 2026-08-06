@@ -51,6 +51,8 @@ fn commander_in_command_zone(db: &CardDatabase, casts: u32) -> (GameState, CardI
 fn cast_offered(state: &GameState, db: &CardDatabase, card: CardInstance) -> bool {
     valid_actions(state, db).contains(&Action::CastSpell {
         card,
+        mode: None,
+        x: None,
         targets: Vec::new(),
         payment: Vec::new(),
     })
@@ -90,6 +92,8 @@ fn cr_903_8_command_zone_cast_goes_on_the_stack_and_resolves_to_the_battlefield(
         &state,
         &Action::CastSpell {
             card: commander,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -176,6 +180,7 @@ fn put_permanent_on_battlefield(state: &mut GameState, instance: CardInstance) -
 fn exile_ability_targeting(state: &mut GameState, target: PermanentId) {
     let sid = state.mint_id();
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: StackId(sid),
         controller: PlayerId(0),
         kind: StackObjectKind::Ability {
@@ -183,6 +188,7 @@ fn exile_ability_targeting(state: &mut GameState, target: PermanentId) {
             origin: AbilityOrigin::Activated,
             effects: vec![Effect::Exile {
                 target: TargetSpec::AnyPermanent,
+                gain_life: None,
             }],
         },
         targets: vec![Target::Permanent(target)],

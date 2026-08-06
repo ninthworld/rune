@@ -60,10 +60,13 @@ fn place(state: &mut GameState, card: CardId) -> PermanentId {
         attacking: None,
         blocking: Vec::new(),
         skips_untap: false,
+        dealt_damage: false,
         damage: 0,
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
+        copied: None,
     });
     id
 }
@@ -85,7 +88,9 @@ fn only_ability(state: &GameState) -> (PermanentId, AbilityOrigin) {
     assert_eq!(state.stack.len(), 1, "exactly one object on the stack");
     match state.stack[0].kind {
         StackObjectKind::Ability { source, origin, .. } => (source.permanent().unwrap(), origin),
-        StackObjectKind::Spell { .. } => panic!("expected an ability on the stack"),
+        StackObjectKind::Spell { .. } | StackObjectKind::SpellCopy { .. } => {
+            panic!("expected an ability on the stack")
+        }
     }
 }
 

@@ -4,7 +4,8 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::card::{CombatRestriction, Keyword};
+use crate::ability::Ability;
+use crate::card::{CombatRestriction, Keyword, RuleModification};
 use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::player::LossReason;
 use crate::token::Printed;
@@ -67,7 +68,7 @@ impl LoggedPermanent {
         Self {
             permanent: perm.id,
             identity: match &perm.printed {
-                crate::token::Printed::Card(card) => LoggedIdentity::Card(*card),
+                crate::token::Printed::Card { card, .. } => LoggedIdentity::Card(*card),
                 crate::token::Printed::Token(token) => LoggedIdentity::Token(token.name.clone()),
             },
         }
@@ -541,6 +542,22 @@ pub struct Permanent {
     /// continuous effect, it does not end at cleanup, and no layer applies to it. The
     /// permanent carries it the way it carries [`Self::damage`].
     pub skips_untap: bool,
+    /// Whether this permanent has **dealt** damage at any point since it entered the
+    /// battlefield (CR 120) — the "hasn't dealt damage **yet**" of a conditional
+    /// continuous ability ([`StaticCondition::SourceHasNotDealtDamage`](crate::StaticCondition)).
+    ///
+    /// The mirror of [`Self::damage`], which is damage dealt *to* it, and stored for the
+    /// same reason: it is history, and no snapshot of the battlefield could recover it.
+    /// The event log cannot answer it either — the log is a bounded ring and records what
+    /// damage was dealt *to*, never by what — so the fact is kept where it belongs, on the
+    /// object it is about.
+    ///
+    /// Written at the three seams a permanent is the source of damage: the combat-damage
+    /// batch (CR 510.2), a fight (CR 701.12), and the damage verb of an ability whose
+    /// source is a permanent (CR 609.7). Once true it stays true; nothing clears it,
+    /// because "yet" has no end. A permanent that leaves and returns is a different object
+    /// with a fresh [`PermanentId`] and a fresh `false`.
+    pub dealt_damage: bool,
     /// Damage marked on this permanent this turn (CR 120.3). Raw stored state,
     /// zeroed as a turn-based action during the cleanup step (CR 514.2) and,
     /// once combat lands (issue #118), compared against toughness by the
@@ -592,6 +609,42 @@ pub struct Permanent {
     /// entry, a card that leaves and returns is a new object that chooses again, with no
     /// memory of the colour the last one named (CR 400.7).
     pub chosen_color: Option<crate::mana::Color>,
+    /// The card this permanent's controller named **as it entered** (CR 614.12), for a
+    /// card that declares [`Ability::EntersNamingCard`](crate::Ability) — the "chosen
+    /// name" its other abilities read. `None` for every permanent that named none.
+    ///
+    /// [`Self::chosen_color`]'s sibling, written at the same seam, once, and never again,
+    /// and absent for the same reason it can never be missing when it should be present:
+    /// a card that asks does not reach the battlefield until the question is answered.
+    ///
+    /// It is a [`CardId`] — a **functional identity**, a handle to a card the catalog
+    /// defines — and never a string. A player names one of
+    /// [`named_card_candidates`](crate::named_card_candidates), so this field can only
+    /// ever hold a card SAGE already ships, which is what keeps "the project ships no
+    /// card name it has not defined" true of a game in progress and not merely of the
+    /// repository.
+    pub named_card: Option<crate::id::CardId>,
+    /// The **copiable values** this permanent's controller named as it entered
+    /// (CR 707.2), for a card that declares
+    /// [`Ability::EntersAsCopy`](crate::Ability) — and whether they make *this*
+    /// permanent a copy or the one it is attached to. `None` for every permanent that
+    /// copies nothing, which is nearly all of them.
+    ///
+    /// **Raw stored state, not a derivation** (ADR 0005 §1), twice over. Which permanent
+    /// was named is a player's answer, and the values are frozen at the moment the copy
+    /// effect began (CR 707.2b, CR 707.2c) — so recomputing them would be exactly the
+    /// retroactive copy the rules forbid: the chosen creature growing a counter, gaining a
+    /// keyword, or being turned into something else must not change what was copied.
+    ///
+    /// Written once, at the battlefield-entry seam, like [`Self::chosen_color`] and for
+    /// the same reason: the permanent waits off the battlefield until the question is
+    /// answered ([`PermanentOutcome::RecordOnEntry`](crate::PermanentOutcome)), so no read
+    /// can catch one mid-decision. It is *read* by CR 613 layer 1
+    /// ([`characteristics`](crate::characteristics::characteristics)), which is why an
+    /// Aura's entry writes it on the **Aura** rather than on its host: the host's copy is
+    /// derived from the attachment on every read and therefore ends the instant the Aura
+    /// leaves or moves, with nothing to prune.
+    pub copied: Option<crate::copy::CopiedValues>,
 }
 
 impl Permanent {
@@ -701,7 +754,8 @@ pub enum EffectAffects {
 }
 
 /// The continuous modification a [`StaticEffect`] performs. The variant fixes
-/// the CR 613 layer the effect applies in.
+/// the CR 613 layer the effect applies in — or, for [`Self::ModifyRule`], says that it
+/// applies in none.
 ///
 /// `Clone` rather than `Copy` because [`Self::GrantRestriction`] carries a
 /// [`CombatRestriction`], one of whose forms names an open-ended subtype string.
@@ -748,16 +802,34 @@ pub enum Modification {
     /// The one modification that is not about a single named thing, and therefore the
     /// one every collector that walks a permanent's abilities has to respect: a
     /// silenced permanent offers no activation, contributes no continuous effect to
-    /// anything, and fires no trigger. The single question those collectors ask is
-    /// [`characteristics::loses_all_abilities`](crate::characteristics::loses_all_abilities),
-    /// which reads the stored effects and nothing else — so it can be asked from
-    /// *inside* the layer computation, exactly as layer 2 can.
+    /// anything, and fires no trigger. They all read one accessor,
+    /// [`abilities_of_permanent`](crate::abilities_of_permanent), which folds this and
+    /// every grant in timestamp order over the stored effects and the attachments and
+    /// nothing else — so it can be asked from *inside* the layer computation, exactly as
+    /// layer 2 can.
     ///
-    /// A keyword granted **after** it is still granted (CR 613.1f), which the ordered
-    /// layer-6 fold handles on its own. Nothing in the IR grants a non-keyword ability,
-    /// so for the ability collectors a boolean is not an approximation of the ordered
-    /// answer — it *is* the ordered answer.
+    /// Anything granted **after** it is still granted (CR 613.1f) — a keyword by
+    /// [`Self::GrantKeyword`], a written-out ability by [`Self::GrantAbility`] — which
+    /// the ordered layer-6 folds handle on their own. That ordering is the reason no
+    /// collector may ask a bare "has this lost everything?" boolean: an Aura hung on a
+    /// silenced permanent afterwards really does give it an ability.
     LoseAllAbilities,
+    /// CR 613 **layer 6** (CR 613.1f): add a **written-out ability** to the affected
+    /// permanent — the `gains "When this creature dies, …"` of a spell, and the
+    /// `Enchanted land has "{T}: Add …"` of an Aura.
+    ///
+    /// [`Self::GrantKeyword`]'s sibling, and deliberately not a widening of it: a keyword
+    /// is one `Copy` word from a closed list, while this carries a whole [`Ability`] —
+    /// costs, effects, a trigger condition — and so must be boxed to keep the enum from
+    /// growing to the size of its largest variant everywhere it is stored.
+    ///
+    /// A granted ability is folded into the host's set by
+    /// [`abilities_of_permanent`](crate::abilities_of_permanent), the one accessor every
+    /// collector reads, so it is offered, paid for, put on the stack, and fired by the
+    /// same code a printed ability goes through. Unlike a keyword grant it is **not**
+    /// idempotent: granting the same ability twice is two abilities, because two Auras
+    /// each saying `{T}: Add {G}` really are two activations.
+    GrantAbility(Box<Ability>),
     /// CR 613 **layer 6** (CR 613.1f): impose a combat restriction on the affected
     /// permanent — an Aura's "can neither attack nor block", or a spell's "target
     /// creature can't be blocked this turn". The exact counterpart of
@@ -786,6 +858,24 @@ pub enum Modification {
     /// is a fact about [`Permanent::entered_turn`] rather than about this modification —
     /// the effect that creates one stamps the turn as it applies.
     GainControl(PlayerId),
+    /// **No layer at all**: a continuous effect that modifies a *rule* rather than a
+    /// characteristic ([`RuleModification`]) — how much combat damage the permanent
+    /// assigns (CR 510.1a), and whether the defender it has stops it attacking
+    /// (CR 702.3b applied as though absent, CR 609.4).
+    ///
+    /// The one modification [`characteristics`](crate::characteristics::characteristics)
+    /// never folds in, and deliberately so. CR 613 orders effects that change
+    /// characteristics; this changes none, so there is nothing for a layer to order and
+    /// nothing for the computed [`Characteristics`](crate::Characteristics) to carry. It
+    /// is read where the rule it modifies is asked
+    /// ([`crate::characteristics::assigns_combat_damage_by`],
+    /// [`crate::characteristics::attacks_as_though_no_defender`]), and every other reader
+    /// of the permanent — its power, its keywords, its restrictions, the projected view —
+    /// sees exactly what it saw before. That is what keeps
+    /// [`RuleModification::AssignsCombatDamageBy`] from being a P/T setter and
+    /// [`RuleModification::AttacksAsThoughNoDefender`] from being
+    /// [`Self::LoseKeyword`].
+    ModifyRule(RuleModification),
 }
 
 /// One running total of cumulative **combat** damage a commander has dealt a

@@ -232,6 +232,9 @@ fn total_cost(cost: &ManaCost) -> u16 {
 /// player, or ask them to pick — is a judgment about a person, and it belongs to the
 /// caller (ADR 0010).
 ///
+/// `x` is the value announced for X (CR 601.2b), and it is part of what has to be paid:
+/// a payment solved for the wrong X is not a cheaper payment, it is not a payment.
+///
 /// It is emphatically **a** legal payment and not a good one. The discards in particular
 /// are taken in hand order, which is a rule about a list rather than a decision about a
 /// game; a caller that hands them to a person without asking has made a choice on their
@@ -241,8 +244,9 @@ pub fn auto_payment(
     state: &GameState,
     db: &CardDatabase,
     card: CardInstance,
+    x: Option<u32>,
 ) -> Option<Vec<CostPayment>> {
-    let (cost, subtypes) = cast_cost(state, db, card)?;
+    let (cost, subtypes) = cast_cost(state, db, card, x)?;
     let mana = ManaOptions::of(state, db, state.priority).solve(
         &cost,
         SpendPurpose::CastingSpell {
@@ -255,37 +259,40 @@ pub fn auto_payment(
     Some(payment)
 }
 
-/// A permanent to sacrifice to `card`'s additional cost (CR 601.2b / 701.17), or `None`
+/// The permanents to sacrifice to `card`'s additional cost (CR 601.2b / 701.17), or `None`
 /// if the board cannot pay it. Empty for the overwhelming majority of cards.
 ///
-/// The choice is **the first candidate in battlefield order**, which is a policy and not
+/// The choice is **the first candidates in battlefield order**, which is a policy and not
 /// a judgement: this exists so a client that skips the slot still submits a legal action
 /// (ADR 0010 — the engine says what a legal payment is, the server decides whether to pay
 /// for the player). A seat that cares which of its creatures dies answers the slot.
+///
+/// **How many is never a decision here.** Every count a cost may name is exact, so the
+/// fallback pays it in full or fails; a sacrifice whose *size* the player picks is a
+/// resolution's question ([`Effect::Sacrifice`](crate::Effect)), never a payment's.
 fn auto_sacrifices(
     state: &GameState,
     db: &CardDatabase,
     card: CardInstance,
 ) -> Option<Vec<CostPayment>> {
-    let Some(card_type) = db
-        .card(card.card)
-        .and_then(|data| data.additional_cost)
-        .and_then(crate::AdditionalCost::sacrifice_type)
-    else {
+    let Some(cost) = db.card(card.card).and_then(|data| data.additional_cost) else {
         return Some(Vec::new());
     };
-    let chosen = state
-        .battlefield
-        .iter()
-        .find(|perm| {
-            crate::characteristics::controller_of(state, perm) == state.priority
-                && perm
-                    .printed
-                    .face(db)
-                    .is_some_and(|face| face.has_type(card_type))
-        })
-        .map(|perm| CostPayment::Sacrifice(perm.id))?;
-    Some(vec![chosen])
+    let Some(card_type) = cost.sacrifice_type() else {
+        return Some(Vec::new());
+    };
+    let wanted = usize::from(cost.sacrifice_count().unwrap_or_default().min());
+    let candidates = state.sacrifice_candidates_for_cast(state.priority, card_type, db);
+    if candidates.len() < wanted {
+        return None;
+    }
+    Some(
+        candidates
+            .into_iter()
+            .take(wanted)
+            .map(CostPayment::Sacrifice)
+            .collect(),
+    )
 }
 
 /// Cards to discard to `card`'s additional cost (CR 601.2b), or `None` if the hand
@@ -357,10 +364,13 @@ pub(crate) mod tests {
             attacking: None,
             blocking: Vec::new(),
             skips_untap: false,
+            dealt_damage: false,
             damage: 0,
             counters: Default::default(),
             attached_to: None,
             chosen_color: None,
+            named_card: None,
+            copied: None,
         });
         id
     }
@@ -390,13 +400,15 @@ pub(crate) mod tests {
         // Meandering River ({T}: Add {W} / {T}: Add {U}) plus a Plains, casting {1}{W}.
         let (state, database, _lands, spell) =
             board(&["meandering_river", "plains"], "daybreak_chaplain");
-        let payment = auto_payment(&state, &database, spell)
+        let payment = auto_payment(&state, &database, spell, None)
             .expect("Plains for {W} and the River for the generic pays {1}{W}");
 
         let after = apply_action(
             &state,
             &Action::CastSpell {
                 card: spell,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment,
             },
@@ -412,12 +424,14 @@ pub(crate) mod tests {
             &["meandering_river", "meandering_river"],
             "daybreak_chaplain",
         );
-        let payment = auto_payment(&state, &database, spell).expect("two Rivers pay {1}{W}");
+        let payment = auto_payment(&state, &database, spell, None).expect("two Rivers pay {1}{W}");
         assert_eq!(payment.len(), 2);
         let after = apply_action(
             &state,
             &Action::CastSpell {
                 card: spell,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment,
             },
@@ -432,12 +446,14 @@ pub(crate) mod tests {
     fn one_dual_land_is_one_mana_and_not_two() {
         let (state, database, _lands, spell) = board(&["meandering_river"], "daybreak_chaplain");
         assert!(
-            auto_payment(&state, &database, spell).is_none(),
+            auto_payment(&state, &database, spell, None).is_none(),
             "{{1}}{{W}} needs two mana and a lone dual land makes one"
         );
         assert!(
             !valid_actions(&state, &database).contains(&Action::CastSpell {
                 card: spell,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment: Vec::new(),
             }),
@@ -451,7 +467,8 @@ pub(crate) mod tests {
     fn an_auto_payment_taps_no_more_than_it_has_to() {
         let (state, database, _lands, spell) =
             board(&["forest", "forest", "forest", "forest"], "highland_game");
-        let payment = auto_payment(&state, &database, spell).expect("four Forests pay {1}{G}");
+        let payment =
+            auto_payment(&state, &database, spell, None).expect("four Forests pay {1}{G}");
         assert_eq!(payment.len(), 2, "{{1}}{{G}} is two mana, so two Forests");
     }
 
@@ -466,7 +483,8 @@ pub(crate) mod tests {
     fn a_colored_pip_is_paid_by_the_only_source_of_that_color() {
         let (state, database, lands, spell) =
             board(&["plains", "plains", "forest"], "highland_game");
-        let payment = auto_payment(&state, &database, spell).expect("a Forest and any other pays");
+        let payment =
+            auto_payment(&state, &database, spell, None).expect("a Forest and any other pays");
         assert_eq!(payment.len(), 2, "{{1}}{{G}} is two mana");
         assert!(
             payment
@@ -525,7 +543,7 @@ pub(crate) mod tests {
                     continue;
                 };
                 assert!(
-                    auto_payment(&state, &database, held).is_some(),
+                    auto_payment(&state, &database, held, None).is_some(),
                     "with {count} lands, a cast is announced that no payment can pay for"
                 );
             }

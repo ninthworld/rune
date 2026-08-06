@@ -4,9 +4,10 @@ use crate::card_type::CardType;
 use crate::combat::AttackTarget;
 use crate::id::{CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::player::Player;
-use crate::replacement::{EnteringObject, PendingEntry};
+use crate::replacement::{DamageRecipient, EnteringObject, PendingDamage, PendingEntry};
+use crate::rng::SplitMix64;
 use crate::token::TokenData;
-use crate::CardDatabase;
+use crate::{CardData, CardDatabase};
 
 use super::{CommanderDamage, DamageTarget, GameEvent, GameState, LoggedPermanent, Permanent};
 
@@ -157,6 +158,49 @@ impl GameState {
         Some(perm)
     }
 
+    /// **Shuffle** the permanent `id` into its owner's library (CR 701.19) — the fourth
+    /// battlefield-departure seam, and the only one whose destination is unordered.
+    ///
+    /// It is [`Self::put_permanent_on_top_of_library`] plus the shuffle, and the shuffle
+    /// is the whole difference: a card put on top is a known next draw, while one shuffled
+    /// in is nowhere in particular. The library is randomized whether or not a card
+    /// arrived, because the instruction is to shuffle — a **token** shuffled into a library
+    /// ceases to exist on the way (CR 111.7, [`card_leaving`]) and the shuffle still
+    /// happened.
+    ///
+    /// Owner, not controller: the card goes to the library of the permanent's **base**
+    /// controller, the owner shim every other departure seam uses (CR 400.7), so a stolen
+    /// creature shuffled away goes into its own player's deck.
+    pub(crate) fn shuffle_permanent_into_library(&mut self, id: PermanentId) -> Option<Permanent> {
+        let pos = self.battlefield.iter().position(|p| p.id == id)?;
+        let perm = self.battlefield.remove(pos);
+        let owner = perm.controller;
+        if let (Some(card), Some(player)) = (card_leaving(&perm), self.players.get_mut(owner.0)) {
+            player.library.push(card);
+        }
+        self.shuffle_library(owner);
+        Some(perm)
+    }
+
+    /// Randomize the order of `player`'s library (CR 103.3) from the seeded stream, storing
+    /// the generator's state back into [`GameState::rng_seed`](crate::GameState::rng_seed)
+    /// so the next draw of randomness continues it.
+    ///
+    /// The engine's one in-game shuffle, shared by the search that ends with one
+    /// (CR 701.19c) and the effect that shuffles a permanent back in, so a game replays
+    /// identically from its seed however the library came to be shuffled (ADR 0006).
+    pub(crate) fn shuffle_library(&mut self, player: PlayerId) {
+        let Some(mut library) = self.players.get(player.0).map(|p| p.library.clone()) else {
+            return;
+        };
+        let mut rng = SplitMix64::new(self.rng_seed);
+        rng.shuffle(&mut library);
+        self.rng_seed = rng.state();
+        if let Some(p) = self.players.get_mut(player.0) {
+            p.library = library;
+        }
+    }
+
     /// Put the physical card `card` onto the battlefield under `controller` — the
     /// single card → battlefield seam.
     ///
@@ -185,9 +229,37 @@ impl GameState {
         attached_to: Option<PermanentId>,
         db: &CardDatabase,
     ) -> Option<PermanentId> {
+        self.put_card_onto_battlefield_with_face(
+            card,
+            controller,
+            tapped,
+            attached_to,
+            crate::card::Face::Front,
+            db,
+        )
+    }
+
+    /// [`Self::put_card_onto_battlefield`], for a card arriving on a face other than its
+    /// front (CR 712.4a) — `return it to the battlefield transformed`.
+    ///
+    /// The same single seam with the one fact that road adds. It is deliberately a
+    /// second entry point rather than a sixth parameter on the common one: every other
+    /// caller puts a card onto the battlefield front-face up, and a `Face::Front`
+    /// argument repeated at each of them would be a rule stated five times and
+    /// forgettable at the sixth.
+    pub(crate) fn put_card_onto_battlefield_with_face(
+        &mut self,
+        card: crate::id::CardInstance,
+        controller: PlayerId,
+        tapped: bool,
+        attached_to: Option<PermanentId>,
+        face: crate::card::Face,
+        db: &CardDatabase,
+    ) -> Option<PermanentId> {
         self.begin_battlefield_entry(
             PendingEntry {
                 object: EnteringObject::Card(card),
+                face,
                 controller,
                 tapped,
                 attacking: None,
@@ -195,6 +267,9 @@ impl GameState {
                 counters: Vec::new(),
                 cast: false,
                 applied: Vec::new(),
+                chosen_color: None,
+                named_card: None,
+                copied: None,
             },
             db,
         )
@@ -218,6 +293,9 @@ impl GameState {
         self.begin_battlefield_entry(
             PendingEntry {
                 object: EnteringObject::Card(card),
+                // A spell is cast as its front face and resolves as one (CR 712.4a);
+                // nothing about casting can put a back face onto the battlefield.
+                face: crate::card::Face::Front,
                 controller,
                 tapped: false,
                 attacking: None,
@@ -225,9 +303,63 @@ impl GameState {
                 counters: Vec::new(),
                 cast: true,
                 applied: Vec::new(),
+                chosen_color: None,
+                named_card: None,
+                copied: None,
             },
             db,
         )
+    }
+
+    /// Exile the permanent `id` and return it to the battlefield **transformed**, under
+    /// its owner's control — the compound zone change
+    /// [`Effect::ExileSelfAndReturnTransformed`](crate::Effect) performs.
+    ///
+    /// Two real zone changes rather than a turn-over, and that is the whole difference
+    /// from [`Printed::transform`](crate::Printed): the permanent that comes back is a
+    /// **new object** (CR 400.7), with a fresh [`PermanentId`], no counters but the ones
+    /// it enters with, no damage, nothing attached, and summoning sickness. What makes
+    /// the printed card work is exactly that — a planeswalker back face arrives with its
+    /// own starting loyalty (CR 306.5b), applied where every entering permanent's is.
+    ///
+    /// Both halves use the shared seams: the exile is
+    /// [`Self::move_permanent_to_exile`], so a commander's CR 903.9a decision is raised
+    /// as it would be for any other exile, and the return is
+    /// [`Self::put_card_onto_battlefield_with_face`], so the arrival runs the CR 614
+    /// replacement layer and is seen by the trigger diff like any other. A token has no
+    /// card to return (CR 111.7) and simply stays exiled — which is to say, ceases to
+    /// exist.
+    ///
+    /// Returns the returned permanent's id, or `None` when there was no permanent, no
+    /// card behind it, or the entry did not complete.
+    pub(crate) fn exile_and_return_transformed(
+        &mut self,
+        id: PermanentId,
+        db: &CardDatabase,
+    ) -> Option<PermanentId> {
+        let perm = self.battlefield.iter().find(|p| p.id == id)?;
+        // CR 701.28d: a permanent with only one face is not turned over, so it comes back
+        // exactly as it left. Asked here rather than trusted, because a face the card has
+        // not got would be a permanent nothing could read a characteristic off.
+        let has_other_face = perm
+            .printed
+            .card()
+            .and_then(|card| db.card(card))
+            .is_some_and(CardData::has_back_face);
+        let face = if has_other_face {
+            perm.printed.face_up().other()
+        } else {
+            perm.printed.face_up()
+        };
+        let departed = self.move_permanent_to_exile(id)?;
+        let card = card_leaving(&departed)?;
+        let owner = departed.controller;
+        if let Some(player) = self.players.get_mut(owner.0) {
+            if let Some(position) = player.exile.iter().position(|c| c.id == card.id) {
+                player.exile.remove(position);
+            }
+        }
+        self.put_card_onto_battlefield_with_face(card, owner, false, None, face, db)
     }
 
     /// Run `entry` through the **replacement layer** (CR 614) and, if anything is left
@@ -244,8 +376,15 @@ impl GameState {
     ///    waits in no zone at all until the answer comes back, which is what makes "the
     ///    permanent is never briefly on the battlefield mid-decision" true by
     ///    construction.
-    /// 4. **None** — the CR 614.12 colour question, if the card asks one, defers the
-    ///    entry the same way; otherwise the permanent arrives.
+    /// 4. **None** — the CR 614.12 questions, if the card asks any, defer the entry the
+    ///    same way, one at a time; otherwise the permanent arrives.
+    ///
+    /// Step 4 is a loop over *unfilled answer slots on the event*, not a branch per
+    /// question: an answer writes itself onto the [`PendingEntry`] and re-enters this
+    /// function, which asks whatever is still owed and then finishes. That is why a card
+    /// asking two questions needs no code saying which comes first, and why the whole
+    /// thing terminates — a filled slot is never emptied, exactly as an applied
+    /// replacement is never unapplied (CR 614.5).
     ///
     /// Returns the new permanent's id, or **`None` when nothing entered** — because the
     /// event was replaced, or because the entry is deferred on a question. It is
@@ -283,12 +422,13 @@ impl GameState {
                 }
             }
         }
+        // CR 614.12: each choice is made *as* the permanent enters, so the card waits
+        // here — in no zone, exactly as a spell's card waits while its resolution is
+        // suspended — rather than entering and being amended afterwards. A question
+        // whose slot on the event is already filled is not asked again, which is what
+        // lets an answer route straight back into this function.
         if let EnteringObject::Card(card) = entry.object {
-            if crate::card::chooses_color_on_entry(db, card.card) {
-                // CR 614.12: the choice is made *as* the permanent enters, so the card
-                // waits here — in no zone, exactly as a spell's card waits while its
-                // resolution is suspended — rather than entering and being amended
-                // afterwards.
+            if entry.chosen_color.is_none() && crate::card::chooses_color_on_entry(db, card.card) {
                 self.pending_choices.push(crate::choice::PendingChoice {
                     chooser: entry.controller,
                     question: crate::choice::ChoiceQuestion::Color(crate::choice::ColorRequest {
@@ -298,18 +438,60 @@ impl GameState {
                 });
                 return None;
             }
+            if entry.named_card.is_none() {
+                if let Some(class) = crate::card::names_a_card_on_entry(db, card.card) {
+                    self.pending_choices.push(crate::choice::PendingChoice {
+                        chooser: entry.controller,
+                        question: crate::choice::ChoiceQuestion::CardName(
+                            crate::choice::CardNameRequest { class, entry },
+                        ),
+                        resume: None,
+                    });
+                    return None;
+                }
+            }
+            // The third CR 614.12 question, and the same road: naming a permanent whose
+            // copiable values this arrival takes (CR 707.5). It is asked only when the
+            // board holds something to name — an `enters as a copy` with no legal choice
+            // copies nothing and enters as itself, rather than posing a question with no
+            // answer.
+            if entry.copied.is_none() {
+                if let Some(copying) = crate::card::copies_on_entry(db, card.card, entry.face) {
+                    let candidates =
+                        crate::copy::copy_choice_candidates(self, copying.of, entry.controller, db);
+                    if !candidates.is_empty() {
+                        self.pending_choices.push(crate::choice::PendingChoice {
+                            chooser: entry.controller,
+                            question: crate::choice::ChoiceQuestion::Permanent(
+                                crate::choice::CopyChoiceRequest {
+                                    of: copying.of,
+                                    optional: copying.optional,
+                                    outcome: crate::choice::CopyChoiceOutcome::RecordOnEntry {
+                                        entry,
+                                        subject: copying.subject,
+                                    },
+                                },
+                            ),
+                            resume: None,
+                        });
+                        return None;
+                    }
+                }
+            }
         }
-        Some(self.complete_battlefield_entry(&entry, None, db))
+        Some(self.complete_battlefield_entry(&entry, db))
     }
 
-    /// Build the permanent `entry` describes, give it `chosen_color`, and put it on the
-    /// battlefield — the half of [`Self::begin_battlefield_entry`] that actually arrives.
+    /// Build the permanent `entry` describes — answers and all — and put it on the
+    /// battlefield: the half of [`Self::begin_battlefield_entry`] that actually arrives.
     ///
-    /// Split out because it happens at two different moments: immediately, for the
-    /// objects that ask nothing, and one action later for a card whose colour had to be
-    /// named first. Everything else about the entry is identical between them — the same
-    /// fresh [`PermanentId`], the same already-applied replacements baked into the entry
-    /// — which is the whole reason it is one function.
+    /// Split out because it is the one place that mints a permanent, and because it is
+    /// reached only once everything the event was waiting on is settled — immediately for
+    /// the objects that ask nothing, and one action later for a card whose colour, whose
+    /// named card, or whose copiable values (CR 707.5) had to be settled first. The
+    /// answers a card's controller gave ride on the event itself rather than on this
+    /// signature, so adding a question adds a field there and nothing here — and so a
+    /// permanent built from an entry can never disagree with the entry it was built from.
     ///
     /// The one thing applied *here* rather than by the replacement layer is a
     /// planeswalker's starting loyalty (CR 306.5b). It is not a replacement effect: every
@@ -320,7 +502,6 @@ impl GameState {
     pub(crate) fn complete_battlefield_entry(
         &mut self,
         entry: &PendingEntry,
-        chosen_color: Option<crate::mana::Color>,
         db: &CardDatabase,
     ) -> PermanentId {
         let id = PermanentId(self.mint_id());
@@ -336,8 +517,15 @@ impl GameState {
         for (counter, count) in &entry.counters {
             *counters.entry(*counter).or_insert(0) += count;
         }
-        let printed = entry.object.printed();
-        if let Some(loyalty) = printed.face(db).and_then(|face| face.loyalty()) {
+        let printed = entry.object.printed(entry.face);
+        // CR 613 layer 1 before CR 306.5b: a permanent entering as a copy of a
+        // planeswalker enters with the *copied* starting loyalty, because that is the
+        // loyalty its characteristics have by the time the rule is applied.
+        let seed = match entry.copied.as_ref().and_then(Option::as_ref) {
+            Some(copied) if copied.subject == crate::copy::CopySubject::This => &copied.printed,
+            _ => &printed,
+        };
+        if let Some(loyalty) = seed.face(db).and_then(|face| face.loyalty()) {
             *counters.entry(super::CounterKind::Loyalty).or_insert(0) += loyalty;
         }
         let permanent = Permanent {
@@ -350,10 +538,13 @@ impl GameState {
             attacking: entry.attacking,
             blocking: Vec::new(),
             skips_untap: false,
+            dealt_damage: false,
             damage: 0,
             counters,
             attached_to: entry.attached_to,
-            chosen_color,
+            chosen_color: entry.chosen_color,
+            named_card: entry.named_card,
+            copied: entry.copied.clone().flatten(),
         };
         self.battlefield.push(permanent);
         id
@@ -395,6 +586,8 @@ impl GameState {
         self.begin_battlefield_entry(
             PendingEntry {
                 object: EnteringObject::Token(Box::new(token)),
+                // A token has exactly one face: the effect that created it (CR 111.3).
+                face: crate::card::Face::Front,
                 controller,
                 tapped,
                 attacking,
@@ -402,6 +595,9 @@ impl GameState {
                 counters: Vec::new(),
                 cast: false,
                 applied: Vec::new(),
+                chosen_color: None,
+                named_card: None,
+                copied: None,
             },
             db,
         )
@@ -473,8 +669,8 @@ impl GameState {
     /// Adjust a player's life by `delta` and record a [`GameEvent::LifeChanged`]
     /// when the change is nonzero. The seam every **non-damage** life movement
     /// (life gain, life paid or lost) routes through, so the log observes it in
-    /// order. Damage to a player uses [`Self::deal_damage_to_player`] instead, which
-    /// records a [`GameEvent::DamageDealt`] rather than a life change.
+    /// order. Damage to a player uses [`Self::deal_damage`] instead, which is subject to
+    /// prevention and records a [`GameEvent::DamageDealt`] rather than a life change.
     pub(crate) fn change_life(&mut self, player: PlayerId, delta: i32) {
         let Some(p) = self.players.get_mut(player.0) else {
             return;
@@ -488,12 +684,49 @@ impl GameState {
         }
     }
 
+    /// Deal `damage` (CR 120.3) — **the** damage seam, and the one place a prevention
+    /// shield is consulted (CR 615.1). Returns how much damage was actually dealt.
+    ///
+    /// Everything that deals damage builds a [`PendingDamage`] and comes here: the
+    /// combat-damage step, a burn spell, a class-wide sweeper, an ability, a fight. The
+    /// event is described before it happens, the shields in force are applied to it
+    /// ([`after_prevention`](crate::replacement)), and only what survives is dealt —
+    /// which is what makes "prevented damage is never marked, never kills, never becomes
+    /// life loss, and gains a lifelink source nothing" one fact instead of four.
+    ///
+    /// A fully prevented event does **nothing at all**: no life moves, nothing is marked,
+    /// and no [`GameEvent::DamageDealt`] is recorded, because no damage was dealt to
+    /// record. The prevention itself records nothing either — `sage_protocol` has no wire
+    /// event for it, and a fact the projection would silently drop is worse than one that
+    /// is not recorded (the same call [`crate::replacement`] makes for a replaced entry).
+    ///
+    /// The return is the amount dealt rather than a yes/no, because two callers need the
+    /// number and not the verdict: lifelink gains life equal to the damage *dealt*
+    /// (CR 702.15e), and the CR 903.10a commander tally counts the damage that landed.
+    /// Zero comes back for damage that was prevented **and** for damage aimed at a
+    /// permanent that is no longer there — neither dealt any.
+    pub(crate) fn deal_damage(&mut self, damage: PendingDamage, db: &CardDatabase) -> u32 {
+        let amount = crate::replacement::after_prevention(self, &damage);
+        if amount == 0 {
+            return 0;
+        }
+        match damage.recipient {
+            DamageRecipient::Player(player) => self.deal_damage_to_player(player, amount),
+            DamageRecipient::Permanent(id) => self.deal_damage_to_permanent(id, amount, db),
+        }
+    }
+
     /// Deal `amount` damage to a player: reduce their life (CR 120.3a) and record a
     /// [`GameEvent::DamageDealt`] when `amount` is nonzero. Zero-life is settled by
-    /// the state-based-actions loop (CR 704.5a).
-    pub(crate) fn deal_damage_to_player(&mut self, player: PlayerId, amount: u32) {
+    /// the state-based-actions loop (CR 704.5a). Returns the damage dealt — zero for a
+    /// seat that does not exist.
+    ///
+    /// The player half of [`Self::deal_damage`], and private for that reason: damage
+    /// that skipped the prevention shield would be damage the rules do not allow, so
+    /// there is no way to ask for it.
+    fn deal_damage_to_player(&mut self, player: PlayerId, amount: u32) -> u32 {
         let Some(p) = self.players.get_mut(player.0) else {
-            return;
+            return 0;
         };
         p.life -= i32::try_from(amount).unwrap_or(i32::MAX);
         if amount > 0 {
@@ -502,11 +735,12 @@ impl GameState {
                 amount,
             });
         }
+        amount
     }
 
-    /// Deal `amount` damage to the permanent `id` (CR 120.3) — the single
-    /// damage-to-a-permanent seam, which decides *what damage does to this object*
-    /// before anything is recorded.
+    /// Deal `amount` damage to the permanent `id` (CR 120.3) — the permanent half of
+    /// [`Self::deal_damage`], which decides *what damage does to this object* before
+    /// anything is recorded.
     ///
     /// Two outcomes, and the permanent's type picks between them:
     ///
@@ -516,23 +750,19 @@ impl GameState {
     /// - everything else has the damage **marked** on it (CR 120.3d) for the
     ///   lethal-damage state-based action to compare against toughness (CR 704.5g).
     ///
-    /// Every source of damage to a permanent routes through here — combat
-    /// (`apply.rs :: apply_combat_batch`), a targeted burn effect, and a class-wide one
-    /// — so "damage to a planeswalker takes loyalty" is one fact rather than three that
-    /// could be implemented two-thirds of the way. Both branches record the same
+    /// Every source of damage to a permanent routes through [`Self::deal_damage`] and
+    /// arrives here — combat, a targeted burn effect, a class-wide one, a fight — so
+    /// "damage to a planeswalker takes loyalty" is one fact rather than four that could
+    /// be implemented two-thirds of the way. Both branches record the same
     /// [`GameEvent::DamageDealt`], so a client reports a hit on a planeswalker exactly
-    /// as it reports one on a creature. Returns whether a permanent with that id was
-    /// present (so a combat caller can then apply a deathtouch flag).
+    /// as it reports one on a creature. Returns the damage dealt — zero when no
+    /// permanent with that id is there to take it, which is how a combat caller knows
+    /// not to apply a deathtouch flag or gain lifelink life.
     ///
     /// The **redirection rule is gone** from current rules: damage aimed at a player is
     /// dealt to that player, never moved to a planeswalker they control, so nothing
     /// here looks at where damage was pointed.
-    pub(crate) fn deal_damage_to_permanent(
-        &mut self,
-        id: PermanentId,
-        amount: u32,
-        db: &CardDatabase,
-    ) -> bool {
+    fn deal_damage_to_permanent(&mut self, id: PermanentId, amount: u32, db: &CardDatabase) -> u32 {
         let is_planeswalker = self
             .battlefield
             .iter()
@@ -543,7 +773,7 @@ impl GameState {
             return self.mark_damage_on_permanent(id, amount);
         }
         let Some(perm) = self.battlefield.iter_mut().find(|p| p.id == id) else {
-            return false;
+            return 0;
         };
         // CR 120.3c: that much loyalty is removed. Saturating, so overkill damage
         // leaves it at zero rather than wrapping — zero is what CR 704.5i reads.
@@ -559,20 +789,19 @@ impl GameState {
                 amount,
             });
         }
-        true
+        amount
     }
 
     /// Mark `amount` damage on the permanent `id` (CR 120.3d) and record a
-    /// [`GameEvent::DamageDealt`] when `amount` is nonzero. Returns whether a
-    /// permanent with that id was present. Marked damage feeds the lethal-damage SBA
-    /// (CR 704.5g).
+    /// [`GameEvent::DamageDealt`] when `amount` is nonzero. Returns the damage dealt,
+    /// zero when no permanent with that id was present. Marked damage feeds the
+    /// lethal-damage SBA (CR 704.5g).
     ///
-    /// The marking half of [`Self::deal_damage_to_permanent`], which is what callers
-    /// use: damage decides between marking and removing loyalty, and only that seam
-    /// makes the decision.
-    fn mark_damage_on_permanent(&mut self, id: PermanentId, amount: u32) -> bool {
+    /// The marking half of [`Self::deal_damage_to_permanent`]: damage decides between
+    /// marking and removing loyalty, and only that seam makes the decision.
+    fn mark_damage_on_permanent(&mut self, id: PermanentId, amount: u32) -> u32 {
         let Some(perm) = self.battlefield.iter_mut().find(|p| p.id == id) else {
-            return false;
+            return 0;
         };
         perm.damage = perm.damage.saturating_add(amount);
         let logged = LoggedPermanent::of(perm);
@@ -582,7 +811,22 @@ impl GameState {
                 amount,
             });
         }
-        true
+        amount
+    }
+
+    /// Record that the permanent `source` has **dealt** damage
+    /// ([`Permanent::dealt_damage`]) — the counterpart of the two seams above, which
+    /// record damage *taken*.
+    ///
+    /// Called wherever a permanent is the source of damage that was actually dealt: the
+    /// combat-damage batch, a fight, and the damage verb of an ability whose source is a
+    /// permanent (CR 609.7). Zero damage is not damage (CR 120.3) and never reaches here.
+    /// Idempotent and one-way — nothing ever unsets it, because "hasn't dealt damage yet"
+    /// has no end.
+    pub(crate) fn note_damage_dealt_by(&mut self, source: PermanentId) {
+        if let Some(perm) = self.battlefield.iter_mut().find(|p| p.id == source) {
+            perm.dealt_damage = true;
+        }
     }
 
     /// Add `amount` to the cumulative combat damage the commander owned by

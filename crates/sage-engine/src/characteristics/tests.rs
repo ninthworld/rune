@@ -23,10 +23,13 @@ fn place(state: &mut GameState, card: CardId) -> PermanentId {
         attacking: None,
         blocking: Vec::new(),
         skips_untap: false,
+        dealt_damage: false,
         damage: 0,
         counters: BTreeMap::new(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
+        copied: None,
     });
     id
 }

@@ -251,12 +251,115 @@ fn an_additional_cost_that_could_never_be_paid_is_rejected() {
     let card = serde_json::from_str(json).unwrap();
     assert!(validate_definition(None, &card).is_err());
 
+    // A sacrifice states its count as a structure, and zero of them is no cost either.
+    let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                   "types": ["sorcery"], "mana_cost": "{R}",
+                   "additional_cost": {"kind": "sacrifice", "card_type": "creature",
+                                       "count": {"exactly": 0}}}"#;
+    let card = serde_json::from_str(json).unwrap();
+    assert!(validate_definition(None, &card).is_err());
+
+    // "Any number" is a real cost even though a payment of none is legal: the player may
+    // pay more, and that decision is the whole of what the card asks.
+    let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                   "types": ["sorcery"], "mana_cost": "{2}{G}{G}",
+                   "additional_cost": {"kind": "sacrifice", "card_type": "land",
+                                       "count": "any"},
+                   "spell_effects": [{"kind": "draw_card", "count": 1}]}"#;
+    let card = serde_json::from_str(json).unwrap();
+    assert!(validate_definition(None, &card).is_ok());
+
     // The shape a real card is authored in passes.
     let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
                    "types": ["sorcery"], "mana_cost": "{1}{R}",
                    "additional_cost": {"kind": "discard", "count": 1},
                    "spell_effects": [{"kind": "draw_card", "count": 2}]}"#;
     let card = serde_json::from_str(json).unwrap();
+    assert!(validate_definition(None, &card).is_ok());
+}
+
+/// An amount that reads a sacrifice back needs the sacrifice that produces it. The
+/// engine's honest answer to "how many were sacrificed" when none were is zero, so a card
+/// that reads as throwing a creature and always deals zero damage is caught here rather
+/// than shipped (issue #721).
+#[test]
+fn an_amount_read_off_a_payment_no_cost_makes_is_rejected() {
+    let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                   "types": ["sorcery"], "mana_cost": "{R}",
+                   "spell_effects": [{"kind": "deal_damage_by_amount", "target": "any_target",
+                                      "amount": {"source": "sacrificed_creature_power"}}]}"#;
+    let card = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        validate_definition(None, &card).unwrap_err(),
+        Violation::AmountIsNeverSacrificed {
+            functional_id: "test_card".to_string()
+        }
+    );
+
+    // With the cost that pays it, the same card is exactly what Thud authors.
+    let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                   "types": ["sorcery"], "mana_cost": "{R}",
+                   "additional_cost": {"kind": "sacrifice", "card_type": "creature"},
+                   "spell_effects": [{"kind": "deal_damage_by_amount", "target": "any_target",
+                                      "amount": {"source": "sacrificed_creature_power"}}]}"#;
+    let card = serde_json::from_str(json).unwrap();
+    assert!(validate_definition(None, &card).is_ok());
+
+    // An activation cost pays it too, and the amount may sit anywhere in the tree.
+    let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                   "types": ["creature"], "mana_cost": "{G}", "power": 1, "toughness": 1,
+                   "abilities": [{"type": "activated",
+                     "cost": [{"kind": "sacrifice", "card_type": "creature"}],
+                     "effects": [{"kind": "deal_damage_by_amount", "target": "any_target",
+                                  "take_amount": {"source": "sacrificed_creature_power"},
+                                  "amount": {"source": "sacrificed_creature_power"}}]}]}"#;
+    let card = serde_json::from_str(json).unwrap();
+    assert!(validate_definition(None, &card).is_ok());
+}
+
+/// The other half of the same pair rule, and the half a cost could never satisfy: `that
+/// many` counts what **this resolution** sacrificed, so it needs a sacrifice *effect* and
+/// a cost that eats a creature does not stand in for one (issue #721).
+#[test]
+fn issue_721_that_many_without_a_sacrifice_effect_is_rejected() {
+    let searches = |before: &str| {
+        format!(
+            r#"{{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                 "types": ["sorcery"], "mana_cost": "{{G}}",
+                 "spell_effects": [{before}
+                   {{"kind": "search_library", "take": 0, "filter": {{"kind": "land"}},
+                    "destination": "battlefield_tapped",
+                    "take_amount": {{"source": "sacrificed_this_way"}}}}]}}"#
+        )
+    };
+    let card = serde_json::from_str(&searches("")).unwrap();
+    assert_eq!(
+        validate_definition(None, &card).unwrap_err(),
+        Violation::AmountIsNeverSacrificed {
+            functional_id: "test_card".to_string()
+        }
+    );
+
+    // A cost that sacrifices is the wrong producer: it is paid at announcement, and the
+    // resolution still sacrifices nothing.
+    let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                   "types": ["sorcery"], "mana_cost": "{G}",
+                   "additional_cost": {"kind": "sacrifice", "card_type": "land"},
+                   "spell_effects": [{"kind": "search_library", "take": 0,
+                                      "take_amount": {"source": "sacrificed_this_way"}}]}"#;
+    let card = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        validate_definition(None, &card).unwrap_err(),
+        Violation::AmountIsNeverSacrificed {
+            functional_id: "test_card".to_string()
+        }
+    );
+
+    // With the sacrifice in front of it, the same card is exactly what Scapeshift authors.
+    let card = serde_json::from_str(&searches(
+        r#"{"kind": "sacrifice", "player_ref": "controller", "card_type": "land"},"#,
+    ))
+    .unwrap();
     assert!(validate_definition(None, &card).is_ok());
 }
 
@@ -622,6 +725,44 @@ fn a_return_self_from_graveyard_must_sit_on_an_ability_that_could_reach_it() {
 }
 
 #[test]
+fn issue_740_a_granted_ability_is_an_ability_position_like_any_other() {
+    // An ability a card hands away is still an ability of a real object once it is
+    // granted, so the CR 113.6 rule above has to see inside the two places a card writes
+    // one: an `attachment` block's grant, and the `abilities` a pump gives its target.
+    // A `create_emblem`'s stay excluded — an emblem is in no zone and has no card.
+    for granted in [
+        r#", "spell_effects": [{"kind": "pump", "target": "any_creature",
+             "power": 2, "toughness": 0, "abilities": [
+                 {"type": "triggered", "event": "self_dies", "effects": [
+                     {"kind": "return_self_from_graveyard",
+                      "destination": "battlefield_tapped"}]}]}]"#,
+        r#", "subtypes": ["Aura"],
+            "attachment": {"kind": "aura", "attach_to": "any_creature", "abilities": [
+                {"type": "activated", "cost": [{"kind": "mana", "mana": "{B}"}],
+                 "effects": [{"kind": "return_self_from_graveyard",
+                              "destination": "hand"}]}]}"#,
+    ] {
+        assert!(
+            validate_definition(None, &definition(granted)).is_ok(),
+            "expected `{granted}` to validate"
+        );
+    }
+
+    // And the cost rule reaches a granted ability too: a card in a graveyard has nothing
+    // to tap, whoever granted the ability that would tap it.
+    let tapped = r#", "subtypes": ["Aura"],
+        "attachment": {"kind": "aura", "attach_to": "any_creature", "abilities": [
+            {"type": "activated", "cost": [{"kind": "tap"}],
+             "effects": [{"kind": "return_self_from_graveyard", "destination": "hand"}]}]}"#;
+    assert_eq!(
+        validate_definition(None, &definition(tapped)),
+        Err(Violation::GraveyardAbilityCannotFunction {
+            functional_id: "test_card".to_string(),
+        }),
+    );
+}
+
+#[test]
 fn issue_738_the_chosen_color_must_be_chosen_somewhere_on_the_card() {
     // "A spell of the chosen color" is the one trigger selector that refers to the rest
     // of its own card. Without an `enters_choosing_color` there is no colour to refer to
@@ -658,6 +799,44 @@ fn issue_738_the_chosen_color_must_be_chosen_somewhere_on_the_card() {
 }
 
 #[test]
+fn issue_738_the_chosen_name_must_be_named_somewhere_on_the_card() {
+    // The selector counterpart of the colour rule above, and wrong for the same reason:
+    // "permanents with the chosen name" refers to the rest of its own card, and without
+    // an `enters_naming_card` the class could never contain one permanent all game.
+    let unnamed = r#", "abilities": [{"type": "static",
+        "affects": {"scope": "permanents_your_opponents_control", "card_type": "land",
+                    "with_the_named_card": true},
+        "modification": {"kind": "lose_all_abilities"}}]"#;
+    assert_eq!(
+        validate_definition(None, &definition(unnamed)),
+        Err(Violation::ChosenNameIsNeverNamed {
+            functional_id: "test_card".to_string(),
+        }),
+    );
+
+    // With the naming declared, the same selector is exactly what Alpine Moon authors.
+    let named = r#", "abilities": [
+        {"type": "enters_naming_card", "class": "nonbasic_land"},
+        {"type": "static",
+         "affects": {"scope": "permanents_your_opponents_control", "card_type": "land",
+                     "with_the_named_card": true},
+         "modification": {"kind": "lose_all_abilities"}}]"#;
+    assert!(validate_definition(None, &definition(named)).is_ok());
+
+    // Naming a card and never reading it back is not an error, for the reason choosing a
+    // colour and never reading it back is not: only the dangling reference is wrong.
+    let choice_only = r#", "abilities": [
+        {"type": "enters_naming_card", "class": "nonbasic_land"}]"#;
+    assert!(validate_definition(None, &definition(choice_only)).is_ok());
+
+    // The same class without the name filter refers to nothing outside itself.
+    let unfiltered = r#", "abilities": [{"type": "static",
+        "affects": {"scope": "permanents_your_opponents_control", "card_type": "land"},
+        "modification": {"kind": "lose_all_abilities"}}]"#;
+    assert!(validate_definition(None, &definition(unfiltered)).is_ok());
+}
+
+#[test]
 fn issue_737_a_two_slot_effect_counts_as_two_target_groups() {
     // A fight names two slots in two fields, so every rule stated in *groups* sees two
     // of them. A `may` forwards the groups of the one effect it wraps, and two is one
@@ -690,4 +869,129 @@ fn issue_737_a_two_slot_effect_counts_as_two_target_groups() {
     let bare = r#", "spell_effects": [{"kind": "fight", "dealer": "any_creature_you_control",
         "dealt_to": "any_creature_an_opponent_controls"}]"#;
     assert!(validate_definition(None, &definition(bare)).is_ok());
+}
+
+/// The mode list of a sorcery with `count` identical, harmless modes.
+fn modal(count: usize) -> serde_json::Value {
+    let mode = serde_json::json!({"effects": [{"kind": "draw_card", "count": 1}]});
+    serde_json::json!({
+        "schema_version": 1,
+        "functional_id": "test_card",
+        "name": "Test Card",
+        "types": ["sorcery"],
+        "mana_cost": "{G}",
+        "modes": vec![mode; count],
+    })
+}
+
+/// **The dock's band is three rows wide, so a fourth mode is a card the catalog refuses**
+/// (`docs/client-design.md` §6.7). The alternative is truncating a mode a player has to
+/// read before they can choose it, which §6 forbids outright — so the limit lands on the
+/// person authoring the card rather than on the person playing it.
+///
+/// Three is where the printed cards already sit: the Charm cycle is three modes, and the
+/// four-mode cards are the Commands, which choose *two* of their four and are a different
+/// question with a surface of its own.
+#[test]
+fn a_fourth_mode_is_refused() {
+    for count in [2, 3] {
+        assert!(
+            validate_definition(Some("test_card"), &modal(count)).is_ok(),
+            "{count} modes fit the band"
+        );
+    }
+    assert_eq!(
+        validate_definition(Some("test_card"), &modal(MAX_MODES + 1)).unwrap_err(),
+        Violation::MalformedModes {
+            functional_id: "test_card".to_string(),
+            modes: MAX_MODES + 1,
+        }
+    );
+}
+
+/// One mode is a question with a single answer, and no modes at all in a `modes` key is
+/// a typo rather than a card.
+#[test]
+fn fewer_than_two_modes_is_not_a_choice() {
+    for count in [0, 1] {
+        assert_eq!(
+            validate_definition(Some("test_card"), &modal(count)).unwrap_err(),
+            Violation::MalformedModes {
+                functional_id: "test_card".to_string(),
+                modes: count,
+            }
+        );
+    }
+}
+
+/// A modal card's effects live in its modes. Loose `spell_effects` beside them would
+/// resolve whichever mode was chosen — a sentence the player never picked.
+#[test]
+fn a_modal_card_carries_no_loose_spell_effects() {
+    let mut card = modal(2);
+    card["spell_effects"] = serde_json::json!([{"kind": "draw_card", "count": 1}]);
+    assert_eq!(
+        validate_definition(Some("test_card"), &card).unwrap_err(),
+        Violation::MalformedModes {
+            functional_id: "test_card".to_string(),
+            modes: 2,
+        }
+    );
+}
+
+/// A mode that does nothing is a bullet with no sentence under it.
+#[test]
+fn a_mode_that_does_nothing_is_refused() {
+    let mut card = modal(2);
+    card["modes"][1] = serde_json::json!({"effects": []});
+    assert!(validate_definition(Some("test_card"), &card).is_err());
+}
+
+/// CR 107.3: X is announced as a spell is cast. An activation pays out of a pool with no
+/// announcement step to fix a value in, so an `{X}` there would simply be ignored — and
+/// the ability activated for nothing.
+#[test]
+fn an_x_in_an_activation_cost_is_refused() {
+    let card = definition(
+        r#", "abilities": [{"type": "activated",
+                            "cost": [{"kind": "mana", "mana": "{X}{R}"}],
+                            "effects": [{"kind": "draw_card", "count": 1}]}]"#,
+    );
+    assert_eq!(
+        validate_definition(Some("test_card"), &card).unwrap_err(),
+        Violation::XOutsideAManaCost {
+            functional_id: "test_card".to_string(),
+            cost: "{X}{R}".to_string(),
+        }
+    );
+}
+
+/// "If X is 5 or more" on a card whose cost prints no `{X}` is a clause that could never
+/// be true.
+#[test]
+fn a_spell_trait_conditional_on_x_needs_an_x_to_announce() {
+    let with_x = serde_json::json!({
+        "schema_version": 1,
+        "functional_id": "test_card",
+        "name": "Test Card",
+        "types": ["sorcery"],
+        "mana_cost": "{X}{R}",
+        "spell_effects": [{"kind": "draw_card", "count": 1}],
+        "spell_traits": [{"kind": "cant_be_countered", "if_x_at_least": 5}],
+    });
+    assert!(validate_definition(Some("test_card"), &with_x).is_ok());
+
+    let mut without_x = with_x.clone();
+    without_x["mana_cost"] = serde_json::json!("{2}{R}");
+    assert_eq!(
+        validate_definition(Some("test_card"), &without_x).unwrap_err(),
+        Violation::SpellTraitNeedsX {
+            functional_id: "test_card".to_string(),
+        }
+    );
+
+    // An unconditional trait needs no X at all — a card that simply can't be countered
+    // is sayable on a fixed cost.
+    without_x["spell_traits"] = serde_json::json!([{"kind": "cant_be_countered"}]);
+    assert!(validate_definition(Some("test_card"), &without_x).is_ok());
 }

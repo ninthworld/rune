@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "functional_id": "enigma_drake",
+  "name": "Enigma Drake",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Drake"
+  ],
+  "mana_cost": "{2}{U}{R}",
+  "colors": [
+    "blue",
+    "red"
+  ],
+  "power": 0,
+  "toughness": 4,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "defined_power",
+      "count_of": {
+        "scope": "yours",
+        "filter": {
+          "kind": "instant_or_sorcery"
+        }
+      }
+    }
+  ]
+}

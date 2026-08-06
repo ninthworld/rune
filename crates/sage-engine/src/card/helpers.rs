@@ -2,6 +2,7 @@
 
 use super::attachment::AttachmentKind;
 use super::database::CardDatabase;
+use super::face::Face;
 use crate::ability::{Ability, Cost, Effect};
 use crate::id::CardId;
 use crate::scripted::scripted_abilities;
@@ -18,12 +19,33 @@ use crate::state::Permanent;
 /// and labelled by exactly the code an authored `{2}: …` goes through.
 #[must_use]
 pub fn abilities_of(db: &CardDatabase, card: CardId) -> Vec<crate::ability::Ability> {
+    abilities_of_face(db, card, Face::Front)
+}
+
+/// All abilities of **one face** of a card (CR 712.4b) — the face-aware form of
+/// [`abilities_of`], and the one a battlefield object reads.
+///
+/// A permanent has only the abilities printed on the face that is up: a transforming
+/// creature that has turned over loses its front face's activation and gains its back
+/// face's loyalty abilities, because those are two different faces' printed text and
+/// nothing about the object carries the other one.
+///
+/// The two tiers that are *not* face-scoped stay unioned in either case, and both are
+/// keyed to the card rather than to a face: the equip ability derived from an
+/// `attachment` block (which only a front face can author) and the code tier
+/// [`crate::scripted`] keys on the card's authored identity.
+#[must_use]
+pub fn abilities_of_face(
+    db: &CardDatabase,
+    card: CardId,
+    face: Face,
+) -> Vec<crate::ability::Ability> {
     let Some(data) = db.card(card) else {
         // An unknown handle has no data tier, and the code tier is keyed on the authored
         // identity this handle would have resolved to — so there is nothing to union.
         return Vec::new();
     };
-    let mut abilities = data.abilities.clone();
+    let mut abilities = data.face_abilities(face).to_vec();
     abilities.extend(equip_ability(data));
     abilities.extend(scripted_abilities(&data.functional_id));
     abilities
@@ -56,6 +78,9 @@ pub fn equip_ability(data: &super::CardData) -> Option<Ability> {
         effects: vec![Effect::Attach {
             target: attachment.attach_to,
         }],
+        // CR 702.6b's sorcery timing is derived from the ability *being* an equip
+        // ability, not authored — so the printed-text field stays at its default here.
+        timing: crate::ability::ActivationTiming::AnyTime,
     })
 }
 
@@ -68,28 +93,122 @@ pub fn equip_ability(data: &super::CardData) -> Option<Ability> {
 /// has only what the effect that created it wrote down, because the code tier is keyed
 /// on an authored `functional_id` and a token has none (CR 111).
 ///
-/// **It takes the state because layer 6 subtracts.** A permanent under a
-/// loses-all-abilities effect has none
-/// ([`loses_all_abilities`](crate::characteristics::loses_all_abilities)), and *every*
-/// collector has to agree about that or a removed trigger still fires, a silenced
-/// permanent still offers its activation, or a suppressed anthem still pumps. Making
-/// the one accessor answer it is what makes those impossible to get wrong
-/// individually — there is no printed-abilities reader left to reach for by mistake.
-/// The predicate reads stored effects only, so this is safe to call from inside the
-/// characteristics computation itself.
+/// **It takes the state because layer 6 both adds and subtracts.** A permanent under a
+/// loses-all-abilities effect has none, and one carrying an Aura that hands it an ability
+/// has that too — both settled in timestamp order by
+/// [`current_abilities`](crate::characteristics::current_abilities). *Every* collector
+/// has to agree about the answer or a removed trigger still fires, a silenced permanent
+/// still offers its activation, or a granted mana ability is never offered at all. Making
+/// the one accessor answer it is what makes those impossible to get wrong individually —
+/// there is no printed-abilities reader left to reach for by mistake.
+///
+/// The fold reads no computed characteristic of `perm`, so this is safe to call from
+/// inside the characteristics computation itself — but it *does* read the printed static
+/// abilities of every other permanent, which is why the one thing it may not be used for
+/// is deciding whether one of those sources still has its abilities. That question has
+/// its own accessor, [`stored_abilities_of_permanent`].
 #[must_use]
 pub fn abilities_of_permanent(
     state: &crate::GameState,
     db: &CardDatabase,
     perm: &Permanent,
 ) -> Vec<crate::ability::Ability> {
-    if crate::characteristics::loses_all_abilities(state, perm) {
-        return Vec::new();
-    }
-    match &perm.printed {
-        crate::token::Printed::Card(card) => abilities_of(db, *card),
+    crate::characteristics::current_abilities(
+        state,
+        perm,
+        printed_abilities_of(state, db, perm),
+        db,
+    )
+}
+
+/// The abilities `perm` has after folding in only what is **stored** — until-end-of-turn
+/// effects and the attachments on it — and *not* what a printed static ability elsewhere
+/// grants or takes away.
+///
+/// A deliberately smaller answer than [`abilities_of_permanent`], and it exists for
+/// exactly one caller: the gate that asks whether a *source* still has the static ability
+/// it is about to contribute (CR 613 layer 6 applies to a lord before the lord pumps
+/// anything). Asking the full accessor there would be asking a permanent's abilities from
+/// inside the computation of a permanent's abilities, which does not terminate.
+///
+/// What that costs is nameable and small: a permanent silenced by an Aura or by a spell
+/// stops contributing its static ability, and one silenced by *another printed static
+/// ability* does not. The engine models CR 613.7 timestamps but not the CR 613.8
+/// dependency rules, and this is where that shows.
+#[must_use]
+pub(crate) fn stored_abilities_of_permanent(
+    state: &crate::GameState,
+    db: &CardDatabase,
+    perm: &Permanent,
+) -> Vec<crate::ability::Ability> {
+    crate::characteristics::stored_abilities(state, perm, printed_abilities_of(state, db, perm), db)
+}
+
+/// The abilities printed on `perm`'s face, before any layer **below 1** applies: a card's
+/// two authoring tiers unioned by [`abilities_of`], or the list the effect that created a
+/// token wrote down (ADR 0015).
+///
+/// CR 613 layer 1 comes first: a permanent's rules text is a copiable value (CR 707.2), so
+/// a copy has the abilities it copied and none of its own — Mirror Image copying a
+/// Skyscanner really does draw a card as it enters. The seed is the layer-1 answer rather
+/// than the stored face, and it is a read of stored fields only, so it cannot recurse into
+/// the computation this feeds.
+fn printed_abilities_of(
+    state: &crate::GameState,
+    db: &CardDatabase,
+    perm: &Permanent,
+) -> Vec<crate::ability::Ability> {
+    match crate::copy::copiable_printed(state, perm) {
+        // CR 712.4b: only the face that is up is read, so a permanent that has
+        // transformed offers exactly its back face's abilities and none of its front's.
+        crate::token::Printed::Card { card, face } => abilities_of_face(db, *card, *face),
         crate::token::Printed::Token(token) => token.abilities.clone(),
     }
+}
+
+/// What a card declares about **copying something as it enters** (CR 707.5 / CR 614.12) —
+/// its [`Ability::EntersAsCopy`], or `None` for every card that copies nothing.
+///
+/// The copy counterpart of [`chooses_color_on_entry`], and read at the same seam for the
+/// same reason: at the moment the question is asked there is no permanent to read the
+/// ability off, because the whole point is that none exists until it is answered. It is
+/// face-aware — a back face may print its own — and honours both authoring tiers through
+/// [`abilities_of_face`].
+///
+/// A **token** is never asked: a token's abilities are whatever the creating effect wrote
+/// down (ADR 0015), and nothing in the effect IR creates a token as a copy.
+#[must_use]
+pub(crate) fn copies_on_entry(
+    db: &CardDatabase,
+    card: CardId,
+    face: Face,
+) -> Option<EntryCopyDeclaration> {
+    abilities_of_face(db, card, face)
+        .into_iter()
+        .find_map(|ability| match ability {
+            Ability::EntersAsCopy {
+                of,
+                subject,
+                optional,
+            } => Some(EntryCopyDeclaration {
+                of,
+                subject,
+                optional,
+            }),
+            _ => None,
+        })
+}
+
+/// The three facts [`copies_on_entry`] answers with — the printed declaration, unpacked
+/// so the entry seam does not have to match an [`Ability`] it has no other business with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct EntryCopyDeclaration {
+    /// Which permanents may be named.
+    pub of: crate::copy::CopyClass,
+    /// What becomes the copy.
+    pub subject: crate::copy::CopySubject,
+    /// Whether naming nothing is a legal answer.
+    pub optional: bool,
 }
 
 /// The effects a spell of printed card `card` produces on resolution
@@ -101,10 +220,15 @@ pub fn abilities_of_permanent(
 /// at cast), and [`crate::valid_actions`] reads them to enumerate a targeted
 /// cast's requirement slots — the same effect IR, whether it rides an ability or
 /// a spell.
+///
+/// `mode` is the mode chosen at announcement for a **modal** card (CR 700.2); it names
+/// which of the printed bullets these effects are. A modal card given no mode has no
+/// effects at all, which is what makes an unchosen mode unresolvable rather than
+/// silently all of them.
 #[must_use]
-pub(crate) fn spell_effects_of(db: &CardDatabase, card: CardId) -> Vec<Effect> {
+pub(crate) fn spell_effects_of(db: &CardDatabase, card: CardId, mode: Option<u8>) -> Vec<Effect> {
     db.card(card)
-        .map(|c| c.spell_effects.clone())
+        .map(|c| c.spell_effects_for_mode(mode))
         .unwrap_or_default()
 }
 
@@ -126,6 +250,83 @@ pub(crate) fn chooses_color_on_entry(db: &CardDatabase, card: CardId) -> bool {
     abilities_of(db, card)
         .iter()
         .any(|ability| matches!(ability, Ability::EntersChoosingColor))
+}
+
+/// Whether the spell `card` belongs to the class `observes`, for an ability whose source
+/// named `chosen` as it entered (CR 614.12).
+///
+/// **One answer, in one place, because two abilities ask it.** A cast trigger asks it of
+/// a spell that has just gone on the stack ([`crate::collect_triggers`]) and a cost
+/// modifier asks it of a card about to be cast ([`crate::total_cast_cost`]) — and both
+/// are asking about the *card*, not about a stack object, which is why one predicate can
+/// serve both. That equality matters: a card whose class the offer and the trigger
+/// disagreed about would be reduced and then not noticed, or noticed and then charged
+/// full price.
+///
+/// Every characteristic here is read off the printed face, which is the only face a card
+/// in a hand, a graveyard, or on the stack has in this engine — CR 613's layers are
+/// applied to permanents, and no effect in the catalog changes a spell's type, colour, or
+/// power on the stack.
+///
+/// `chosen` is threaded in rather than looked up because only one class reads it, and a
+/// source that named no colour — an emblem, a token, a card that never declared the
+/// choice — passes `None` and matches nothing of that class. That is the correct answer
+/// rather than a defensive one: "a spell of the chosen color" is unsatisfiable until a
+/// colour has been chosen.
+#[must_use]
+pub(crate) fn spell_matches_class(
+    db: &CardDatabase,
+    card: CardId,
+    observes: crate::ability::ObservedSpell,
+    chosen: Option<crate::mana::Color>,
+) -> bool {
+    use crate::ability::ObservedSpell;
+    use crate::card_type::CardType;
+
+    let Some(data) = db.card(card) else {
+        return false;
+    };
+    match observes {
+        ObservedSpell::Enchantment => data.has_type(CardType::Enchantment),
+        // CR 205.2b: an artifact creature is both, so it satisfies this class and the
+        // creature one. Nothing here excludes a card for the other types it also has.
+        ObservedSpell::Artifact => data.has_type(CardType::Artifact),
+        ObservedSpell::InstantOrSorcery => {
+            data.has_type(CardType::Instant) || data.has_type(CardType::Sorcery)
+        }
+        // A power bound that no printed power can satisfy excludes the card rather than
+        // defaulting it to zero: "a creature spell with power 4 or greater" is a question
+        // about a number the card has, and a card with none is not an answer.
+        ObservedSpell::Creature { min_power } => {
+            data.has_type(CardType::Creature)
+                && min_power.is_none_or(|min| data.power.is_some_and(|power| power >= min))
+        }
+        // CR 105.2: a spell *is* each of its colours, so a gold spell satisfies a
+        // watcher of any one of them and a colourless spell satisfies none.
+        ObservedSpell::ChosenColor => chosen.is_some_and(|color| data.colors.contains(&color)),
+    }
+}
+
+/// The class of card `card` names **as it enters** the battlefield (CR 614.12), or `None`
+/// for a card that names none — whether it declares [`Ability::EntersNamingCard`], and
+/// what it may name.
+///
+/// [`chooses_color_on_entry`]'s sibling, read at the same seam for the same reason, and
+/// returning the class rather than a bare `bool` because the question the seam has to
+/// pose needs it: the answer set is derived from the class
+/// ([`named_card_candidates`](crate::named_card_candidates)), so "does it ask?" and "what
+/// may it name?" are one lookup rather than two that could disagree.
+#[must_use]
+pub(crate) fn names_a_card_on_entry(
+    db: &CardDatabase,
+    card: CardId,
+) -> Option<crate::choice::NamedCardClass> {
+    abilities_of(db, card)
+        .iter()
+        .find_map(|ability| match ability {
+            Ability::EntersNamingCard { class } => Some(*class),
+            _ => None,
+        })
 }
 
 #[cfg(test)]
@@ -367,6 +568,7 @@ mod tests {
                     color: Color::Green,
                     amount: 1,
                 }],
+                timing: crate::ability::ActivationTiming::AnyTime,
             }]
         );
         assert!(crate::ability::is_mana_ability(&elves.abilities[0]));
@@ -385,6 +587,7 @@ mod tests {
             vec![Ability::Activated {
                 cost: vec![Cost::Tap],
                 effects: vec![Effect::AddColorlessMana { amount: 1 }],
+                timing: crate::ability::ActivationTiming::AnyTime,
             }]
         );
         assert!(crate::ability::is_mana_ability(&lodestone.abilities[0]));

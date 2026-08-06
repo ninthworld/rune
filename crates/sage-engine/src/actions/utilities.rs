@@ -74,12 +74,12 @@ pub(crate) fn cost_payable(
         // permanent actually has, which is what makes a three-charge artifact offer its
         // ability three times and then stop.
         Cost::RemoveCounters { counter, count } => permanent.counter_count(*counter) >= *count,
-        // CR 601.2b: the two costs whose payment the player *picks* are payable only while
-        // there is something to pick, so an ability with nothing to feed it is not offered
+        // CR 601.2b: the costs whose payment the player *picks* are payable only while
+        // there is enough to pick, so an ability with nothing to feed it is not offered
         // rather than offered and then found free. The candidate enumeration is the one
         // the action's own slot is posed from, so the offer, the question, and the charge
         // are one answer.
-        Cost::Sacrifice { .. } | Cost::Discard { .. } => {
+        Cost::Sacrifice { .. } | Cost::Discard { .. } | Cost::ExileFromGraveyard { .. } => {
             crate::actions::chosen_costs_are_payable(state, db, permanent, c)
         }
     })
@@ -145,11 +145,12 @@ pub(crate) fn graveyard_cost_payable(state: &GameState, seat: PlayerId, cost: &[
         | Cost::Loyalty { .. }
         | Cost::SacrificeThis
         | Cost::RemoveCounters { .. }
-        // A chosen sacrifice or discard is refused here for the same reason as the rest:
-        // the catalog validator lets a graveyard ability charge mana and nothing else, and
-        // this is the second, independent gate that holds for a database assembled in a
-        // test.
+        // A chosen sacrifice, discard, or graveyard exile is refused here for the same
+        // reason as the rest: the catalog validator lets a graveyard ability charge mana
+        // and nothing else, and this is the second, independent gate that holds for a
+        // database assembled in a test.
         | Cost::Sacrifice { .. }
+        | Cost::ExileFromGraveyard { .. }
         | Cost::Discard { .. } => false,
     })
 }
@@ -189,18 +190,19 @@ pub(crate) fn loyalty_timing_allows(state: &GameState, permanent: &Permanent) ->
 }
 
 /// Whether `permanent`'s controller could cast a sorcery right now — the timing an
-/// **equip** ability is bound by (CR 702.6b), and the half of CR 606.3
+/// **equip** ability is bound by (CR 702.6b), the timing an ability that prints
+/// `Activate only as a sorcery.` declares (CR 602.5d), and the half of CR 606.3
 /// [`loyalty_timing_allows`] shares.
 ///
-/// One expression of "sorcery speed, measured from the permanent's controller", so an
-/// equip and a loyalty activation cannot disagree about when that is. Measured from the
-/// *controller* rather than from whoever holds priority for the reason the loyalty gate
-/// is: an opponent holding priority in a main phase must not be able to equip through a
-/// window that is not theirs.
+/// One expression of "sorcery speed, measured from the permanent's controller", so the
+/// three cannot disagree about when that is. Measured from the *controller* rather than
+/// from whoever holds priority for the reason the loyalty gate is: an opponent holding
+/// priority in a main phase must not be able to act through a window that is not theirs.
 ///
-/// Unlike a loyalty ability there is no per-turn limit: an Equipment may be moved as
-/// many times in a main phase as its controller can pay for.
-pub(crate) fn equip_timing_allows(state: &GameState, permanent: &Permanent) -> bool {
+/// Unlike a loyalty ability there is no per-turn limit: an Equipment may be moved, and a
+/// sorcery-speed ability activated, as many times in a main phase as its controller can
+/// pay for.
+pub(crate) fn sorcery_timing_allows(state: &GameState, permanent: &Permanent) -> bool {
     sorcery_speed_for(state, permanent)
 }
 
@@ -280,8 +282,11 @@ pub(crate) fn potential_mana_pool(
                     // over-counts on purpose, in the direction this estimate is allowed
                     // to err: it can only ever offer a decision that turns out
                     // unaffordable, never withhold one the player could have taken.
+                    // Whether the colors must all match is exactly the constraint this
+                    // over-count already ignores, so it changes nothing here.
                     Effect::AddManaAnyColor {
                         amount,
+                        same_color: _,
                         restriction,
                     } => {
                         for color in crate::mana::Color::ALL {
@@ -340,30 +345,76 @@ pub(crate) fn all_unique<T: PartialEq>(ids: &[T]) -> bool {
 /// The total mana cost of casting `card` right now, and the printed subtypes a
 /// restricted-mana check reads (CR 106.6).
 ///
-/// One answer, in one place, because three call sites need it and they must not be able
-/// to disagree: the generator deciding whether to offer the cast, the legality gate
-/// deciding whether a payment covers it, and [`crate::apply_action`] charging it. The
-/// commander tax (CR 903.8) is part of the cost rather than a surcharge applied later,
-/// which is exactly why it cannot live only in the apply path.
+/// One answer, in one place, because every road that touches a cast's price goes down
+/// it and they must not be able to disagree: the generator deciding whether to offer the
+/// cast, the pip enumeration posing what is still owed, the payment search, the legality
+/// gate deciding whether a payment covers it, [`crate::apply_action`] charging it, and
+/// the view telling the client what the spell costs. The idle predicate joins them by
+/// construction — it asks [`crate::valid_actions`] of a board with its mana floated
+/// rather than reading a cost of its own.
+///
+/// Two things happen to the printed cost here, in the order CR 601.2 puts them. The
+/// commander tax (CR 903.8) is an **additional cost**, part of the total rather than a
+/// surcharge applied later, which is exactly why it cannot live only in the apply path.
+/// Cost modification (CR 601.2f) then applies to that total — see
+/// [`crate::cost_modification`].
 ///
 /// `None` for a card the database does not hold — the same defensive absence every other
 /// lookup here returns rather than a zero cost that would read as free.
+///
+/// `x` is the value announced for X (CR 601.2b), and folding it in here is what makes
+/// the announcement binding: a `{X}{R}` announced at 3 costs `{3}{R}`, and every road
+/// that asks what the spell costs asks this one, so no road can price it differently. An
+/// unannounced X contributes nothing (CR 202.3b), which is also exactly right for the
+/// offer gate — the cheapest a spell with X can be is X = 0.
 pub(crate) fn cast_cost(
     state: &GameState,
     db: &CardDatabase,
     card: crate::id::CardInstance,
+    x: Option<u32>,
 ) -> Option<(crate::mana::ManaCost, Vec<String>)> {
     let data = db.card(card.card)?;
-    let base = crate::mana::parse_mana_cost(&data.mana_cost);
-    let player = state.players.get(state.priority.0)?;
+    let mut base = crate::mana::parse_mana_cost(&data.mana_cost);
+    // Each `{X}` in the printed cost demands the announced value in generic mana
+    // (CR 107.3). Saturating rather than wrapping: the enumeration never offers a value
+    // this could overflow, and a cost that silently wrapped would read as free.
+    if let Some(announced) = x {
+        let pips = u32::from(data.x_pips());
+        let added = u8::try_from(pips.saturating_mul(announced)).unwrap_or(u8::MAX);
+        base.generic = base.generic.saturating_add(added);
+    }
+    let caster = state.priority;
+    let player = state.players.get(caster.0)?;
     // A commander cast from the command zone carries the tax; the same card cast from
     // hand does not, so *where it is* decides the cost (CR 903.8).
     let from_command = player.command.iter().any(|c| c.id == card.id);
-    let cost = if from_command {
+    let total = if from_command {
         let casts = player.commander.as_ref().map_or(0, |c| c.casts);
         crate::commander::commander_tax_cost(&base, casts)
     } else {
         base
     };
+    let cost = crate::cost_modification::modified_cast_cost(state, db, caster, card.card, total);
     Some((cost, data.subtypes.clone()))
+}
+
+/// What casting `card` costs the priority holder **right now** — its printed cost, plus
+/// the commander tax where one applies, after every cost modification (CR 601.2f).
+///
+/// The public face of [`cast_cost`], and the reason it is public: the client renders what
+/// a spell costs and computes no cost of its own, so the number a view carries has to be
+/// the very one the offer was gated on and the charge will take. Asking the same function
+/// is what makes that true rather than merely likely.
+///
+/// `None` for a card the database does not hold. An unannounced X contributes nothing
+/// (CR 202.3b), so a spell with `{X}` prices here at X = 0 — the same floor the offer
+/// gate uses, with each announceable value's own price enumerated by
+/// [`crate::x_options`].
+#[must_use]
+pub fn total_cast_cost(
+    state: &GameState,
+    db: &CardDatabase,
+    card: crate::id::CardInstance,
+) -> Option<crate::mana::ManaCost> {
+    cast_cost(state, db, card, None).map(|(cost, _)| cost)
 }

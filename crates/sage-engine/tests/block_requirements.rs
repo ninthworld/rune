@@ -102,6 +102,8 @@ fn cast_at(
         state,
         &Action::CastSpell {
             card,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(target)],
             payment: Vec::new(),
         },

@@ -26,6 +26,7 @@ fn a_trigger_awaiting_targets_is_reachable_from_the_stack_and_from_its_source() 
     );
     let ability = StackId(state.mint_id());
     state.stack.push(sage_engine::StackObject {
+        paid: Default::default(),
         id: ability,
         controller: PlayerId(0),
         kind: StackObjectKind::Ability {
@@ -437,5 +438,197 @@ fn issue_345_declare_attackers_offers_a_defender_slot_per_attacker_in_multiplaye
                 defender: AttackTarget::Player(PlayerId(2)),
             }],
         }
+    );
+}
+
+/// Player 0's main phase with `slug` in hand and exactly `white` and `red` mana
+/// floating — exact, because how much a seat can pay for is precisely what decides how
+/// many values of X the offer enumerates.
+fn hand_with(slug: &str, white: u8, red: u8) -> (GameState, CardDatabase, CardInstance) {
+    let db = CardDatabase::bundled().unwrap();
+    let (mut state, hand) = crate::view::test_support::state_with_hand(&[fixture(slug)]);
+    state.priority = PlayerId(0);
+    state.players[0]
+        .mana_pool
+        .add(sage_engine::Color::White, white);
+    state.players[0].mana_pool.add(sage_engine::Color::Red, red);
+    (state, db, hand[0])
+}
+
+/// **A mode is a dock control with the mode's own words on it** (issue #733,
+/// `docs/client-design.md` §6.7): one `option` slot, one option per mode, each labelled
+/// with the sentence that mode prints.
+///
+/// And each option **names the target slots its choice owes** — the mechanism a mulligan
+/// keep already uses — because a modal card's slots are its chosen mode's and a client
+/// must be able to tell which is which without knowing what a mode does.
+#[test]
+fn issue_733_a_modal_cast_poses_its_modes_as_a_numbered_option_slot() {
+    let (state, db, _nova) = hand_with("cleansing_nova", 5, 0);
+
+    let view = personalized_view(&state, &db, PlayerId(0));
+    let cast = view
+        .valid_actions
+        .iter()
+        .find(|a| a.kind == "cast_spell")
+        .expect("Cleansing Nova is castable");
+
+    let Some(Prompt::Option { slot, options, .. }) = cast
+        .prompts
+        .iter()
+        .find(|prompt| matches!(prompt, Prompt::Option { .. }))
+    else {
+        panic!("the mode rides an option slot");
+    };
+    assert_eq!(slot, "mode");
+    assert_eq!(options.len(), 2, "two modes, two rows");
+    assert_eq!(options[0].label, "Destroy all creatures.");
+    assert_eq!(options[1].label, "Destroy all artifacts and enchantments.");
+    // Neither of Cleansing Nova's modes targets, so neither owes a slot — and the action
+    // advertises none.
+    assert!(options.iter().all(|option| option.requires.is_empty()));
+    assert!(cast.requirements.is_empty());
+}
+
+/// **X is a stepper over a range the server enumerated, and every stop carries its
+/// price** (issue #733). The client never multiplies `{X}{R}` out, because it is handed
+/// the answer.
+#[test]
+fn issue_733_x_is_posed_as_enumerated_values_with_their_costs() {
+    let (state, db, _banefire) = hand_with("banefire", 0, 5);
+
+    let view = personalized_view(&state, &db, PlayerId(0));
+    let cast = view
+        .valid_actions
+        .iter()
+        .find(|a| a.kind == "cast_spell")
+        .expect("Banefire is castable for X = 0");
+
+    let Some(Prompt::Number {
+        slot,
+        min,
+        max,
+        values,
+        ..
+    }) = cast
+        .prompts
+        .iter()
+        .find(|prompt| matches!(prompt, Prompt::Number { .. }))
+    else {
+        panic!("X rides a number slot");
+    };
+    assert_eq!(slot, "x");
+    assert_eq!((*min, *max), (0, 4), "the range agrees with the list");
+    assert_eq!(
+        values
+            .iter()
+            .map(|entry| (entry.value, entry.cost.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            (0, "{R}"),
+            (1, "{1}{R}"),
+            (2, "{2}{R}"),
+            (3, "{3}{R}"),
+            (4, "{4}{R}")
+        ],
+        "each stop states what it costs, with no X left to multiply"
+    );
+    assert!(
+        !cast
+            .prompts
+            .iter()
+            .any(|prompt| matches!(prompt, Prompt::Option { .. })),
+        "a non-modal spell poses no mode"
+    );
+}
+
+/// The answers bind back onto the engine action: the mode option id becomes the index,
+/// the numeral becomes the value, and an answer the offer did not list is refused rather
+/// than coerced.
+#[test]
+fn issue_733_announcement_answers_bind_back_and_a_forged_one_does_not() {
+    let (state, db, _nova) = hand_with("cleansing_nova", 5, 0);
+    let projected = projected_actions(&state, &db);
+    let offered = projected
+        .iter()
+        .find(|p| p.view.kind == "cast_spell")
+        .expect("the cast is offered");
+
+    let answer = |chosen: &str| ChooseAction {
+        action_id: offered.view.id.clone(),
+        token: offered.view.token.clone(),
+        targets: vec![TargetChoice {
+            slot: "mode".to_string(),
+            chosen: vec![chosen.to_string()],
+        }],
+        submission: String::new(),
+    };
+
+    match resolve_action(&state, &db, PlayerId(0), &answer("mode_1")) {
+        Some(Action::CastSpell { mode, x, .. }) => {
+            assert_eq!(mode, Some(1), "the second bullet");
+            assert_eq!(x, None, "a fixed cost announces no X");
+        }
+        other => panic!("expected a cast, got {other:?}"),
+    }
+
+    assert!(
+        resolve_action(&state, &db, PlayerId(0), &answer("mode_9")).is_none(),
+        "an option the offer never listed is not an answer"
+    );
+    assert!(
+        resolve_action(
+            &state,
+            &db,
+            PlayerId(0),
+            &ChooseAction {
+                action_id: offered.view.id.clone(),
+                token: offered.view.token.clone(),
+                targets: Vec::new(),
+                submission: String::new(),
+            }
+        )
+        .is_none(),
+        "a modal spell with no mode answered is an incomplete announcement"
+    );
+}
+
+/// The same for X — and a value outside the enumerated list is refused, because a client
+/// that submitted one worked something out.
+#[test]
+fn issue_733_an_x_outside_the_enumerated_values_is_refused() {
+    let (state, db, _banefire) = hand_with("banefire", 0, 3);
+    let projected = projected_actions(&state, &db);
+    let offered = projected
+        .iter()
+        .find(|p| p.view.kind == "cast_spell")
+        .expect("the cast is offered");
+
+    let answer = |value: &str| ChooseAction {
+        action_id: offered.view.id.clone(),
+        token: offered.view.token.clone(),
+        targets: vec![
+            TargetChoice {
+                slot: "x".to_string(),
+                chosen: vec![value.to_string()],
+            },
+            TargetChoice {
+                slot: "t0".to_string(),
+                chosen: vec![player_id(PlayerId(1))],
+            },
+        ],
+        submission: String::new(),
+    };
+
+    match resolve_action(&state, &db, PlayerId(0), &answer("1")) {
+        Some(Action::CastSpell { x, targets, .. }) => {
+            assert_eq!(x, Some(1));
+            assert_eq!(targets.len(), 1, "and the target that follows it");
+        }
+        other => panic!("expected a cast, got {other:?}"),
+    }
+    assert!(
+        resolve_action(&state, &db, PlayerId(0), &answer("7")).is_none(),
+        "seven is not one of the values the offer enumerated"
     );
 }

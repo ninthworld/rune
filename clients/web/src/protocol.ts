@@ -120,6 +120,32 @@ export const CardType = z.enum([
 ])
 export type CardType = z.infer<typeof CardType>
 
+/**
+ * One face of a two-faced card (CR 712) — the side that is **not** up, carried by
+ * `CardView.other_face`.
+ *
+ * A `CardView` minus everything that belongs to the card rather than to a face: no
+ * entity id (one card, one id), no `functional_id` (identity names the card), no
+ * `token` flag, and no colour identity (computed across the whole card). What is left
+ * is what the preview draws when it turns the card over.
+ *
+ * A back face has no mana cost (CR 712.4a), so `mana_cost` is absent and the title
+ * band's trailing slot is simply empty — the existing name fitting handles it with no
+ * special case.
+ */
+export const CardFace = z.object({
+  name: z.string(),
+  type_line: z.string(),
+  mana_cost: z.string().optional(),
+  rules_text: z.string().optional(),
+  power: z.string().optional(),
+  toughness: z.string().optional(),
+  loyalty: z.string().optional(),
+  keywords: z.array(z.string()).optional(),
+  card_types: z.array(CardType).optional(),
+})
+export type CardFace = z.infer<typeof CardFace>
+
 export const CardView = z.object({
   id: EntityId,
   name: z.string(),
@@ -164,6 +190,21 @@ export const CardView = z.object({
    * colour (CR 105), and never rendered as one. In WUBRG order.
    */
   color_identity: z.array(Color).optional(),
+  /**
+   * The card's **other face**, for a card that has two (CR 712). Everything above
+   * describes the face that is **up**; this describes the one that is not.
+   *
+   * Two facts in one field: its *presence* says there is another side (the board's
+   * state mark), and its *contents* are what the pinned preview turns over to show
+   * (`docs/client-design.md` §6.7). Neither is inferable — a client cannot tell a
+   * transforming card from an ordinary one, and it cannot reconstruct a face nobody
+   * sent it.
+   *
+   * Not a second object: one card, one entity id. A card in a hand carries its back
+   * face here; a permanent that has transformed carries its *front* face here, and the
+   * client draws whichever it is told is up without knowing which is which.
+   */
+  other_face: CardFace.optional(),
 })
 export type CardView = z.infer<typeof CardView>
 
@@ -308,6 +349,21 @@ export const Permanent = z.object({
    * Render it; never derive it, and never let it stand in for a colour of the card.
    */
   chosen_color: Color.optional(),
+  /**
+   * The card this permanent's controller **named as it entered** the battlefield
+   * (CR 614.12) — the "chosen name" its own rules text refers to. Absent for every
+   * permanent that named none, which is almost all of them.
+   *
+   * `chosen_color`'s sibling, and stated for the same reason: it is a decision a player
+   * made, recorded on this one object, and nothing on the board implies it. Two copies of
+   * one card side by side may have named different things.
+   *
+   * It arrives as the **catalog's own name for that card** — the server resolves the
+   * identity the engine recorded — so there is no id to look up and no name here the
+   * catalog does not already hold. Render it; never derive it, and never read it as the
+   * name of *this* permanent.
+   */
+  named_card: z.string().optional(),
 })
 export type Permanent = z.infer<typeof Permanent>
 
@@ -440,6 +496,21 @@ export type PromptOption = z.infer<typeof PromptOption>
  * how a client knows to ask "which?" without knowing what mana is: ask when the slot being
  * filled lists this `source` more than once.
  */
+/**
+ * One legal value of a `number` slot, and what choosing it costs.
+ *
+ * This exists for X. A range is enough for a number that costs nothing; the value of X in
+ * a mana cost is not that, because choosing it changes what the spell costs — and working
+ * out what a spell costs is exactly what this client must never do. So the server states
+ * each value's price and the stepper shows the one it is told.
+ */
+export const NumberValue = z.object({
+  value: z.number(),
+  /** The whole cost at this value, in `{...}` notation — never a delta, never with an `X` left in it. */
+  cost: z.string().optional(),
+})
+export type NumberValue = z.infer<typeof NumberValue>
+
 export const ManaOption = z.object({
   id: z.string(),
   source: EntityId,
@@ -475,6 +546,15 @@ export const Prompt = z.discriminatedUnion('kind', [
     min: z.number().optional(),
     candidates: z.array(EntityId).optional(),
   }),
+  /**
+   * A permutation of every one of `items`, answered in the chosen order.
+   *
+   * Two actions pose one and the shape is identical for both: `order_combat_damage`
+   * arranges a multi-blocked attacker's blockers, and `player_choice` arranges the cards a
+   * look puts back on the bottom of a library *in any order*. The `prompt` is what says
+   * which end of the arrangement is which — nothing here is a rule the client works out —
+   * and the server never poses one over fewer than two items.
+   */
   z.object({
     kind: z.literal('order'),
     slot: z.string(),
@@ -487,6 +567,12 @@ export const Prompt = z.discriminatedUnion('kind', [
     prompt: z.string(),
     min: z.number(),
     max: z.number(),
+    /**
+     * Every legal value and what it costs — present exactly when the number is the X of a
+     * mana cost. When present these, not the range, are the stepper's stops; the two
+     * agree. Absent for a number that costs nothing.
+     */
+    values: z.array(NumberValue).optional(),
   }),
   z.object({
     kind: z.literal('pay_mana'),
@@ -499,6 +585,22 @@ export const Prompt = z.discriminatedUnion('kind', [
 ])
 export type Prompt = z.infer<typeof Prompt>
 
+/**
+ * What a cast costs in mana: the cost printed on the card, and the cost the game will
+ * actually charge (CR 601.2f).
+ *
+ * The two differ only when a cost-modification effect is in force. Both are `{...}`
+ * notation and both are display text — the client draws the symbols and parses neither
+ * for a value, because the arithmetic that produced `modified` is the server's.
+ */
+export const ActionCost = z.object({
+  /** The cost printed on the card. Absent for a card with no printed mana cost. */
+  printed: z.string().optional(),
+  /** The cost this cast is offered and charged at. `{0}` for a cost reduced to nothing. */
+  modified: z.string(),
+})
+export type ActionCost = z.infer<typeof ActionCost>
+
 export const ValidAction = z.object({
   id: z.string(),
   type: z.string(),
@@ -507,6 +609,8 @@ export const ValidAction = z.object({
   mana_ability: z.boolean().optional(),
   requirements: z.array(TargetRequirement).optional(),
   prompts: z.array(Prompt).optional(),
+  /** Present on a cast; omitted for every other action, none of which has a mana cost. */
+  cost: ActionCost.optional(),
   destinations: z.array(ActionDestination).optional(),
   token: z.string().optional(),
 })

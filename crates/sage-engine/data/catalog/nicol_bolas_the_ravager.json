@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "functional_id": "nicol_bolas_the_ravager",
+  "name": "Nicol Bolas, the Ravager",
+  "supertypes": [
+    "legendary"
+  ],
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elder",
+    "Dragon"
+  ],
+  "mana_cost": "{1}{U}{B}{R}",
+  "colors": [
+    "blue",
+    "black",
+    "red"
+  ],
+  "power": 4,
+  "toughness": 4,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "discard",
+          "player_ref": "each_opponent",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "timing": "sorcery_speed",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{4}{U}{B}{R}"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "exile_self_and_return_transformed"
+        }
+      ]
+    }
+  ],
+  "back_face": {
+    "name": "Nicol Bolas, the Arisen",
+    "supertypes": [
+      "legendary"
+    ],
+    "types": [
+      "planeswalker"
+    ],
+    "subtypes": [
+      "Bolas"
+    ],
+    "colors": [
+      "blue",
+      "black",
+      "red"
+    ],
+    "loyalty": 7,
+    "abilities": [
+      {
+        "type": "activated",
+        "cost": [
+          {
+            "kind": "loyalty",
+            "amount": 2
+          }
+        ],
+        "effects": [
+          {
+            "kind": "draw_card",
+            "count": 2
+          }
+        ]
+      },
+      {
+        "type": "activated",
+        "cost": [
+          {
+            "kind": "loyalty",
+            "amount": -3
+          }
+        ],
+        "effects": [
+          {
+            "kind": "deal_damage",
+            "target": "any_creature_or_planeswalker",
+            "amount": 10
+          }
+        ]
+      },
+      {
+        "type": "activated",
+        "cost": [
+          {
+            "kind": "loyalty",
+            "amount": -4
+          }
+        ],
+        "effects": [
+          {
+            "kind": "return_card_to_battlefield",
+            "target": {
+              "card_in_graveyard": {
+                "scope": "any",
+                "class": "creature_or_planeswalker"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "type": "activated",
+        "cost": [
+          {
+            "kind": "loyalty",
+            "amount": -12
+          }
+        ],
+        "effects": [
+          {
+            "kind": "exile_library_except_bottom",
+            "target": "target_player"
+          }
+        ]
+      }
+    ]
+  }
+}

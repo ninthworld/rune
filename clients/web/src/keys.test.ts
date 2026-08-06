@@ -52,6 +52,18 @@ describe('what a keypress means', () => {
     expect(intentFor(press('Enter', { alt: true }))).toBeUndefined()
   })
 
+  it('picks the numbered row a digit prints', () => {
+    // The numeral on a mode row *is* its binding (§6.7), which is what makes a row a pointer
+    // can press reachable from the keyboard (§6.5 rule 4).
+    expect(intentFor(press('1'))).toEqual({ kind: 'pick', index: 1 })
+    expect(intentFor(press('4'))).toEqual({ kind: 'pick', index: 4 })
+    // Whether there is an nth row is decided where the view is, so a digit always means this.
+    expect(intentFor(press('9'))).toEqual({ kind: 'pick', index: 9 })
+    // Zero numbers no row: the rows count from one.
+    expect(intentFor(press('0'))).toBeUndefined()
+    expect(intentFor(press('1', { typing: true }))).toBeUndefined()
+  })
+
   it('is nothing for a key nothing is bound to', () => {
     expect(intentFor(press('k'))).toBeUndefined()
   })
@@ -69,5 +81,7 @@ describe('what the page takes from the browser', () => {
     // A page that blocks keys it does not use is a page a player cannot escape.
     expect(claims(press(' ', { typing: true }), undefined)).toBe(false)
     expect(claims(press('Escape'), { kind: 'cancel' })).toBe(false)
+    // A digit activates no control and scrolls nothing, so there is nothing to suppress.
+    expect(claims(press('2'), { kind: 'pick', index: 2 })).toBe(false)
   })
 })

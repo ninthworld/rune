@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "functional_id": "sai_master_thopterist",
+  "name": "Sai, Master Thopterist",
+  "supertypes": [
+    "legendary"
+  ],
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Artificer"
+  ],
+  "mana_cost": "{2}{U}",
+  "colors": [
+    "blue"
+  ],
+  "power": 1,
+  "toughness": 4,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "you_cast_spell": "artifact"
+      },
+      "effects": [
+        {
+          "kind": "create_token",
+          "token": {
+            "name": "Thopter",
+            "types": [
+              "artifact",
+              "creature"
+            ],
+            "subtypes": [
+              "Thopter"
+            ],
+            "colors": [],
+            "power": 1,
+            "toughness": 1,
+            "keywords": [
+              "flying"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{1}{U}"
+        },
+        {
+          "kind": "sacrifice",
+          "card_type": "artifact",
+          "count": {
+            "exactly": 2
+          }
+        }
+      ],
+      "effects": [
+        {
+          "kind": "draw_card",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

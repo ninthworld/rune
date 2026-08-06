@@ -28,16 +28,19 @@ mod removal_tests;
 /// Both want a permanent, so both go through [`AbilitySource::permanent`](crate::AbilitySource),
 /// which answers `None` for an emblem and for a card in a graveyard — neither is one.
 ///
-/// `resolution_start` is the log sequence this resolution began at, carried for the same
+/// `resolution` is what the resolving object knows about itself, carried for the same
 /// reason [`apply_effect`] carries it: an amount that says "this way" is a question about
-/// what this resolution has already done.
+/// what this resolution has already done, an amount that says "X" is a question about
+/// what it announced, one that says "the sacrificed creature" is a question about what its
+/// cost ate, and whether its damage can be prevented is a fact about the object rather
+/// than about the recipient.
 pub(crate) fn apply_targeted_effect(
     state: &mut GameState,
     effect: &Effect,
     target: Target,
     controller: PlayerId,
     source: Option<crate::stack::AbilitySource>,
-    resolution_start: u64,
+    resolution: crate::resolve::Resolution,
     db: &CardDatabase,
 ) {
     let source = source.and_then(crate::stack::AbilitySource::permanent);
@@ -56,9 +59,26 @@ pub(crate) fn apply_targeted_effect(
         // spell's controller stands in as its owner.
         Effect::CounterSpell { .. } => {
             if let Target::Spell(id) = target {
-                if let Some(pos) = state.stack.iter().position(|o| o.id == id) {
+                // CR 701.5a: a spell that can't be countered stays on the stack. It was
+                // a perfectly legal target — "can't be countered" is not hexproof and
+                // does not touch targeting — so the counterspell resolved, chose it, and
+                // simply failed to remove it. Asked of the object rather than of its
+                // card, because the answer depends on the X *this* copy announced.
+                let protected = state
+                    .stack
+                    .iter()
+                    .find(|o| o.id == id)
+                    .is_some_and(|o| o.has_trait(db, crate::stack::SpellTraitKind::CantBeCountered));
+                if let Some(pos) = (!protected)
+                    .then(|| state.stack.iter().position(|o| o.id == id))
+                    .flatten()
+                {
                     let countered = state.stack.remove(pos);
-                    if let StackObjectKind::Spell { card } = countered.kind {
+                    // A **copy** is a legal target and is removed like any other spell,
+                    // but it has no card to put anywhere and none to name in the log: it
+                    // simply ceases to exist (CR 707.10a), which removing it from the
+                    // stack already is.
+                    if let StackObjectKind::Spell { card, .. } = countered.kind {
                         let owner = countered.controller;
                         if let Some(player) = state.players.get_mut(owner.0) {
                             player.graveyard.push(card);
@@ -70,6 +90,14 @@ pub(crate) fn apply_targeted_effect(
                     }
                 }
             }
+        }
+        // CR 707.10: put a copy of the named spell onto the stack. The copy is a new
+        // object that was **never cast** — a [`StackObjectKind::SpellCopy`] rather than a
+        // [`StackObjectKind::Spell`], so no cast event is recorded, nothing watching a
+        // cast notices it, and it has no card to reach a graveyard when it is done
+        // (CR 707.10a).
+        Effect::CopySpell { new_targets, .. } => {
+            copy_spell_onto_stack(state, target, *new_targets, controller, db);
         }
         // Deal damage to the chosen target (CR 120.3): to a creature it is marked
         // (CR 120.3d) for the lethal-damage SBA (CR 704.5g); to a player it is
@@ -87,25 +115,23 @@ pub(crate) fn apply_targeted_effect(
         } => {
             let count = crate::condition::count_permanents(state, count_of, controller, db);
             let amount = amount_per.saturating_mul(count);
-            match target {
-                Target::Permanent(id) => {
-                    state.deal_damage_to_permanent(id, amount, db);
-                }
-                Target::Player(seat) => {
-                    state.deal_damage_to_player(seat, amount);
-                }
-                Target::Card(_) | Target::Spell(_) => {}
-            }
+            deal_damage_to_target(state, target, amount, resolution, source, db);
         }
-        Effect::DealDamage { amount, .. } => match target {
-            Target::Permanent(id) => {
-                state.deal_damage_to_permanent(id, *amount, db);
-            }
-            Target::Player(seat) => {
-                state.deal_damage_to_player(seat, *amount);
-            }
-            Target::Card(_) | Target::Spell(_) => {}
-        },
+        Effect::DealDamage { amount, .. } => {
+            deal_damage_to_target(state, target, *amount, resolution, source, db);
+        }
+        // The derived-amount damage verb: for an announced X the value was fixed at
+        // announcement (CR 601.2b), so reading it here is a lookup rather than a
+        // computation and it is the same number the cast was charged for; for an amount
+        // read off the object's own cost payment this is where the *stored* number is read
+        // — the creature that paid was gone before this resolution began, which is the
+        // whole reason it was written down at announcement (CR 601.2h).
+        Effect::DealDamageByAmount { amount, .. } => {
+            let value = crate::condition::derived_amount(
+                state, amount, controller, controller, resolution, db,
+            );
+            deal_damage_to_target(state, target, value, resolution, source, db);
+        }
         // Destroy the targeted permanent (CR 701.7): move it to its owner's
         // graveyard through the one creature-death seam
         // ([`GameState::destroy_permanent`], CR 700.4) — the same path lethal damage
@@ -131,9 +157,24 @@ pub(crate) fn apply_targeted_effect(
         // ([`GameState::move_permanent_to_exile`]) — the exile counterpart of the
         // graveyard path `Destroy` uses. A commander exiled here is flagged for the
         // CR 903.9a return-to-command-zone decision by that seam.
-        Effect::Exile { .. } => {
+        Effect::Exile { gain_life, .. } => {
             if let Target::Permanent(id) = target {
+                // CR 608.2h: "its power" is read off the permanent **before** it moves,
+                // because once it is in exile there is nothing on the battlefield to
+                // read and last known information is what the rule asks for. The
+                // computed power (CR 613), so a creature grown by counters or an anthem
+                // is worth what it had become.
+                let gained = gain_life.map_or(0, |amount| match amount {
+                    PermanentAmount::Power => crate::characteristics::characteristics(state, id, db)
+                        .power
+                        .unwrap_or(0),
+                });
                 state.move_permanent_to_exile(id);
+                // A negative power gains nothing rather than draining the controller:
+                // CR 119.3 has no such thing as gaining a negative amount of life.
+                if gained > 0 {
+                    state.change_life(controller, gained);
+                }
             }
         }
         // Put counters on the targeted permanent (CR 122). Current power/toughness
@@ -164,6 +205,7 @@ pub(crate) fn apply_targeted_effect(
             power,
             toughness,
             keywords,
+            abilities,
             restrictions,
             ..
         } => {
@@ -185,6 +227,20 @@ pub(crate) fn apply_targeted_effect(
                             source,
                             affects: EffectAffects::SpecificPermanent(id),
                             modification: Modification::GrantKeyword(*keyword),
+                            duration: Duration::UntilEndOfTurn,
+                        });
+                    }
+                    // A written-out ability, in the same breath and at the same layer:
+                    // folded into the creature's computed set on demand, so it offers
+                    // the activation — or fires the trigger — exactly as a printed one
+                    // would, and is gone at cleanup with nothing written on the
+                    // permanent to undo (ADR 0005).
+                    for ability in abilities {
+                        let source = state.mint_id();
+                        state.static_effects.push(StaticEffect {
+                            source,
+                            affects: EffectAffects::SpecificPermanent(id),
+                            modification: Modification::GrantAbility(Box::new(ability.clone())),
                             duration: Duration::UntilEndOfTurn,
                         });
                     }
@@ -395,7 +451,8 @@ pub(crate) fn apply_targeted_effect(
                 state,
                 amount,
                 controller,
-                resolution_start,
+                controller,
+                resolution,
                 db,
             ))
             .unwrap_or(i32::MAX);
@@ -437,7 +494,9 @@ pub(crate) fn apply_targeted_effect(
         | Effect::AllowCastingFromGraveyard { .. }
         | Effect::IgnoreHexproof { .. }
         | Effect::CreateReplacement { .. }
+        | Effect::PreventDamage { .. }
         | Effect::Conditional { .. }
+        | Effect::DestroyAll { .. }
         | Effect::PumpAll { .. }
         | Effect::GrantKeywordAll { .. }
         | Effect::RestrictAll { .. }
@@ -446,13 +505,36 @@ pub(crate) fn apply_targeted_effect(
         | Effect::AlterAbilitiesSelf { .. }
         | Effect::GainLifeByCount { .. }
         | Effect::DrawCardsByAmount { .. }
+        // A derived life loss names its seats outright, and the two verbs that pose a
+        // mid-resolution question are intercepted by the resolve loop before either
+        // apply path is reached.
+        | Effect::LoseLifeByAmount { .. }
+        | Effect::DiscardByAmount { .. }
+        | Effect::Sacrifice { .. }
         // A card returning itself out of a graveyard names its own source, never a
         // chosen one (CR 115.1), so it too is applied by [`apply_effect`].
         | Effect::ReturnSelfFromGraveyard { .. }
-        | Effect::PutCountersOnSelf { .. } => {}
+        // Turning a permanent over names its own source too, by either road.
+        | Effect::TransformSelf
+        | Effect::ExileSelfAndReturnTransformed
+        | Effect::PutCountersOnSelf { .. }
+        // A delayed trigger names an event, never a chosen object.
+        | Effect::CreateDelayedTrigger { .. } => {}
         // "Target player's graveyard": the targeting form of the same verb, routed here
         // for the reason a targeted mill is — the reference chose a seat, and this is
         // where a chosen seat arrives.
+        // "Target player's library": the same shape one line down, and the same reason.
+        // The bottom card is the first element, so everything after it is exiled.
+        Effect::ExileLibraryExceptBottom { .. } => {
+            if let Target::Player(seat) = target {
+                if let Some(player) = state.players.get_mut(seat.0) {
+                    if player.library.len() > 1 {
+                        let cards: Vec<_> = player.library.drain(1..).collect();
+                        player.exile.extend(cards);
+                    }
+                }
+            }
+        }
         Effect::ExileGraveyard { .. } => {
             if let Target::Player(seat) = target {
                 if let Some(player) = state.players.get_mut(seat.0) {
@@ -489,6 +571,51 @@ pub(crate) fn apply_targeted_effect(
             if let Target::Permanent(id) = target {
                 state.put_permanent_on_top_of_library(id);
             }
+        }
+        // A source shuffling *itself* away names no target, so it is applied by
+        // [`apply_effect`] and is a no-op here.
+        Effect::ShuffleSelfIntoLibrary => {}
+    }
+}
+
+/// Deal `amount` damage to the one object a targeting damage effect chose (CR 120.3).
+///
+/// Three damage verbs share it — the printed amount, the count-derived one, and the
+/// announced-X one — so the seam they all funnel into is written once, and the
+/// resolution's "can't be prevented" declaration (CR 615.1) is attached in one place
+/// rather than three. A card or a spell is never a damage recipient and is simply
+/// ignored: the target specs cannot produce one, and a silent skip is the right answer
+/// for a pairing the type system permits and the rules do not.
+///
+/// It is also where the one thing that is *not* about the recipient is stated once: that
+/// the source has now dealt damage (CR 609.7, the reading behind
+/// [`Permanent::dealt_damage`](crate::Permanent)). A spell's damage has no permanent
+/// source and notes nothing.
+fn deal_damage_to_target(
+    state: &mut GameState,
+    target: Target,
+    amount: u32,
+    resolution: crate::resolve::Resolution,
+    source: Option<PermanentId>,
+    db: &CardDatabase,
+) {
+    let dealt = match target {
+        Target::Permanent(id) => state.deal_damage(
+            resolution.damage(PendingDamage::to_permanent(id, amount)),
+            db,
+        ),
+        Target::Player(seat) => state.deal_damage(
+            resolution.damage(PendingDamage::to_player(seat, amount)),
+            db,
+        ),
+        Target::Card(_) | Target::Spell(_) => 0,
+    };
+    // CR 609.7: an ability's damage comes from the permanent the ability is on. Read off
+    // what actually landed, so damage a shield prevented (CR 615.1) leaves `hasn't dealt
+    // damage yet` true.
+    if dealt > 0 {
+        if let Some(source) = source {
+            state.note_damage_dealt_by(source);
         }
     }
 }
@@ -582,11 +709,12 @@ fn power_as_damage(state: &GameState, permanent: PermanentId, db: &CardDatabase)
 /// whose **source is a permanent** rather than a spell.
 ///
 /// That source is the whole reason this exists beside
-/// [`GameState::deal_damage_to_permanent`](crate::GameState): damage from a creature
-/// carries that creature's deathtouch (CR 702.2b) and lifelink (CR 702.15e), which
-/// damage from a burn spell has no way to. Both ride the same fields combat damage uses
-/// — the CR 704.5h flag list and a plain life change — so a creature killed by a fight
-/// dies exactly the way one killed by a block does.
+/// [`GameState::deal_damage`](crate::GameState): damage from a creature carries that
+/// creature's deathtouch (CR 702.2b) and lifelink (CR 702.15e), which damage from a burn
+/// spell has no way to. Both ride the same fields combat damage uses — the CR 704.5h flag
+/// list and a plain life change — so a creature killed by a fight dies exactly the way one
+/// killed by a block does. The damage itself still goes through the one seam, so a
+/// prevention shield (CR 615.1) stops a fight exactly as it stops a block.
 ///
 /// Zero damage is not dealt at all (CR 120.3), so it triggers nothing and gains nobody
 /// life.
@@ -608,18 +736,23 @@ fn deal_damage_between_permanents(
     let lifelink =
         crate::characteristics::permanent_has_keyword(state, source, Keyword::Lifelink, db);
     let gains = crate::characteristics::controller_of_id(state, source);
-    let dealt = state.deal_damage_to_permanent(recipient, amount, db);
+    let dealt = state.deal_damage(PendingDamage::to_permanent(recipient, amount), db);
+    // CR 120: the source really dealt this, so the "hasn't dealt damage yet" of a
+    // conditional continuous ability stops holding for it here, in the same step.
+    if dealt > 0 {
+        state.note_damage_dealt_by(source);
+    }
     // CR 702.2b / 704.5h: any nonzero damage from a deathtouch source makes the
     // recipient a candidate for destruction, whether or not it was lethal.
-    if dealt && deathtouch && !state.deathtouch_struck.contains(&recipient) {
+    if dealt > 0 && deathtouch && !state.deathtouch_struck.contains(&recipient) {
         state.deathtouch_struck.push(recipient);
     }
     // CR 702.15e: lifelink life gain is a non-damage life change to the source's
     // controller, and it rides *damage that was dealt* — so a recipient that is not there
-    // to take any gains nobody anything.
-    if dealt && lifelink {
+    // to take any, and one whose damage was prevented (CR 615.1), gain nobody anything.
+    if lifelink && dealt > 0 {
         if let Some(seat) = gains {
-            state.change_life(seat, i32::try_from(amount).unwrap_or(i32::MAX));
+            state.change_life(seat, i32::try_from(dealt).unwrap_or(i32::MAX));
         }
     }
 }
@@ -652,4 +785,71 @@ pub(super) fn take_from_a_graveyard_with_owner(
         }
     }
     None
+}
+
+/// Put a copy of the spell `target` names onto the stack, above the original (CR 707.10).
+///
+/// Three rules decide everything here:
+///
+/// - **The copy takes the original's decisions** (CR 707.10), which for this vocabulary
+///   means its chosen targets. That is the default, and it is what a copy with nothing to
+///   re-aim keeps.
+/// - **Its controller may choose new targets** (CR 707.10c) when the effect says so. The
+///   copy is then put on the stack *unaimed* and its controller fills the slots through
+///   the same action a triggered ability's are filled with — so re-aiming needs no second
+///   mechanism, and the copy cannot resolve before the question is answered.
+///   The offer is withheld unless the spell declares at least one **required** slot and
+///   every one of them has a legal candidate: an offer with no answer would be a stall,
+///   and CR 707.10c's "leave any number unchanged" is then the only answer left anyway.
+/// - **A permanent spell is not copied.** CR 707.10f turns such a copy into a token as it
+///   resolves, and nothing in the engine creates a token as a copy of anything — so the
+///   copy is not made rather than made wrongly.
+fn copy_spell_onto_stack(
+    state: &mut GameState,
+    target: Target,
+    new_targets: bool,
+    controller: crate::id::PlayerId,
+    db: &CardDatabase,
+) {
+    let Target::Spell(id) = target else {
+        return;
+    };
+    let Some(original) = state.stack.iter().find(|o| o.id == id) else {
+        return;
+    };
+    let StackObjectKind::Spell { card, mode, x } = original.kind else {
+        return;
+    };
+    let Some(data) = db.card(card.card) else {
+        return;
+    };
+    if data.is_permanent() {
+        return;
+    }
+    let inherited = original.targets.clone();
+    let groups = data.cast_target_groups(mode);
+    let re_aim = new_targets
+        && groups.iter().any(|group| group.min >= 1)
+        && groups.iter().all(|group| {
+            !crate::actions::legal_targets_for_spec(group.spec, state, controller, db).is_empty()
+        });
+    let stack_id = crate::stack::StackId(state.mint_id());
+    state.stack.push(crate::stack::StackObject {
+        id: stack_id,
+        // CR 707.10: a copy is controlled by the player under whose control it was put on
+        // the stack — the copying effect's controller, not the original spell's.
+        controller,
+        kind: StackObjectKind::SpellCopy {
+            card: card.card,
+            new_targets: re_aim,
+            // CR 707.10: the copy has the choices made for the original, so it resolves
+            // the mode that was chosen and reads the X that was announced.
+            mode,
+            x,
+        },
+        targets: if re_aim { Vec::new() } else { inherited },
+        // CR 707.10: a copy is not cast, so nothing was paid for it and there is no
+        // payment for an amount read off one to find.
+        paid: crate::PaidCost::default(),
+    });
 }

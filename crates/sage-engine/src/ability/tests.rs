@@ -16,6 +16,7 @@ fn activated_mana_ability_round_trips() {
                 color: Color::Green,
                 amount: 1
             }],
+            timing: crate::ability::ActivationTiming::AnyTime,
         }
     );
     assert!(is_mana_ability(&ability));
@@ -32,6 +33,7 @@ fn issue_256_activated_colorless_mana_ability_round_trips() {
         Ability::Activated {
             cost: vec![Cost::Tap],
             effects: vec![Effect::AddColorlessMana { amount: 1 }],
+            timing: crate::ability::ActivationTiming::AnyTime,
         }
     );
     assert!(is_mana_ability(&ability));
@@ -191,6 +193,76 @@ fn issue_738_an_entry_colour_choice_round_trips_and_reads_back_by_name() {
 }
 
 #[test]
+fn issue_738_an_entry_card_name_and_the_selector_that_reads_it_round_trip() {
+    // Naming a card as a permanent enters carries the *class* that may be named and no
+    // answer, for the reason the colour choice carries none: the answer belongs to the
+    // permanent, and it is a card the catalog defines rather than a string.
+    let json = r#"{"type":"enters_naming_card","class":"nonbasic_land"}"#;
+    let ability: Ability = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        ability,
+        Ability::EntersNamingCard {
+            class: crate::choice::NamedCardClass::NonbasicLand,
+        }
+    );
+    assert!(!is_mana_ability(&ability));
+
+    // The static ability that reads it back names the class it reaches — the first that
+    // reaches past its own controller — and takes abilities away at layer 6.
+    let json = r#"{"type":"static",
+        "affects":{"scope":"permanents_your_opponents_control","card_type":"land",
+                   "with_the_named_card":true},
+        "modification":{"kind":"lose_all_abilities"}}"#;
+    let ability: Ability = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        ability,
+        Ability::Static {
+            affects: crate::ability::StaticAffects::PermanentsYourOpponentsControl {
+                card_type: Some(crate::card_type::CardType::Land),
+                with_the_named_card: true,
+            },
+            modification: crate::ability::StaticModification::LoseAllAbilities,
+            condition: None,
+        }
+    );
+
+    // And hands one back, as the whole written-out ability an attachment's grant is.
+    let json = r#"{"type":"static",
+        "affects":{"scope":"permanents_your_opponents_control","card_type":"land"},
+        "modification":{"kind":"grant_ability",
+            "ability":{"type":"activated","cost":[{"kind":"tap"}],
+                       "effects":[{"kind":"add_mana_any_color","amount":1}]}}}"#;
+    let ability: Ability = serde_json::from_str(json).unwrap();
+    let granted = Ability::Activated {
+        cost: vec![Cost::Tap],
+        effects: vec![Effect::AddManaAnyColor {
+            amount: 1,
+            same_color: false,
+            restriction: None,
+        }],
+        timing: crate::ability::ActivationTiming::AnyTime,
+    };
+    assert_eq!(
+        ability,
+        Ability::Static {
+            affects: crate::ability::StaticAffects::PermanentsYourOpponentsControl {
+                card_type: Some(crate::card_type::CardType::Land),
+                // Absent defaults to false: a class that names no chosen name reads none.
+                with_the_named_card: false,
+            },
+            modification: crate::ability::StaticModification::GrantAbility {
+                ability: Box::new(granted.clone()),
+            },
+            condition: None,
+        }
+    );
+    assert!(
+        is_mana_ability(&granted),
+        "what it grants is a mana ability, and stays one once granted (CR 605.1a)"
+    );
+}
+
+#[test]
 fn issue_155_enters_with_counters_replacement_round_trips() {
     // The "enters with N counters" self-replacement (CR 614.12) authors its
     // counter kind under `counter` (the enum reserves `type` for its tag) and
@@ -212,6 +284,7 @@ fn activated_non_mana_ability_is_not_a_mana_ability() {
     let ability = Ability::Activated {
         cost: vec![Cost::Tap],
         effects: vec![Effect::DrawCard { count: 1 }],
+        timing: crate::ability::ActivationTiming::AnyTime,
     };
     assert!(!is_mana_ability(&ability));
 }
@@ -288,6 +361,7 @@ fn a_tap_effect_is_not_a_mana_ability() {
         effects: vec![Effect::Tap {
             target: TargetSpec::AnyCreature,
         }],
+        timing: crate::ability::ActivationTiming::AnyTime,
     };
     assert!(!is_mana_ability(&ability));
 }
@@ -406,6 +480,7 @@ fn issue_150_pump_round_trips_with_its_target_spec() {
             power: 3,
             toughness: 3,
             keywords: Vec::new(),
+            abilities: Vec::new(),
             restrictions: Vec::new(),
         }
     );
@@ -424,6 +499,7 @@ fn issue_150_pump_round_trips_with_its_target_spec() {
             power: 2,
             toughness: 2,
             keywords: vec![crate::card::Keyword::Flying],
+            abilities: Vec::new(),
             restrictions: Vec::new(),
         }
     );
@@ -446,6 +522,7 @@ fn issue_150_pump_round_trips_with_its_target_spec() {
             power: 3,
             toughness: 3,
             keywords: Vec::new(),
+            abilities: Vec::new(),
             restrictions: vec![crate::card::CombatRestriction::MustBeBlockedByAllAble],
         }
     );
@@ -488,6 +565,7 @@ fn a_mana_activation_cost_round_trips_as_the_string_it_was_written_in() {
                 Cost::Tap
             ],
             effects: vec![Effect::DrawCard { count: 1 }],
+            timing: crate::ability::ActivationTiming::AnyTime,
         }
     );
     // CR 605.1a is about the *effects*, not the cost: a mana cost does not stop an
@@ -560,7 +638,10 @@ fn the_new_effect_verbs_round_trip_with_their_target_or_class() {
     assert_eq!(
         pump,
         Effect::PumpAll {
-            affects: MassAffects::CreaturesYouControl { subtype: None },
+            affects: MassAffects::CreaturesYouControl {
+                subtype: None,
+                min_power: None,
+            },
             power: 2,
             toughness: 1,
         }
@@ -573,7 +654,10 @@ fn the_new_effect_verbs_round_trip_with_their_target_or_class() {
     assert_eq!(
         grant,
         Effect::GrantKeywordAll {
-            affects: MassAffects::CreaturesYouControl { subtype: None },
+            affects: MassAffects::CreaturesYouControl {
+                subtype: None,
+                min_power: None,
+            },
             keyword: Keyword::Trample,
         }
     );
@@ -614,6 +698,56 @@ fn the_new_target_specs_deserialize_from_their_bare_string_tags() {
             "{tag}"
         );
     }
+}
+
+#[test]
+fn issue_748_a_mana_value_spec_is_authored_in_the_tagged_form() {
+    // The second spec with fields, so the second written as a map rather than a bare
+    // string. The value is an equality, which is what a printed "with mana value 1"
+    // means and what makes it a different field from the graveyard spec's cap.
+    let json = r#"{"kind":"exile","target":{"any_permanent_with_mana_value":{"mana_value":1}}}"#;
+    let effect: Effect = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        effect,
+        Effect::Exile {
+            target: TargetSpec::AnyPermanentWithManaValue { mana_value: 1 },
+            gain_life: None,
+        }
+    );
+    assert_eq!(
+        effect.target_spec(),
+        Some(TargetSpec::AnyPermanentWithManaValue { mana_value: 1 })
+    );
+}
+
+#[test]
+fn issue_748_restrict_carries_a_target_count_and_defaults_it_to_one() {
+    use crate::ability::TargetCount;
+
+    // Omitted, the count is one and the group is the fixed slot every card authored
+    // before this field existed declares.
+    let single = r#"{"kind":"restrict","target":"any_creature","restriction":"cant_be_blocked"}"#;
+    let single: Effect = serde_json::from_str(single).unwrap();
+    assert_eq!(
+        single,
+        Effect::Restrict {
+            target: TargetSpec::AnyCreature,
+            targets: TargetCount::Exactly(1),
+            restriction: CombatRestriction::CantBeBlocked,
+        }
+    );
+    let groups = single.target_groups();
+    assert_eq!((groups[0].min, groups[0].max), (1, 1));
+
+    // Present, it is the same "up to N" group `put_counters` declares — one group,
+    // zero required, N allowed.
+    let variable = r#"{"kind":"restrict","target":"any_creature","targets":{"up_to":2},
+                       "restriction":"cant_be_blocked"}"#;
+    let variable: Effect = serde_json::from_str(variable).unwrap();
+    let groups = variable.target_groups();
+    assert_eq!(groups.len(), 1, "one group, however many slots");
+    assert_eq!((groups[0].min, groups[0].max), (0, 2));
+    assert_eq!(groups[0].spec, TargetSpec::AnyCreature);
 }
 
 #[test]
@@ -683,11 +817,31 @@ fn issue_604_the_choice_effects_round_trip_with_their_defaults() {
         Effect::LookAtTop {
             count: 4,
             take: 1,
+            take_min: 0,
             filter: CardFilter::Creature {
                 max_power: Some(2),
                 subtype: None
             },
             destination: FoundDestination::Hand,
+            bottom_order: BottomOrder::Random,
+        }
+    );
+
+    // "in any order" is the other printed wording, and it is a different rule: the
+    // looker arranges the remainder rather than the game rolling for it.
+    let ordered =
+        r#"{"kind":"look_at_top","count":3,"take":1,"take_min":1,"bottom_order":"chosen"}"#;
+    assert_eq!(
+        serde_json::from_str::<Effect>(ordered).unwrap(),
+        Effect::LookAtTop {
+            count: 3,
+            take: 1,
+            // "Put one of them into your hand" is not "you may put": the floor is the
+            // card's, and it is the half of the take that has to be authored.
+            take_min: 1,
+            filter: CardFilter::Any,
+            destination: FoundDestination::Hand,
+            bottom_order: BottomOrder::Chosen,
         }
     );
 
@@ -695,6 +849,7 @@ fn issue_604_the_choice_effects_round_trip_with_their_defaults() {
     assert_eq!(
         serde_json::from_str::<Effect>(search).unwrap(),
         Effect::SearchLibrary {
+            take_amount: None,
             take: 1,
             filter: CardFilter::SameNameAsSource,
             destination: FoundDestination::Battlefield,
@@ -707,18 +862,21 @@ fn issue_604_the_choice_effects_round_trip_with_their_defaults() {
         assert_eq!(effect.target_spec(), None);
     }
 
-    // An unconstrained creature filter and the default destination both elide.
+    // An unconstrained creature filter, the default destination, the optional take, and
+    // the conservative random bottoming all elide.
     let bare = r#"{"kind":"look_at_top","count":3,"take":1,"filter":{"kind":"creature"}}"#;
     assert_eq!(
         serde_json::from_str::<Effect>(bare).unwrap(),
         Effect::LookAtTop {
             count: 3,
             take: 1,
+            take_min: 0,
             filter: CardFilter::Creature {
                 max_power: None,
                 subtype: None
             },
             destination: FoundDestination::Hand,
+            bottom_order: BottomOrder::Random,
         }
     );
 }
@@ -765,6 +923,7 @@ fn issue_723_a_graveyard_ability_is_derived_from_the_effect_that_moves_its_own_c
             effects: vec![Effect::ReturnSelfFromGraveyard {
                 destination: FoundDestination::BattlefieldTapped,
             }],
+            timing: crate::ability::ActivationTiming::AnyTime,
         }
     );
     assert!(is_graveyard_ability(&ability));
@@ -797,7 +956,7 @@ fn issue_723_a_triggered_ability_functions_from_a_graveyard_by_the_same_derivati
     // derivation reads the whole effect tree rather than the top-level list.
     let json = r#"{"type":"triggered",
         "event":{"permanent_enters":{"scope":"creatures_you_control","subtype":"Dragon"}},
-        "effects":[{"kind":"may","cost":"{R}","effects":[
+        "effects":[{"kind":"may","cost":{"kind":"mana","mana":"{R}"},"effects":[
             {"kind":"return_self_from_graveyard","destination":"hand"}]}]}"#;
     let ability: Ability = serde_json::from_str(json).unwrap();
     assert!(is_graveyard_ability(&ability));
@@ -806,10 +965,57 @@ fn issue_723_a_triggered_ability_functions_from_a_graveyard_by_the_same_derivati
     // never mistaken for one that fires out of a graveyard.
     let watcher = r#"{"type":"triggered",
         "event":{"permanent_enters":{"scope":"creatures_you_control","subtype":"Dragon"}},
-        "effects":[{"kind":"may","cost":"{R}","effects":[{"kind":"draw_card","count":1}]}]}"#;
+        "effects":[{"kind":"may","cost":{"kind":"mana","mana":"{R}"},"effects":[{"kind":"draw_card","count":1}]}]}"#;
     assert!(!is_graveyard_ability(
         &serde_json::from_str::<Ability>(watcher).unwrap()
     ));
+}
+
+#[test]
+fn issue_740_a_dies_trigger_functions_from_the_battlefield_whatever_it_then_does() {
+    // The one exception the derivation has to make. A trigger that watches its own source
+    // dying fired *from the battlefield* — CR 603.6c is the rule that lets it fire on the
+    // way out — so it belongs to the battlefield pass of the trigger diff even though its
+    // effect then reaches the card the permanent became. Filing it under the graveyard
+    // pass would hand it to a walk over cards already sitting there, which never saw a
+    // permanent die.
+    let json = r#"{"type":"triggered","event":"self_dies",
+        "effects":[{"kind":"return_self_from_graveyard","destination":"battlefield_tapped"}]}"#;
+    let ability: Ability = serde_json::from_str(json).unwrap();
+    assert!(!is_graveyard_ability(&ability));
+}
+
+#[test]
+fn issue_740_two_mana_of_any_one_color_is_one_choice_rather_than_two() {
+    // Two printed phrasings, one verb, and the field that tells them apart. `same_color`
+    // defaults off, so every card authored before a land Aura needed the other form still
+    // means "in any combination of colors".
+    let combination = r#"{"kind":"add_mana_any_color","amount":2}"#;
+    assert_eq!(
+        serde_json::from_str::<Effect>(combination).unwrap(),
+        Effect::AddManaAnyColor {
+            amount: 2,
+            same_color: false,
+            restriction: None,
+        }
+    );
+    let one_color = r#"{"kind":"add_mana_any_color","amount":2,"same_color":true}"#;
+    let effect: Effect = serde_json::from_str(one_color).unwrap();
+    assert_eq!(
+        effect,
+        Effect::AddManaAnyColor {
+            amount: 2,
+            same_color: true,
+            restriction: None,
+        }
+    );
+    // Either way it names no target and is a mana ability wherever it is activated.
+    assert_eq!(effect.target_group(), None);
+    assert!(is_mana_ability(&Ability::Activated {
+        cost: vec![Cost::Tap],
+        effects: vec![effect],
+        timing: crate::ability::ActivationTiming::AnyTime,
+    }));
 }
 
 #[test]
@@ -865,6 +1071,65 @@ fn issue_737_a_fight_declares_two_groups_of_its_own_specs() {
             dealer: TargetSpec::AnyCreatureYouControl,
             dealt_to: TargetSpec::AnyCreatureAnOpponentControls,
             mutual: true,
+        }
+    );
+}
+
+/// The authored shapes cost modification adds: the ability, the spell class that carries
+/// a power bound, and the mass class that carries one (issue #735).
+///
+/// A parse test, and it earns its place for one reason: the spell class is **externally
+/// tagged**, so its parameterless members stay bare strings and only the one that takes a
+/// filter is wrapped. Getting that wrong makes every card already authored against it
+/// fail to load rather than making one new card fail — a schema migration nobody asked
+/// for.
+#[test]
+fn issue_735_cost_modification_round_trips_with_its_selectors() {
+    let json = r#"{"type":"cost_modifier",
+        "spells":{"creature":{"min_power":4}},
+        "modification":{"kind":"reduce","generic":2}}"#;
+    assert_eq!(
+        serde_json::from_str::<Ability>(json).unwrap(),
+        Ability::CostModifier {
+            spells: ObservedSpell::Creature { min_power: Some(4) },
+            modification: CostModification::Reduce { generic: 2 },
+        }
+    );
+
+    // The tax half, over an unbounded class.
+    assert_eq!(
+        serde_json::from_str::<Ability>(
+            r#"{"type":"cost_modifier","spells":{"creature":{}},
+                "modification":{"kind":"increase","generic":1}}"#
+        )
+        .unwrap(),
+        Ability::CostModifier {
+            spells: ObservedSpell::Creature { min_power: None },
+            modification: CostModification::Increase { generic: 1 },
+        }
+    );
+
+    // The parameterless members are still bare strings.
+    assert_eq!(
+        serde_json::from_str::<ObservedSpell>(r#""instant_or_sorcery""#).unwrap(),
+        ObservedSpell::InstantOrSorcery
+    );
+
+    // The mass class's bound is optional and defaults to absent, so every card authored
+    // before it existed parses unchanged.
+    assert_eq!(
+        serde_json::from_str::<MassAffects>(r#"{"scope":"creatures_you_control","min_power":4}"#)
+            .unwrap(),
+        MassAffects::CreaturesYouControl {
+            subtype: None,
+            min_power: Some(4),
+        }
+    );
+    assert_eq!(
+        serde_json::from_str::<MassAffects>(r#"{"scope":"creatures_you_control"}"#).unwrap(),
+        MassAffects::CreaturesYouControl {
+            subtype: None,
+            min_power: None,
         }
     );
 }

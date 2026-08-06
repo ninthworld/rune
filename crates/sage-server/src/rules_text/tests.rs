@@ -7,12 +7,19 @@ use sage_engine::{CardDatabase, CardId, FunctionalId};
 
 /// The bundled catalog, whose definitions cover every IR construct the engine
 /// has: the generated text is asserted against real cards, not toy structs.
-fn bundled() -> CardDatabase {
+pub(super) fn bundled() -> CardDatabase {
     CardDatabase::bundled().unwrap()
 }
 
+/// An optional effect's mana cost, for the question the offer is worded as.
+fn mana_cost(mana: &str) -> OptionalCost {
+    OptionalCost::Mana {
+        mana: mana.to_string(),
+    }
+}
+
 /// The generated text of the card with this authored identity.
-fn text_of(db: &CardDatabase, functional_id: &str) -> String {
+pub(super) fn text_of(db: &CardDatabase, functional_id: &str) -> String {
     let id = db
         .card_id(&FunctionalId::try_from(functional_id.to_string()).unwrap())
         .unwrap();
@@ -434,6 +441,42 @@ fn issue_722_an_amount_that_is_not_a_count_names_the_source_it_reads() {
 }
 
 #[test]
+fn issue_722_a_defined_power_and_the_three_places_a_half_reads() {
+    // A characteristic-defining ability is a present-tense statement about the source's
+    // own power (CR 604.3), not a trigger and not an effect — and the printed `*` is
+    // exactly this sentence.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "enigma_drake"),
+        "Flying\nEnigma Drake's power is equal to the number of instant or sorcery \
+         cards in your graveyard."
+    );
+    // A halved total names *whose* total it is, so "each player" gets "their" and the
+    // rounding trails the phrase where a card prints it.
+    assert_eq!(
+        text_of(&db, "fraying_omnipotence"),
+        "Each player loses half their life, rounded up.\n\
+         Each player discards half the cards in their hand, rounded up.\n\
+         Each player sacrifices half the creatures they control, rounded up."
+    );
+    // The **open** sacrifice, whose size is not a number read of anything: it names its own
+    // class and prints as the imperative a card writes, with the amount that reads it back
+    // ("that many") in the next sentence.
+    assert_eq!(
+        text_of(&db, "scapeshift"),
+        "Sacrifice any number of lands.\n\
+         Search your library for up to that many land cards, put them onto the \
+         battlefield tapped, then shuffle."
+    );
+    // "Its" points back at the noun the same sentence just named, which is why the life
+    // gain is part of the exile rather than a clause standing on its own.
+    assert_eq!(
+        text_of(&db, "infernal_reckoning"),
+        "Exile target colorless creature. You gain life equal to its power."
+    );
+}
+
+#[test]
 fn issue_728_an_equipment_states_its_grant_and_its_equip_ability() {
     // Marauder's Axe (bundled). The grant sentence names "equipped creature" rather than
     // repeating the equip ability's restriction — an Equipment is only ever on a creature
@@ -587,6 +630,10 @@ fn every_bundled_card_with_rules_generates_text_for_them() {
             || !card.restrictions.is_empty()
             || !card.abilities.is_empty()
             || !card.spell_effects.is_empty()
+            // A modal spell's sentences live in its modes, and a spell trait is a
+            // sentence in its own right (issue #733).
+            || !card.modes.is_empty()
+            || !card.spell_traits.is_empty()
             || card.attachment.is_some();
         let text = rules_text(card, sage_engine::scripted_rules_text(&card.functional_id));
         assert_eq!(
@@ -783,7 +830,7 @@ fn the_stack_description_speaks_the_same_vocabulary() {
 /// A card whose only rules are a static ability, built inline: the wording has to
 /// be asserted from the IR shape, and the catalog carries whichever shapes real
 /// cards happen to use.
-fn static_text(affects: &str, modification: &str) -> String {
+pub(super) fn static_text(affects: &str, modification: &str) -> String {
     let json = format!(
         r#"[{{"schema_version":1,"functional_id":"test_lord","name":"Test Lord",
             "types":["creature"],"subtypes":["Elf"],"mana_cost":"{{G}}","colors":["green"],
@@ -924,7 +971,7 @@ fn issue_610_an_optional_effect_reads_as_the_card_prints_it() {
             {"schema_version":1,"functional_id":"test_mentor","name":"Test Mentor",
              "types":["creature"],"mana_cost":"{2}{W}","power":2,"toughness":2,
              "abilities":[{"type":"triggered","event":"self_enters_battlefield",
-               "effects":[{"kind":"may","cost":"{1}",
+               "effects":[{"kind":"may","cost":{"kind":"mana","mana":"{1}"},
                            "effects":[{"kind":"draw_card","count":1}]},
                           {"kind":"gain_life","player_ref":"controller","amount":2}]}]},
             {"schema_version":1,"functional_id":"test_almsgiver","name":"Test Almsgiver",
@@ -954,14 +1001,27 @@ fn issue_610_an_optional_effect_reads_as_the_card_prints_it() {
 }
 
 #[test]
+fn issue_744_an_optional_cost_that_is_not_mana_reads_as_the_card_prints_it() {
+    // The printed sentence, from a bundled card: the payment is a verb the player does
+    // rather than a symbol they pay, and it takes the same "If you do" the mana form
+    // takes because that is how the card writes it.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "brawl_bash_ogre"),
+        "Menace\nWhenever Brawl-Bash Ogre attacks, you may sacrifice another creature. \
+         If you do, Brawl-Bash Ogre gets +2/+2 until end of turn."
+    );
+}
+
+#[test]
 fn issue_610_the_optional_question_is_composed_from_the_effects_it_offers() {
     // The words on the button a player answers with come from the same vocabulary as
     // the printed sentence, so the offer and the card can never describe it differently.
     let draw = vec![Effect::DrawCard { count: 1 }];
     assert_eq!(optional_effect_question(None, &draw), "Draw a card?");
     assert_eq!(
-        optional_effect_question(Some("{1}"), &draw),
-        "Pay {1} to draw a card?"
+        optional_effect_question(Some(&mana_cost("{1}")), &draw),
+        "Pay {1}? If you do, draw a card"
     );
 
     let gain = vec![Effect::GainLife {
@@ -970,8 +1030,8 @@ fn issue_610_the_optional_question_is_composed_from_the_effects_it_offers() {
     }];
     assert_eq!(optional_effect_question(None, &gain), "You gain 3 life?");
     assert_eq!(
-        optional_effect_question(Some("{W}"), &gain),
-        "Pay {W} to gain 3 life?"
+        optional_effect_question(Some(&mana_cost("{W}")), &gain),
+        "Pay {W}? If you do, you gain 3 life"
     );
 }
 
@@ -1193,6 +1253,35 @@ fn a_life_gained_condition_states_its_threshold_only_when_there_is_one() {
         text_of(&db, "resplendent_angel"),
         "Flying\nAt the beginning of each end step, if you gained five or more life \
          this turn, you create a 4/4 white Angel creature token with flying and vigilance."
+    );
+}
+
+#[test]
+fn issue_727_a_condition_about_the_source_names_the_creature_not_its_controller() {
+    // Every other intervening if says "you"; this one is about the permanent the ability
+    // is on, so the sentence has to say so — and the effect it gates names the card,
+    // because a self-referential effect chose no target to name instead.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "inferno_hellion"),
+        "Trample\nAt the beginning of each end step, if this creature attacked or \
+         blocked this turn, shuffle Inferno Hellion into its owner's library."
+    );
+}
+
+#[test]
+fn issue_727_a_static_condition_about_the_source_reads_as_a_standing_statement() {
+    // The `as long as …` clause of a continuous ability, and — because the subject is the
+    // card's own name rather than a class — a verb that agrees with it in the singular.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "palladia_mors_the_ruiner"),
+        "Flying, vigilance, trample\nPalladia-Mors, the Ruiner has hexproof as long as \
+         it hasn't dealt damage yet."
+    );
+    assert_eq!(
+        text_of(&db, "grasping_scoundrel"),
+        "Grasping Scoundrel gets +1/+0 as long as it's attacking."
     );
 }
 
@@ -1425,6 +1514,35 @@ fn issue_721_an_activation_cost_states_what_the_player_must_spend() {
     );
 }
 
+/// The two cost shapes issue #721 finishes each state what they take, in the card's own
+/// words — and the amount that reads a payment names it where a card names it.
+#[test]
+fn issue_721_a_costs_size_and_the_amount_that_reads_it_are_both_stated() {
+    let db = bundled();
+    // Exiling from a graveyard is a cost like any other, written in the cost line beside
+    // the mana symbols.
+    assert_eq!(
+        text_of(&db, "graveyard_marshal"),
+        "{2}{B}, Exile a creature card from your graveyard: \
+         You create a tapped 2/2 black Zombie creature token."
+    );
+    // A count greater than one reads as the card writes it — "two artifacts", not two
+    // sentences each taking one — and the trigger names the class of spell it watches.
+    assert_eq!(
+        text_of(&db, "sai_master_thopterist"),
+        "Whenever you cast an artifact spell, you create a 1/1 Thopter artifact creature \
+         token with flying.\n\
+         {1}{U}, Sacrifice two artifacts: Draw a card."
+    );
+    // And the payment amount, named as a possessive about a creature that is gone by the
+    // time the sentence takes effect.
+    assert_eq!(
+        text_of(&db, "thud"),
+        "As an additional cost to cast this spell, sacrifice a creature.\n\
+         Thud deals damage equal to the sacrificed creature's power to any target."
+    );
+}
+
 /// A created replacement reads as the sentence a card prints it in: the event, the turn
 /// it lasts, the qualifier on the event, and what happens instead (CR 614.1b). The
 /// keyword line above it is the flash the card is held up with (CR 702.8).
@@ -1436,5 +1554,214 @@ fn issue_731_a_created_replacement_reads_as_the_next_time_this_turn() {
         "Flash\n\
          Sacrifice this permanent: The next time a nontoken creature would enter the \
          battlefield this turn without being cast, exile it instead."
+    );
+}
+
+/// The three M19 mechanics of issue #748, each stated in the words its card prints.
+///
+/// A keyword line on its own is the whole of a vanilla creature with flash; a
+/// variable-arity restriction reads its group in **subject** position rather than after
+/// the "each of" an object position takes; and a mana-value filter names the number,
+/// because a spec that carries one cannot be described by a fixed class name.
+#[test]
+fn issue_748_flash_variable_arity_and_a_mana_value_filter_read_as_their_cards() {
+    let db = bundled();
+    assert_eq!(text_of(&db, "hired_blade"), "Flash");
+    assert_eq!(
+        text_of(&db, "ghostform"),
+        "Up to two target creatures can't be blocked this turn."
+    );
+    assert_eq!(
+        text_of(&db, "isolate"),
+        "Exile target permanent with mana value 1."
+    );
+    // The same effect at its default count still reads as one creature, so the field
+    // that made the sentence plural changed no card that leaves it out.
+    assert_eq!(
+        text_of(&db, "suspicious_bookcase"),
+        "Defender\n{3}, {T}: Target creature can't be blocked this turn."
+    );
+}
+
+/// A prevention shield reads as the one sentence Root Snare prints (CR 615.1): the verb,
+/// the class of damage, and the turn it lasts. An unfiltered shield drops the word that
+/// narrows it, exercised inline because M19 prints no `prevent all damage` (ADR 0009).
+#[test]
+fn issue_736_a_prevention_shield_reads_as_prevent_all_damage_this_turn() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "root_snare"),
+        "Prevent all combat damage that would be dealt this turn."
+    );
+    let inline = CardDatabase::from_json(
+        r#"[
+            {"schema_version":1,"functional_id":"test_ward","name":"Test Ward",
+             "types":["instant"],"mana_cost":"{W}","colors":["white"],
+             "spell_effects":[{"kind":"prevent_damage"}]}
+        ]"#,
+    )
+    .unwrap();
+    assert_eq!(
+        text_of(&inline, "test_ward"),
+        "Prevent all damage that would be dealt this turn."
+    );
+}
+
+/// **A modal spell renders as a printed card writes it** (CR 700.2, issue #733): a
+/// `Choose one —` header and one bulleted line per mode, each line the mode's own
+/// sentences.
+///
+/// The split into lines is the same split the dock's numbered rows use, so these are
+/// literally the words a player picks between.
+#[test]
+fn issue_733_a_modal_spell_prints_its_bullets() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "cleansing_nova"),
+        "Choose one —\n• Destroy all creatures.\n• Destroy all artifacts and enchantments."
+    );
+}
+
+/// **X renders as X** (issue #733). The card prints the letter; the value belongs to a
+/// particular cast and is stated on the stack entry, not here. The threshold clauses
+/// follow the sentence they qualify, where the printed card puts them.
+#[test]
+fn issue_733_x_renders_as_x_with_its_threshold_clauses() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "banefire"),
+        "Banefire deals X damage to any target.\n\
+         If X is 5 or more, Banefire can't be countered.\n\
+         If X is 5 or more, the damage Banefire deals can't be prevented."
+    );
+}
+
+/// A cost modifier states the class of spell, whose casts it reaches, and which way the
+/// number goes (CR 601.2f). The power bound trails the class, where a card prints it —
+/// the same place the mass effect on the line below puts its own.
+#[test]
+fn issue_735_a_cost_modifier_states_the_class_and_the_amount() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "goreclaw_terror_of_qal_sisma"),
+        "Creature spells with power 4 or greater you cast cost {2} less to cast.\n\
+         Whenever Goreclaw, Terror of Qal Sisma attacks, creatures you control with \
+         power 4 or greater get +1/+1 until end of turn and creatures you control with \
+         power 4 or greater gain trample until end of turn."
+    );
+}
+
+#[test]
+fn issue_740_a_granted_ability_is_quoted_on_the_card_that_grants_it() {
+    // CR 613.1f, three ways. An Aura on a land handing over an activated ability, an Aura
+    // on a creature handing over a triggered one, and a spell doing the same for a turn.
+    //
+    // The granted ability is in quotation marks and worded against **its host** — "this
+    // creature", not the name of the card granting it — because that is whose ability it
+    // becomes. It is composed by the same `ability_text` that words a printed ability and
+    // labels the dock button, so a granted activation and a printed one are one string.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "gift_of_paradise"),
+        "When Gift of Paradise enters the battlefield, you gain 2 life.\n\
+         Enchant land.\n\
+         Enchanted land has \"{T}: Add two mana of any one color.\""
+    );
+    assert_eq!(
+        text_of(&db, "infernal_scarring"),
+        "Enchant creature.\n\
+         Enchanted creature gets +2/+0.\n\
+         Enchanted creature has \"When this creature dies, draw a card.\""
+    );
+    // One sentence, because it is one effect on one target: the numbers and the ability
+    // are granted together or not at all.
+    assert_eq!(
+        text_of(&db, "abnormal_endurance"),
+        "Target creature gets +2/+0 and gains \"When this creature dies, return this \
+         creature from your graveyard to the battlefield tapped.\" until end of turn."
+    );
+
+    // The two phrasings of a chosen-colour mana clause are different decisions, so they
+    // are different sentences: Manalith asks once per point, the Aura above asks once.
+    assert_eq!(text_of(&db, "manalith"), "{T}: Add one mana of any color.");
+}
+
+/// Alpine Moon (issue #738/#743): the naming clause gives "the chosen name" its referent,
+/// and both halves of the continuous effect are composed from the same selector the
+/// engine evaluates — including the quoted ability it hands out, written by the same
+/// composer that writes it once the land has it.
+#[test]
+fn a_named_card_and_a_static_that_reaches_an_opponents_lands() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "alpine_moon"),
+        "As Alpine Moon enters the battlefield, choose a nonbasic land card name.\n\
+         Lands your opponents control with the chosen name lose all abilities.\n\
+         Lands your opponents control with the chosen name have \"{T}: Add one mana of \
+         any color.\""
+    );
+}
+
+/// A card with **two faces** (CR 712) generates a sentence per face, from that face's
+/// own ability IR. The front's transform line carries the authored timing restriction
+/// (CR 602.5d), and the back's four loyalty abilities come off a face that has no
+/// keywords, no spell ability, and no cost of its own.
+#[test]
+fn issue_747_both_faces_of_a_transforming_card_generate_their_own_text() {
+    let db = bundled();
+    let front = text_of(&db, "nicol_bolas_the_ravager");
+    assert!(front.starts_with("Flying\n"), "{front}");
+    assert!(front.contains("each opponent discards a card."), "{front}");
+    assert!(
+        front.ends_with("Activate only as a sorcery."),
+        "the authored timing restriction is stated: {front}"
+    );
+
+    let data = db
+        .card(
+            db.card_id(&FunctionalId::try_from("nicol_bolas_the_ravager".to_string()).unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+    let back = back_face_rules_text(data.back_face.as_deref().unwrap());
+    assert_eq!(
+        back.lines().count(),
+        4,
+        "one line per loyalty ability: {back}"
+    );
+    assert!(back.starts_with("+2: Draw two cards."), "{back}");
+    assert!(
+        back.contains("target creature or planeswalker"),
+        "the new target spec has words: {back}"
+    );
+    assert!(
+        back.contains("bottom card of target player's library"),
+        "{back}"
+    );
+    // The back face's sentences name *it*, not the card's front face.
+    assert!(back.contains("Nicol Bolas, the Arisen"), "{back}");
+    assert!(!back.contains("the Ravager"), "{back}");
+}
+#[test]
+fn issue_734_a_copy_reads_as_the_copy_it_is() {
+    let db = bundled();
+    // CR 707.5, the "you may" and all: one sentence, and the class it may name.
+    assert_eq!(
+        text_of(&db, "mirror_image"),
+        "You may have Mirror Image enter the battlefield as a copy of a creature you control."
+    );
+    // CR 614.12 + CR 707.2c: the choice and the continuous effect are the two sentences
+    // the card prints, in that order — the enchant line follows, as it does on every Aura.
+    assert_eq!(
+        text_of(&db, "metamorphic_alteration"),
+        "As Metamorphic Alteration enters the battlefield, choose a creature. Enchanted \
+         creature is a copy of the chosen creature.\nEnchant creature."
+    );
+    // CR 603.7 + CR 707.10c: the `next` and the `this turn` are facts about the delayed
+    // ability rather than authored words, and the re-target is its own sentence.
+    assert_eq!(
+        text_of(&db, "doublecast"),
+        "When you next cast an instant or sorcery spell this turn, copy that spell. You \
+         may choose new targets for the copy."
     );
 }

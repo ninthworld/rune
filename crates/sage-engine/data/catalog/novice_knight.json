@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "functional_id": "novice_knight",
+  "name": "Novice Knight",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Knight"
+  ],
+  "mana_cost": "{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 2,
+  "toughness": 3,
+  "keywords": [
+    "defender"
+  ],
+  "abilities": [
+    {
+      "type": "static",
+      "affects": {
+        "scope": "source"
+      },
+      "modification": {
+        "kind": "attacks_as_though_no_defender"
+      },
+      "condition": {
+        "kind": "source_is_enchanted_or_equipped"
+      }
+    }
+  ]
+}

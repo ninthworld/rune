@@ -92,6 +92,12 @@ pub enum PlayerRef {
     /// symmetric drain (CR 102.1). Chooses no target, so it never fizzles and, in a
     /// game of three or more, really does hit every opponent rather than one.
     EachOpponent,
+    /// **Every player still in the game**, the controller included — the "each player"
+    /// of a symmetric sweeper. Chooses no target, and it is a separate variant from
+    /// [`Self::EachOpponent`] rather than a flag on it because the difference is the
+    /// whole point of the cards that print it: a spell that makes each player discard
+    /// half their hand makes its caster discard too.
+    EachPlayer,
     /// One **targeted** player (CR 115.1), any seat still in the game: "target player".
     TargetPlayer,
     /// One **targeted** opponent of the controller: "target opponent". Distinct from
@@ -118,7 +124,7 @@ impl PlayerRef {
     #[must_use]
     pub fn target_spec(self) -> Option<TargetSpec> {
         match self {
-            PlayerRef::Controller | PlayerRef::EachOpponent => None,
+            PlayerRef::Controller | PlayerRef::EachOpponent | PlayerRef::EachPlayer => None,
             PlayerRef::TargetPlayer => Some(TargetSpec::AnyPlayer),
             PlayerRef::TargetOpponent => Some(TargetSpec::AnyOpponent),
         }
@@ -152,9 +158,10 @@ impl PlayerRef {
 /// them. So each variant states its position in its own doc comment below, and the
 /// three groups are:
 ///
-/// - **Includes them by construction**: [`Self::AnyPermanent`] and
-///   [`Self::AnyNonlandPermanent`] name permanents, and a planeswalker is one — both
-///   already accepted one before this issue and still do.
+/// - **Includes them by construction**: [`Self::AnyPermanent`],
+///   [`Self::AnyNonlandPermanent`], and [`Self::AnyPermanentWithManaValue`] name
+///   permanents, and a planeswalker is one — the first two already accepted one before
+///   this issue and still do.
 /// - **Includes them by rule**: [`Self::AnyTarget`], which is CR 115.4's "any target"
 ///   and therefore *means* creature, player, or planeswalker; and
 ///   [`Self::AnyPlayerOrPlaneswalker`], which names them outright.
@@ -196,11 +203,40 @@ pub enum TargetSpec {
     /// permanent and it is not a land. The controller's own permanents are never
     /// candidates, which is the whole difference between this spec and that one.
     AnyNonlandPermanentAnOpponentControls,
+    /// Any permanent whose mana value (CR 202.3) is **exactly** `mana_value` — "target
+    /// permanent with mana value 1".
+    ///
+    /// The first spec that filters by a *number off the printed face* rather than by a
+    /// type, a controller, or a keyword. It is an equality rather than the
+    /// [`Self::CardInGraveyard`] cap for the reason the printed cards differ: a cap
+    /// admits everything cheaper, and a card that names one value means that value.
+    /// The two therefore stay separate fields on separate specs rather than one shared
+    /// bound that would have to say which comparison it meant.
+    ///
+    /// The value is read through [`PrintedFace::mana_value`](crate::PrintedFace), so a
+    /// **token** answers `0` (CR 111.4 — no mana cost) rather than being skipped: a
+    /// token is a permanent, and a spell that names mana value 1 misses it because of
+    /// what it is worth, not because it has no card. **Includes a planeswalker**, for
+    /// [`Self::AnyPermanent`]'s reason.
+    AnyPermanentWithManaValue {
+        /// The mana value a candidate must have.
+        mana_value: u32,
+    },
     /// Any creature on the battlefield (a permanent whose printed types include
     /// [`crate::CardType::Creature`]). Never a planeswalker: the two types are
     /// disjoint on every card the schema can express, and a spell that wants both says
     /// [`Self::AnyTarget`].
     AnyCreature,
+    /// Any **colorless** creature (CR 105.2) — "target colorless creature", the class a
+    /// one-mana answer to an Eldrazi names.
+    ///
+    /// Colour is read off the card's printed
+    /// [`colors`](crate::CardData::colors), which is where every other colour test in the
+    /// engine reads it: colour-changing effects are not modelled, so printed colour is
+    /// current colour here exactly as it is in the blocking restriction that names one.
+    /// A token contributes the colours its creating effect gave it. Never a planeswalker
+    /// (see [`Self::AnyCreature`]).
+    AnyColorlessCreature,
     /// Any creature the object's controller controls — "target creature you control".
     /// Never a planeswalker (see [`Self::AnyCreature`]).
     AnyCreatureYouControl,
@@ -232,6 +268,16 @@ pub enum TargetSpec {
     AnyArtifactOrEnchantment,
     /// Any land on the battlefield. Never a planeswalker: the types are disjoint.
     AnyLand,
+    /// Any **creature or planeswalker** on the battlefield — the single slot of a
+    /// removal spell that names both classes in one breath.
+    ///
+    /// One spec rather than two groups, for the reason
+    /// [`Self::AnyArtifactOrEnchantment`] is one: the printed sentence names one target
+    /// of either type, and two groups would advertise two slots and let a player aim at
+    /// a creature *and* a planeswalker. It is the one spec whose candidates span the two
+    /// classes damage treats differently (CR 120.3c — marked on a creature, taken off a
+    /// planeswalker's loyalty), which is decided where the damage is dealt and not here.
+    AnyCreatureOrPlaneswalker,
     /// Any spell on the stack — a [`crate::StackObjectKind::Spell`] object (CR
     /// 701.5, "counter target spell"). Abilities on the stack are not spells and
     /// are never candidates; a mana ability never uses the stack at all (CR
@@ -321,6 +367,9 @@ pub enum GraveyardCardClass {
     Any,
     /// A creature card.
     Creature,
+    /// A creature **or planeswalker** card — the single class of a reanimation that
+    /// names both, rather than two classes one target could not be in at once.
+    CreatureOrPlaneswalker,
     /// An instant **or** sorcery card — one class as a card writes it, not two types.
     InstantOrSorcery,
     /// An artifact card.
@@ -336,6 +385,9 @@ impl GraveyardCardClass {
         match self {
             GraveyardCardClass::Any => true,
             GraveyardCardClass::Creature => data.has_type(CardType::Creature),
+            GraveyardCardClass::CreatureOrPlaneswalker => {
+                data.has_type(CardType::Creature) || data.has_type(CardType::Planeswalker)
+            }
             GraveyardCardClass::InstantOrSorcery => {
                 data.has_type(CardType::Instant) || data.has_type(CardType::Sorcery)
             }

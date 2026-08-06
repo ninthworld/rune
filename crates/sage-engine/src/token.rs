@@ -29,7 +29,7 @@
 use serde::Deserialize;
 
 use crate::ability::Ability;
-use crate::card::{Attachment, CardData, CombatRestriction, Keyword};
+use crate::card::{Attachment, BackFace, CardData, CombatRestriction, Face, Keyword};
 use crate::card_type::{render_type_line, CardType, Supertype};
 use crate::id::CardId;
 use crate::mana::Color;
@@ -117,7 +117,17 @@ impl TokenData {
 pub enum Printed {
     /// A catalog card (CR 110.1): the ordinary permanent, whose characteristics are
     /// read from the [`CardDatabase`](crate::CardDatabase).
-    Card(CardId),
+    Card {
+        /// The catalog card this permanent represents.
+        card: CardId,
+        /// **Which face is up** (CR 712.4). [`Face::Front`] for every single-faced card
+        /// and for a two-faced one that has not turned over; transforming
+        /// ([`Effect::TransformSelf`](crate::Effect)) changes this field and nothing
+        /// else, which is the whole of CR 712.a — the permanent's counters, damage,
+        /// attachments, and combat state are untouched because they live beside this,
+        /// on the same object.
+        face: Face,
+    },
     /// A token (CR 111): no card, characteristics carried on the object itself. Boxed
     /// so the common variant does not pay for the rare one — a [`Permanent`](crate::Permanent)
     /// is cloned on every [`apply_action`](crate::apply_action).
@@ -129,13 +139,21 @@ impl Default for Printed {
     /// is what it did before tokens existed. A token is never a default — it is always
     /// created by an effect that says what it is.
     fn default() -> Self {
-        Self::Card(CardId::default())
+        Self::Card {
+            card: CardId::default(),
+            face: Face::Front,
+        }
     }
 }
 
 impl From<CardId> for Printed {
+    /// A card, **front face up** (CR 712.4a) — the state every permanent of a card
+    /// starts in, whether or not the card has a second face.
     fn from(card: CardId) -> Self {
-        Self::Card(card)
+        Self::Card {
+            card,
+            face: Face::Front,
+        }
     }
 }
 
@@ -149,9 +167,36 @@ impl Printed {
     #[must_use]
     pub fn card(&self) -> Option<CardId> {
         match self {
-            Self::Card(card) => Some(*card),
+            Self::Card { card, .. } => Some(*card),
             Self::Token(_) => None,
         }
+    }
+
+    /// Which face of this permanent is up (CR 712.4). [`Face::Front`] for a token,
+    /// which has exactly one face — the effect that created it (CR 111.3).
+    #[must_use]
+    pub fn face_up(&self) -> Face {
+        match self {
+            Self::Card { face, .. } => *face,
+            Self::Token(_) => Face::Front,
+        }
+    }
+
+    /// Turn this permanent over (CR 701.28a), leaving everything else about it alone.
+    ///
+    /// Returns `false` — and changes nothing — when there is no other face to turn to:
+    /// a single-faced card and a token both stay exactly as they were, which is what
+    /// CR 701.28d says about a permanent that is not a transforming double-faced
+    /// permanent.
+    pub(crate) fn transform(&mut self, db: &crate::CardDatabase) -> bool {
+        let Self::Card { card, face } = self else {
+            return false;
+        };
+        if !db.card(*card).is_some_and(CardData::has_back_face) {
+            return false;
+        }
+        *face = face.other();
+        true
     }
 
     /// Whether this permanent is a token (CR 111) — the first-class predicate the
@@ -167,7 +212,7 @@ impl Printed {
     #[must_use]
     pub fn face<'a>(&'a self, db: &'a crate::CardDatabase) -> Option<PrintedFace<'a>> {
         match self {
-            Self::Card(card) => db.card(*card).map(PrintedFace::Card),
+            Self::Card { card, face } => db.card(*card).and_then(|data| data.face(*face)),
             Self::Token(token) => Some(PrintedFace::Token(token)),
         }
     }
@@ -186,8 +231,30 @@ impl Printed {
 /// name and three vectors for each of those would be a tax paid for nothing.
 #[derive(Clone, Copy, Debug)]
 pub enum PrintedFace<'a> {
-    /// The face of a permanent that is a card.
+    /// The **front** face of a permanent that is a card — which is the card itself
+    /// (CR 712.2), and the only face a single-faced card has.
     Card(&'a CardData),
+    /// The **back** face of a transforming double-faced permanent that has turned over
+    /// (CR 712.4b).
+    ///
+    /// A third variant rather than a flag on [`Self::Card`], for the reason
+    /// [`Self::Token`] is one: the two faces are two different objects' worth of
+    /// characteristics, and every accessor below answers all three in one place — so a
+    /// combat check, a targeting check, and the view projection read a transformed
+    /// permanent exactly as they read an untransformed one, without any of them knowing
+    /// which face they hold.
+    ///
+    /// It carries the **card** as well as the face, because two questions about a back
+    /// face are answered by the front: its mana value (CR 712.4d — a back face has no
+    /// mana cost but takes the front's mana value) and the card's authored identity,
+    /// which belongs to the card rather than to either face.
+    CardBack {
+        /// The card this face belongs to — its identity, and the front face whose mana
+        /// value CR 712.4d borrows.
+        card: &'a CardData,
+        /// The face's own printed characteristics.
+        face: &'a BackFace,
+    },
     /// The face of a token, from the effect that created it.
     Token(&'a TokenData),
 }
@@ -198,6 +265,7 @@ impl<'a> PrintedFace<'a> {
     pub fn name(&self) -> &'a str {
         match self {
             Self::Card(card) => &card.name,
+            Self::CardBack { face, .. } => &face.name,
             Self::Token(token) => &token.name,
         }
     }
@@ -208,6 +276,7 @@ impl<'a> PrintedFace<'a> {
     pub fn supertypes(&self) -> &'a [Supertype] {
         match self {
             Self::Card(card) => &card.supertypes,
+            Self::CardBack { face, .. } => &face.supertypes,
             Self::Token(_) => &[],
         }
     }
@@ -217,6 +286,7 @@ impl<'a> PrintedFace<'a> {
     pub fn types(&self) -> &'a [CardType] {
         match self {
             Self::Card(card) => &card.types,
+            Self::CardBack { face, .. } => &face.types,
             Self::Token(token) => &token.types,
         }
     }
@@ -226,17 +296,23 @@ impl<'a> PrintedFace<'a> {
     pub fn subtypes(&self) -> &'a [String] {
         match self {
             Self::Card(card) => &card.subtypes,
+            Self::CardBack { face, .. } => &face.subtypes,
             Self::Token(token) => &token.subtypes,
         }
     }
 
     /// The printed mana cost in curly-brace notation. Always empty for a token, which
     /// has no mana cost (CR 111.3 — a token has only the characteristics its creating
-    /// effect defines).
+    /// effect defines), and always empty for a **back face** (CR 712.4a), which the
+    /// catalog validator enforces. A back face's mana *value* is a separate question —
+    /// see [`Self::mana_value`].
     #[must_use]
     pub fn mana_cost(&self) -> &'a str {
         match self {
             Self::Card(card) => &card.mana_cost,
+            // CR 712.4a: a back face has no mana cost, which the catalog validator
+            // enforces — so this reads an authored field that is always empty.
+            Self::CardBack { face, .. } => &face.mana_cost,
             Self::Token(_) => "",
         }
     }
@@ -245,10 +321,18 @@ impl<'a> PrintedFace<'a> {
     ///
     /// Zero for a token, and for anything else with no mana cost, which CR 202.3b says
     /// outright — so a class measured by mana value never has to decide whether to skip
-    /// a token, and simply finds a zero where one is.
+    /// a token, and simply finds a zero where one is. The one exception is a **back
+    /// face**, which has no mana cost and yet takes its front face's mana value
+    /// (CR 712.4d).
     #[must_use]
     pub fn mana_value(&self) -> u32 {
-        let cost = crate::mana::parse_mana_cost(self.mana_cost());
+        // CR 712.4d: the back face of a transforming double-faced permanent has no mana
+        // cost of its own, and its mana value is its **front face's** — so a transformed
+        // Elder Dragon is still mana value 4, not 0. Every other face reads its own cost.
+        let cost = match self {
+            Self::CardBack { card, .. } => crate::mana::parse_mana_cost(&card.mana_cost),
+            _ => crate::mana::parse_mana_cost(self.mana_cost()),
+        };
         u32::from(cost.generic) + u32::from(cost.colored_total())
     }
 
@@ -257,6 +341,7 @@ impl<'a> PrintedFace<'a> {
     pub fn colors(&self) -> &'a [Color] {
         match self {
             Self::Card(card) => &card.colors,
+            Self::CardBack { face, .. } => &face.colors,
             Self::Token(token) => &token.colors,
         }
     }
@@ -266,6 +351,7 @@ impl<'a> PrintedFace<'a> {
     pub fn power(&self) -> Option<i32> {
         match self {
             Self::Card(card) => card.power,
+            Self::CardBack { face, .. } => face.power,
             Self::Token(token) => token.power,
         }
     }
@@ -275,6 +361,7 @@ impl<'a> PrintedFace<'a> {
     pub fn toughness(&self) -> Option<i32> {
         match self {
             Self::Card(card) => card.toughness,
+            Self::CardBack { face, .. } => face.toughness,
             Self::Token(token) => token.toughness,
         }
     }
@@ -285,6 +372,7 @@ impl<'a> PrintedFace<'a> {
     pub fn keywords(&self) -> &'a [Keyword] {
         match self {
             Self::Card(card) => &card.keywords,
+            Self::CardBack { face, .. } => &face.keywords,
             Self::Token(token) => &token.keywords,
         }
     }
@@ -297,6 +385,7 @@ impl<'a> PrintedFace<'a> {
     pub fn loyalty(&self) -> Option<u32> {
         match self {
             Self::Card(card) => card.loyalty,
+            Self::CardBack { face, .. } => face.loyalty,
             Self::Token(_) => None,
         }
     }
@@ -307,6 +396,7 @@ impl<'a> PrintedFace<'a> {
     pub fn restrictions(&self) -> &'a [CombatRestriction] {
         match self {
             Self::Card(card) => &card.restrictions,
+            Self::CardBack { face, .. } => &face.restrictions,
             Self::Token(token) => &token.restrictions,
         }
     }
@@ -318,7 +408,9 @@ impl<'a> PrintedFace<'a> {
     pub fn attachment(&self) -> Option<&'a Attachment> {
         match self {
             Self::Card(card) => card.attachment.as_ref(),
-            Self::Token(_) => None,
+            // A back face carries no attachment block at all — there is no field for
+            // one, so a transforming Aura cannot be authored rather than misbehaving.
+            Self::CardBack { .. } | Self::Token(_) => None,
         }
     }
 
@@ -402,7 +494,10 @@ mod tests {
         assert!(token.card().is_none(), "a token is not a card (CR 111)");
         assert!(token.is_token());
 
-        let card = Printed::Card(CardId(7));
+        let card = Printed::Card {
+            card: CardId(7),
+            face: Face::Front,
+        };
         assert_eq!(card.card(), Some(CardId(7)));
         assert!(!card.is_token());
     }
@@ -410,9 +505,9 @@ mod tests {
     #[test]
     fn a_card_face_falls_through_to_the_catalog_and_an_unknown_handle_has_none() {
         let db = CardDatabase::bundled().unwrap();
-        let ogre = Printed::Card(crate::fixtures::id_in(&db, "onakke_ogre"));
+        let ogre = Printed::from(crate::fixtures::id_in(&db, "onakke_ogre"));
         assert_eq!(ogre.face(&db).unwrap().name(), "Onakke Ogre");
-        assert!(Printed::Card(CardId(9999)).face(&db).is_none());
+        assert!(Printed::from(CardId(9999)).face(&db).is_none());
     }
 
     #[test]

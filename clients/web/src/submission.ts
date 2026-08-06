@@ -61,9 +61,15 @@ export function advertisedMinimum(prompt: Prompt): number | null {
  *
  * A slot named by some option's `requires` is conditional; one named by none is unconditional
  * and always owed. This is what lets a mulligan action carry a `bottom` slot that only the
- * *keep* choice must answer — taking another hand bottoms nothing.
+ * *keep* choice must answer — taking another hand bottoms nothing, and what lets a modal
+ * spell advertise every mode's target slots side by side without asking all of them at once
+ * (`docs/protocol.md`, *Announcing a spell*).
+ *
+ * It names **target requirement slots as readily as prompt slots**: a mode's `requires` points
+ * at the requirements that mode owes, and nothing about the mechanism cares which list a slot
+ * came from.
  */
-function conditionalSlots(action: ValidAction): ReadonlySet<string> {
+export function conditionalSlots(action: ValidAction): ReadonlySet<string> {
   const slots = new Set<string>()
   for (const prompt of action.prompts ?? []) {
     if (prompt.kind !== 'option') continue
@@ -122,11 +128,16 @@ export function buildChooseAction(
   submission?: string,
 ): ChooseAction & { type: 'choose_action' } {
   const required = requiredSlots(action, draft)
+  const conditional = conditionalSlots(action)
   const requirementSlots = new Set((action.requirements ?? []).map((r) => r.slot))
 
   const targets = Object.entries(draft)
     .filter(([slot, ids]) => {
       if (ids.length === 0) return false
+      // A requirement some option owes is carried only while that option is the chosen one:
+      // a player who aimed one mode and then picked the other would otherwise send the first
+      // mode's target alongside the second mode's, which is an answer the server must reject.
+      if (conditional.has(slot)) return required.has(slot)
       return required.has(slot) || requirementSlots.has(slot)
     })
     .map(([slot, ids]) => ({ slot, chosen: [...ids] }))

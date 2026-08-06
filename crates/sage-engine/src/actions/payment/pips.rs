@@ -63,16 +63,34 @@ pub struct DiscardCost {
     pub candidates: Vec<CardInstanceId>,
 }
 
-/// The sacrifice an additional cost demands, and the permanents that could pay it
-/// (CR 601.2b / 701.17).
+/// The sacrifice a cost demands, and the permanents that could pay it
+/// (CR 601.2b / 701.17) — a cast's additional cost ([`sacrifice_cost`]) and an
+/// activation's ([`activation_sacrifice_cost`](super::activation_sacrifice_cost)) alike,
+/// because it is the same question about the same zone.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SacrificeCost {
-    /// The card type the sacrificed permanent must have.
-    pub card_type: crate::card_type::CardType,
-    /// The permanents the caster controls that could pay it. May be empty in a state the
-    /// cast was never offered from; the offer gate refuses such a cast, so nothing
+    /// How many permanents it takes — always a fixed number (CR 601.2b), because a size
+    /// the payer picks is a decision and a decision belongs to a resolution.
+    pub count: crate::ability::SacrificeCount,
+    /// The permanents the payer controls that could pay it. May be empty in a state the
+    /// action was never offered from; the offer gate refuses such an action, so nothing
     /// downstream has to treat an empty list as payable.
     pub candidates: Vec<crate::id::PermanentId>,
+}
+
+/// The exile a cost demands, and the cards in the payer's own graveyard that could pay it
+/// (CR 601.2b / 701.19).
+///
+/// The graveyard counterpart of [`DiscardCost`], and stated the same way: a count, and the
+/// only ids an answer may name. Whose graveyard is not a field — every printed cost of
+/// this shape says *your graveyard* — so the candidates are always the payer's own.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExileCost {
+    /// How many cards must be exiled. Never zero — a card with no such cost has no
+    /// [`ExileCost`] at all.
+    pub count: u8,
+    /// The cards in the paying player's graveyard that could pay it.
+    pub candidates: Vec<CardInstanceId>,
 }
 
 /// The discard `card`'s additional cost demands, or `None` when it has none — which is
@@ -116,20 +134,11 @@ pub fn sacrifice_cost(
     db: &CardDatabase,
     card: CardInstance,
 ) -> Option<SacrificeCost> {
-    let card_type = db.card(card.card)?.additional_cost?.sacrifice_type()?;
+    let cost = db.card(card.card)?.additional_cost?;
+    let card_type = cost.sacrifice_type()?;
     Some(SacrificeCost {
-        card_type,
-        candidates: state
-            .battlefield
-            .iter()
-            .filter(|perm| crate::characteristics::controller_of(state, perm) == state.priority)
-            .filter(|perm| {
-                perm.printed
-                    .face(db)
-                    .is_some_and(|face| face.has_type(card_type))
-            })
-            .map(|perm| perm.id)
-            .collect(),
+        count: cost.sacrifice_count().unwrap_or_default(),
+        candidates: state.sacrifice_candidates_for_cast(state.priority, card_type, db),
     })
 }
 
@@ -138,13 +147,19 @@ pub fn sacrifice_cost(
 /// Empty when the pool already covers the cost (CR 605.3 — mana floated first), which is
 /// exactly the case where there is nothing left to choose. `None` for a card the database
 /// does not hold.
+///
+/// `x` is the announced value of X (CR 601.2b), which is part of the cost and therefore
+/// part of the pips: `{X}{R}` at X = 3 owes four of them. A caller asking before the
+/// value is chosen passes `None` and is answered for the base cost, which is what X = 0
+/// costs anyway.
 #[must_use]
 pub fn payment_pips(
     state: &GameState,
     db: &CardDatabase,
     card: CardInstance,
+    x: Option<u32>,
 ) -> Option<Vec<PaymentPip>> {
-    let (cost, subtypes) = cast_cost(state, db, card)?;
+    let (cost, subtypes) = cast_cost(state, db, card, x)?;
     let purpose = SpendPurpose::CastingSpell {
         subtypes: &subtypes,
     };
@@ -286,10 +301,13 @@ mod tests {
             attacking: None,
             blocking: Vec::new(),
             skips_untap: false,
+            dealt_damage: false,
             damage: 0,
             counters: Default::default(),
             attached_to: None,
             chosen_color: None,
+            named_card: None,
+            copied: None,
         });
         id
     }
@@ -317,7 +335,7 @@ mod tests {
             &["plains", "plains", "plains", "plains"],
             "ajani_s_pridemate",
         );
-        let pips = payment_pips(&state, &database, spell).unwrap();
+        let pips = payment_pips(&state, &database, spell, None).unwrap();
 
         assert_eq!(pips.len(), 2, "{{1}}{{W}} is two pips");
         assert_eq!(pips[0].pip, "{W}", "the colored pip comes first");
@@ -348,7 +366,7 @@ mod tests {
             board(&["plains", "plains"], "ajani_s_pridemate");
         state.players[0].mana_pool.add(Color::White, 1);
 
-        let pips = payment_pips(&state, &database, spell).unwrap();
+        let pips = payment_pips(&state, &database, spell, None).unwrap();
         assert_eq!(pips.len(), 1);
         assert_eq!(pips[0].pip, "{1}");
         assert_eq!(remaining_cost_pips(&pips), "{1}");
@@ -361,7 +379,9 @@ mod tests {
         let (mut state, database, _lands, spell) = board(&[], "ajani_s_pridemate");
         state.players[0].mana_pool.add(Color::White, 1);
         state.players[0].mana_pool.add_colorless(1);
-        assert!(payment_pips(&state, &database, spell).unwrap().is_empty());
+        assert!(payment_pips(&state, &database, spell, None)
+            .unwrap()
+            .is_empty());
     }
 
     /// **The dual-land rule.** A dual land is offered twice for a colored pip — the two
@@ -371,7 +391,7 @@ mod tests {
     fn a_dual_land_is_asked_about_only_where_the_answer_matters() {
         let (state, database, lands, spell) =
             board(&["meandering_river", "plains"], "ajani_s_pridemate");
-        let pips = payment_pips(&state, &database, spell).unwrap();
+        let pips = payment_pips(&state, &database, spell, None).unwrap();
 
         let white = &pips[0];
         assert_eq!(white.pip, "{W}");
@@ -399,7 +419,7 @@ mod tests {
     #[test]
     fn a_source_of_the_wrong_color_is_not_offered_for_a_colored_pip() {
         let (state, database, lands, spell) = board(&["island", "plains"], "ajani_s_pridemate");
-        let pips = payment_pips(&state, &database, spell).unwrap();
+        let pips = payment_pips(&state, &database, spell, None).unwrap();
 
         assert_eq!(pips[0].pip, "{W}");
         assert_eq!(pips[0].candidates.len(), 1);

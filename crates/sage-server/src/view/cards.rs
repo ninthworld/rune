@@ -41,8 +41,14 @@ pub(crate) fn granted_keywords(
     perm: &sage_engine::Permanent,
     db: &CardDatabase,
 ) -> Vec<String> {
-    let printed: Vec<Keyword> = match perm.printed.face(db) {
+    // The printed half is read from the layer-1 seed (CR 707.2): a copy's printed
+    // keywords are the copied card's, so a copied flyer is not reported as *granted*
+    // flying.
+    let printed: Vec<Keyword> = match copiable_face(state, perm, db) {
         Some(PrintedFace::Card(data)) => data.keywords.clone(),
+        // The face that is **up** is the printed set (CR 712.4b): a permanent that has
+        // transformed is not "granted" its back face's keywords, it prints them.
+        Some(PrintedFace::CardBack { face, .. }) => face.keywords.clone(),
         Some(PrintedFace::Token(token)) => token.keywords.clone(),
         None => Vec::new(),
     };
@@ -102,9 +108,16 @@ pub(crate) fn card_name(card: CardId, db: &CardDatabase) -> String {
 ///
 /// Every prompt, label, and stack sentence that names a permanent goes through here
 /// rather than through [`card_name`], so a token is named by what it is instead of
-/// being reported as an unknown card.
-pub(crate) fn permanent_name(perm: &sage_engine::Permanent, db: &CardDatabase) -> String {
-    perm.printed.face(db).map_or_else(
+/// being reported as an unknown card — and so is a **copy**, which answers to the name it
+/// copied and not to the one printed on the card it physically is.
+pub(crate) fn permanent_name(
+    state: &GameState,
+    perm: &sage_engine::Permanent,
+    db: &CardDatabase,
+) -> String {
+    // The name a permanent answers to is a copiable value (CR 707.2), so a copy is named
+    // by what it copied — the same face the projection draws it as.
+    copiable_face(state, perm, db).map_or_else(
         || match perm.printed.card() {
             Some(card) => format!("Unknown card {}", card.0),
             None => "Token".to_string(),
@@ -145,6 +158,8 @@ fn unknown_card_view(entity_id: String, card: Option<CardId>) -> CardView {
         // Empty is "not stated", which is the honest answer for a defensive placeholder.
         card_types: Vec::new(),
         color_identity: Vec::new(),
+        // Nothing is known about this object, least of all whether it has a second side.
+        other_face: None,
     }
 }
 
@@ -267,6 +282,61 @@ pub(crate) fn full_card_view(entity_id: String, data: &CardData, db: &CardDataba
         // identity gems use (`format::color_identity_of`), so the colour a card is
         // drawn in cannot disagree with the colours it is legal under.
         color_identity: colors_in_wubrg(&color_identity_of(db, data)),
+        // CR 712.2: this view is the card's front face, so the *other* face is its back
+        // — present exactly when the card has one, which is what tells a client there is
+        // another side at all.
+        other_face: data.back_face.as_deref().map(back_face_view).map(Box::new),
+    }
+}
+
+/// Project a card's **back face** onto the wire, as the face that is not up.
+///
+/// The face-shaped counterpart of [`full_card_view`], and deliberately not a
+/// [`CardView`]: there is one card and one entity id, so the fields that belong to the
+/// card rather than to a face — the id, the authored identity, the token flag, the
+/// colour identity — are not restated here (`docs/protocol.md`).
+///
+/// The mana cost is always absent (CR 712.4a), which is the whole of what the client's
+/// empty title-band slot is drawn from.
+fn back_face_view(face: &sage_engine::BackFace) -> CardFace {
+    CardFace {
+        name: face.name.clone(),
+        type_line: face.type_line(),
+        mana_cost: None,
+        rules_text: back_face_rules_text(face),
+        power: face.power.map(|p| p.to_string()),
+        toughness: face.toughness.map(|t| t.to_string()),
+        loyalty: face.loyalty.map(|l| l.to_string()),
+        keywords: face
+            .keywords
+            .iter()
+            .map(|&kw| keyword_str(kw).to_owned())
+            .collect(),
+        card_types: face.types.iter().map(|&t| card_type(t)).collect(),
+    }
+}
+
+/// Project a card's **front face** as the face that is not up — what a permanent that
+/// has transformed carries in [`CardView::other_face`].
+///
+/// The mirror of [`back_face_view`], and the reason the field is a face rather than a
+/// boolean: a client turning a transformed permanent over in the preview needs the front
+/// face's name, cost, and text, and it has no copy of the card to read them from.
+fn front_face_view(data: &CardData) -> CardFace {
+    CardFace {
+        name: data.name.clone(),
+        type_line: data.type_line(),
+        mana_cost: (!data.mana_cost.is_empty()).then(|| data.mana_cost.clone()),
+        rules_text: rules_text(data, scripted_rules_text(&data.functional_id)),
+        power: data.power.map(|p| p.to_string()),
+        toughness: data.toughness.map(|t| t.to_string()),
+        loyalty: data.loyalty.map(|l| l.to_string()),
+        keywords: data
+            .keywords
+            .iter()
+            .map(|&kw| keyword_str(kw).to_owned())
+            .collect(),
+        card_types: data.types.iter().map(|&t| card_type(t)).collect(),
     }
 }
 
@@ -283,6 +353,34 @@ pub(crate) fn full_card_view(entity_id: String, data: &CardData, db: &CardDataba
 fn face_card_view(entity_id: String, face: PrintedFace<'_>, db: &CardDatabase) -> CardView {
     match face {
         PrintedFace::Card(data) => full_card_view(entity_id, data, db),
+        // A permanent that has **transformed** (CR 712.4b): every characteristic comes
+        // from the back face, and the identity — the authored id, the colour identity —
+        // still comes from the card, because a card's identity is not a face's. What
+        // rides in `other_face` is the front, so the preview can turn it back over.
+        PrintedFace::CardBack { card, face } => CardView {
+            id: entity_id,
+            name: face.name.clone(),
+            type_line: face.type_line(),
+            // CR 712.4a: no mana cost, so the field is elided entirely and the title
+            // band's trailing slot is empty.
+            mana_cost: None,
+            rules_text: back_face_rules_text(face),
+            functional_id: card.functional_id.to_string(),
+            token: false,
+            power: face.power.map(|p| p.to_string()),
+            toughness: face.toughness.map(|t| t.to_string()),
+            loyalty: face.loyalty.map(|l| l.to_string()),
+            keywords: face
+                .keywords
+                .iter()
+                .map(|&kw| keyword_str(kw).to_owned())
+                .collect(),
+            card_types: face.types.iter().map(|&t| card_type(t)).collect(),
+            // CR 903.4 is a fact about the whole card, both faces together, so it is the
+            // same computation and the same answer on either side.
+            color_identity: colors_in_wubrg(&color_identity_of(db, card)),
+            other_face: Some(Box::new(front_face_view(card))),
+        },
         PrintedFace::Token(token) => CardView {
             id: entity_id,
             name: token.name.clone(),
@@ -308,13 +406,17 @@ fn face_card_view(entity_id: String, face: PrintedFace<'_>, db: &CardDatabase) -
             // CR 111.3: a token's colours are whatever the creating effect gave it,
             // and it has no cost and no card behind it to read anything else from.
             color_identity: colors_in_wubrg(&token.colors.iter().copied().collect()),
+            // A token has exactly one face — the effect that created it (CR 111.3).
+            other_face: None,
         },
     }
 }
 
 /// Build the [`CardView`] for a battlefield permanent, projecting its **current**
-/// power/toughness (CR 613 layer 7c) and keywords (CR 613.1f, layer 6) from the
-/// engine's computed [`characteristics`] rather than the printed card. This is what
+/// characteristics rather than its card's printed ones: the copiable values it is
+/// computed from (CR 613 layer 1 — a copy projects as the thing it copies), its
+/// power/toughness (CR 613 layer 7c) and its keywords (CR 613.1f, layer 6) from the
+/// engine's computed [`characteristics`]. This is what
 /// makes counters, until-end-of-turn pumps, and an attachment's P/T grant
 /// (CR 303.4 / 301.5) visible on the wire — a Boar enchanted with a `+2/+2` Aura, or
 /// equipped with a `+2/+1` Axe, projects as a 5/4 — and, equally, what makes a granted
@@ -327,7 +429,12 @@ pub(crate) fn permanent_card_view(
     perm: &sage_engine::Permanent,
     db: &CardDatabase,
 ) -> CardView {
-    let mut view = match perm.printed.face(db) {
+    // CR 613 layer 1 (CR 707.2): the face a copy's characteristics are read from is the
+    // one it copied, so the whole projection — name, type line, mana cost, rules text,
+    // card types, printed P/T — is the copied card's. That is what makes a copy need no
+    // surface of its own on the wire: the client is simply told what the permanent *is*
+    // and draws it, with no badge and no second identity to reconcile.
+    let mut view = match copiable_face(state, perm, db) {
         Some(face) => face_card_view(permanent_entity_id(perm.id), face, db),
         None => unknown_card_view(permanent_entity_id(perm.id), perm.printed.card()),
     };
@@ -372,5 +479,9 @@ pub(crate) fn zone_piles(
         .collect()
 }
 
+#[cfg(test)]
+mod entry_choice_tests;
+#[cfg(test)]
+mod rule_modification_tests;
 #[cfg(test)]
 mod tests;

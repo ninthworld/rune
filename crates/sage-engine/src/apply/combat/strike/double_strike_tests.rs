@@ -205,11 +205,13 @@ fn issue_399_double_strike_first_step_assigns_lethal_then_next_in_chosen_order_c
                 permanent: boar_b,
                 amount: 2,
                 deathtouch: false,
+                lifelink: None,
             },
             CombatDamage::ToPermanent {
                 permanent: boar_a,
                 amount: 1,
                 deathtouch: false,
+                lifelink: None,
             },
         ],
         "first-strike step honors the chosen order: lethal to boar_b, remainder to boar_a"
@@ -291,6 +293,7 @@ fn issue_399_double_strike_regular_step_honors_order_over_survivors_only_cr_510_
             permanent: o2,
             amount: 3,
             deathtouch: false,
+            lifelink: None,
         }],
         "the first-strike step spends all lethal on the first-ordered survivor"
     );
@@ -313,6 +316,7 @@ fn issue_399_double_strike_regular_step_honors_order_over_survivors_only_cr_510_
             permanent: o3,
             amount: 3,
             deathtouch: false,
+            lifelink: None,
         }),
         "the regular step assigns lethal to o3, the next survivor in the chosen order"
     );
@@ -423,16 +427,19 @@ fn issue_399_double_strike_trample_carries_over_in_both_steps_cr_702_19e() {
                 permanent: boar_b,
                 amount: 2,
                 deathtouch: false,
+                lifelink: None,
             },
             CombatDamage::ToPermanent {
                 permanent: boar_a,
                 amount: 2,
                 deathtouch: false,
+                lifelink: None,
             },
             CombatDamage::ToPlayer {
                 player: PlayerId(1),
                 amount: 1,
                 source_commander: None,
+                lifelink: None,
             },
         ],
         "first-strike step: lethal to each blocker in order, then 1 tramples over"
@@ -452,6 +459,7 @@ fn issue_399_double_strike_trample_carries_over_in_both_steps_cr_702_19e() {
             player: PlayerId(1),
             amount: 5,
             source_commander: None,
+            lifelink: None,
         }],
         "regular step: with every blocker dead, the full power tramples over"
     );

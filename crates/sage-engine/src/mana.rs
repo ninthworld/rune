@@ -424,6 +424,41 @@ impl ManaCost {
         }
     }
 
+    /// This cost back in `{...}` notation — `"{2}{G}"` — in printed order: the generic
+    /// requirement first, then WUBRG, then `{C}`.
+    ///
+    /// The inverse of [`parse_mana_cost`] for the one cost that has no printed string of
+    /// its own: the **modified** cost a spell is being offered and charged at
+    /// (CR 601.2f), which exists only as a computed [`ManaCost`]. A view carries it as
+    /// text so the client draws symbols it already knows how to draw and parses nothing
+    /// back out.
+    ///
+    /// A zero cost renders as `"{0}"` rather than the empty string, which is what a
+    /// printed `{0}` says and what a cost reduced to nothing has become (CR 601.2f) —
+    /// "free" and "no cost printed" are different facts and a blank would conflate them.
+    #[must_use]
+    pub fn text(&self) -> String {
+        let mut out = String::new();
+        if self.generic > 0 || (self.colored_total() == 0) {
+            out.push_str(&format!("{{{}}}", self.generic));
+        }
+        for (count, color) in [
+            (self.white, Color::White),
+            (self.blue, Color::Blue),
+            (self.black, Color::Black),
+            (self.red, Color::Red),
+            (self.green, Color::Green),
+        ] {
+            for _ in 0..count {
+                out.push_str(color.pip());
+            }
+        }
+        for _ in 0..self.colorless {
+            out.push_str("{C}");
+        }
+        out
+    }
+
     /// Total of all colored and colorless (non-generic) requirements.
     #[must_use]
     pub fn colored_total(&self) -> u16 {
@@ -434,6 +469,70 @@ impl ManaCost {
             + u16::from(self.green)
             + u16::from(self.colorless)
     }
+
+    /// This cost written back as `{...}` notation — `"{3}{R}"` — generic first, then
+    /// the colored pips in WUBRG order, then `{C}`.
+    ///
+    /// The inverse of [`parse_mana_cost`] for everything that parser recognises, and the
+    /// one place a *computed* cost becomes words. It exists for the announced value of
+    /// X: the server states what each legal X costs rather than sending a cost with an
+    /// `X` still in it, because working that out is deciding what a spell costs and no
+    /// client may do that. A zero cost renders as the empty string, like a land's.
+    #[must_use]
+    pub fn printed(&self) -> String {
+        let mut out = String::new();
+        if self.generic > 0 {
+            out.push_str(&format!("{{{}}}", self.generic));
+        }
+        for (count, color) in [
+            (self.white, Color::White),
+            (self.blue, Color::Blue),
+            (self.black, Color::Black),
+            (self.red, Color::Red),
+            (self.green, Color::Green),
+        ] {
+            for _ in 0..count {
+                out.push_str(color.pip());
+            }
+        }
+        for _ in 0..self.colorless {
+            out.push_str("{C}");
+        }
+        out
+    }
+}
+
+/// How many `{X}` symbols `text` contains (CR 107.3) — one for `{X}{R}`, two for
+/// `{X}{X}{U}`, zero for every fixed cost.
+///
+/// X is **not** a component of a [`ManaCost`]: a cost with an unannounced X has no
+/// value at all (CR 202.3b reads it as zero everywhere but the stack), and a cost with
+/// an announced one is an ordinary fixed cost with `count × X` more generic in it. So
+/// [`parse_mana_cost`] ignores the symbol and this counts it, and the one place the two
+/// are put together is [`cast_cost`](crate::actions::cast_cost) — which is why no other
+/// caller can accidentally pay for an X it never asked the player about.
+#[must_use]
+pub fn x_pip_count(text: &str) -> u8 {
+    let mut count: u8 = 0;
+    let mut symbol = String::new();
+    let mut in_symbol = false;
+    for ch in text.chars() {
+        match ch {
+            '{' => {
+                in_symbol = true;
+                symbol.clear();
+            }
+            '}' => {
+                if in_symbol && symbol == "X" {
+                    count = count.saturating_add(1);
+                }
+                in_symbol = false;
+            }
+            _ if in_symbol => symbol.push(ch),
+            _ => {}
+        }
+    }
+    count
 }
 
 /// Parse a mana cost in `{...}` notation into a [`ManaCost`].
@@ -508,6 +607,26 @@ mod tests {
         assert_eq!(parse_mana_cost(""), ManaCost::default());
     }
 
+    /// CR 202.3b: an unannounced X is worth nothing, so the parser leaves it out and
+    /// counts it separately. `{X}{R}` is one red pip and one X.
+    #[test]
+    fn an_x_is_counted_but_never_parsed_as_a_value() {
+        let cost = parse_mana_cost("{X}{R}");
+        assert_eq!(cost.red, 1);
+        assert_eq!(cost.generic, 0);
+        assert_eq!(x_pip_count("{X}{R}"), 1);
+        assert_eq!(x_pip_count("{X}{X}{U}"), 2);
+        assert_eq!(x_pip_count("{2}{G}"), 0);
+    }
+
+    #[test]
+    fn a_cost_reads_back_as_the_notation_it_came_from() {
+        assert_eq!(parse_mana_cost("{3}{R}").printed(), "{3}{R}");
+        assert_eq!(parse_mana_cost("{W}{U}").printed(), "{W}{U}");
+        assert_eq!(parse_mana_cost("{2}{C}").printed(), "{2}{C}");
+        assert_eq!(parse_mana_cost("").printed(), "");
+    }
+
     #[test]
     fn add_and_can_pay_a_colored_cost() {
         let mut pool = ManaPool::default();
@@ -531,6 +650,18 @@ mod tests {
     fn pay_returns_none_when_unaffordable() {
         let pool = ManaPool::default();
         assert!(pool.pay(&parse_mana_cost("{G}")).is_none());
+    }
+
+    #[test]
+    fn a_cost_renders_back_to_the_notation_it_was_parsed_from() {
+        // The round trip the view depends on: a computed cost has no printed string of
+        // its own, so the one it renders has to parse back to itself.
+        for text in ["{2}{G}", "{G}", "{1}{W}{W}", "{3}{C}", "{0}"] {
+            assert_eq!(parse_mana_cost(text).text(), text);
+        }
+        // A cost reduced to nothing is `{0}`, not the empty string: "free" and "no cost
+        // printed" are different facts (CR 601.2f).
+        assert_eq!(ManaCost::default().text(), "{0}");
     }
 
     #[test]

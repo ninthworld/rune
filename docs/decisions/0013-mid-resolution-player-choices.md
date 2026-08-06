@@ -101,6 +101,26 @@ follows from that.
    last step of a resolution rather than one of its effects — which is why the resume slot
    is simply `None` there rather than special-cased.
 
+9. **An entry question is an unfilled slot on the event, not a branch in the seam** (issue
+   #738, second half). Naming a *card* is the second question a permanent can be asked as it
+   enters, and adding it made the shape of §8 clearer than one question could: the answers
+   live on the `PendingEntry` itself, `begin_battlefield_entry` refuses to finish while a
+   card that asks has an empty slot, and answering writes the slot and re-enters that same
+   function. It is the loop the CR 616.1 ordering answer already used, generalised — so a
+   card asking two questions needs no code deciding which comes first, and it terminates for
+   the reason CR 614.5 makes the replacement loop terminate: a filled slot is never emptied.
+
+   **A named card is a `FunctionalId`, and that is a legal rule rather than an
+   implementation choice.** The project ships no card name it has not itself defined, and a
+   free-text answer would be the one way a game in progress could come to hold one. So the
+   answer set is derived from the **catalog** — `named_card_candidates`, filtered by the
+   class the card declared — the action carries a `CardId` handle, the legality gate re-checks
+   it against that freshly derived list, and the wire offers the cards' authored identities
+   with the catalog's own names as labels. The client composes nothing and sends no string;
+   the projection resolves the recorded identity back to a name for display and nothing else.
+   This is the same regenerate-and-check discipline every other answer follows, doing double
+   duty as the enforcement point for a posture the repository otherwise only states.
+
 ## Consequences
 
 Four exclusions collapse to one mechanism, and the next choice-shaped effect — a modal
@@ -126,3 +146,21 @@ look-at-the-top bottoms go there at random rather than in an order the player pi
 random one is right for the cards that say "in a random order" and conservative for the
 ones that say "in any order" — it tells the player strictly less than the real card does,
 which is the safe direction to be wrong in.
+
+**The second of those was taken back** (issue #746), and the shape held: a look that says
+"in any order" now asks its controller for a *permutation* of the remainder, as a fifth
+`ChoiceQuestion` variant plus its own `Action`, on the same queue with the same routing.
+Three things it needed that were already here — the never-stall rule (a remainder of one
+card is not a decision), the derive-don't-snapshot rule (the remainder stays on top of the
+library, so the question is a window onto it), and the hidden-information channel — and
+one thing it did not: **an answer must not consume randomness**. A player-chosen bottoming
+that drew from the seeded stream would fork every later shuffle on replay, so the two
+orders take different roads through the same function, and the ordered one leaves
+`rng_seed` exactly where it found it. That is a new obligation on every future answer that
+replaces something the game used to roll for.
+
+It also produced the first choice that poses **another choice as its outcome**: "the rest"
+is not knowable until the taking is answered, so the second question is queued when the
+first is applied and the suspended `Resume` moves across to it. A `PendingChoice`'s resume
+therefore travels, and code that assumes the question a resume was attached to is the
+question it will be answered on is wrong.

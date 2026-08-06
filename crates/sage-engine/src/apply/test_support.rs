@@ -128,10 +128,13 @@ pub(crate) fn place_permanent(
         attacking: None,
         blocking: Vec::new(),
         skips_untap: false,
+        dealt_damage: false,
         damage,
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
+        copied: None,
     });
     PermanentId(id)
 }
@@ -334,6 +337,7 @@ pub(crate) fn push_ability(
 ) {
     let id = state.mint_id();
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: StackId(id),
         controller: PlayerId(0),
         kind: StackObjectKind::Ability {
@@ -441,10 +445,13 @@ pub(crate) fn place_commander_permanent(
         attacking: Some(crate::combat::AttackTarget::Player(defender)),
         blocking: Vec::new(),
         skips_untap: false,
+        dealt_damage: false,
         damage: 0,
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
+        copied: None,
     });
     id
 }

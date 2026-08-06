@@ -22,13 +22,16 @@
 //! Legal Considerations).
 
 use sage_engine::{
-    equip_ability, Ability, ActivatorScope, AdditionalCost, Attachment, AttachmentKind, CardData,
-    CardFilter, CardType, Chooser, Color, CombatRestriction, Condition, Cost, CountScope,
-    CounterKind, DamageSubject, DerivedAmount, Effect, EnteringFilter, FoundDestination,
-    GraveyardCardClass, GraveyardScope, Keyword, ManaRestriction, MassAffects, ObservedPermanent,
-    ObservedSpell, PermanentCount, PlayerModification, PlayerRef, ReplacementEffect, StaticAffects,
-    StaticCondition, StaticModification, TargetCount, TargetSpec, TokenData, TriggerCondition,
-    TriggerStep, TurnScope,
+    equip_ability, Ability, ActivationTiming, ActivatorScope, AdditionalCost, Attachment,
+    AttachmentKind, BackFace, BottomOrder, CardData, CardFilter, CardType, Chooser, Color,
+    CombatRestriction, Condition, CopyClass, CopySubject, Cost, CostModification, CountScope,
+    CounterKind, DamageCharacteristic, DamageSubject, DelayedCondition, DerivedAmount,
+    DestroyAffects, Effect, EnteringFilter, FoundDestination, GraveyardCardClass, GraveyardCount,
+    GraveyardScope, HalvedTotal, Keyword, ManaRestriction, MassAffects, NamedCardClass,
+    ObservedPermanent, ObservedSpell, OptionalCost, PermanentAmount, PermanentCount,
+    PlayerModification, PlayerRef, ReplacementEffect, SacrificeCount, SpellMode, SpellTrait,
+    StaticAffects, StaticCondition, StaticModification, TargetCount, TargetSpec, TokenData,
+    TriggerCondition, TriggerStep, TurnScope,
 };
 
 mod effects;
@@ -53,22 +56,9 @@ pub(crate) use words::*;
 #[must_use]
 pub(crate) fn rules_text(data: &CardData, scripted: Option<&str>) -> String {
     let source = data.name.as_str();
-    let mut lines: Vec<String> = Vec::new();
-
-    if !data.keywords.is_empty() {
-        let words: Vec<&str> = data.keywords.iter().map(|&kw| keyword_word(kw)).collect();
-        lines.push(sentence_case(&words.join(", ")));
-    }
-
-    // A printed combat restriction is not a keyword, so it gets its own sentence about
-    // the card rather than a word in the keyword line: "Bristling Boar can't be blocked
-    // by more than one creature."
-    for restriction in &data.restrictions {
-        lines.push(finish(&format!(
-            "{source} {}",
-            restriction_predicate(restriction)
-        )));
-    }
+    // The keyword line and the printed restriction sentences come first, exactly as they
+    // do for a token and for a back face — one builder, so the three cannot drift.
+    let mut lines: Vec<String> = face_lines(source, &data.keywords, &data.restrictions, &[]);
 
     // An additional cast cost is stated *before* what the spell does, because that is
     // the order it happens in: it is paid while the spell is cast (CR 601.2b), and a
@@ -83,6 +73,18 @@ pub(crate) fn rules_text(data: &CardData, scripted: Option<&str>) -> String {
     // permanent has no spell effects, so this changes nothing about every other card.
     for effect in &data.spell_effects {
         lines.push(finish(&effect_clause(source, effect)));
+    }
+
+    // A modal spell prints its bullets where a plain one prints its effects, because
+    // that is what they are (CR 700.2) — one list instead of a loose sentence.
+    if data.is_modal() {
+        lines.push(modes_text(source, &data.modes));
+    }
+
+    // What is true of the spell on the stack, after what it does. A printed card puts
+    // this clause last for the same reason: it is a rider on the sentence above it.
+    for declared in &data.spell_traits {
+        lines.push(spell_trait_text(source, *declared));
     }
 
     for ability in &data.abilities {
@@ -100,6 +102,105 @@ pub(crate) fn rules_text(data: &CardData, scripted: Option<&str>) -> String {
     lines.join("\n")
 }
 
+/// The bulleted list a modal spell prints (CR 700.2): a `Choose one —` header and one
+/// line per mode, each the mode's own effects as sentences.
+///
+/// One line per mode is load-bearing beyond looking right: the numbered dock rows a
+/// player picks a mode from are drawn from exactly these lines
+/// (`docs/client-design.md` §6.7), one row apiece, so the split here *is* the split
+/// there.
+#[must_use]
+pub(crate) fn modes_text(source: &str, modes: &[SpellMode]) -> String {
+    let mut lines = vec!["Choose one —".to_string()];
+    for mode in modes {
+        lines.push(format!("• {}", mode_text(source, mode)));
+    }
+    lines.join("\n")
+}
+
+/// One mode as the sentence its bullet carries — its effects, finished and joined.
+///
+/// Shared by the card's own text and by the dock row that offers the mode, so a player
+/// choosing a mode reads exactly the words the card prints for it.
+#[must_use]
+pub(crate) fn mode_text(source: &str, mode: &SpellMode) -> String {
+    mode.effects
+        .iter()
+        .map(|effect| finish(&effect_clause(source, effect)))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// A [`SpellTrait`] as the sentence a card prints for it, with its X threshold where the
+/// card puts one.
+///
+/// Both members read as a fact about the spell rather than as something it does, which
+/// is why they are their own clause and not an effect: "**Banefire** can't be countered"
+/// is true while it is on the stack, before anything resolves.
+fn spell_trait_text(source: &str, declared: SpellTrait) -> String {
+    let (threshold, clause) = match declared {
+        SpellTrait::CantBeCountered { if_x_at_least } => {
+            (if_x_at_least, format!("{source} can't be countered"))
+        }
+        SpellTrait::DamageCantBePrevented { if_x_at_least } => (
+            if_x_at_least,
+            format!("the damage {source} deals can't be prevented"),
+        ),
+    };
+    match threshold {
+        None => finish(&clause),
+        Some(least) => finish(&format!("if X is {least} or more, {clause}")),
+    }
+}
+
+/// Generate the rules text of a card's **back face** (CR 712.2), from the same clause
+/// builders and in the same clause order its front face's text is composed with.
+///
+/// Shorter than [`rules_text`] for structural reasons rather than by choice, exactly as
+/// [`token_rules_text`] is: a back face is never cast, so it has no additional cast cost
+/// and no spell ability to describe; it carries no attachment block; and the scripted
+/// tier is keyed to the card rather than to a face, so a scripted card states its text
+/// once, on the front.
+#[must_use]
+pub(crate) fn back_face_rules_text(face: &BackFace) -> String {
+    face_lines(
+        &face.name,
+        &face.keywords,
+        &face.restrictions,
+        &face.abilities,
+    )
+    .join("\n")
+}
+
+/// The three clauses every face has — the keyword line, one sentence per printed combat
+/// restriction, and one per ability — in the order a card prints them.
+///
+/// Written once because three callers need exactly it: a card's front face, its back
+/// face, and a token. Each of those then adds whatever else it has, and none of them can
+/// disagree with the others about how a keyword line or an ability sentence is built.
+fn face_lines(
+    source: &str,
+    keywords: &[Keyword],
+    restrictions: &[CombatRestriction],
+    abilities: &[Ability],
+) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    if !keywords.is_empty() {
+        let words: Vec<&str> = keywords.iter().map(|&kw| keyword_word(kw)).collect();
+        lines.push(sentence_case(&words.join(", ")));
+    }
+    for restriction in restrictions {
+        lines.push(finish(&format!(
+            "{source} {}",
+            restriction_predicate(restriction)
+        )));
+    }
+    for ability in abilities {
+        lines.push(ability_text(source, ability));
+    }
+    lines
+}
+
 /// Generate the rules text of a **token** (CR 111.3), from the characteristics the
 /// effect that created it gave it.
 ///
@@ -111,24 +212,21 @@ pub(crate) fn rules_text(data: &CardData, scripted: Option<&str>) -> String {
 /// abilities remain.
 #[must_use]
 pub(crate) fn token_rules_text(token: &TokenData) -> String {
-    let source = token.name.as_str();
-    let mut lines: Vec<String> = Vec::new();
+    face_lines(
+        &token.name,
+        &token.keywords,
+        &token.restrictions,
+        &token.abilities,
+    )
+    .join("\n")
+}
 
-    if !token.keywords.is_empty() {
-        let words: Vec<&str> = token.keywords.iter().map(|&kw| keyword_word(kw)).collect();
-        lines.push(sentence_case(&words.join(", ")));
+/// The class a copy choice names, as the noun a card writes it with (CR 707).
+fn copy_class_noun(class: CopyClass) -> &'static str {
+    match class {
+        CopyClass::AnyCreature => "a creature",
+        CopyClass::CreatureYouControl => "a creature you control",
     }
-    for restriction in &token.restrictions {
-        lines.push(finish(&format!(
-            "{source} {}",
-            restriction_predicate(restriction)
-        )));
-    }
-    for ability in &token.abilities {
-        lines.push(ability_text(source, ability));
-    }
-
-    lines.join("\n")
 }
 
 /// One ability as a sentence. `source` is the name of the object the ability is on —
@@ -137,10 +235,21 @@ pub(crate) fn token_rules_text(token: &TokenData) -> String {
 /// button and the printed text can never disagree.
 pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
     match ability {
-        Ability::Activated { cost, effects } => {
+        Ability::Activated {
+            cost,
+            effects,
+            timing,
+        } => {
             let costs: Vec<String> = cost.iter().map(cost_symbol).collect();
+            // CR 602.5d: the timing restriction is a second sentence on the same line,
+            // exactly as a printed card sets it — the cost and effect first, then the
+            // window it may be used in.
+            let restriction = match timing {
+                ActivationTiming::AnyTime => "",
+                ActivationTiming::SorcerySpeed => " Activate only as a sorcery.",
+            };
             format!(
-                "{}: {}",
+                "{}: {}{restriction}",
                 costs.join(", "),
                 finish(&clauses(source, effects))
             )
@@ -201,6 +310,43 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
         Ability::EntersChoosingColor => {
             format!("As {source} enters the battlefield, choose a color.")
         }
+        // The card-naming counterpart, worded the same way and for the same reason: the
+        // abilities that read the answer call it "the chosen name", and this sentence is
+        // what gives that phrase its referent.
+        Ability::EntersNamingCard { class } => format!(
+            "As {source} enters the battlefield, choose a {} card name.",
+            named_card_class_noun(*class)
+        ),
+        // A characteristic-defining ability is a statement about *this* object's power,
+        // in the present tense and with no trigger word — which is exactly what CR 604.3
+        // makes it. It names the source because the card does: the printed corner says
+        // `*`, and this sentence is what that asterisk means.
+        Ability::DefinedPower { count_of } => format!(
+            "{source}'s power is equal to the number of {}.",
+            graveyard_count_noun(count_of)
+        ),
+        // The copy question, in the two shapes real cards print it in (CR 707). The
+        // subject decides which sentence gets written: `You may have this enter as a copy
+        // of …` says the whole thing in one clause, while an Aura says the choice and the
+        // continuous effect as the two sentences the card prints.
+        Ability::EntersAsCopy {
+            of,
+            subject,
+            optional,
+        } => match subject {
+            CopySubject::This => {
+                let opening = if *optional {
+                    format!("You may have {source} enter the battlefield")
+                } else {
+                    format!("{source} enters the battlefield")
+                };
+                format!("{opening} as a copy of {}.", copy_class_noun(*of))
+            }
+            CopySubject::Attached => format!(
+                "As {source} enters the battlefield, choose {}. Enchanted creature is a copy of the chosen creature.",
+                copy_class_noun(*of)
+            ),
+        }
         // A player-subject static says what is true of *you*, so the sentence has no
         // object at all — the shortest ability the formatter composes, and the only one
         // whose subject is a person.
@@ -210,6 +356,24 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                 "You may play lands from your graveyard.".to_string()
             }
         },
+        // A cost modifier's subject is a class of *spells*, and the sentence names the
+        // caster because the ability does: it reaches its controller's casts and nobody
+        // else's. "Cost … to cast" rather than "cost … " because the modification applies
+        // while the spell is being cast (CR 601.2f) and not to anything the card does
+        // later.
+        Ability::CostModifier {
+            spells,
+            modification,
+        } => {
+            let (direction, generic) = match modification {
+                CostModification::Reduce { generic } => ("less", generic),
+                CostModification::Increase { generic } => ("more", generic),
+            };
+            sentence_case(&format!(
+                "{} you cast cost {{{generic}}} {direction} to cast.",
+                observed_spell_class(*spells),
+            ))
+        }
         // A static ability reads as a standing statement about other objects, with no
         // trigger word and no cost — "Other Elves you control get +1/+1." The subject
         // is the affected class, not the source, which is why `source` goes unused here.
@@ -221,15 +385,15 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
             let statement = format!(
                 "{} {}",
                 static_subject(affects, source),
-                static_verb(modification)
+                static_verb(modification, subject_is_plural(affects))
             );
             // The `as long as …` clause trails the statement, where a card prints it.
             match condition {
-                None => sentence_case(&format!("{statement}.")),
-                Some(condition) => sentence_case(&format!(
-                    "{statement} as long as {}.",
+                None => sentence_case(&stop(&statement)),
+                Some(condition) => sentence_case(&stop(&format!(
+                    "{statement} as long as {}",
                     static_condition_clause(condition)
-                )),
+                ))),
             }
         }
     }
@@ -330,16 +494,49 @@ fn step_phrase(step: TriggerStep, whose_turn: TurnScope) -> String {
     }
 }
 
-/// The class of spell a cast-watching trigger notices, as a noun phrase.
-fn observed_spell_noun(spell: ObservedSpell) -> &'static str {
+/// The class of spell a cast-watching trigger notices, as a **singular** noun phrase —
+/// the object of "whenever you cast …".
+fn observed_spell_noun(spell: ObservedSpell) -> String {
     match spell {
-        ObservedSpell::Enchantment => "an enchantment spell",
-        ObservedSpell::InstantOrSorcery => "an instant or sorcery spell",
+        ObservedSpell::Enchantment => "an enchantment spell".to_string(),
+        ObservedSpell::Artifact => "an artifact spell".to_string(),
+        ObservedSpell::InstantOrSorcery => "an instant or sorcery spell".to_string(),
+        ObservedSpell::Creature { min_power } => {
+            format!("a creature spell{}", spell_power_clause(min_power))
+        }
         // Named, not spelled out: the sentence is printed on a card that has not
         // entered the battlefield yet, where the colour is genuinely unknown. What the
         // *permanent* chose is on the board, in its own field, rather than baked into
         // text a hand and a battlefield would then disagree about.
-        ObservedSpell::ChosenColor => "a spell of the chosen color",
+        ObservedSpell::ChosenColor => "a spell of the chosen color".to_string(),
+    }
+}
+
+/// The same class as a **plural** noun phrase — the subject of "… you cast cost {2} less
+/// to cast".
+///
+/// One function per position, exactly as [`mass_subject`]/[`mass_recipient`] are, because
+/// English is: a class is singular where a trigger names one cast and plural where a cost
+/// modifier names all of them. Both are exhaustive, so a new [`ObservedSpell`] variant
+/// must be given words in each.
+fn observed_spell_class(spell: ObservedSpell) -> String {
+    match spell {
+        ObservedSpell::Enchantment => "enchantment spells".to_string(),
+        ObservedSpell::Artifact => "artifact spells".to_string(),
+        ObservedSpell::InstantOrSorcery => "instant and sorcery spells".to_string(),
+        ObservedSpell::Creature { min_power } => {
+            format!("creature spells{}", spell_power_clause(min_power))
+        }
+        ObservedSpell::ChosenColor => "spells of the chosen color".to_string(),
+    }
+}
+
+/// The " with power 4 or greater" that trails a spell class, or nothing when the class
+/// names no bound. Written once so the singular and the plural phrasings cannot drift.
+fn spell_power_clause(min_power: Option<i32>) -> String {
+    match min_power {
+        None => String::new(),
+        Some(min) => format!(" with power {min} or greater"),
     }
 }
 
@@ -356,15 +553,92 @@ fn static_subject(affects: &StaticAffects, source: &str) -> String {
         StaticAffects::CreaturesYouControl {
             subtype,
             except_this,
+            keyword,
         } => {
             // "Other" is what distinguishes a lord from an anthem, and it is a fact
             // about the selector, so it is read off the selector.
             let other = if *except_this { "other " } else { "" };
-            match subtype {
+            let class = match subtype {
                 Some(kind) => format!("{other}{} you control", plural(kind)),
                 None => format!("{other}creatures you control"),
+            };
+            // A keyword filter trails the class, where a card prints it: "each creature
+            // you control **with defender**". The same place the observer's counterpart
+            // puts it, because it is the same phrase.
+            match keyword {
+                None => class,
+                Some(keyword) => format!("{class} with {}", keyword_word(*keyword)),
             }
         }
+        // "Lands your opponents control with the chosen name" — composed from the same
+        // selector the engine evaluates on every read, so the sentence and the class it
+        // describes cannot come apart.
+        StaticAffects::PermanentsYourOpponentsControl {
+            card_type,
+            with_the_named_card,
+        } => {
+            let noun = plural(permanent_noun(*card_type));
+            let named = if *with_the_named_card {
+                " with the chosen name"
+            } else {
+                ""
+            };
+            format!("{noun} your opponents control{named}")
+        }
+    }
+}
+
+/// `statement` with a full stop, unless it already ends in one — which it does when the
+/// statement ends in a **quoted ability**, whose own full stop sits inside the closing
+/// quote where a printed card puts it. Writing `…any color.".` is the only thing this
+/// exists to prevent.
+fn stop(statement: &str) -> String {
+    if statement.ends_with(".\"") {
+        statement.to_string()
+    } else {
+        format!("{statement}.")
+    }
+}
+
+/// The noun a card type reads as in a class of permanents — "land", "creature", or the
+/// catch-all "permanent" for a class that names no type at all.
+///
+/// Shared with [`counted_permanents`] so a `land` in a static ability's selector and a
+/// `land` in an intervening if are the same word.
+fn permanent_noun(card_type: Option<CardType>) -> &'static str {
+    match card_type {
+        Some(CardType::Creature) => "creature",
+        Some(CardType::Artifact) => "artifact",
+        Some(CardType::Enchantment) => "enchantment",
+        Some(CardType::Land) => "land",
+        Some(CardType::Planeswalker) => "planeswalker",
+        Some(CardType::Instant) | Some(CardType::Sorcery) | Some(CardType::Battle) | None => {
+            "permanent"
+        }
+    }
+}
+
+/// The words that go between "name a" and "card" for a [`NamedCardClass`] — the class of
+/// card a permanent's controller may name as it enters (CR 614.12).
+fn named_card_class_noun(class: NamedCardClass) -> &'static str {
+    match class {
+        NamedCardClass::NonbasicLand => "nonbasic land",
+    }
+}
+
+/// Whether a static ability's subject is **plural** — a class of permanents rather than
+/// the single permanent that printed the ability.
+///
+/// Every verb that has to agree with its subject reads it. The `source` scope is a class
+/// of **one**, and it is the card's own name — "Palladia-Mors, the Ruiner **has** hexproof",
+/// never "have" — while every other scope names a plural class; and an as-though clause
+/// carries a pronoun back to the subject ("as though **it** didn't have defender"), where
+/// there is no wording right for both numbers.
+fn subject_is_plural(affects: &StaticAffects) -> bool {
+    match affects {
+        StaticAffects::Source => false,
+        StaticAffects::CreaturesYouControl { .. }
+        | StaticAffects::PermanentsYourOpponentsControl { .. } => true,
     }
 }
 
@@ -379,6 +653,10 @@ fn static_condition_clause(condition: &StaticCondition) -> String {
             format!("you control {}", counted_permanents(permanents, *count))
         }
         StaticCondition::SourceIsAttacking => "it's attacking".to_string(),
+        StaticCondition::SourceIsEnchantedOrEquipped => "it's enchanted or equipped".to_string(),
+        // "Yet" is the whole clause: the window reaches back to the moment the permanent
+        // entered, so the sentence says so rather than naming a turn.
+        StaticCondition::SourceHasNotDealtDamage => "it hasn't dealt damage yet".to_string(),
     }
 }
 
@@ -398,16 +676,7 @@ pub(super) fn counted_permanents(permanents: &PermanentCount, count: u32) -> Str
         noun.push_str(subtype);
         noun.push(' ');
     }
-    noun.push_str(match permanents.card_type {
-        Some(CardType::Creature) => "creature",
-        Some(CardType::Artifact) => "artifact",
-        Some(CardType::Enchantment) => "enchantment",
-        Some(CardType::Land) => "land",
-        Some(CardType::Planeswalker) => "planeswalker",
-        Some(CardType::Instant) | Some(CardType::Sorcery) | Some(CardType::Battle) | None => {
-            "permanent"
-        }
-    });
+    noun.push_str(permanent_noun(permanents.card_type));
     let phrase = match count {
         1 => format!("{} {noun}", indefinite_article(&noun)),
         n => format!("{} or more {}", number(n), plural(&noun)),
@@ -466,16 +735,62 @@ fn plural(subtype: &str) -> String {
 }
 
 /// The predicate of a static ability's sentence — what the affected permanents get.
-fn static_verb(modification: &StaticModification) -> String {
+///
+/// `plural` says whether the subject is a class or the one permanent that printed the
+/// ability ([`subject_is_plural`]). A card that modifies itself prints its own name as the
+/// subject, and "Grasping Scoundrel get +1/+0" is not a sentence; the as-though clause
+/// reads it for a second reason, being the only one that refers back to its subject with a
+/// pronoun. Taken as a flag rather than read off the selector here so this function stays
+/// about the predicate; the caller owns the subject and therefore owns its number.
+fn static_verb(modification: &StaticModification, plural: bool) -> String {
     match modification {
         StaticModification::PowerToughness { power, toughness } => {
-            format!("get {power:+}/{toughness:+}")
+            let verb = if plural { "get" } else { "gets" };
+            format!("{verb} {power:+}/{toughness:+}")
         }
         // "have", not "gain": a static ability is continuously true, where a spell's
         // grant is an event. The distinction is the whole difference between an anthem
         // and a pump.
         StaticModification::GrantKeyword { keyword } => {
-            format!("have {}", keyword_word(*keyword))
+            let verb = if plural { "have" } else { "has" };
+            format!("{verb} {}", keyword_word(*keyword))
+        }
+        // "Rather than their power" is stated even though it is implied, because it is
+        // the whole content of the ability: without it the sentence claims a creature
+        // assigns damage equal to a characteristic, which every creature already does.
+        StaticModification::AssignsCombatDamageBy { characteristic } => {
+            let (verb, possessive) = if plural {
+                ("assign", "their")
+            } else {
+                ("assigns", "its")
+            };
+            match characteristic {
+                DamageCharacteristic::Toughness => format!(
+                    "{verb} combat damage equal to {possessive} toughness rather than \
+                     {possessive} power"
+                ),
+                // The unmodified rule, said out loud. No card prints it, but the
+                // vocabulary can say it and a sentence that silently omitted it would be
+                // the one kind of text this formatter must never produce.
+                DamageCharacteristic::Power => {
+                    format!("{verb} combat damage equal to {possessive} power")
+                }
+            }
+        }
+        // "As though", not "doesn't have": the keyword is still there, and a player
+        // reading this needs to know that their own defender-counting cards still see it.
+        StaticModification::AttacksAsThoughNoDefender => {
+            let pronoun = if plural { "they didn't" } else { "it didn't" };
+            format!("can attack as though {pronoun} have defender")
+        }
+        StaticModification::LoseAllAbilities => "lose all abilities".to_string(),
+        // The granted ability is quoted, which is how a printed card writes one — and the
+        // words inside the quotes come from the same composer that writes it when the
+        // permanent has it, so the promise and the ability read identically. It speaks of
+        // itself as "this permanent": the sentence is about a class, so there is no one
+        // card name it could use.
+        StaticModification::GrantAbility { ability } => {
+            format!("have \"{}\"", ability_text("this permanent", ability))
         }
     }
 }
@@ -520,6 +835,19 @@ fn attachment_text(data: &CardData, attachment: &Attachment) -> Vec<String> {
             .collect();
         lines.push(sentence_case(&format!("{host} has {}.", words.join(", "))));
     }
+    if !attachment.abilities.is_empty() {
+        // A granted ability is quoted, because the words inside it are the host's: it is
+        // the *land* that taps for mana and the *creature* that dies, so the ability is
+        // worded against that object and set apart from the sentence granting it. "Has",
+        // not "gains", for the reason the keyword line uses it — an attachment's grant is
+        // continuously true rather than an event.
+        for ability in &attachment.abilities {
+            lines.push(sentence_case(&format!(
+                "{host} has \"{}\"",
+                ability_text(granted_subject(attachment.attach_to), ability)
+            )));
+        }
+    }
     if !attachment.restrictions.is_empty() {
         // Restrictions are predicates rather than nouns, so they are joined into one
         // sentence about the host — "enchanted creature can't attack and can't block".
@@ -547,5 +875,7 @@ fn clauses(source: &str, effects: &[Effect]) -> String {
     parts.join(" and ")
 }
 
+#[cfg(test)]
+mod rule_modification_tests;
 #[cfg(test)]
 mod tests;

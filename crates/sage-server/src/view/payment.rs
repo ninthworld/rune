@@ -38,6 +38,11 @@ const DISCARD_SLOT: &str = "cost_discard";
 /// activation alike.
 const SACRIFICE_SLOT: &str = "cost_sacrifice";
 
+/// The slot an exile-from-graveyard cost is answered on (CR 601.2b / 701.19). The third
+/// zone beside the hand and the battlefield, and no new prompt kind: `zone` is a free-form
+/// string precisely so a new pile needs no new wire shape.
+const EXILE_SLOT: &str = "cost_exile";
+
 /// The opaque id for one way to pay a pip: which permanent, and which of its abilities.
 ///
 /// Two options over one permanent differ only in the ability index, which is exactly what
@@ -55,8 +60,9 @@ pub(crate) fn cast_payment_prompts(
     state: &GameState,
     db: &CardDatabase,
     card: CardInstance,
+    x: Option<u32>,
 ) -> Vec<Prompt> {
-    let Some(pips) = sage_engine::payment_pips(state, db, card) else {
+    let Some(pips) = sage_engine::payment_pips(state, db, card, x) else {
         return Vec::new();
     };
     let mut prompts = mana_prompts(pips, state, db);
@@ -85,24 +91,50 @@ pub(crate) fn cast_payment_prompts(
     // `zone` is a free-form string precisely so a new zone does not need a new prompt
     // kind, and a client that renders "pick from this list" already renders this one.
     if let Some(sacrifice) = sage_engine::sacrifice_cost(state, db, card) {
-        prompts.push(Prompt::SelectFromZone {
-            slot: SACRIFICE_SLOT.to_string(),
-            prompt: format!(
-                "Sacrifice a {}",
-                crate::rules_text::card_type_word(sacrifice.card_type)
-            ),
-            zone: "battlefield".to_string(),
-            owner: player_id(state.priority),
-            count: 1,
-            min: None,
-            candidates: sacrifice
-                .candidates
-                .into_iter()
-                .map(permanent_entity_id)
-                .collect(),
-        });
+        prompts.push(sacrifice_prompt(
+            &sacrifice,
+            additional_cost_prompt_for(db, card),
+            state.priority,
+        ));
     }
     prompts
+}
+
+/// The `select_from_zone` slot a sacrifice cost is answered on, for a cast and an
+/// activation alike.
+///
+/// **An exact selection**, and every sacrifice cost is one: `count` with no `min`, the
+/// shape every cost has. A sacrifice whose *size* the player picks is not a cost at all —
+/// it is a resolution's question, posed on the choice queue rather than on a cast slot.
+fn sacrifice_prompt(
+    cost: &sage_engine::SacrificeCost,
+    prompt: String,
+    payer: sage_engine::PlayerId,
+) -> Prompt {
+    Prompt::SelectFromZone {
+        slot: SACRIFICE_SLOT.to_string(),
+        prompt,
+        zone: "battlefield".to_string(),
+        owner: player_id(payer),
+        count: u32::from(cost.count.min()),
+        min: None,
+        candidates: cost
+            .candidates
+            .iter()
+            .copied()
+            .map(permanent_entity_id)
+            .collect(),
+    }
+}
+
+/// The words `card`'s additional cost asks its question in — the card's own, from the same
+/// formatter that writes its rules text, so the prompt and the printed line are one
+/// string. Empty for a card with no such cost, which never reaches a slot.
+fn additional_cost_prompt_for(db: &CardDatabase, card: CardInstance) -> String {
+    db.card(card.card)
+        .and_then(|data| data.additional_cost)
+        .map(crate::rules_text::additional_cost_prompt)
+        .unwrap_or_default()
 }
 
 /// One `pay_mana` slot per unpaid pip.
@@ -177,6 +209,10 @@ fn ability_pip_label(
 
 /// Bind a returned selection onto the payment for casting `card`.
 ///
+/// `x` is the value the announcement fixed (CR 601.2b): the pips are recomputed for the
+/// cost that value produces, so a payment is bound against what the spell actually costs
+/// rather than against what it would have cost at zero.
+///
 /// Every pip the client answered is resolved against the **freshly recomputed**
 /// candidates, so an id naming a source the board no longer offers — a land tapped since
 /// the view went out, a permanent that left — is refused rather than smuggled through. A
@@ -191,9 +227,10 @@ pub(crate) fn bind_payment(
     state: &GameState,
     db: &CardDatabase,
     card: CardInstance,
+    x: Option<u32>,
     targets: &[TargetChoice],
 ) -> Vec<CostPayment> {
-    let pips = sage_engine::payment_pips(state, db, card).unwrap_or_default();
+    let pips = sage_engine::payment_pips(state, db, card, x).unwrap_or_default();
     let mut chosen = Vec::new();
     let mut spent: Vec<PermanentId> = Vec::new();
     for (index, pip) in pips.iter().enumerate() {
@@ -209,18 +246,21 @@ pub(crate) fn bind_payment(
             .iter()
             .find(|candidate| mana_option_id(**candidate) == *id)
         else {
-            return fallback_payment(state, db, card);
+            return fallback_payment(state, db, card, x);
         };
         if spent.contains(&source.permanent) {
-            return fallback_payment(state, db, card);
+            return fallback_payment(state, db, card, x);
         }
         spent.push(source.permanent);
         chosen.push(CostPayment::Mana(*source));
     }
     if chosen.len() < pips.len() {
         // A payment the player did not finish. The server pays the whole thing rather
-        // than half of it — see the note above on why this is not a top-up.
-        return fallback_payment(state, db, card);
+        // than half of it — see the note above on why this is not a top-up. An announced
+        // X above zero lands here by construction today: the pips were posed for the base
+        // cost, so the mana the value adds is a slot no client was offered and therefore
+        // none filled.
+        return fallback_payment(state, db, card, x);
     }
     let (Some(discards), Some(sacrifices)) = (
         bind_discards(state, db, card, targets),
@@ -228,7 +268,7 @@ pub(crate) fn bind_payment(
     ) else {
         // The non-mana half was owed and not answered (or answered with an object that has
         // since moved): the server pays the whole cost rather than half of it.
-        return fallback_payment(state, db, card);
+        return fallback_payment(state, db, card, x);
     };
     chosen.extend(discards);
     chosen.extend(sacrifices);
@@ -240,7 +280,8 @@ pub(crate) fn bind_payment(
 ///
 /// The battlefield counterpart of [`bind_discards`], with the same two rules: a card with
 /// no such cost accepts no answer at all, and one with a cost is paid by exactly what it
-/// asks for.
+/// asks for — where "exactly" for an open count means anything from none to every
+/// candidate, which is precisely what such a cost asks.
 fn bind_sacrifices(
     state: &GameState,
     db: &CardDatabase,
@@ -251,11 +292,23 @@ fn bind_sacrifices(
     let Some(cost) = sage_engine::sacrifice_cost(state, db, card) else {
         return answered.is_empty().then(Vec::new);
     };
-    if answered.len() != 1 {
+    bind_chosen_sacrifices(&cost, answered)
+}
+
+/// Resolve a sacrifice slot's answer against `cost`'s **freshly recomputed** candidates,
+/// so a permanent that died, changed hands, or arrived since the view went out cannot be
+/// named. Shared by the cast and the activation paths, which pose the slot identically.
+///
+/// `None` when the answer is not a legal payment of this cost — the wrong number of ids,
+/// or an id naming nothing the cost accepts — which is the caller's signal to pay the
+/// whole cost itself rather than half of it.
+pub(super) fn bind_chosen_sacrifices(
+    cost: &sage_engine::SacrificeCost,
+    answered: &[String],
+) -> Option<Vec<CostPayment>> {
+    if !cost.count.is_paid_by(answered.len()) {
         return None;
     }
-    // Resolved against the **freshly recomputed** candidates, so a permanent that died,
-    // changed hands, or arrived since the view went out cannot be named.
     answered
         .iter()
         .map(|id| {
@@ -300,470 +353,14 @@ fn bind_discards(
 }
 
 /// The payment the server assembles when the client did not (ADR 0010).
-fn fallback_payment(state: &GameState, db: &CardDatabase, card: CardInstance) -> Vec<CostPayment> {
-    sage_engine::auto_payment(state, db, card).unwrap_or_default()
+fn fallback_payment(
+    state: &GameState,
+    db: &CardDatabase,
+    card: CardInstance,
+    x: Option<u32>,
+) -> Vec<CostPayment> {
+    sage_engine::auto_payment(state, db, card, x).unwrap_or_default()
 }
 
 #[cfg(test)]
-mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-
-    use super::*;
-    use crate::test_support::fixture;
-    use crate::view::test_support::{put_permanent, state_with_hand};
-    use crate::view::{projected_actions, resolve_action};
-
-    /// Player 0's main phase with `lands` on the battlefield and `spell` in hand.
-    fn table(
-        lands: &[&str],
-        spell: &str,
-    ) -> (GameState, CardDatabase, Vec<PermanentId>, CardInstance) {
-        let db = CardDatabase::bundled().unwrap();
-        let (mut state, hand) = state_with_hand(&[fixture(spell)]);
-        state.turn = 3;
-        let placed = lands
-            .iter()
-            .map(|slug| put_permanent(&mut state, fixture(slug), PlayerId(0), false, false))
-            .collect();
-        (state, db, placed, hand[0])
-    }
-
-    /// The cast a client is offered for `card`.
-    fn cast_action(state: &GameState, db: &CardDatabase, card: CardInstance) -> ValidAction {
-        projected_actions(state, db)
-            .into_iter()
-            .map(|projected| projected.view)
-            .find(|view| {
-                view.kind == "cast_spell" && view.subject.contains(&card_entity_id(card.id))
-            })
-            .expect("the cast is on offer")
-    }
-
-    /// Each way to pay a pip says whether spending it turns the card, so a client can
-    /// draw a payment it is still assembling — the board the player is looking at while
-    /// they pick sources is one the server has not been told about yet.
-    #[test]
-    fn every_way_to_pay_states_whether_it_taps_its_source() {
-        let (state, db, _lands, spell) = table(&["plains", "plains"], "ajani_s_pridemate");
-        let action = cast_action(&state, &db, spell);
-        let Some(Prompt::PayMana { candidates, .. }) = action
-            .prompts
-            .iter()
-            .find(|p| matches!(p, Prompt::PayMana { .. }))
-        else {
-            panic!("a pay_mana slot")
-        };
-        assert!(!candidates.is_empty(), "the Plains can pay it");
-        assert!(
-            candidates.iter().all(|option| option.taps),
-            "a land's `{{T}}: Add {{W}}` taps it (CR 602.2a): {candidates:?}"
-        );
-    }
-
-    /// The scenario, on the wire: four Plains, a {1}{W} creature in hand, nothing
-    /// floating. The cast is **offered** — that is the widened offer — and it carries its
-    /// unpaid cost as two pips, so a client can name the card first and pay second.
-    #[test]
-    fn a_cast_is_offered_with_its_unpaid_cost_as_pips() {
-        let (state, db, lands, spell) = table(
-            &["plains", "plains", "plains", "plains"],
-            "ajani_s_pridemate",
-        );
-        let action = cast_action(&state, &db, spell);
-
-        let pips: Vec<&Prompt> = action
-            .prompts
-            .iter()
-            .filter(|p| matches!(p, Prompt::PayMana { .. }))
-            .collect();
-        assert_eq!(pips.len(), 2, "{{1}}{{W}} is two pips");
-
-        let Prompt::PayMana {
-            pip, candidates, ..
-        } = pips[0]
-        else {
-            panic!("a pay_mana slot")
-        };
-        assert_eq!(pip, "{W}");
-        assert_eq!(candidates.len(), 4, "any Plains pays it");
-        for candidate in candidates {
-            assert!(lands
-                .iter()
-                .any(|land| permanent_entity_id(*land) == candidate.source));
-        }
-    }
-
-    /// The payment a player assembles is the one that gets spent: the two Plains they
-    /// named are tapped and no others.
-    #[test]
-    fn the_sources_a_client_names_are_the_ones_spent() {
-        let (state, db, lands, spell) = table(
-            &["plains", "plains", "plains", "plains"],
-            "ajani_s_pridemate",
-        );
-        let action = cast_action(&state, &db, spell);
-        // Answer both pips with the *last* two Plains, which auto-pay would not have
-        // reached for — so the assertion is about the player's choice, not a coincidence.
-        let answers: Vec<TargetChoice> = action
-            .prompts
-            .iter()
-            .enumerate()
-            .filter_map(|(index, prompt)| {
-                let Prompt::PayMana {
-                    slot, candidates, ..
-                } = prompt
-                else {
-                    return None;
-                };
-                let wanted = permanent_entity_id(lands[3 - index]);
-                let picked = candidates
-                    .iter()
-                    .find(|candidate| candidate.source == wanted)?;
-                Some(TargetChoice {
-                    slot: slot.clone(),
-                    chosen: vec![picked.id.clone()],
-                })
-            })
-            .collect();
-        assert_eq!(answers.len(), 2);
-
-        let bound = resolve_action(
-            &state,
-            &db,
-            PlayerId(0),
-            &ChooseAction {
-                action_id: action.id.clone(),
-                token: action.token.clone(),
-                targets: answers,
-                ..Default::default()
-            },
-        )
-        .expect("the answer binds");
-
-        let after = sage_engine::apply_action(&state, &bound, &db);
-        assert_eq!(after.stack.len(), 1, "the spell was cast");
-        let tapped: Vec<PermanentId> = after
-            .battlefield
-            .iter()
-            .filter(|perm| perm.tapped)
-            .map(|perm| perm.id)
-            .collect();
-        assert_eq!(tapped.len(), 2);
-        assert!(tapped.contains(&lands[3]) && tapped.contains(&lands[2]));
-    }
-
-    /// A client that answers no pip is tapped out for (ADR 0010) — which is what keeps
-    /// the terminal client and both automated players working against the same offer.
-    #[test]
-    fn an_unanswered_payment_is_paid_by_the_server() {
-        let (state, db, _lands, spell) = table(
-            &["plains", "plains", "plains", "plains"],
-            "ajani_s_pridemate",
-        );
-        let action = cast_action(&state, &db, spell);
-        let bound = resolve_action(
-            &state,
-            &db,
-            PlayerId(0),
-            &ChooseAction {
-                action_id: action.id.clone(),
-                token: action.token.clone(),
-                targets: Vec::new(),
-                ..Default::default()
-            },
-        )
-        .expect("the answer binds");
-
-        let after = sage_engine::apply_action(&state, &bound, &db);
-        assert_eq!(after.stack.len(), 1, "the server paid for it");
-        assert_eq!(
-            after.battlefield.iter().filter(|p| p.tapped).count(),
-            2,
-            "and tapped no more than the cost"
-        );
-    }
-
-    /// A sacrifice cost is posed on the slot shape that already existed for choosing
-    /// objects out of a zone — over the battlefield rather than the hand. No new prompt
-    /// kind, because `zone` was always a free-form string for exactly this.
-    #[test]
-    fn a_sacrifice_cost_is_posed_over_the_battlefield_and_bound_back() {
-        let (mut state, db, _lands, spell) =
-            table(&["swamp", "swamp", "swamp", "swamp"], "blood_divination");
-        let mine = put_permanent(
-            &mut state,
-            fixture("centaur_courser"),
-            PlayerId(0),
-            false,
-            false,
-        );
-        // An opponent's creature is not a candidate: CR 701.17b lets a player sacrifice
-        // only what they control, and the candidate list is where that is enforced for the
-        // client rather than left for it to know.
-        put_permanent(
-            &mut state,
-            fixture("centaur_courser"),
-            PlayerId(1),
-            false,
-            false,
-        );
-
-        let action = cast_action(&state, &db, spell);
-        let slot = action
-            .prompts
-            .iter()
-            .find_map(|prompt| match prompt {
-                Prompt::SelectFromZone {
-                    slot,
-                    zone,
-                    count,
-                    candidates,
-                    ..
-                } if slot == SACRIFICE_SLOT => Some((zone.clone(), *count, candidates.clone())),
-                _ => None,
-            })
-            .expect("the sacrifice is posed as a slot");
-        assert_eq!(slot.0, "battlefield");
-        assert_eq!(slot.1, 1, "a cost is paid for exactly what it asks");
-        assert_eq!(
-            slot.2,
-            vec![permanent_entity_id(mine)],
-            "only the caster's own creature is a candidate"
-        );
-
-        // The answer binds back into the payment, and the cast really spends it.
-        let bound = resolve_action(
-            &state,
-            &db,
-            PlayerId(0),
-            &ChooseAction {
-                action_id: action.id.clone(),
-                token: action.token.clone(),
-                targets: vec![TargetChoice {
-                    slot: SACRIFICE_SLOT.to_string(),
-                    chosen: vec![permanent_entity_id(mine)],
-                }],
-                ..Default::default()
-            },
-        )
-        .expect("the answer binds");
-        let after = sage_engine::apply_action(&state, &bound, &db);
-        assert!(
-            !after.battlefield.iter().any(|perm| perm.id == mine),
-            "the named creature was sacrificed to the cost"
-        );
-    }
-
-    /// **The dual-land question, as the client sees it.** Both halves of a River are
-    /// offered for the generic pip? No — once, because the answer cannot matter. For a
-    /// colored pip only the half that pays that color is offered. Either way the client's
-    /// rule is the same: ask when one `source` appears twice.
-    #[test]
-    fn a_dual_land_is_offered_once_where_the_choice_cannot_matter() {
-        let (state, db, lands, spell) = table(&["meandering_river", "plains"], "ajani_s_pridemate");
-        let action = cast_action(&state, &db, spell);
-        let river = permanent_entity_id(lands[0]);
-
-        for prompt in &action.prompts {
-            let Prompt::PayMana {
-                pip, candidates, ..
-            } = prompt
-            else {
-                continue;
-            };
-            let ways = candidates
-                .iter()
-                .filter(|candidate| candidate.source == river)
-                .count();
-            assert_eq!(ways, 1, "the River is offered once for {pip}");
-        }
-    }
-
-    /// **The additional cost is a slot, not something done to the player.** Tormenting
-    /// Voice discards a card as part of casting it, so the cast carries a select-from-zone
-    /// over the hand — and the spell itself is not in it, because it is on its way to the
-    /// stack.
-    #[test]
-    fn an_additional_cost_is_posed_as_a_choice_over_the_hand() {
-        let db = CardDatabase::bundled().unwrap();
-        let (mut state, hand) = state_with_hand(&[fixture("tormenting_voice"), fixture("murder")]);
-        state.turn = 3;
-        for _ in 0..2 {
-            put_permanent(&mut state, fixture("mountain"), PlayerId(0), false, false);
-        }
-        let (voice, murder) = (hand[0], hand[1]);
-
-        let action = cast_action(&state, &db, voice);
-        let discard = action
-            .prompts
-            .iter()
-            .find_map(|prompt| match prompt {
-                Prompt::SelectFromZone {
-                    slot,
-                    zone,
-                    count,
-                    candidates,
-                    ..
-                } if slot == DISCARD_SLOT => Some((zone, *count, candidates)),
-                _ => None,
-            })
-            .expect("the discard is asked for");
-        assert_eq!(discard.0, "hand");
-        assert_eq!(discard.1, 1, "one card, exactly");
-        assert_eq!(
-            discard.2,
-            &vec![card_entity_id(murder.id)],
-            "the Voice cannot pay for itself"
-        );
-    }
-
-    /// And the card the player picks is the card that goes to the graveyard.
-    #[test]
-    fn the_card_the_player_picks_is_the_one_discarded() {
-        let db = CardDatabase::bundled().unwrap();
-        let (mut state, hand) = state_with_hand(&[
-            fixture("tormenting_voice"),
-            fixture("murder"),
-            fixture("shock"),
-        ]);
-        state.turn = 3;
-        for _ in 0..2 {
-            put_permanent(&mut state, fixture("mountain"), PlayerId(0), false, false);
-        }
-        let (voice, shock) = (hand[0], hand[2]);
-
-        let action = cast_action(&state, &db, voice);
-        let mut answers = vec![TargetChoice {
-            slot: DISCARD_SLOT.to_string(),
-            chosen: vec![card_entity_id(shock.id)],
-        }];
-        // Pay the mana by hand too, so this is one whole assembled payment.
-        for prompt in &action.prompts {
-            let Prompt::PayMana {
-                slot, candidates, ..
-            } = prompt
-            else {
-                continue;
-            };
-            let taken: Vec<&String> = answers.iter().flat_map(|a| a.chosen.iter()).collect();
-            let picked = candidates
-                .iter()
-                .find(|candidate| !taken.contains(&&candidate.id))
-                .expect("a source for this pip");
-            answers.push(TargetChoice {
-                slot: slot.clone(),
-                chosen: vec![picked.id.clone()],
-            });
-        }
-
-        let bound = resolve_action(
-            &state,
-            &db,
-            PlayerId(0),
-            &ChooseAction {
-                action_id: action.id.clone(),
-                token: action.token.clone(),
-                targets: answers,
-                ..Default::default()
-            },
-        )
-        .expect("the answer binds");
-
-        let after = sage_engine::apply_action(&state, &bound, &db);
-        assert_eq!(after.stack.len(), 1, "the Voice was cast");
-        assert!(
-            after.players[0].graveyard.iter().any(|c| c.id == shock.id),
-            "the Shock the player chose is in the graveyard"
-        );
-        assert!(
-            after.players[0].hand.iter().any(|c| c.id == hand[1].id),
-            "and the Murder they kept is still in hand"
-        );
-        assert!(
-            sage_engine::pending_player_choice(&after).is_none(),
-            "nothing is owed afterwards — the cost was paid as part of casting"
-        );
-    }
-
-    /// A client that answers nothing is still paid for, discard included — which is what
-    /// keeps the terminal client and both automated players casting the same cards.
-    #[test]
-    fn an_unanswered_additional_cost_is_paid_by_the_server() {
-        let db = CardDatabase::bundled().unwrap();
-        let (mut state, hand) = state_with_hand(&[fixture("tormenting_voice"), fixture("murder")]);
-        state.turn = 3;
-        for _ in 0..2 {
-            put_permanent(&mut state, fixture("mountain"), PlayerId(0), false, false);
-        }
-        let action = cast_action(&state, &db, hand[0]);
-        let bound = resolve_action(
-            &state,
-            &db,
-            PlayerId(0),
-            &ChooseAction {
-                action_id: action.id.clone(),
-                token: action.token.clone(),
-                targets: Vec::new(),
-                ..Default::default()
-            },
-        )
-        .expect("the answer binds");
-
-        let after = sage_engine::apply_action(&state, &bound, &db);
-        assert_eq!(after.stack.len(), 1);
-        assert!(after.players[0]
-            .graveyard
-            .iter()
-            .any(|c| c.id == hand[1].id));
-    }
-
-    /// A payment naming one permanent for two pips is not a payment — a land taps once.
-    /// The server refuses it rather than letting a double-spend through.
-    #[test]
-    fn one_permanent_cannot_pay_two_pips() {
-        let (state, db, lands, spell) = table(&["plains", "plains"], "ajani_s_pridemate");
-        let action = cast_action(&state, &db, spell);
-        let wanted = permanent_entity_id(lands[0]);
-        let answers: Vec<TargetChoice> = action
-            .prompts
-            .iter()
-            .filter_map(|prompt| {
-                let Prompt::PayMana {
-                    slot, candidates, ..
-                } = prompt
-                else {
-                    return None;
-                };
-                let picked = candidates
-                    .iter()
-                    .find(|candidate| candidate.source == wanted)?;
-                Some(TargetChoice {
-                    slot: slot.clone(),
-                    chosen: vec![picked.id.clone()],
-                })
-            })
-            .collect();
-        assert_eq!(answers.len(), 2, "the same Plains named for both pips");
-
-        let bound = resolve_action(
-            &state,
-            &db,
-            PlayerId(0),
-            &ChooseAction {
-                action_id: action.id.clone(),
-                token: action.token.clone(),
-                targets: answers,
-                ..Default::default()
-            },
-        )
-        .expect("it binds — to the server's own payment");
-
-        let after = sage_engine::apply_action(&state, &bound, &db);
-        assert_eq!(after.stack.len(), 1);
-        assert_eq!(
-            after.battlefield.iter().filter(|p| p.tapped).count(),
-            2,
-            "two distinct lands paid, not one twice"
-        );
-    }
-}
+mod tests;

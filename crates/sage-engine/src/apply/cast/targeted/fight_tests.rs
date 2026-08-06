@@ -34,6 +34,8 @@ fn cast_and_resolve(
         state,
         &Action::CastSpell {
             card: bite,
+            mode: None,
+            x: None,
             targets,
             payment: Vec::new(),
         },
@@ -116,6 +118,8 @@ fn issue_737_each_slot_only_accepts_its_own_class_cr_601_2c() {
 
     let offer = Action::CastSpell {
         card: bite,
+        mode: None,
+        x: None,
         targets: Vec::new(),
         payment: Vec::new(),
     };
@@ -138,6 +142,8 @@ fn issue_737_each_slot_only_accepts_its_own_class_cr_601_2c() {
         &state,
         &Action::CastSpell {
             card: bite,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(theirs), Target::Permanent(mine)],
             payment: Vec::new(),
         },
@@ -162,6 +168,8 @@ fn issue_737_neither_is_damaged_when_the_dealer_has_gone_cr_701_12c() {
         &state,
         &Action::CastSpell {
             card: bite,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(mine), Target::Permanent(theirs)],
             payment: Vec::new(),
         },
@@ -198,6 +206,8 @@ fn issue_737_neither_is_damaged_when_the_recipient_has_gone_cr_701_12c() {
         &state,
         &Action::CastSpell {
             card: bite,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(mine), Target::Permanent(theirs)],
             payment: Vec::new(),
         },
@@ -225,6 +235,8 @@ fn issue_737_bite_fizzles_when_both_creatures_have_gone_cr_608_2b() {
         &state,
         &Action::CastSpell {
             card: bite,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(mine), Target::Permanent(theirs)],
             payment: Vec::new(),
         },
@@ -348,6 +360,8 @@ fn issue_737_a_mutual_fight_damages_both_creatures_cr_701_12a() {
         &state,
         &Action::CastSpell {
             card: pounce,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(mine), Target::Permanent(theirs)],
             payment: Vec::new(),
         },
@@ -394,6 +408,8 @@ fn issue_737_a_mutual_fight_does_nothing_when_one_has_gone_cr_701_12c() {
         &state,
         &Action::CastSpell {
             card: pounce,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(mine), Target::Permanent(theirs)],
             payment: Vec::new(),
         },

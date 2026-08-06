@@ -59,6 +59,29 @@ pub enum Condition {
         /// The threshold, inclusive. `1` is the plain "if you gained life this turn".
         amount: u32,
     },
+    /// The effect's **own source attacked or blocked this turn** — the `if this creature
+    /// attacked or blocked this turn` of an end-step trigger that takes the creature
+    /// back.
+    ///
+    /// The first condition here about the *source* rather than about its controller, and
+    /// the reason [`condition_holds`](crate::condition) is handed one: "you" is not the
+    /// subject of this sentence, one particular permanent is, and a card that asks it
+    /// means the object its ability is on.
+    ///
+    /// Read off the declarations the turn recorded
+    /// ([`GameEvent::AttackersDeclared`](crate::GameEvent) and
+    /// [`GameEvent::BlockersDeclared`](crate::GameEvent)) rather than off
+    /// [`Permanent::attacking`](crate::Permanent) and
+    /// [`Permanent::blocking`](crate::Permanent), because by the end step both of those
+    /// have been cleared: the end-of-combat turn-based action removes every creature from
+    /// combat (CR 511.3), so a snapshot taken when this condition is asked can no longer
+    /// tell a creature that attacked from one that stayed home. The declaration is the
+    /// event, and the event is what survives it.
+    ///
+    /// Both halves are one question because a printed card asks them as one. The window is
+    /// the **turn**, like [`Self::GainedLifeThisTurn`]'s, so two combats in one turn both
+    /// count and the next turn starts clean.
+    AttackedOrBlockedThisTurn,
 }
 
 /// The `X` of `where X is …` — a number an effect takes off the **game** rather than
@@ -76,9 +99,18 @@ pub enum Condition {
 /// ([`PermanentCount`], authored as `count_of`), because it is the one source a *static*
 /// ability may also read — an Aura's `+1/+1 for each Forest you control` is recalculated
 /// on every read of its host's characteristics, and has to be. Nothing here could stand
-/// in that position: two of the three read *events* over a window, exactly as
+/// in that position: two of the four read *events* over a window, exactly as
 /// [`Condition`] does and for the same reason, and an event window has no meaning
-/// outside a resolution.
+/// outside a resolution. A **count of cards in a graveyard** keeps its own spelling too
+/// ([`GraveyardCount`]), for that reason and one more: the only card that reads one is a
+/// characteristic-defining ability ([`Ability::DefinedPower`](crate::Ability)),
+/// re-derived on every read of a permanent's power rather than taken on a resolution.
+///
+/// **A chosen permanent's power is not one of these either** ([`PermanentAmount`]). Every
+/// source below is a question about the *game*, answerable wherever the effect that reads
+/// it stands; that one is a question about an object the same effect is about to remove,
+/// so CR 608.2h makes it readable only *before* the removal — which is why it rides on
+/// the effect that does the removing instead of standing here.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(tag = "source", rename_all = "snake_case")]
 pub enum DerivedAmount {
@@ -123,6 +155,160 @@ pub enum DerivedAmount {
         /// Which permanents are looked at, relative to the effect's controller.
         among: PermanentCount,
     },
+    /// The **X its controller announced** as the spell was cast (CR 601.2b) — the `X` of
+    /// `deals X damage to any target` on a spell whose cost is `{X}{R}`.
+    ///
+    /// The one member of this vocabulary that reads neither the board nor the event log,
+    /// because there is nothing to read: X was *chosen*, before targets and before
+    /// payment, and locked the moment it was announced. It rides on the stack object
+    /// from that point on ([`StackObjectKind::Spell`](crate::StackObjectKind)), so the
+    /// mana that was charged, the effect that resolves, and the text a player reads are
+    /// all the same number by construction rather than by three agreeing lookups.
+    ///
+    /// Zero for an object that announced no X at all, which is every ability and every
+    /// spell whose cost has no `{X}` in it. That is the safe direction and it is also
+    /// the honest one: such an effect has no X, and an effect that reads one it never
+    /// had should do nothing rather than guess.
+    AnnouncedX,
+    /// How many permanents **this resolution has sacrificed** (CR 701.17) — the `that
+    /// many` of `Sacrifice any number of lands. Search your library for up to that many
+    /// land cards`.
+    ///
+    /// The counting form of an [`Effect::Sacrifice`](crate::Effect) that came earlier in
+    /// the same resolution, and it reads the resolution's own record
+    /// ([`Resolution`](crate::Resolution)) rather than the board or the log. It has to
+    /// read *something* rather than count again: the lands are in a graveyard among every
+    /// other land that ever went there, and only a creature's departure is recorded as an
+    /// event at all (CR 700.4).
+    ///
+    /// Zero for a resolution that sacrificed nothing — including one whose sacrifice was
+    /// answered with none, and one that never posed the question because the board held
+    /// nothing of the class. Both are what `Sacrifice any number of lands` means on an
+    /// empty board: a legal, blank spell.
+    ///
+    /// NOTE: a sacrifice posed to *several* players records only the answer the resolution
+    /// resumed on. No printed card reads a count back across seats, and the one that reads
+    /// it back at all names a single player twice.
+    SacrificedThisWay,
+    /// The **power the creature sacrificed to this object's cost had** as it left
+    /// (CR 608.2h) — the `equal to the sacrificed creature's power` of a spell that throws
+    /// it at something.
+    ///
+    /// Last-known information, read off the same [`PaidCost`](crate::PaidCost) and fixed
+    /// at the same moment, for the reason that rule exists: the creature is gone before
+    /// the spell resolves, so there is nothing on the battlefield left to ask. Zero when
+    /// the cost sacrificed no creature, and zero for a power that was negative — damage is
+    /// never negative (CR 120.1).
+    SacrificedCreaturePower,
+    /// **Half** of `of`, rounded up — the `half their life, rounded up` of a symmetric
+    /// sorcery that takes half of everything.
+    ///
+    /// The one source here that is *arithmetic over* another number, and it is a variant
+    /// rather than the beginning of an expression language on purpose: "half, rounded up"
+    /// is a phrase printed cards write about a handful of named totals, not an operator
+    /// they compose. There is no doubling, no adding two sources together, and no
+    /// halving of a half.
+    ///
+    /// **Rounding is up and is not a field.** Every card that halves a total says which
+    /// way it rounds, and the ones that round down are a different phrase; when one is
+    /// authored it adds its own variant rather than a flag here, so no card can be
+    /// written that rounds the direction its text does not say.
+    ///
+    /// The total is read of the player the effect *names*, not of its controller — the
+    /// point of `each player loses half their life` is that each of them loses their own
+    /// half — and it is read once, where the effect applies (CR 608.2).
+    HalfRoundedUp {
+        /// Which total is halved.
+        of: HalvedTotal,
+    },
+}
+
+/// The class of permanents a **mass destruction** puts into their owners' graveyards
+/// (CR 701.7) — the `all creatures` and the `all artifacts and enchantments` of a
+/// sweeper's two modes.
+///
+/// Its own vocabulary rather than a widening of [`MassAffects`], which every existing
+/// member of is a class of *creatures* feeding a pump or a keyword grant: a
+/// non-creature scope there would make "artifacts you control get +1/+1" an authorable
+/// sentence that means nothing. Closed and named, for [`MassAffects`]'s reason — a
+/// disjunction of two card types is not a product of independent filters and
+/// [`PermanentCount`] could not say it — and it grows by adding variants.
+///
+/// The affected set is enumerated **on resolution** (CR 611.2c), so a permanent that
+/// arrives afterwards survives.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(tag = "scope", rename_all = "snake_case")]
+pub enum DestroyAffects {
+    /// Every creature on the battlefield, whoever controls it.
+    EachCreature,
+    /// Every artifact and every enchantment on the battlefield, whoever controls it. One
+    /// class rather than two, because the printed sentence is one destruction and a
+    /// permanent that is both is destroyed once.
+    EachArtifactOrEnchantment,
+}
+
+/// A total a [`DerivedAmount::HalfRoundedUp`] takes half of, asked about the player the
+/// effect names.
+///
+/// A closed list of the three a printed card halves, and each one is a *snapshot*
+/// question — a life total, a hand, a board — so all three are answered from the state as
+/// the effect is reached rather than from recorded events.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HalvedTotal {
+    /// That player's **life total** (CR 119.1) — `loses half their life`. A player
+    /// already at or below zero has no positive total to halve and loses nothing.
+    LifeTotal,
+    /// How many cards are in that player's **hand** — `discards half the cards in their
+    /// hand`. Counted as the effect is reached, so a discard earlier in the same
+    /// resolution has already made the hand smaller.
+    HandSize,
+    /// How many **creatures that player controls** — `sacrifices half the creatures they
+    /// control`. Control is read through the one CR 613 layer-2 path, so a creature
+    /// someone has taken counts for whoever controls it now.
+    CreaturesControlled,
+}
+
+/// A number read off **one chosen permanent** — the `its power` of `Exile target
+/// colorless creature. You gain life equal to its power.`
+///
+/// Deliberately not a [`DerivedAmount`]: that vocabulary answers questions about the
+/// *game*, which stay answerable wherever the effect that asks them stands. This one asks
+/// about an object the very same effect is about to remove, and CR 608.2h says the answer
+/// is what was last known of it — so it can only be read *before* the removal, which is
+/// why it is a field on the effect that removes rather than a source a later effect could
+/// name.
+///
+/// One variant today, and it grows by adding them: a card that pays off a chosen
+/// permanent's toughness or mana value writes its own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PermanentAmount {
+    /// The permanent's **power** as the effect found it — the *computed* power (CR 613),
+    /// so a creature pumped or grown by counters is worth what it currently is rather
+    /// than what it printed. A permanent with no power at all is worth nothing.
+    Power,
+}
+
+/// A class of **cards in a graveyard** to count.
+///
+/// The graveyard counterpart of [`PermanentCount`], and separate from it for the reason
+/// [`CardFilter`] is separate from [`TargetSpec`]: a card in a graveyard has printed
+/// characteristics and nothing else — no controller, no [`PermanentId`], no computed
+/// power — so the two selectors have almost no fields in common.
+///
+/// It is read where the question is asked and counted fresh every time, because the one
+/// thing that asks is a characteristic-defining ability
+/// ([`Ability::DefinedPower`](crate::Ability)).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+pub struct GraveyardCount {
+    /// Whose graveyards are counted, relative to the reading object's controller.
+    /// Defaults to their own — "in your graveyard".
+    #[serde(default)]
+    pub scope: GraveyardScope,
+    /// Which cards of those graveyards are counted. Defaults to all of them.
+    #[serde(default)]
+    pub filter: CardFilter,
 }
 
 /// A class of permanents to **count**, relative to an effect's controller.
@@ -237,6 +423,33 @@ pub enum FoundDestination {
     BattlefieldTapped,
 }
 
+/// How the cards a [`Effect::LookAtTop`] did *not* take reach the bottom of the library.
+///
+/// The two wordings printed on these cards, and they are genuinely different rules: *put
+/// the rest on the bottom of your library in a random order* is the game deciding, and
+/// *in any order* is the player deciding. The distinction is worth a field rather than a
+/// blanket approximation because it is the difference between three cards whose future
+/// order is unknown and three cards whose future order the looker just set.
+///
+/// [`Random`](Self::Random) is the default, so a card that says nothing keeps the
+/// conservative reading — it tells the player strictly less than the printed card does.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BottomOrder {
+    /// *…in a random order.* Drawn from the seeded RNG
+    /// ([`GameState::rng_seed`](crate::GameState::rng_seed)), so a replay of the same
+    /// seed produces the same bottom order and the looker learns nothing about their
+    /// future draws.
+    #[default]
+    Random,
+    /// *…in any order.* The looker is asked, through the same mid-resolution choice
+    /// queue the taking itself went through (ADR 0013), and the answer is the order the
+    /// cards are put on the bottom in. **It consumes no randomness at all** — a player's
+    /// answer is already recorded in the action log, and drawing from the RNG for a
+    /// decision the player made would desynchronise every later shuffle on replay.
+    Chosen,
+}
+
 /// Which cards of a zone a mid-resolution choice may pick — the card-selection
 /// counterpart of [`TargetSpec`], for a card in a hidden zone rather than an object on
 /// the battlefield.
@@ -324,6 +537,19 @@ pub enum MassAffects {
         /// creature its controller controls.
         #[serde(default)]
         subtype: Option<String>,
+        /// Restrict to creatures whose power is at least this — the "each creature you
+        /// control **with power 4 or greater**" of an attack trigger. Absent means
+        /// every power, including a creature that has none.
+        ///
+        /// Read through the **computed** characteristics (CR 613.1f), like the
+        /// identically-named field on [`PermanentCount`] and for the same reason: that
+        /// is the only reading a printed card means, so a creature pumped to 4 is in the
+        /// class and one shrunk out of it is not. Asking for a computed power here is
+        /// safe where it is not in a static ability's condition — a mass effect is
+        /// enumerated **during a resolution** (CR 611.2c), from outside the layer
+        /// system, so there is no computation to recurse into.
+        #[serde(default)]
+        min_power: Option<i32>,
     },
     /// Every creature on the battlefield at the moment the effect resolves,
     /// whoever controls it — the symmetric class a sweeper names.

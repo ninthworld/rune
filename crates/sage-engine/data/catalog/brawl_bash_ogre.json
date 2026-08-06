@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "functional_id": "brawl_bash_ogre",
+  "name": "Brawl-Bash Ogre",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Ogre",
+    "Warrior"
+  ],
+  "mana_cost": "{2}{B}{R}",
+  "colors": [
+    "black",
+    "red"
+  ],
+  "power": 3,
+  "toughness": 3,
+  "keywords": [
+    "menace"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_attacks",
+      "effects": [
+        {
+          "kind": "may",
+          "cost": {
+            "kind": "sacrifice",
+            "card_type": "creature",
+            "another": true
+          },
+          "effects": [
+            {
+              "kind": "pump_self",
+              "power": 2,
+              "toughness": 2
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

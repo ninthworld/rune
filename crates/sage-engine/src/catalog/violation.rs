@@ -104,11 +104,99 @@ pub enum Violation {
         /// The definition at fault.
         functional_id: String,
     },
+    /// A static ability selects permanents "with the **chosen name**" on a card that
+    /// never names one — it declares no `enters_naming_card` (CR 614.12).
+    ///
+    /// [`Self::ChosenColorIsNeverNamed`]'s counterpart, caught for the same reason: the
+    /// phrase has no referent, so the selector could not match one permanent in the whole
+    /// game, and the engine's honest answer — a source with no recorded name affects
+    /// nothing — is silence.
+    ChosenNameIsNeverNamed {
+        /// The definition at fault.
+        functional_id: String,
+    },
     /// An `additional_cost` appears on a card that cannot be cast, or names a cost of
     /// nothing. A land is *played*, not cast (CR 116.2a), so a cast cost on one could
     /// never be paid or checked; a cost of zero cards is not a cost, and authoring one
     /// is a way of writing a card that reads as costing something and does not.
     AdditionalCostIsUnpayable {
+        /// The definition at fault.
+        functional_id: String,
+    },
+    /// A `modes` list that is not a choice a player could be asked to make (CR 700.2):
+    /// fewer than two modes, more than [`MAX_MODES`], a mode that does nothing, or a
+    /// modal card that also carries loose `spell_effects`.
+    ///
+    /// The upper bound is the one rule here that is not a rules rule. A mode is a
+    /// numbered row in a dock band of fixed height (`docs/client-design.md` §6.7), and
+    /// the alternative to refusing a fourth is truncating a sentence the player has to
+    /// read *before* choosing it — so the limit belongs in the schema, where it fails
+    /// the person authoring the card, rather than in a renderer, where it fails the
+    /// person playing it. Three is where every *choose one* card in the game already
+    /// sits; four is the Commands, which choose **two** and are a different question.
+    MalformedModes {
+        /// The definition at fault.
+        functional_id: String,
+        /// How many modes it declared.
+        modes: usize,
+    },
+    /// An `{X}` appears in an **activation** cost (CR 107.3). X is announced as part of
+    /// casting a spell (CR 601.2b); an activation pays out of a pool and has no
+    /// announcement step to fix a value in, so the symbol would simply be ignored and
+    /// the ability activated for nothing.
+    XOutsideAManaCost {
+        /// The definition at fault.
+        functional_id: String,
+        /// The cost string that contains it.
+        cost: String,
+    },
+    /// A `spell_traits` entry names an `if_x_at_least` threshold on a card whose mana
+    /// cost prints no `{X}` — a sentence about a value the card never asks for, and
+    /// therefore a clause that could never be true.
+    SpellTraitNeedsX {
+        /// The definition at fault.
+        functional_id: String,
+    },
+    /// An effect reads a **sacrifice** back that nothing on the card ever performs:
+    /// `sacrificed_creature_power` with no cost that sacrifices, or `sacrificed_this_way`
+    /// with no sacrifice effect.
+    ///
+    /// Caught here for the reason [`Self::ChosenColorIsNeverNamed`] is: the engine's
+    /// honest answer to "how many were sacrificed" when none were is zero, and a card that
+    /// reads as throwing a creature and always deals zero damage is the hardest kind of
+    /// wrong to notice.
+    ///
+    /// The two sources are checked against **different** producers, because they read
+    /// different moments — a cost paid at announcement (CR 601.2h) and a sacrifice this
+    /// resolution performed (CR 701.17).
+    AmountIsNeverSacrificed {
+        /// The definition at fault.
+        functional_id: String,
+    },
+    /// A **back face** carries a mana cost (CR 712.4a).
+    ///
+    /// The back face of a transforming double-faced card has no mana cost and can never
+    /// be cast: it is only ever reached by turning a permanent over, and nothing in the
+    /// game offers it as a spell. A cost written there would be a number nobody could
+    /// pay and no gate would read — so it is refused at authoring time, naming the card,
+    /// rather than sitting in the catalog looking castable.
+    ///
+    /// It is a validation rule rather than an absent field because the rule is worth
+    /// *stating*: the field exists on [`BackFace`](crate::BackFace) and is always empty,
+    /// which is what makes "a transformed permanent has mana value 0" a fact the read
+    /// path can simply read.
+    BackFaceHasManaCost {
+        /// The definition at fault.
+        functional_id: String,
+    },
+    /// A definition turns itself over — `transform_self` or
+    /// `exile_self_and_return_transformed` — without having a second face to turn to
+    /// (CR 701.28d).
+    ///
+    /// Caught here for [`Self::ChosenColorIsNeverNamed`]'s reason: the engine's honest
+    /// answer is to leave the permanent exactly as it was, which is silence, and a card
+    /// that silently does nothing is the hardest kind of wrong to notice.
+    TransformWithoutABackFace {
         /// The definition at fault.
         functional_id: String,
     },
@@ -288,6 +376,16 @@ impl fmt::Display for Violation {
                 "{file_stem}.json declares functional_id `{functional_id}`; \
                  a definition's file name must match its identity"
             ),
+            Self::TransformWithoutABackFace { functional_id } => write!(
+                f,
+                "{functional_id} transforms itself but has no `back_face` to turn to \
+                 (CR 701.28d)"
+            ),
+            Self::BackFaceHasManaCost { functional_id } => write!(
+                f,
+                "{functional_id}: a back face has no mana cost and can never be cast \
+                 (CR 712.4a)"
+            ),
             Self::PowerToughnessMismatch {
                 functional_id,
                 creature: true,
@@ -327,6 +425,11 @@ impl fmt::Display for Violation {
                 "{functional_id} watches a spell of the chosen color but never chooses \
                  one: it declares no `enters_choosing_color` ability"
             ),
+            Self::ChosenNameIsNeverNamed { functional_id } => write!(
+                f,
+                "{functional_id} selects permanents with the chosen name but never names \
+                 a card: it declares no `enters_naming_card` ability"
+            ),
             Self::EquipCostMismatch {
                 functional_id,
                 equipment: false,
@@ -338,6 +441,33 @@ impl fmt::Display for Violation {
                 f,
                 "{functional_id} carries an `additional_cost` that could never be paid: \
                  a land is played rather than cast, and a cost of no cards is no cost"
+            ),
+            Self::MalformedModes {
+                functional_id,
+                modes,
+            } => write!(
+                f,
+                "{functional_id} declares {modes} mode(s): a modal card prints between \
+                 {MIN_MODES} and {MAX_MODES} of them, each doing something, and carries \
+                 no `spell_effects` of its own"
+            ),
+            Self::XOutsideAManaCost {
+                functional_id,
+                cost,
+            } => write!(
+                f,
+                "{functional_id} writes `{{X}}` in the activation cost `{cost}`; X is \
+                 announced only as a spell is cast, so nothing would ever charge for it"
+            ),
+            Self::SpellTraitNeedsX { functional_id } => write!(
+                f,
+                "{functional_id} declares a spell trait conditional on X, but its mana \
+                 cost prints no `{{X}}` to announce"
+            ),
+            Self::AmountIsNeverSacrificed { functional_id } => write!(
+                f,
+                "{functional_id} reads a sacrifice back but nothing on it sacrifices \
+                 anything; the amount could only ever be zero"
             ),
             Self::RestrictionsOnNonCreature { functional_id } => write!(
                 f,

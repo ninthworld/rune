@@ -248,6 +248,8 @@ fn a_goblin_token_pays_a_cost_that_names_the_subtype() {
         &state,
         &Action::CastSpell {
             card: instigator,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },

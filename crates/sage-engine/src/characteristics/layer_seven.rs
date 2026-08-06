@@ -1,7 +1,44 @@
-//! CR 613 **layer 7**: power and toughness. Counters fold in at 7c, then simple static
-//! `+X/+Y` modifications apply at that same layer in timestamp order (CR 613.7).
+//! CR 613 **layer 7**: power and toughness. A characteristic-defining ability sets the
+//! base power at 7a, counters fold in at 7c, then simple static `+X/+Y` modifications
+//! apply at that same layer in timestamp order (CR 613.7).
+//!
+//! The sublayers run in the order CR 613.4 gives them, which is the only order that makes
+//! a `*` creature behave: 7a *replaces* the seed the printed card supplied, and 7c *adds*
+//! to whatever 7a left. Nothing in between is implemented — no layer 7b effect sets a
+//! base power, and no layer 7d switches power with toughness — so the two that exist are
+//! applied one after the other with a hole where the other two will go.
 
 use super::*;
+
+/// The **layer 7a** power of `perm`: the number its characteristic-defining ability
+/// (CR 604.3) says it is, or `None` when it has none and the printed seed stands.
+///
+/// Read from the permanent's *current* abilities rather than its printed ones, which is
+/// what puts CR 613.4a in the right order relative to layer 6: an effect that made this
+/// creature lose all its abilities took the defining ability with them, and a creature
+/// with no defining ability is back to what its card printed. `abilities` is the list the
+/// caller already computed for exactly that layer, passed in so it is not walked twice.
+///
+/// The count is taken **here, on this call**, and never stored — that is the whole
+/// difference between a defining ability and an amount an effect fixed on resolution. A
+/// card put into the graveyard changes the answer with no event in between.
+pub(super) fn defined_power(
+    state: &GameState,
+    perm: &Permanent,
+    abilities: &[Ability],
+    db: &CardDatabase,
+) -> Option<i32> {
+    // "Your graveyard" is the graveyard of whoever controls the permanent *now*
+    // (CR 613 layer 2), so a stolen Drake reads its thief's graveyard.
+    let controller = controller_of(state, perm);
+    abilities.iter().find_map(|ability| match ability {
+        Ability::DefinedPower { count_of } => {
+            let count = crate::condition::count_graveyard_cards(state, count_of, controller, db);
+            Some(i32::try_from(count).unwrap_or(i32::MAX))
+        }
+        _ => None,
+    })
+}
 
 /// The net power/toughness shift from `perm`'s `+1/+1` and `-1/-1` counters at
 /// CR 613 layer 7c: one `+1/+1` counter contributes `+1`, one `-1/-1` counter

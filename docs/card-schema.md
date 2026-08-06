@@ -62,9 +62,12 @@ no Oracle text, flavor, art, or branding.
 | `keywords` | no | Supported keyword abilities |
 | `restrictions` | no | Printed combat restrictions; creatures only |
 | `abilities` | no | Activated, triggered, or replacement-style ability IR |
-| `spell_effects` | no | Resolution effects for instants and sorceries |
+| `spell_effects` | no | Resolution effects for instants and sorceries; empty on a modal card |
+| `modes` | no | The bullets of a modal spell (CR 700.2); two to four, each `{ "effects": [...] }` |
+| `spell_traits` | no | What is true of the card **as a spell on the stack** — can't be countered, damage can't be prevented |
 | `additional_cost` | no | An additional cost to **cast** the card (CR 601.2b); never on a land |
-| `attachment` | no | Aura or Equipment: what it may be attached to, its equip cost, and its static power/toughness, keyword, and/or combat-restriction grant |
+| `attachment` | no | Aura or Equipment: what it may be attached to, its equip cost, and its static power/toughness, keyword, ability, and/or combat-restriction grant |
+| `back_face` | no | The card's **second face**, for a transforming double-faced card (CR 712) |
 | `scripted` | no | Declares behavior implemented in `src/scripted.rs`; defaults to `false` |
 
 Current keyword values are `flying`, `reach`, `vigilance`, `haste`, `defender`, `menace`,
@@ -131,6 +134,47 @@ keywords are read (combat legality, evasion, damage, view projection, generated 
    "restrictions": ["must_be_blocked_by_all_able"]}
   ```
 
+### Granting a whole ability (continuous, CR 613.1f)
+
+A keyword ability *is* an ability (CR 702.1), so granting one written out in full is the
+same layer and the same mechanism — the ability is folded into the host's set by
+`abilities_of_permanent`, the one accessor every collector reads, and is therefore offered
+by `valid_actions`, paid for, put on the stack, and fired by exactly the code a printed
+ability goes through. A granted **mana** ability is still a mana ability (CR 605.1a) and
+still uses no stack, because that is derived from what the ability says rather than from
+who granted it.
+
+- An **attachment** grants for as long as it is attached, through `attachment.abilities`:
+
+  ```json
+  "attachment": {"kind": "aura", "attach_to": "any_land", "abilities": [
+    {"type": "activated", "cost": [{"kind": "tap"}],
+     "effects": [{"kind": "add_mana_any_color", "amount": 2, "same_color": true}]}]}
+  ```
+
+  One block for both kinds, so an Equipment grants an ability exactly as an Aura does.
+- A **spell or ability** grants **until end of turn** through the `abilities` list on a
+  `pump`, beside its `keywords` and `restrictions` and for the same reason — one effect
+  declares one target group, and a card that says *gets +2/+0 **and** gains "…"* names one
+  creature:
+
+  ```json
+  {"kind": "pump", "target": "any_creature", "power": 2, "toughness": 0, "abilities": [
+    {"type": "triggered", "event": "self_dies",
+     "effects": [{"kind": "return_self_from_graveyard",
+                  "destination": "battlefield_tapped"}]}]}
+  ```
+
+Unlike a keyword grant this one is **not** idempotent: two grants of the same ability are
+two abilities, because two Auras each saying `{T}: Add {G}` really are two activations.
+
+A granted **dies** trigger is the one grant that outlives the grant. It fires on the way
+out (CR 603.6c), read from the snapshot the permanent still existed in — and still carried
+the grant in — so `return_self_from_graveyard` on such a trigger reaches the card the
+permanent became. That is why a dies trigger's source records both halves of what the
+object now is (CR 603.10a), and why a `self_dies` trigger is never treated as an ability
+that *functions from* a graveyard: it functioned from the battlefield.
+
 ### Losing keywords and losing all abilities (continuous, CR 613.1f)
 
 Layer 6 **subtracts** as well as adds. `alter_abilities_self` is the one verb that says
@@ -191,11 +235,25 @@ The kinds today are `discard` and `sacrifice`:
 "additional_cost": { "kind": "sacrifice", "card_type": "creature" }
 ```
 
-A sacrifice takes exactly one permanent of the named type. **Whose permanent stays a rule
+A sacrifice takes permanents of the named type. **Whose permanent stays a rule
 rather than a field** — CR 701.17b lets a player sacrifice only what they control, so
-there is no scope to author and none to get wrong. There is no count either: no card in
-this set sacrifices two, and a number every reader had to carry for no card is a number
-that will be wrong the first time one prints.
+there is no scope to author and none to get wrong. How *many* is a field, because a printed
+card varies it:
+
+```json
+"additional_cost": { "kind": "sacrifice", "card_type": "artifact", "count": { "exactly": 2 } }
+```
+
+`count` is `{"exactly": n}` and defaults to exactly one. It is exact in both directions: two
+artifacts is paid by two and refused by one, because over-paying a cost is not something a
+player may choose to do.
+
+**A cost is never a number the payer picks.** `Sacrifice any number of lands` is a
+*decision*, and a decision needs a resolution to be asked during — so it is authored as an
+effect (`{"kind": "sacrifice"}` with no `amount`, see *Amounts derived from something
+else*) and not as a cost. The difference is visible from the table: a cost is paid as the spell goes on the
+stack (CR 601.2h), so countering the spell would not give the lands back, while Scapeshift's
+lands stay put if it never resolves.
 
 Both kinds carry their choice on the **action**, in its `payment` list, beside the mana
 sources. A cost paid at announcement has no resolution to ask during, and once the spell
@@ -208,8 +266,89 @@ A sacrifice is a **real death**: it goes down the one leaves-battlefield seam, s
 trigger — including the sacrificed permanent's own — sees it, exactly as `sacrifice_this`
 already does for an activation cost.
 
-A `count` of zero, or an `additional_cost` on a land (which is played, not cast —
-CR 116.2a), fails the catalog validator.
+A `count` of zero (bare, or `{"exactly": 0}`), or an `additional_cost` on a land (which is
+played, not cast — CR 116.2a), fails the catalog validator. Exiling as a *cast* cost is not
+modeled; that shape exists only on an activation (`exile_from_graveyard`, below).
+
+### Modal spells (CR 700.2)
+
+A modal card puts its effects in `modes` instead of in `spell_effects`:
+
+```json
+"modes": [
+  { "effects": [ { "kind": "destroy_all", "affects": { "scope": "each_creature" } } ] },
+  { "effects": [ { "kind": "destroy_all",
+                   "affects": { "scope": "each_artifact_or_enchantment" } } ] }
+]
+```
+
+The choice is made **as the spell is announced** (CR 601.2b) and it is made *first*,
+before targets — because the chosen mode is what decides how many target slots the spell
+has and what each may aim at. Nothing downstream ever sees the modes that were not chosen:
+one mode's effects are what resolves, and the resolution path can reach no other.
+
+The validator enforces four things, and the last one is not a rules rule:
+
+- a modal card carries **no** `spell_effects` of its own — loose effects beside modes
+  would resolve whichever mode was chosen;
+- every mode does something;
+- there are at least **two** modes, since one is a question with a single answer;
+- there are at most **three** (`sage_engine::MAX_MODES`). A mode is a numbered row in a
+  dock band of fixed height (`client-design.md` §6.7), and the alternative to refusing a
+  fourth is truncating a sentence a player has to read *before* choosing it. So the limit
+  lands on whoever authors the card rather than on whoever plays it. Three is where the
+  printed cards sit: the Charm cycle prints three, and the four-mode cards are the
+  Commands, which choose **two** of their four — a question this schema cannot write at
+  all, and one that will bring its own surface when it can.
+
+Choosing more than one mode, repeating one, a mode with a cost of its own, and a modal
+*ability* are all still unwritable.
+
+### X in a mana cost (CR 107.3, CR 601.2b)
+
+A card whose `mana_cost` contains `{X}` announces a value for X as it is cast. There is no
+field for it: the symbol in the cost *is* the declaration.
+
+```json
+"mana_cost": "{X}{R}",
+"spell_effects": [
+  { "kind": "deal_damage_by_amount", "target": "any_target",
+    "amount": { "source": "announced_x" } }
+]
+```
+
+The announced value is folded into the cost as generic mana — one lot per `{X}` — by the
+single function every road asks what a cast costs, so the offer, the payment, and the
+charge cannot price the same spell differently. It is then **locked**: recorded on the
+stack object and read from there by the resolving effect and by anything measuring a
+threshold against it. Nothing re-derives it from the cost, because by then the cost has
+been paid and is gone.
+
+`{X}` in an **activation** cost is rejected by the validator. An activation pays out of a
+pool and has no announcement step to fix a value in, so the symbol would simply be ignored
+and the ability activated for nothing.
+
+### What is true of a spell on the stack
+
+`spell_traits` says what is true of the card **as a spell**, which no effect could say
+because an effect happens when its own object resolves and both of these are read by
+somebody else's:
+
+```json
+"spell_traits": [
+  { "kind": "cant_be_countered", "if_x_at_least": 5 },
+  { "kind": "damage_cant_be_prevented", "if_x_at_least": 5 }
+]
+```
+
+`cant_be_countered` (CR 701.5a) does **not** touch targeting: a counterspell may still
+choose the spell, resolve, and simply fail to remove it. `damage_cant_be_prevented`
+(CR 615.1) defeats every prevention shield at once, however many are in force.
+
+`if_x_at_least` measures the trait against the value this cast **announced**, so one card
+is an ordinary spell for a small X and an uncounterable one for a large one. It is omitted
+for a trait that always applies, and the validator rejects it on a card whose cost prints
+no `{X}` — a clause about a value the card never asks for could never be true.
 
 ### Combat restrictions (CR 506.3, CR 509.1b)
 
@@ -317,7 +456,10 @@ The three restriction verbs mirror the keyword-granting ones exactly, and all im
 **until end of turn**:
 
 - `{"kind": "restrict", "target": "any_creature", "restriction": "cant_block"}` — one
-  chosen target;
+  chosen target, or **up to N** of them with the same `targets` count `put_counters`
+  takes: `{"kind": "restrict", "target": "any_creature", "targets": {"up_to": 2},
+  "restriction": "cant_be_blocked"}` is "up to two target creatures can't be blocked this
+  turn", imposed once per target still legal on resolution (CR 608.2c);
 - `{"kind": "restrict_self", "restriction": "cant_be_blocked"}` — the ability's own
   source, which is not a target and never fizzles;
 - `{"kind": "restrict_all", "affects": {"scope": "creatures_without_flying"}, "restriction": "cant_block"}`
@@ -333,8 +475,9 @@ grants are independent; any combination may be present.
 **One block, with a `kind`.** An Aura and an Equipment share a single `attachment` field
 rather than owning a field each, and that is a decision worth stating because it is the
 one the rest of the vocabulary is built on. The *grant* is one thing: what an attached
-permanent does to its host is read at CR 613 layer 6 (keywords, combat restrictions) and
-layer 7c (power/toughness), and a creature carrying a sword is indistinguishable at both
+permanent does to its host is read at CR 613 layer 6 (keywords, abilities, combat
+restrictions) and layer 7c (power/toughness), and a creature carrying a sword is
+indistinguishable at both
 layers from one under an Aura. Two fields would mean every reader of a permanent's
 characteristics asked two questions where the rules ask one — and could answer them
 differently. Widening what may be attached to (a player, a land) therefore widens both
@@ -345,6 +488,13 @@ kinds at once, in one place.
 "attachment": {"kind": "equipment", "attach_to": "any_creature_you_control",
                "equip": "{2}", "power": 2, "toughness": 1}
 ```
+
+**`attach_to` is an ordinary target class**, so an Aura's host need not be a creature: an
+enchant-land Aura writes `"attach_to": "any_land"`, and the cast slot, the CR 704.5m
+state-based action, and the generated text all read that one field. A grant that has
+nothing to say about the host — a `power`/`toughness` on a land — simply applies to a
+characteristic that is not there. Enchanting a **player** is not expressible: no target
+class an attachment may name is a player.
 
 The `kind` decides exactly two things, and nothing else in the schema branches on it:
 
@@ -394,15 +544,30 @@ resolution (CR 608.2b). The classes are `any_player`, `any_player_or_planeswalke
 `any_nonland_permanent_an_opponent_controls`, `any_artifact_creature_you_control`,
 `any_creature`,
 `any_creature_you_control`, `any_creature_an_opponent_controls`,
-`any_creature_with_flying`, `any_tapped_creature`, `any_artifact`, `any_enchantment`,
+`any_creature_with_flying`, `any_colorless_creature`, `any_tapped_creature`,
+`any_artifact`, `any_enchantment`,
 `any_artifact_or_enchantment`, `any_artifact_enchantment_or_creature_with_flying`,
-`any_land`, `spell_on_stack`, `creature_spell_on_stack`, `any_target`, and
-`card_in_graveyard`.
+`any_land`, `spell_on_stack`, `creature_spell_on_stack`, `any_target`,
+`any_permanent_with_mana_value`, and `card_in_graveyard`.
 
 `any_player_or_planeswalker` is the burn class that names both halves and no creature —
 `Lava Axe deals 5 damage to target player or planeswalker`. It is neither `any_player`
 (which would drop the planeswalker half) nor `any_target` (which would add creatures the
 card cannot hit).
+
+`any_permanent_with_mana_value` narrows the permanent universe by the number printed on the
+face (CR 202.3) — `Exile target permanent with mana value 1`. It is written in the enum's
+tagged form because it carries a field:
+
+```json
+{ "kind": "exile", "target": { "any_permanent_with_mana_value": { "mana_value": 1 } } }
+```
+
+The comparison is an **equality**, not the cap `card_in_graveyard` takes: a card that names
+one value means that value, and a cap would silently admit everything cheaper. The value is
+read through the same printed face a token answers with, so a token is a candidate at mana
+value 0 (CR 111.4 — no mana cost) rather than being absent from the universe, and so is a
+land.
 
 `card_in_graveyard` is the one class that names a **card in a zone** rather than an object
 on the battlefield or the stack, so it is the only one a chosen card target satisfies. It is
@@ -432,9 +597,8 @@ independent things a printed card says about such a target:
 
 A graveyard is public, so its candidates are enumerable exactly as a battlefield's are.
 `return_card_to_hand` sends its target to that card's **owner's** hand (CR 400.7), and is
-the second effect after `put_counters` that may name more than one target — "return up to
-two target creature cards from your graveyard to your hand" is one effect with a two-slot
-group.
+one of the three effects that may name more than one target — "return up to two target
+creature cards from your graveyard to your hand" is one effect with a two-slot group.
 
 Every class is evaluated **relative to the choosing object's controller**, which is what
 lets one authored card mean "you" from either seat. Classes read through the computed
@@ -453,13 +617,19 @@ of *groups* counts both: an announcement fills both slots or is illegal, a `may`
 wrap such an effect (one wrapper cannot forward two slots), and a conditional branch may
 not contain one.
 
-**Up to N targets.** One effect — `put_counters` — may name more than one, with a `targets`
-count:
+**Up to N targets.** Three effects — `put_counters`, `return_card_to_hand`, and
+`restrict` — may name more than one, with a `targets` count:
 
 ```json
 { "kind": "put_counters", "target": "any_creature", "targets": { "up_to": 2 },
   "counter": "plus_one_plus_one", "count": 1 }
+{ "kind": "restrict", "target": "any_creature", "targets": { "up_to": 2 },
+  "restriction": "cant_be_blocked" }
 ```
+
+The arity is one field read in one place, so a fourth effect that needs it inherits the
+whole pipeline — the slots, the offer, the pairing, the per-target re-check — by declaring
+the field rather than by joining anything.
 
 `{"exactly": n}` demands exactly `n` distinct targets; `{"up_to": n}` lets the player choose
 between none and `n`. Omitting the field is `{"exactly": 1}`, which is what every other
@@ -483,11 +653,14 @@ reference itself decides whether a target is chosen:
 | --- | --- | --- |
 | `controller` | "you" | no |
 | `each_opponent` | every opponent still in the game | no |
+| `each_player` | every player still in the game, **including you** | no |
 | `target_player` | one chosen player | yes |
 | `target_opponent` | one chosen opponent | yes |
 
 A non-targeting reference can never fizzle and, in a game of three or more, really does
-name every opponent. `gain_life`, `lose_life`, and `mill` all take a reference, so both
+name every opponent. `each_player` is a variant of its own rather than a flag on
+`each_opponent`, because the difference is the whole point of the cards that print it: a
+symmetric sweeper hits its own caster. `gain_life`, `lose_life`, and `mill` all take a reference, so both
 shapes exist for each without any of them restating the fizzle rule.
 
 ### Damage (CR 120.3)
@@ -550,9 +723,10 @@ version of it. If *every* target is illegal the spell never resolves at all (CR 
 `cost` entries are `{"kind":"tap"}` (the `{T}` symbol),
 `{"kind":"mana","mana":"{1}{R}"}` — written in the same curly-brace notation a card's
 `mana_cost` uses — `{"kind":"loyalty","amount":-2}` (below), `{"kind":"sacrifice_this"}`,
-`{"kind":"remove_counters","counter":"charge","count":1}`, and the two the player picks
-the payment for, `{"kind":"sacrifice","card_type":"creature","another":true}` and
-`{"kind":"discard","count":1}`. Mana is paid from the
+`{"kind":"remove_counters","counter":"charge","count":1}`, and the three the player picks
+the payment for: `{"kind":"sacrifice","card_type":"creature","another":true}`,
+`{"kind":"discard","count":1}`, and
+`{"kind":"exile_from_graveyard","class":"creature"}`. Mana is paid from the
 activating player's pool through the same seam a cast uses, and the whole cost is paid all
 or nothing — a failed mana payment never leaves the source tapped. CR 302.6 still forbids
 a summoning-sick creature paying `{T}`, including for a mana ability.
@@ -573,24 +747,36 @@ choice to ride on the action.
   is not a loyalty cost: that one is signed, may *add*, and carries CR 606.3's two
   timing rules, and collapsing the two would make a charge counter a loyalty ability.
 
-The other two are the ones the **player picks the payment for**, and everything about them
+The other three are the ones the **player picks the payment for**, and everything about them
 follows from that. The choice arrives on the action, in the same `payment` list a cast
 carries (`docs/protocol.md`), because a cost is paid as the ability is activated (CR
 602.2b): there is no resolution to ask during, and once the ability is on the stack there is
-nothing left to take back. Neither is offered without something to pay it, so an ability
+nothing left to take back. None is offered without enough to pay it, so an ability
 with nothing to feed it is simply not activatable rather than activatable and then free.
 
-- `sacrifice` takes **one** permanent the activator controls (CR 701.17b — whose permanent
+- `sacrifice` takes permanents the activator controls (CR 701.17b — whose permanent
   it is stays a rule rather than a field). `card_type` and `subtype` narrow what qualifies
   and both default to any, so `{"kind":"sacrifice","subtype":"Goblin"}` is exactly
   `Sacrifice a Goblin`: a Goblin is a Goblin whatever else it is, and a Goblin token counts
   because the subtype is read off the printed face. `another` excludes the source — the
   *another* of `Sacrifice another creature` — and without it an ability may eat its own
-  source, which is legal and still resolves (CR 113.7a). Paying it is a real death down the
+  source, which is legal and still resolves (CR 113.7a). `count` is the same
+  `{"exactly": n}` field a cast's additional cost takes and defaults to exactly
+  one, so `{"kind":"sacrifice","card_type":"artifact","count":{"exactly":2}}` is
+  `Sacrifice two artifacts` — one cost taking a pair, refused by one, rather than two costs
+  a player could half-pay. Paying it is a real death down the
   same leaves-battlefield seam `sacrifice_this` uses, so a dies trigger sees it.
 - `discard` takes `count` cards from the activator's hand (CR 701.8). Unlike the cast-side
   additional cost there is no card to exclude: the source is a permanent, not a card in the
   hand paying for itself.
+- `exile_from_graveyard` takes `count` cards out of the activator's **own** graveyard
+  (CR 701.19), narrowed by `class` — the same `any` / `creature` / `instant_or_sorcery` /
+  `artifact` / `land` set a graveyard target spec uses, read off the printed face because a
+  card in a graveyard has no computed characteristics. Whose graveyard stays a rule rather
+  than a field: every printed cost of this shape says *your graveyard*. It is **not** a
+  sacrifice with a different destination — nothing leaves the battlefield, so nothing dies
+  and no dies trigger fires — and the ability stops being offered when the pile runs out,
+  which is the whole of what such a card does.
 
 Mana is **not** named on an activation's payment. It is paid from the pool, floated by
 activating mana abilities as actions in their own right, exactly as it always was.
@@ -600,6 +786,22 @@ that fold into no characteristic and no state-based action — `charge`, `gold`,
 `corpse`. Those four are a name and a count that the printing card's own abilities read;
 they are kept distinct from one another rather than aliased, because two cards on one
 battlefield may name different counters and one card's ability must not spend the other's.
+
+### Activation timing (CR 602.5d)
+
+An activated ability may carry a `timing`, which is `any_time` unless it says otherwise:
+
+```json
+{"type": "activated", "timing": "sorcery_speed",
+ "cost": [{"kind": "mana", "mana": "{2}"}], "effects": [{"kind": "draw_card", "count": 1}]}
+```
+
+`sorcery_speed` is the printed `Activate only as a sorcery.` — its controller's turn, a
+main phase, an empty stack. It is *authored* rather than derived, unlike the sorcery timing
+a loyalty ability (CR 606.3) and an equip ability (CR 702.6b) are under: those are rules
+about a kind of ability, while this is a line of text on one particular ability that
+nothing about its cost or its effect implies. All three are measured by the same predicate,
+gated in the offer and re-derived in `apply_action`.
 
 ### Planeswalkers and loyalty (CR 306, CR 606)
 
@@ -645,6 +847,78 @@ block, and the toughness-based state-based actions never touch it. It *can* be a
 (CR 508.1a): an attack names a player or a planeswalker, the planeswalker's controller
 declares blockers for attackers attacking it, and combat damage that gets through removes
 loyalty.
+
+### A card with two faces (CR 712)
+
+A card has an **ordered list of faces**. For almost every card that list has one entry —
+the definition above *is* the front face — and nothing in the schema changes. A
+transforming double-faced card authors its second face under `back_face`:
+
+```json
+{
+  "schema_version": 1,
+  "functional_id": "nicol_bolas_the_ravager",
+  "name": "Nicol Bolas, the Ravager",
+  "types": ["creature"],
+  "mana_cost": "{1}{U}{B}{R}",
+  "power": 4,
+  "toughness": 4,
+  "abilities": [
+    {
+      "type": "activated",
+      "timing": "sorcery_speed",
+      "cost": [{ "kind": "mana", "mana": "{4}{U}{B}{R}" }],
+      "effects": [{ "kind": "exile_self_and_return_transformed" }]
+    }
+  ],
+  "back_face": {
+    "name": "Nicol Bolas, the Arisen",
+    "types": ["planeswalker"],
+    "subtypes": ["Bolas"],
+    "colors": ["blue", "black", "red"],
+    "loyalty": 7,
+    "abilities": [
+      {
+        "type": "activated",
+        "cost": [{ "kind": "loyalty", "amount": 2 }],
+        "effects": [{ "kind": "draw_card", "count": 2 }]
+      }
+    ]
+  }
+}
+```
+
+**`functional_id` names the card, not a face** (ADR 0008 §3). A two-faced card is one
+identity, one printing record, and one row in the compatibility report, exactly as a real
+set prints one card — so `data/sets/` is untouched by this and a decklist names the card by
+the front face's slug.
+
+A `back_face` carries only the fields a *permanent* has: `name`, `supertypes`, `types`,
+`subtypes`, `mana_cost` (which must be empty — see below), `colors`, `power`/`toughness`,
+`loyalty`, `abilities`, `keywords`, and `restrictions`. It has no `spell_effects`, no
+`additional_cost`, and no `attachment`, because a back face is never cast (CR 712.4a) and
+nothing attaches by turning over; those fields do not exist on it, so writing one is a
+parse error rather than a rule to remember. Its `colors` are authored rather than derived,
+which they have to be: the face has no cost whose pips could imply them.
+
+Every rule the schema applies to a face is applied to **both** faces — a back face that is
+a creature needs power and toughness, a back face that is a planeswalker needs `loyalty`,
+and a `restrictions` list on a non-creature back face is refused exactly as it is on the
+front.
+
+Turning a permanent over is one effect, `transform_self` (CR 701.28a), and it is *the same
+object*: counters, marked damage, attachments, and combat state all survive it (CR 712.a),
+because the face is a field on the permanent and none of those are. The compound form
+printed on Nicol Bolas, `exile_self_and_return_transformed`, is deliberately not that — it
+is two zone changes, so what returns is a **new** object (CR 400.7) with a fresh id and,
+for a planeswalker back face, its own starting loyalty.
+
+A back face's mana **value** is its front face's (CR 712.4d), not zero. A card outside the
+battlefield has only its front face's characteristics (CR 712.4a), so nothing but a
+permanent ever carries a face at all.
+
+Modal double-faced cards — a card whose second face is a thing you may *cast* — remain out
+of scope, and the empty-cost rule is what keeps that honest.
 
 ### Emblems (CR 114)
 
@@ -697,6 +971,7 @@ The conditions are:
 | `milled_this_way` | Whether a card matching `filter` was milled **by this resolution** |
 | `discarded_this_way` | Whether the controller discarded a card during this resolution |
 | `gained_life_this_turn` | Whether the controller gained at least `amount` life **this turn** |
+| `attacked_or_blocked_this_turn` | Whether the effect's own **source** was declared as an attacker or a blocker **this turn** |
 
 Every one but the first reads the recorded events rather than the zones or the totals, and
 that is the point: a Zombie already in the graveyard was not milled this way, and a graveyard
@@ -716,6 +991,21 @@ three life gained, so no reading of a life total — against the turn's opening 
 other — could answer it. `amount` is an inclusive lower bound on the turn's gains **in
 total**, so two gains of three satisfy a threshold of five; `1` is the plain "if you gained
 life this turn" and is written that way in the generated rules text.
+
+```json
+{ "kind": "conditional",
+  "condition": { "kind": "attacked_or_blocked_this_turn" },
+  "then":      [{ "kind": "shuffle_self_into_library" }] }
+```
+
+`attacked_or_blocked_this_turn` is the one condition about the **source** rather than about
+its controller — "you" is not the subject of that sentence, one particular permanent is — so
+it is false for any object that is not an ability of a permanent (a spell, an emblem's
+ability). Its window is the turn, and it reads the turn's recorded attacker and blocker
+declarations rather than the board, because the board has forgotten: the end-of-combat
+turn-based action clears `attacking` and `blocking` (CR 511.3), so by the end step where a
+card asks this, the declaration is the only witness left. Both halves are one question
+because a printed card asks them as one, and two combats in a turn both count.
 
 A `permanents` selector is a small product — `scope` (`you_control`, `opponents_control`,
 `any`; default `you_control`), optional `card_type`, optional `subtype`, optional `color`,
@@ -804,16 +1094,44 @@ control" means on the card that printed the grant, not the host's controller.
 
 Not every X is a count of permanents. The other sources are a closed set — a
 `DerivedAmount`, authored as an `amount` block with a `source` tag — and there is no
-arithmetic over them: no halving, no adding two together, and no way to compose one out of
-another. A card that needs a new phrase adds a source.
+expression language over them: no doubling, no adding two together, and no way to compose
+one out of another. A card that needs a new phrase adds a source.
 
 | `source` | Reads | Written on a card as |
 | --- | --- | --- |
+| `announced_x` | the value of **X its controller announced** as the spell was cast (CR 601.2b) | `deals X damage to any target` |
 | `life_gained_this_turn` | how much life **you** have gained this turn (CR 118.3) | `where X is the amount of life you gained this turn` |
 | `milled_this_way` | how many cards **this resolution** milled matching `filter` | `for each land card put into their graveyard this way` |
 | `greatest_mana_value` | the greatest mana value among the permanents `among` names (CR 202.3) | `equal to the greatest mana value among artifacts you control` |
+| `sacrificed_this_way` | how many permanents **this resolution** has sacrificed | `Sacrifice any number of lands. Search your library for up to that many land cards` |
+| `sacrificed_creature_power` | the power the creature a cost sacrificed **had** (CR 608.2h) | `deals damage equal to the sacrificed creature's power` |
 
-Two effects read one:
+`announced_x` is the odd one out and worth stating plainly: it reads neither the board
+nor the event log, because there is nothing to read. X was **chosen**, at announcement,
+before targets and before payment, and it was locked the moment it was named — it rides on
+the stack object from there, so the mana that was charged, the effect that resolves, and
+the text the stack entry shows are all the same number by construction. It is zero for an
+object that announced none.
+
+| `half_rounded_up` | **half** of the `of` total, rounded up | `half their life, rounded up` |
+
+`half_rounded_up` is the one source that is arithmetic *over* another number, and it is a
+source rather than an operator on purpose: "half, rounded up" is a phrase printed cards
+write about a handful of named totals, not something they compose. Its `of` names one of
+three, each read of **the player the effect names** rather than of the controller — the
+whole point of `each player loses half their life` is that each of them reads their own:
+
+| `of` | Reads |
+| --- | --- |
+| `life_total` | that player's life total (CR 119.1); a total at or below zero halves to nothing |
+| `hand_size` | how many cards are in that player's hand, as the effect is reached |
+| `creatures_controlled` | how many creatures that player controls (CR 613 layer 2) |
+
+Rounding is **up and is not a field**. Every card that halves a total says which way it
+rounds, and one that rounds down is a different phrase that will add its own source — so
+no card can be authored that rounds the direction its text does not say.
+
+Eight effects read a source:
 
 ```json
 { "kind": "pump_by_amount", "target": "any_creature",
@@ -824,7 +1142,45 @@ Two effects read one:
               "among": { "scope": "you_control", "card_type": "artifact" } } }
 { "kind": "draw_cards_by_amount",
   "amount": { "source": "milled_this_way", "filter": { "kind": "land" } } }
+{ "kind": "deal_damage_by_amount", "target": "any_target",
+  "amount": { "source": "announced_x" } }
+{ "kind": "deal_damage_by_amount", "target": "any_target",
+  "amount": { "source": "sacrificed_creature_power" } }
+{ "kind": "search_library", "take": 0, "filter": { "kind": "land" },
+  "destination": "battlefield_tapped",
+  "take_amount": { "source": "sacrificed_this_way" } }
+{ "kind": "lose_life_by_amount", "player_ref": "each_player",
+  "amount": { "source": "half_rounded_up", "of": "life_total" } }
+{ "kind": "discard_by_amount", "player_ref": "each_player",
+  "amount": { "source": "half_rounded_up", "of": "hand_size" } }
+{ "kind": "sacrifice", "player_ref": "each_player", "card_type": "creature",
+  "amount": { "source": "half_rounded_up", "of": "creatures_controlled" } }
 ```
+
+**Two of them read a sacrifice back rather than the game, and they read different
+moments.** `sacrificed_creature_power` reads a **cost** payment: a cost is paid as the
+object goes on the stack (CR 601.2h), so by the time it resolves the creature it ate is in a
+graveyard with no identity of its own — or, for a token, nowhere at all. The number is
+therefore captured *as the cost is paid* and carried on the stack object beside its targets;
+reading it at resolution reads what was written down, which is exactly CR 608.2h's
+last-known information. `sacrificed_this_way` reads the **resolution's own** sacrifice, one
+the same card performed a clause earlier, because its size is a decision that does not exist
+until a player makes it — and because a sacrificed land leaves no trace to count afterwards
+(only a creature's departure is an event, CR 700.4).
+
+A card that names either without the half that produces it fails the catalog validator
+(`Violation::AmountIsNeverSacrificed`), because the honest answer would be a silent zero.
+The producers are not interchangeable: a cost that eats a creature does not make
+`sacrificed_this_way` mean anything, and a sacrifice effect does not make
+`sacrificed_creature_power` mean anything.
+
+`deal_damage_by_amount` is `deal_damage`'s and `deal_damage_by_count`'s sibling in the same
+way, and its subject decides whether a target is chosen exactly as every other damage verb's
+does. `search_library`'s `take_amount` is a **field** rather than a twin verb for the reason
+`create_token`'s `count_of` is one: a second variant would duplicate the filter and the
+destination, and the number is the same number the effect already carries. When
+`take_amount` is present `take` is ignored. An amount of zero is a search that shuffles and
+finds nothing (CR 701.19c), not a stall.
 
 `pump_by_amount` is `pump_by_count`'s sibling for every X that is not a count, and freezes
 X into a fixed modifier in exactly the same way: life gained later in the turn does not
@@ -849,6 +1205,90 @@ resolution, and the card reading the number is the card that just did the millin
 graveyard" is the player the effect above it already named, so a scope here would be a
 second way to say the same thing and a second way to get it wrong.
 
+`lose_life_by_amount` is `lose_life`'s sibling and reaches the same seam, so the loss still
+drives the zero-life state-based action (CR 704.5a). `discard_by_amount` and `sacrifice`
+both **suspend** and ask their player, one question per named seat, and both fix their
+bounds as the question is *posed* — from the hand and the board as they stand then
+(CR 608.2), clamped to what is actually there. A player told to discard two who holds one
+discards the one; a player told to sacrifice two who controls one sacrifices the one; a
+player with neither is never asked.
+
+`discard_by_amount` is deliberately the narrow discard: the cards are picked by the player
+discarding them and any card in the hand may be picked. A coercive or filtered discard of a
+derived number is a card nobody has printed, and the fields it would need arrive with it.
+
+`sacrifice` is the sacrifice that is an *effect* rather than a cost, and it is the one
+choice in the IR whose candidates are **permanents** — which is what lets a token be picked
+(a card selection names a `CardInstance`, and a token has none, CR 111). Whose permanents is
+not a field: CR 701.17b lets a player sacrifice only what they control, so the class is
+always the named player's own, with `card_type` narrowing it to one printed type.
+`card_type` restates the class the amount's own phrase already names ("half the creatures
+they control") because a number cannot say which permanents may be picked.
+
+**Leaving `amount` out is `any number`** — Scapeshift's `Sacrifice any number of lands`:
+
+```json
+{ "kind": "sacrifice", "player_ref": "controller", "card_type": "land" }
+{ "kind": "search_library", "take": 0, "filter": { "kind": "land" },
+  "destination": "battlefield_tapped",
+  "take_amount": { "source": "sacrificed_this_way" } }
+```
+
+It is the same question with different bounds rather than a second verb: a floor of none and
+a ceiling of everything the class holds, clamped to what is on the board. Answering it with
+none is an answer and not a refusal, and a player with nothing of the class is never asked
+at all — so the number the next clause reads is zero and the search finds nothing, which is
+what the printed card means on an empty board. Here `card_type` is the *only* place the
+class is named, since there is no amount phrase to carry it.
+
+That is also why this is not a cost. A cost is paid at announcement (CR 601.2h), so a
+countered Scapeshift would have already eaten the lands; as an effect it sacrifices nothing
+unless it resolves, which is what Gatherer says the card does.
+
+### A chosen permanent's power (`gain life equal to its power`)
+
+One amount is **not** a `DerivedAmount`: the power of a permanent the same effect is about
+to remove. `exile` takes an optional `gain_life`, and `"power"` is its one value:
+
+```json
+{ "kind": "exile", "target": "any_colorless_creature", "gain_life": "power" }
+```
+
+It rides on the exile rather than standing as a life-gain effect after it because of
+CR 608.2h. "Its power" is a question about an object that is no longer on the battlefield
+by the time a following effect would ask, so the number is read *here*, before the permanent
+moves, and the life is gained in the same breath. The power read is the **computed** one
+(CR 613), so a creature grown by counters or an anthem is worth what it had become; a
+negative power gains nothing.
+
+### A characteristic-defining power (CR 604.3, CR 613 layer 7a)
+
+A card whose printed power is `*` has a **characteristic-defining ability**, not an effect.
+It is authored as an ability, `power` is written as `0`, and the asterisk is what the
+ability says:
+
+```json
+{ "type": "defined_power",
+  "count_of": { "scope": "yours", "filter": { "kind": "instant_or_sorcery" } } }
+```
+
+`count_of` is a `GraveyardCount` — a `scope` (`yours`, the default, or `any` for every
+graveyard) and a `filter`, the same card filter a discard or a search names. It is the
+graveyard counterpart of `count_of`'s permanent selector and keeps its own spelling for the
+same reason: it is read where the question is asked rather than fixed on a resolution.
+
+That is the whole difference from every amount above. A defined power is **re-derived on
+every read**: a card put into the graveyard changes it with nothing going on the stack, no
+event in between, and no window in which the old number is still showing. It applies in
+CR 613 **layer 7a**, ahead of every other power layer, so it *replaces* the printed seed and
+everything else piles on top of the result — a `+1/+1` counter still adds one, an anthem
+still adds its own. Layer 6 comes first, so a creature made to lose all its abilities loses
+this one too and is back to what its card printed.
+
+Only power is definable today. A card that defines its toughness, its colour, or its type
+adds its own variant; a single "defines a characteristic" ability carrying a layer number
+would let a power be defined in layer 4.
+
 ### Emptying a graveyard, and the top of a library
 
 `exile_graveyard` moves **every** card of the named player's graveyard to exile at once. Its
@@ -860,18 +1300,35 @@ resolution that does nothing.
 `return_to_hand`'s hand and `exile`'s exile. A **token** put anywhere but the battlefield
 ceases to exist (CR 111.7), so a bounced token never arrives in the library either.
 
-### Mana in any combination of colours
+`shuffle_self_into_library` is the fourth, and the only one that is not a place: the card
+goes into its owner's library and the library is then randomized (CR 701.19), so a shuffled
+card is somewhere in the deck and nowhere in particular. It takes no `target` — the subject
+is the ability's **own source**, like `pump_self` and `restrict_self` — so it fills no slot
+and can never fizzle, and a source that has already left the battlefield is simply not there
+to move. The shuffle draws from the game's seeded stream (ADR 0006), so the same seed replays
+the same deck order; it happens whether or not a card arrived, which is why a token shuffled
+into a library ceases to exist on the way and the library is still shuffled.
 
-`add_mana_any_color` produces mana whose **colours the player chooses**, one point at a time:
+```json
+{ "kind": "shuffle_self_into_library" }
+```
+
+### Mana whose colours the player chooses
+
+`add_mana_any_color` produces mana whose **colours the player chooses**:
 
 ```json
 { "kind": "add_mana_any_color", "amount": 2,
   "restriction": { "kind": "spells_with_subtype", "subtype": "Dragon" } }
+{ "kind": "add_mana_any_color", "amount": 2, "same_color": true }
 ```
 
 The amount is authored; the colours are not authored at all. On resolution the controller is
-asked once per point — so two mana may be two of one colour or one each of two — through the
-same mid-resolution choice queue a discard or a scry uses, answered with `answer_color`. The
+asked through the same mid-resolution choice queue a discard or a scry uses, answered with
+`answer_color`. How many times they are asked is the whole of the difference between the two
+printed phrasings: *add two mana in any combination of colours* asks once per point, so two
+mana may be one each of two, while `"same_color": true` — *add two mana of any one colour* —
+asks once and pays out the whole amount in the answer. `same_color` defaults to `false`. The
 optional `restriction` rides on every point produced, exactly as `add_restricted_mana`'s does.
 
 ### A colour named as a permanent enters (CR 614.12)
@@ -907,8 +1364,171 @@ card that never names a colour is a validation error (`ChosenColorIsNeverNamed`)
 engine's honest answer to a permanent with no colour recorded is to notice nothing, and a card
 that silently does nothing is the hardest kind of wrong to spot.
 
-Naming a **card** or a **type** is not authorable: only a colour is recorded, and nothing on a
-spell records a choice at all.
+Naming a **type** is not authorable, and nothing on a spell records a choice at all. Naming a
+**card** is — `enters_naming_card` below — and so is naming a **permanent**, which
+`enters_as_copy` rides this same seam for.
+
+### A card named as a permanent enters (CR 614.12)
+
+`enters_naming_card` is the same seam for a *card name*. It declares that the permanent's
+controller names a card as it enters, and that the answer stays on the permanent:
+
+```json
+{ "abilities": [
+    { "type": "enters_naming_card", "class": "nonbasic_land" },
+    { "type": "static",
+      "affects": { "scope": "permanents_your_opponents_control", "card_type": "land",
+                   "with_the_named_card": true },
+      "modification": { "kind": "lose_all_abilities" } } ] }
+```
+
+`class` is what a card puts between "name a" and "card"; the only value is `nonbasic_land`,
+and it grows by adding one when a card needs it. The choice happens exactly where the colour
+choice does — the card waits off the battlefield until it is answered — and everything said
+about that above applies here unchanged.
+
+**What is recorded is a functional identity, never prose, and this is a legal rule rather
+than a style one.** The answer set is derived from the **catalog** on every read, so a player
+names one of the cards SAGE has itself defined: the choice offers those cards, the answer
+carries the card's authored identity, and the engine refuses anything outside the freshly
+derived list. There is no path by which a name the repository does not already contain can
+reach a game state, and a client composes no list and sends no string.
+
+A static ability reads the answer back with `{"with_the_named_card": true}` on a
+`permanents_your_opponents_control` selector — "with the chosen name". Writing that on a card
+that declares no `enters_naming_card` is a validation error (`ChosenNameIsNeverNamed`), for
+the reason watching the chosen colour without choosing one is: the phrase would have no
+referent and the class could never contain a permanent. Naming a card and never reading it
+back is fine.
+
+### Copying an object (CR 707)
+
+Copying is **CR 613 layer 1** — earlier than every layer the engine models — and it is not a
+characteristic being overwritten. A copy is a permanent whose *printed seed* is a different
+object's; counters, damage, control changes, and every continuous effect are then applied on
+top of the copied values exactly as they would be on top of printed ones. That ordering is the
+whole feature: a creature that copies a 4/2 and carries two `+1/+1` counters is a 6/4, because
+layer 1 decided the power the counters are added to.
+
+**Copiable values are the printed ones** (CR 707.2): name, mana cost, colours, supertypes,
+types, subtypes, rules text, power, toughness, and loyalty — *as modified by other copy
+effects and by "as … enters" choices*, and by nothing else. So the engine records a copy as a
+handle to a printed face and nothing more; a card's printed face never changes, which is what
+makes the record a snapshot with nothing to keep fresh. Two rules follow for free:
+
+- **CR 707.2b** — changing the original afterwards changes nothing. Putting a counter on the
+  copied creature, enchanting it, or turning it over leaves the copy exactly as it was.
+- **CR 707.3** — a copy of a copy copies the same thing. The chain is followed *as the
+  snapshot is taken*, so a recorded copy always names a real printed face.
+
+#### `enters_as_copy`
+
+`enters_as_copy` is a card's declaration that its controller names a permanent **as it
+enters** (CR 614.12), and that from then on either this permanent or the one it is attached to
+has that permanent's copiable values. Mirror Image:
+
+```json
+{ "abilities": [
+    { "type": "enters_as_copy", "of": "creature_you_control", "optional": true } ] }
+```
+
+Metamorphic Alteration — the same declaration, applied to the Aura's host:
+
+```json
+{ "abilities": [ { "type": "enters_as_copy", "of": "any_creature", "subject": "attached" } ],
+  "attachment": { "kind": "aura", "attach_to": "any_creature" } }
+```
+
+| Field | Meaning |
+| --- | --- |
+| `of` | Which permanents may be named: `any_creature`, or `creature_you_control` |
+| `subject` | `this` (the default) — the entering permanent is the copy (CR 707.5); `attached` — its host is, for as long as it stays attached (CR 707.2c) |
+| `optional` | Whether naming nothing is a legal answer — the `You may have …` of a printed `enters as a copy` |
+
+It **names a permanent, not a target** (CR 115.1): nothing is aimed, no slot is filled at
+announcement, and hexproof has nothing to say about the answer. Like `enters_choosing_color` it
+is a *question* rather than a modification, so the CR 614 replacement layer does not collect it
+and there is nothing to order it against: the card waits on the choice queue, in no zone at
+all, and the permanent that then enters is already a copy. A question with no candidate — a
+`choose a creature` on an empty board — is not posed, and the permanent enters as itself.
+
+The two subjects differ only in who reads the answer back, and that difference is the whole of
+"is the copy continuous?". A `this` copy is recorded on the permanent that entered, so it lasts
+as long as that permanent does. An `attached` copy is recorded on the **Aura**, and its host's
+copy is derived from the attachment on every read — so the host stops being a copy the instant
+the Aura leaves or moves, with nothing to prune. Both are timestamped (CR 613.7): with two copy
+effects on one permanent the later one decides the copiable values, and every later layer — a
+granted keyword at 6, an Aura's `+2/+2` at 7c — applies on top of whichever won.
+
+#### Copying a permanent that has **transformed**
+
+**CR 707.8**: copying a double-faced permanent uses the copiable values of *the face that is
+currently up*. A copy of a permanent that has turned over is therefore the **back face** — its
+name, types, power, toughness, and rules text — and, per **CR 712.8e**, its mana value is
+**0**, because a back face has no mana cost of its own and the copy has no front face to borrow
+one from. (An untransformed double-faced permanent copies as its front face, mana cost and
+all.)
+
+A copy may only be a copy of a **creature**, and only a creature (or an Aura's creature host)
+may be one — so nothing here changes a permanent's card *types*. That matters because the
+type-changing layers (3–5) are still unmodeled and combat, targeting, and the state-based
+actions read printed types: the copy's types are a copiable value the computed characteristics
+carry, and they happen to agree with the printed ones in every case the vocabulary can
+express.
+
+Copying does not copy *face-up status*, and it does not make the copy two-faced. The copying
+permanent keeps its own card and its own faces; it simply reads a different face's
+characteristics. CR 707.8a — a **token** copy of a transforming permanent, which does get both
+faces and can turn over — is not built, and the compatibility report says so.
+
+#### `create_delayed_trigger`
+
+`create_delayed_trigger` creates a **delayed triggered ability** (CR 603.7) for the rest of the
+turn — the `When you next … this turn, …` of a printed card:
+
+```json
+{ "kind": "create_delayed_trigger",
+  "trigger": {
+    "event": { "next_spell_cast": "instant_or_sorcery" },
+    "effects": [ { "kind": "copy_spell", "target": "spell_on_stack", "new_targets": true } ] } }
+```
+
+The fourth per-turn thing an ability can leave on the state, recorded exactly like
+`create_replacement`: on a list carrying the turn it was created on, dropped at the same turn
+boundary, and **spent by firing** (CR 603.7b — `the next time` happens once). It is *not* gated
+on its source surviving: CR 603.7e says a delayed ability fires whether or not what created it
+is still around, and Doublecast is in a graveyard before its ability has anything to do.
+
+Its `event` vocabulary is one condition today, `{"next_spell_cast": <class>}`, which takes the
+same spell classes `you_cast_spell` does. The ability it creates acts on the spell it just
+watched — "that spell" — which the trigger event fixes rather than anybody choosing, so the
+fired ability reaches the stack with its slot already filled and its controller is never asked
+which spell it meant.
+
+#### `copy_spell`
+
+`copy_spell` puts a **copy of a spell** onto the stack, above the original (CR 707.10):
+
+| Field | Meaning |
+| --- | --- |
+| `target` | What may be copied — `spell_on_stack` |
+| `new_targets` | Whether the copy's controller may choose new targets for it (CR 707.10c) |
+
+This is a **different operation** from copying a permanent, and stays one. The copy is a new
+stack object that **was not cast**: no cast is recorded for it, nothing watching a cast notices
+it, and it has no card — so when it finishes resolving it ceases to exist rather than reaching
+a graveyard (CR 707.10a). What it does take from the original is the original's *decisions*
+(CR 707.10), which for this vocabulary means its chosen targets.
+
+With `new_targets`, the copy is put on the stack unaimed and its controller fills its slots
+through the same action a triggered ability's targets are chosen with. The offer is withheld —
+and the original's targets inherited instead — unless the copied spell declares at least one
+required slot with a legal candidate for it, because an offer with no answer would stall the
+game and CR 707.10c's "leave any number unchanged" is then the only answer left anyway.
+
+Only an **instant or sorcery** is copied. A copy of a permanent spell becomes a token as it
+resolves (CR 707.10f) and nothing here creates a token as a copy of anything, so such a copy is
+not made rather than made wrongly.
 
 ### Restricted mana (CR 106.6)
 
@@ -1017,9 +1637,47 @@ collected alongside whatever an ability created, so when more than one applies t
 entry the affected permanent's **controller** — not the effects' controller — chooses which
 applies first (CR 616.1), through the mid-resolution choice queue every other player decision
 rides. Each applies at most once to one event (CR 614.5), which is what makes the loop
-terminate. `enters_choosing_color` is deliberately not one of them: it is a question, not a
-modification anyone could order it against, and the entry is already deferred until it is
-answered.
+terminate. `enters_choosing_color`, `enters_naming_card`, and `enters_as_copy` are
+deliberately not among them: they are questions, not modifications anyone could order them
+against. Each is instead an
+**answer slot on the entry event** the seam refuses to finish while it is empty, so an answer
+fills its slot and hands the same event straight back — which is what lets a card ask more
+than one without any code saying which comes first, and what makes the whole loop terminate
+for the same reason CR 614.5 does.
+
+### Preventing damage
+
+`prevent_damage` raises a **damage-prevention shield** for the rest of the turn (CR 615.1).
+Root Snare:
+
+```json
+{ "kind": "prevent_damage", "damage": { "combat_only": true } }
+```
+
+Prevention is a replacement effect, and it is consulted at the single seam damage is dealt —
+so combat damage, a burn spell, a sweeper, and a fight are covered by one shield and by one
+piece of code. Damage that is prevented is **never dealt**: it is not marked on a permanent
+(CR 120.3d), so it never feeds the lethal-damage state-based action (CR 704.5g); it is not
+life loss (CR 120.3a); it gains a lifelink source nothing (CR 702.15e); it removes no loyalty
+(CR 120.3c); and it is reported nowhere, because there is no damage event to report.
+
+Its `damage` filter is the same shape `exile_entering`'s `entering` is — independent
+restrictions, each defaulting to "no restriction", so an omitted filter prevents every point
+of damage anyone would deal:
+
+| Field | Meaning |
+| --- | --- |
+| `combat_only` | Only **combat** damage (CR 510.1), including a trampler's excess |
+
+It differs from `create_replacement` in exactly one way, and it is the duration. `The next
+time …` is spent by applying it; `this turn` is not, and covers every damage event until the
+turn ends — so a shield is recorded with a duration rather than on the one-shot list, and it
+ends in the **cleanup step** alongside the pumps and the marked damage (CR 514.2) rather than
+at the turn boundary.
+
+Like a replacement it names no target and no player: it watches an *event*, so it prevents
+damage **anyone** would deal, which is what `all combat damage` says. Nothing yet prevents a
+fixed amount, names a recipient or a source, or makes damage unpreventable.
 
 ### Abilities that function from a graveyard
 
@@ -1042,7 +1700,7 @@ and still say where its ability works. Spit Flame:
 ```json
 { "type": "triggered",
   "event": { "permanent_enters": { "scope": "creatures_you_control", "subtype": "Dragon" } },
-  "effects": [{ "kind": "may", "cost": "{R}",
+  "effects": [{ "kind": "may", "cost": { "kind": "mana", "mana": "{R}" },
                 "effects": [{ "kind": "return_self_from_graveyard", "destination": "hand" }] }] }
 ```
 
@@ -1095,11 +1753,38 @@ is empty outside combat. `deal_damage` takes the same set.
 
 `creatures_you_control` additionally takes a `subtype`, which narrows the class to a tribe
 and replaces the noun in the generated text — `{"scope": "creatures_you_control", "subtype":
-"Dragon"}` reads as "Dragons you control".
+"Dragon"}` reads as "Dragons you control" — and a `min_power`, the "each creature you control
+**with power 4 or greater**" of an attack trigger:
+
+```json
+{ "kind": "grant_keyword_all",
+  "affects": { "scope": "creatures_you_control", "min_power": 4 },
+  "keyword": "trample" }
+```
+
+`min_power` is read through the **computed** characteristics (CR 613.1f), so a creature pumped
+to 4 is in the class and one shrunk below it is out. Asking for a computed power is safe here
+and refused inside a static ability's condition, and the difference is *when* the question is
+asked: a mass effect enumerates its class during a resolution, from outside the layer system,
+where there is no computation to recurse into.
 
 The affected set is locked in on resolution (CR 611.2c) — a creature that arrives later in
 the turn is untouched. That is the whole difference between one of these and an
 `Ability::Static` anthem, which is re-derived on every read.
+
+`destroy_all` is the mass counterpart of `destroy` (CR 701.7), and it takes its **own**
+scope vocabulary rather than the one above:
+
+```json
+{ "kind": "destroy_all", "affects": { "scope": "each_artifact_or_enchantment" } }
+```
+
+Its scopes are `each_creature` and `each_artifact_or_enchantment`. Separate because every
+member of the set above is a class of *creatures* feeding a pump or a keyword grant, and a
+non-creature scope there would make "artifacts you control get +1/+1" an authorable
+sentence that means nothing. Like every mass effect the set is enumerated on resolution,
+and each member leaves through the same destruction seam a single `destroy` uses — so a
+token ceases to exist (CR 111.7) and a death trigger sees every one of them.
 
 ### Tapping a whole seat's creatures, and skipping an untap step
 
@@ -1181,13 +1866,70 @@ battlefield, with nothing ever put on the stack — an anthem or a lord:
 ```
 
 - `affects` names the class. `creatures_you_control` takes `subtype` (which restricts it
-  to a lord's tribe — "other **Elves** you control") and `except_this` (the "other" in a
+  to a lord's tribe — "other **Elves** you control"), `keyword` (the "with **defender**"
+  of "each creature you control with defender"), and `except_this` (the "other" in a
   lord's wording, comparing the *permanent* rather than the card, so two copies of one
   lord do pump each other). `{"scope": "source"}` is the class of one — the "this
   creature" of a card that modifies itself, which flows through the same selector, the
   same timestamp, and the same layer as an anthem rather than needing a path of its own.
-- `modification` is either `power_toughness` (layer 7c, folded after counters in timestamp
-  order) or `grant_keyword` (layer 6, idempotent).
+
+  Both `subtype` and `keyword` are matched against the **printed** face. That is forced
+  rather than chosen: this selector is evaluated from *inside* the computation of the
+  affected permanent's characteristics, and asking for a computed keyword there is asking
+  the layer-6 fold for the answer it is in the middle of producing. So a creature that was
+  *granted* defender is outside "each creature you control with defender". The trigger
+  selector's `keyword` (see [Trigger conditions](#trigger-conditions)) runs outside the
+  layer system and does read the computed set; the asymmetry is that recursion and nothing
+  else.
+
+  `permanents_your_opponents_control` is the one class that reaches past the source's own
+  controller: it takes a `card_type` ("**lands** your opponents control") and
+  `with_the_named_card`, which narrows it to permanents whose card is the one the source
+  named as it entered. Every part of it is re-asked on each read, which is the whole
+  difference between it and a `pump_all` — a land that arrives afterwards is in the class
+  the moment it arrives, and one that changes hands leaves it at CR 613 layer 2.
+- `modification` is one of six, and two of them are not in a layer at all:
+  - `power_toughness` — layer 7c, folded after counters in timestamp order.
+  - `grant_keyword` — layer 6, idempotent.
+  - `assigns_combat_damage_by` — **no layer**. The affected creatures assign combat damage
+    equal to the named `characteristic` (`power` or `toughness`) rather than to their
+    power (CR 510.1a, modified), read at the one place the combat-damage step asks how
+    much a creature assigns. Everything downstream follows for free: trample's excess
+    (CR 702.19e) is what is left of that amount after each blocker's lethal, and the
+    marked damage the lethal-damage state-based action reads (CR 704.5g) is what of it was
+    dealt.
+
+    **This is not a power-setting effect**, and the distinction is the card rather than a
+    nicety. The creature's power is untouched — every evasion rule, every selector with a
+    power bound, and the power a client is shown all keep reading it — because CR 613
+    orders effects that change *characteristics* and this changes none. A layer-7b
+    `set power to toughness` would be visible to all of them and would be a different
+    card.
+  - `attacks_as_though_no_defender` — **no layer**. The affected creatures may be declared
+    as attackers even though they have defender (CR 702.3b applied as though absent,
+    CR 609.4), read at the attacker declaration and nowhere else.
+
+    **This is not keyword removal.** The creature still has defender for every other
+    purpose: a card that counts creatures with defender still counts it, the keyword line
+    still prints it, and — the case that matters — the `keyword` filter of the very
+    selector that granted the permission still matches it. A permission built out of
+    `loses_keyword` would take the creature out of the class that granted it. It also
+    permits exactly one thing: a tapped creature, a summoning-sick one, and one under a
+    `cant_attack` restriction all still cannot attack.
+  - `lose_all_abilities` and `grant_ability` — layer 6, the same addition and subtraction an
+    attachment makes, reached from a printed static ability instead:
+
+    ```json
+    {"kind": "grant_ability",
+     "ability": {"type": "activated", "cost": [{"kind": "tap"}],
+                 "effects": [{"kind": "add_mana_any_color", "amount": 1}]}}
+    ```
+
+    A granted ability is folded into the affected permanent's set by the one accessor every
+    collector reads, so it is offered, paid for, and fired by the code a printed ability goes
+    through. Two static abilities on one card share their source's timestamp and apply in the
+    order the card lists them, which is how "lose all abilities **and** have …" is written as
+    two entries and still means one thing.
 - `condition` is the optional `as long as …` clause. Absent is unconditional, which is
   what every anthem and lord says:
 
@@ -1200,10 +1942,31 @@ battlefield, with nothing ever put on the stack — an anthem or a lord:
 
   The conditions are `controls_at_least` — the same `permanents` selector an
   intervening-if counts, with `count` defaulting to the "an" of "as long as you control
-  **an** artifact" — and `source_is_attacking`. It is a separate vocabulary from the
-  `Condition` an `Effect::Conditional` takes, because most of that one's variants ask what
-  a *resolution* or a *turn* has already done and a continuous ability is neither: it has
-  no window of its own to read and no start to measure from.
+  **an** artifact" — `source_is_attacking`, `source_is_enchanted_or_equipped` (the
+  source has something attached to it, CR 303.4 / CR 301.5 — one condition because a card
+  prints one, and only the attachment's own kind tells the two words apart), and
+  `source_has_not_dealt_damage`. It is a separate vocabulary from the `Condition` an
+  `Effect::Conditional` takes, because most of that one's variants ask what a *resolution*
+  or a *turn* has already done and a continuous ability is neither: it has no window of its
+  own to read and no start to measure from.
+
+  ```json
+  {"type": "static", "affects": {"scope": "source"},
+   "modification": {"kind": "grant_keyword", "keyword": "hexproof"},
+   "condition": {"kind": "source_has_not_dealt_damage"}}
+  ```
+
+  `source_has_not_dealt_damage` is the "…**yet**" of a card that is protected until it
+  strikes, and its window is the permanent's whole life on the battlefield — not a turn and
+  not a resolution, which is exactly why it belongs here rather than in the intervening-if
+  vocabulary. It is the one condition answered from a fact stored on the permanent rather
+  than from the event log: the log is a bounded ring and records what damage was dealt *to*,
+  never by what, so a long enough game would forget the very hit the condition exists to
+  notice. Stored is not latched — the clause is re-asked on every read, so the keyword is
+  gone in the same batch the damage lands in — and a permanent that leaves and returns is a
+  new object that has dealt nothing (CR 400.7). The fact is written at the three seams a
+  permanent is the *source* of damage: combat damage, a `fight`, and the damage verb of an
+  ability whose source is a permanent (CR 609.7).
 
   A `permanents` selector gains a `color` alongside its `card_type` and `subtype`, which
   is what lets a card ask for "a **blue** creature" or "an **Ajani** planeswalker".
@@ -1253,6 +2016,44 @@ characteristics loop walks them.
 `Option<usize>` and the view carries `{"cards": n}` or `"unlimited"`; a sentinel would be
 a number nobody printed that every reader would have to recognise.
 
+### Cost modification (CR 601.2f)
+
+A continuous ability whose subject is a **spell** is its own ability kind for the reason
+`player_static` is: a `static`'s `affects` names a class of permanents and its `modification`
+names a CR 613 layer, and a cost modification is neither — it applies while a spell is being
+cast, before the object it produces exists.
+
+```json
+{ "type": "cost_modifier",
+  "spells": { "creature": { "min_power": 4 } },
+  "modification": { "kind": "reduce", "generic": 2 } }
+```
+
+- `spells` names the class, in the same vocabulary a
+  [cast trigger](#trigger-conditions) watches.
+- `modification` is `reduce` or `increase`, each carrying a `generic` amount.
+
+**Only the generic component moves**, in both directions. A coloured or `{C}` requirement is
+untouched, which is what every printed reducer says: `{2}` off a `{4}{G}` leaves `{2}{G}`, and
+a seat with no green source still cannot cast it. Two variants rather than one signed number
+because CR 601.2f applies them at different moments — the total is the printed cost *plus*
+every additional cost and cost increase, *minus* every cost reduction, and only the result is
+held at `{0}`. A `{1}` spell under a `{2}` tax and a `{2}` reduction therefore costs `{1}`,
+not `{2}`.
+
+The caster is always the source's **controller** — the "you cast" every printed ability of
+this shape says — so there is no scope to author and none to get wrong.
+
+Like the other two continuous kinds it is **derived on every read, never stored**: the
+discount begins the instant its source is on the battlefield and ends the instant it leaves,
+with nothing to prune. It is read by `sage_engine::total_cast_cost`, which is the single
+answer every road that touches a cast's price goes through — the offer (`valid_actions`), the
+pip enumeration, the payment search, the legality gate, the charge, and the view. The idle
+predicate joins them by construction, since it asks `valid_actions` of a board with its mana
+floated rather than reading a cost of its own. That single answer is the whole point: a
+modification applied at only one of those sites would advertise casts a seat cannot take,
+auto-pass a seat that has a play, or offer a discount the charge then refuses.
+
 ### Effects that ask a player to choose cards
 
 Four effects stop mid-resolution and hand one named player a decision (issue #604). The
@@ -1263,7 +2064,7 @@ as it is *at that moment* — see `docs/decisions/0013-mid-resolution-player-cho
 | --- | --- | --- |
 | `discard` | `count` cards of `player_ref`'s hand | they go to that player's graveyard |
 | `scry` | any number of the top `count` cards | the chosen go to the bottom, in the chosen order |
-| `look_at_top` | up to `take` of the top `count` | the chosen go to `destination`, the rest to the bottom in a random order |
+| `look_at_top` | `take_min` to `take` of the top `count` | the chosen go to `destination`, the rest to the bottom as `bottom_order` says |
 | `search_library` | up to `take` cards of the library | the chosen go to `destination`, then the library is shuffled |
 
 ```json
@@ -1295,15 +2096,49 @@ as it is *at that moment* — see `docs/decisions/0013-mid-resolution-player-cho
   entering the battlefield this way goes through the same seam a resolving permanent
   spell uses, so its "enters tapped"/"enters with counters" replacements and its ETB
   triggers all fire.
+- `take_min` (`look_at_top` only) is the **fewest** cards a legal answer may take, and
+  `take` is the most: together they are one range. It defaults to `0`, which is every look
+  printed *you may reveal … and put it into your hand* — so a card that says nothing keeps
+  the take optional and nothing in the catalog changes. Set it equal to `take` for the
+  cards that make the take mandatory: *put one of them into your hand* is not a `you may`,
+  and modelling it as one lets a player decline a card the printed spell hands them.
+- `bottom_order` (`look_at_top` only) is how the cards **not** taken reach the bottom:
+  `random` (the default) or `chosen`. The two are the two wordings printed on these cards
+  and they are different rules — *in a random order* is the game deciding, and *in any
+  order* is the player deciding.
+
+```json
+{ "kind": "look_at_top", "count": 3, "take": 1, "take_min": 1,
+  "destination": "hand", "bottom_order": "chosen" }
+```
+
+A `chosen` bottoming asks its controller a **second question** (issue #746), through the
+same queue the taking went through: an *ordering* of the remainder rather than a selection
+from it, answered with every one of those cards exactly once, first named ending up
+deepest. A duplicate, a card the remainder does not contain, and a short answer are each
+rejected outright.
+
+It also **draws nothing from the seeded RNG**, which a `random` bottoming does. That is
+load-bearing rather than an optimisation: the player's answer is already in the action log,
+and consuming randomness for a decision they made would move every later shuffle in the
+game on replay (ADR 0006).
 
 A question with **no legal answer is never asked**: an empty hand, an empty library, or a
 look that turns up nothing matching applies the effect with an empty selection and
 resolves — including the aftermath, so a look that whiffs still bottoms what it looked at
-and a search that finds nothing still shuffles (CR 701.19c).
+and a search that finds nothing still shuffles (CR 701.19c). The ordering has its own form
+of the same rule: a remainder of one card, or of none, has one arrangement, so it is
+bottomed outright and nobody is asked. A look that could take nothing still asks for the
+arrangement, because skipping the first question does not skip the second.
 
-Two orderings are deliberately **not** modeled and are listed in the exclusions: the
-cards a scry keeps on top stay in their printed order, and the cards a `look_at_top`
-bottoms go there at random rather than in an order the player picks.
+**The floor belongs to that rule, not to the card.** Every bound here is clamped to what
+the zone can actually supply, so a mandatory `take_min` that nothing can meet — an empty
+library, or a filter no card in the window matches — becomes no minimum at all and the
+effect resolves having taken nothing. A minimum is a statement about the answers a player
+may give, never a reason the game stops.
+
+One ordering is deliberately **not** modeled and is listed in the exclusions: the cards a
+scry keeps on top stay in their printed order.
 
 ### Creating tokens (CR 111)
 
@@ -1375,21 +2210,41 @@ engine applies.
 
 ```json
 { "kind": "may", "effects": [{ "kind": "draw_card", "count": 1 }] }
-{ "kind": "may", "cost": "{1}",
+{ "kind": "may", "cost": { "kind": "mana", "mana": "{1}" },
   "effects": [{ "kind": "draw_card", "count": 1 }] }
+{ "kind": "may", "cost": { "kind": "sacrifice", "card_type": "creature", "another": true },
+  "effects": [{ "kind": "pump_self", "power": 2, "toughness": 2 }] }
 ```
 
 - The first reads "you may draw a card"; the second, "you may pay {1}. If you do, draw a
-  card". Rules text is composed from the wrapped effects, so the printed sentence and the
-  question the player is asked are the same words.
+  card"; the third, "you may sacrifice another creature. If you do, …". Rules text is
+  composed from the wrapped effects and the cost, so the printed sentence and the question
+  the player is asked are the same words.
 - **The controller answers**, whoever else the surrounding ability names and whoever holds
   priority. A trigger that goes on the stack during an opponent's turn still asks its own
   controller.
-- `cost` is a mana cost in the same `{...}` notation an activation cost uses, paid from
-  the controller's pool. While the question is owed they may activate **mana abilities**
-  and nothing else (CR 605.3a), so a cost is payable if the board could still make the
-  mana. A cost no amount of tapping could pay is never asked at all — it is declined, and
-  recorded as declined.
+- `cost` is a tagged object, and the vocabulary is the activation cost's minus every
+  component that names the source (issue #744):
+
+  | `kind` | Fields | Reads as |
+  | --- | --- | --- |
+  | `mana` | `mana` (the `{...}` string) | `you may pay {1}` |
+  | `sacrifice` | `card_type`, `subtype`, `another` — all optional | `you may sacrifice another creature` |
+  | `discard` | `count` | `you may discard a card` |
+
+  `tap`, `loyalty`, `sacrifice_this`, and `remove_counters` are **not** accepted here and
+  fail to parse: the question is answered from a queue that carries no source, and by then
+  the object that asked may have left. That is the narrowed exclusion entry.
+- **Mana is charged on the answer; a picked payment is a second question.** Accepting a
+  `sacrifice` or a `discard` poses the ordinary selection over the battlefield or the hand
+  and hangs the wrapped effects behind it, so the cost is always paid before what it bought
+  and a sacrificed permanent dies down the same seam every other sacrifice uses. `another`
+  excludes the permanent whose ability asked, resolved when the question was posed.
+- While the question is owed the chooser may activate **mana abilities** and nothing else
+  (CR 605.3a) — a sacrifice cost does not widen that — so a mana cost is payable if the
+  board could still make the mana. **A cost nothing could pay is never asked at all**: no
+  mana any tapping could make, no permanent of the named class, not enough cards in hand.
+  It is declined, and recorded as declined.
 - **Declining is not a fizzle.** The wrapped effects are skipped; every other effect of
   the same ability, and the spell's own trip to its final zone (CR 608.3), happen exactly
   as if the `may` were not there.
@@ -1436,9 +2291,19 @@ it, "whenever a creature **with flying** attacks". Both are read through the com
 characteristics of the state the event happened in, so a creature that entered pumped is
 judged by what it was then, one that died shrunk by what it was as it died, and one that was
 *granted* flying is a flier for exactly as long as the grant lasts.
-`you_cast_spell` takes `enchantment`, `instant_or_sorcery`, or `chosen_color` — the last of
-which is the one selector whose meaning comes from elsewhere on the same card, and is
-described under [a colour named as a permanent enters](#a-colour-named-as-a-permanent-enters-cr-61412).
+`you_cast_spell` takes a **class of spell**: the bare strings `enchantment`, `artifact`,
+`instant_or_sorcery`, and `chosen_color`, or the wrapped `{"creature": {"min_power": 4}}`.
+The classes are read off the printed types and do not exclude each other — an artifact
+creature spell is an `artifact` spell *and* a `creature` spell (CR 205.2b).
+`chosen_color` is the one whose meaning comes from elsewhere on the same card, and is
+described under [a colour named as a permanent enters](#a-colour-named-as-a-permanent-enters-cr-61412);
+`creature` takes an optional `min_power`, and `{"creature": {}}` is every creature spell.
+The same vocabulary names the spells a [cost modifier](#cost-modification-cr-6012f) applies
+to, because both abilities ask one question of one card. Its `min_power` is read off the
+**printed** power — unlike the mass-effect and permanent-count bounds above — and that is
+the only reading available rather than a simplification: the class is asked about a card in
+a hand, a graveyard, or on the stack, which has no permanent and no computed
+characteristics of any kind.
 
 `ability_activated` watches a player activating an ability (CR 602.2), with two optional
 filters: `activator` is `any` (the default) or `opponents`, and `source_types` names the
@@ -1494,6 +2359,347 @@ The full `abilities`, `spell_effects`, target, cost, and attachment shapes are t
 `crates/sage-engine/src/ability.rs`. Those Rust types are authoritative; do not reproduce
 the IR in a second documentation schema that can drift.
 
+## How far the vocabulary reaches
+
+Catalog coverage is limited by what the ability IR can *express*, not by authoring
+throughput, so this section is the standing survey of where each half of it stops and why.
+It is prose, and prose drifts; `crates/sage-engine/data/exclusions.json` does not. **Where a
+paragraph here and an exclusion entry there disagree, believe the entry and fix the
+paragraph.**
+
+### Costs
+
+`Cost` says tapping, mana, loyalty, spending the source itself, removing counters from it,
+and the three whose payment the **player picks** — sacrificing permanents they control
+(filtered by card type, by subtype, optionally excluding the source, and always a fixed
+count), discarding cards, and exiling cards from their own graveyard. A picked payment rides
+on the action, in `Action::ActivateAbility`'s `payment` list, exactly as a cast's additional
+cost rides on `Action::CastSpell`'s; mana never does, because an activation pays it from the
+pool. A `may` charges the same vocabulary minus every component that names the source
+(`OptionalCost`), answered mid-resolution instead.
+
+**How many a cost takes is never a decision**: a size the payer picks needs a resolution to
+be asked during, so `Sacrifice any number of lands` is an `Effect::Sacrifice` with no amount
+and not a cost — countering Scapeshift therefore takes no lands. **What a payment settled is
+recorded as it is paid**, on `StackObject::paid` beside the targets: the power the sacrificed
+creature had. A cost is paid as the object goes on the stack (CR 601.2h), so by resolution
+that permanent is gone and the number could not be recovered from anywhere — CR 608.2h's
+last-known information, written down while it was still current. Exiling from any zone but a
+graveyard is still unwritable.
+
+### Triggers and conditions
+
+`TriggerCondition` observes zone changes and attack declarations (its own source's and,
+through `ObservedPermanent`, another permanent's), a draw by its controller, an activation
+that uses the stack — never a mana ability, which uses none — life gain, casting, and step
+boundaries; its observed-permanent selectors filter by subtype, controller, token-ness,
+power, and keyword.
+
+A condition *is* attachable, as `Effect::Conditional`, and `Condition` names five questions:
+a permanent count, a mill by this resolution, a discard by this resolution, life gained this
+turn, and whether the ability's own source attacked or blocked this turn. It is judged as the
+effect is reached (CR 608.2), which is an if-clause on an effect rather than the CR 603.4
+trigger check. Every question but the count reads recorded events over a window — the
+resolution, or the turn — because none of them can be answered from a snapshot, and the last
+is the only one about the **source**: it reads the turn's declarations because end of combat
+has already cleared the board's (CR 511.3). The separate `StaticCondition` adds
+`SourceHasNotDealtDamage`, the question no window could answer at all — "yet" reaches back to
+the permanent's arrival, so it is stored on the permanent (`dealt_damage`, written at the
+three seams a permanent is the *source* of damage) and re-asked on every read, never latched.
+
+### Amounts
+
+A count of permanents (`count_of`) may feed an effect's amount, the number of tokens it
+creates, and an attachment's static grant — the last recalculated on every read, because a
+static ability is not a resolution. Every *other* X an effect reads is a `DerivedAmount`, a
+closed set of seven phrases with no expression language over them — the life gained this
+turn, a count of what this resolution milled, the greatest mana value among a class, the
+**X its controller announced**, the two that read a **sacrifice** back (how many permanents
+this resolution sacrificed, and the power the creature a *cost* sacrificed had), and half a
+named player's life total, hand, or creature count rounded up. Each is read once where the
+effect applies, and between them they feed seven verbs: a pump, a draw, a damage, a search's
+size, a life loss, a discard, and a sacrifice. The halved one is the only arithmetic there
+is, it rounds one way because only one way is printed, and it is read of the player the
+effect *names* rather than of its controller.
+
+The announced X and the two sacrifice amounts are the ones that read neither the board nor
+the event log. The first two were settled before the effects ran — an X at announcement, a
+cost's sacrifice at CR 601.2h, and both objects have left; the count of what *this
+resolution* sacrificed is instead a live answer a player has just given, written onto the
+`Resolution` on the way back into the suspended remainder because a sacrificed land leaves no
+event to count (only a creature dies, CR 700.4). The count keeps its own spelling because it
+is the one source a static grant may also name; nothing windowed over events could stand
+there.
+
+**Two amounts sit outside that vocabulary, each because of *when* it is read.** A count of
+cards in a graveyard (`GraveyardCount`) feeds a **characteristic-defining power** and nothing
+else — `Ability::DefinedPower`, at CR 613 **layer 7a** ahead of every other P/T layer,
+re-derived on every read rather than fixed on a resolution (CR 604.3); it replaces the
+printed seed and 7c piles on top of its answer. A chosen permanent's power (`PermanentAmount`)
+is a field on `Effect::Exile`, because CR 608.2h makes it readable only *before* the exile
+removes the object it is about. A whole life total or hand, one named object's mana value, a
+chosen permanent's toughness, and half of anything rounded down still feed nothing.
+
+### What is chosen at announcement
+
+**A choice made at announcement rides the action, and the mode is made first** (CR 601.2b).
+`Action::CastSpell` carries a `mode` and an `x`, both cleared to build the requirement form.
+The ordering is structural rather than remembered: `target_requirements` reads the mode off
+the action, and a modal cast that has not chosen one declares **no slots at all** — which is
+why `announcement_is_legal` refuses that announcement explicitly instead of letting it pass
+as a spell that happened to target nothing. A modal card's effects live in `CardData::modes`,
+held between two and `MAX_MODES` (three, because a mode is a numbered dock row and a fourth
+would have to be truncated — and no *choose one* card prints four; the Commands choose two
+of four and are a different question).
+
+**X is announced, then locked**: `cast_cost` is the one place it becomes generic mana,
+`StackObjectKind::Spell::x` is the only X anything reads afterwards, and `x_options`
+enumerates the legal values *with what each one costs* — the multiplication is the engine's.
+Both are re-derived independently in `apply_action`, so a forged mode and an unpayable X are
+refused rather than merely unoffered.
+
+A `SpellTrait` is what is true of a spell *on the stack* rather than what it does, which is
+why it is not an `Effect`: both members are read by somebody else's resolution — a
+counterspell (CR 701.5a) and the damage seam (CR 615.1, `PendingDamage::unpreventable`). What
+a resolution knows about itself now travels as one `Resolution` value: its log window, its
+announced X, that declaration, and what its cost payment recorded.
+
+### Layer 6, and the two accessors
+
+**Layer 6 subtracts as well as adds**, and is therefore ordered by timestamp (CR 613.1f): a
+grant after a removal grants, a removal after a grant removes. Two verbs subtract:
+`alter_abilities_self`, which names its own source, loses named keywords or *all* abilities
+until end of turn, and reaches no target and no class; and a printed static ability's
+`lose_all_abilities`, which names a *class* and lasts as long as its source is on the
+battlefield. What is added is a keyword *or a whole written-out ability* — an attachment's
+`abilities`, a `pump`'s, a static's `grant_ability` — folded in by
+`characteristics::current_abilities`, so a granted activation is offered by `valid_actions`,
+a granted mana ability still uses no stack (CR 605.1a), and a granted trigger is collected,
+each by the code a printed ability goes through.
+
+Grant and loses-all are both read through `abilities_of_permanent`, which is why that
+accessor takes `&GameState` and is the only path a collector uses: no printed-abilities
+reader to pick by mistake, and no boolean standing in for the ordered answer — losing all
+abilities is one more contribution to that fold rather than a predicate beside it. **The walk
+is cut in exactly one place, `stored_abilities_of_permanent`** — the smaller answer folding
+stored effects and attachments only, which `static_ability_effects` gates each *source* with,
+so collecting printed statics goes one level deep and terminates. Its cost is that a permanent
+silenced by another *printed static* still contributes its own: CR 613.8 dependency is
+unmodeled.
+
+**A rule modification is in no layer, and that is the point** (`Modification::ModifyRule`,
+`RuleModification`). CR 613 orders effects that change *characteristics*; these change none,
+so nothing folds them in and each is read where its rule is asked —
+`assigns_combat_damage_by` at the one place the combat-damage step computes an amount (so
+trample's excess and the marked damage CR 704.5g reads follow it for free),
+`attacks_as_though_no_defender` at the attacker declaration. Assigning by toughness is **not**
+a P/T change and attacking as though it had no defender is **not** `LoseKeyword` (CR 609.4):
+the power and the keyword are both untouched, which is what keeps the creature inside the
+`keyword`-filtered class that granted it either one. That filter reads the **printed** face
+inside the layer system — asking the layer-6 fold for the set it is producing would not
+terminate — while the trigger selector's runs outside it and reads the computed set.
+
+### Combat restrictions
+
+Combat restrictions are a second layer-6 vocabulary beside `Keyword` (`CombatRestriction`):
+they are not keyword abilities, some carry a parameter, and each is enforced in exactly one
+place — the attacker candidate set, the blocker candidate set, the pairwise block check, or
+the whole-selection block check. A restriction that can only be judged over the assembled
+declaration must also be stated in the blocker slot's prompt, or it reaches the player as a
+submit that silently does nothing.
+
+One member of the vocabulary is a *permission* rather than a restriction —
+`CanBlockAdditional`, which lifts the CR 509.1a default that a blocker blocks one attacker —
+so `Permanent.blocking` is an ordered list, and its order is the blocker's CR 509.3 damage
+assignment order, carried by the declaration that named them. One member is a **requirement**
+rather than either — `MustBeBlockedByAllAble` — and it is the only rule in the engine that
+refuses a declaration for what it *omits*: CR 509.1c asks for the maximum number of
+requirements obeyable without violating a restriction, which is a fact about the declarations
+that were not submitted. That is why it is a search (`combat::requirements`) run last, over
+declarations every other gate has already called legal — so a restriction beats a
+requirement, and a requirement no legal declaration can meet is simply not met, with no
+clause anywhere saying so. **Attack** requirements ("attacks each combat if able", CR 508.1d)
+remain unmodeled.
+
+### Objects that are not one card with one face
+
+**Not every permanent is a card, and a card need not have one face** (ADR 0015, CR 712).
+`Permanent.printed` is a `Printed` — a catalog `CardId` *and which of its faces is up*, or
+the `TokenData` an effect gave a token (CR 111) — and every read of a permanent's printed
+face goes through `Printed::face(db)`, which answers all three. A `FunctionalId` names the
+**card**, never a face, so a two-faced card is one identity, one printing, and one row in the
+report; transforming changes that one field and nothing else, which is the whole of CR 712.a.
+The one accessor that crosses back to card identity, `Printed::card()`, returns `None` for a
+token, and that `None` is where CR 111.7 lives: a token leaving the battlefield has no
+`CardInstance` to put in the destination zone, so it is put nowhere and ceases to exist. A
+token's *death* is therefore observed from the recorded `PermanentDied` event rather than
+from a graveyard it never reaches. `TokenData` has no `functional_id` field at all, which is
+why a token cannot reach the compatibility report.
+
+**A planeswalker's loyalty is counters, and an attack names a target** (ADR 0016).
+`CounterKind::Loyalty` is what a planeswalker enters with (CR 306.5b, applied at the
+battlefield-entry seam), what `Cost::Loyalty` spends, what damage removes (CR 120.3c —
+`deal_damage_to_permanent` is the one seam that decides marking versus loyalty), and what
+CR 704.5i reads at zero. `is_loyalty_ability` carries the two CR 606.3 timing rules, gated in
+the offer *and* re-derived in `apply_action`. `Attack.defender` and `Permanent.attacking` are
+an `AttackTarget` — a player or a planeswalker — so "what is attacked" (`attack_target_of`)
+and "who declares blockers" (`attacking_defender_of`, which resolves a planeswalker's
+controller) are separate questions.
+
+**An emblem is in no zone and is never removed** (ADR 0017). `GameState::emblems` is a
+*second source list* both ability paths walk — `characteristics::static_ability_effects` and
+`triggers::collect_triggers` — and nothing else in the engine reads it. Neither list's
+position decides anything: every contribution is timestamped by its source's object id and
+the caller sorts by that. `AbilitySource` says what an ability on the stack came from, and
+its `permanent()` answering `None` is what makes an emblem need no special case in a
+self-referential effect. Do not put an emblem on the battlefield: every state-based action,
+every target spec, and every combat gate would then need a clause saying why it does not
+apply, and *saying nothing* is the correct answer.
+
+**A copy is CR 613 layer 1, and it is a different printed seed.** `Permanent::copied` records
+the copiable values its controller named *as it entered* (CR 707.2) — a `Printed` handle,
+since that is exactly what "the printed values" means and a card's face never changes — plus
+whether the copy applies to that permanent (CR 707.5) or to the one it is attached to
+(CR 707.2c, so the host's copy is derived and ends with the Aura). `copy::copiable_printed`
+is the whole layer: `characteristics` starts from its answer instead of `perm.printed`, so a
+copy with two `+1/+1` counters is the copied P/T plus two. Chains resolve when the snapshot
+is taken (CR 707.3), and the face that is **up** is the one copied (CR 707.8) — a copy of a
+transformed permanent is the back face, at mana value 0 (CR 712.8e). Copying a *spell* stays
+a different operation: `StackObjectKind::SpellCopy` has no card, so it was never cast, no
+cast trigger sees it, and it reaches no graveyard (CR 707.10/707.10a). No token is ever
+created as a copy.
+
+### Targets, statics, and control
+
+**One effect may declare more than one target, and its slots need not share a spec**
+(ADR 0017 §5, ADR 0004). `Effect::target_groups` returns an ordered `Vec<{spec, min, max}>`;
+`min == 0` is the "up to N" shape, and a group with `min == 0` is never a reason to withhold
+an offer. At most **one** variable-arity group per ability or spell — the stored target list
+is flat, and the validator enforces the limit so the pairing back onto effects is exact
+rather than a guess. `Effect::Fight` is the one effect with *two* groups, one spec each, and
+an effect with more than one group acts on all of its slots or on none (CR 701.12c) rather
+than doing as much as it can. It is also the one damage whose **source is a permanent**, so
+it is the one place outside combat where deathtouch and lifelink apply.
+
+`Ability::Static` covers anthems and lords ("creatures you control", optionally filtered to a
+printed subtype or a printed keyword, optionally excluding the source), the class of one, and
+one class its controller does **not** control: permanents an opponent controls, filtered by
+card type and by the card name the source was given as it entered. Its `as long as …` asks
+one of three questions — a permanent count, whether the source is attacking, and whether
+anything is attached to it. It is **derived, never stored** — `characteristics` reads it off
+the battlefield on every call, so the effect begins and ends with its source's presence, a
+permanent arriving later joins the class the moment it does, and nothing enters
+`GameState::static_effects`. That re-derivation is the whole distinction from a
+`MassAffects`, which is locked in on resolution. Extend `StaticAffects` when a card needs a
+scope it cannot name.
+
+**A continuous ability is one of three kinds, and its subject decides which**: a `Static`
+modifies permanents at a CR 613 layer, a `PlayerStatic` states something about a person, and
+a `CostModifier` changes what a class of **spell** costs its own controller to cast
+(CR 601.2f) — not a layer, since it applies before the spell's object exists. Its arithmetic
+is the rule's own (plus every increase, minus every reduction, one floor at `{0}`) and only
+the generic component moves. It is the one continuous ability with several readers, so it has
+exactly one seam: `total_cast_cost` is what the offer, the pips, the payment search, the
+legality gate, the charge, and the view all ask, and the idle predicate joins them by asking
+`valid_actions` rather than a cost. Wiring it into fewer than all of those advertises casts a
+seat cannot take, or auto-passes a seat that has a play.
+
+**Control is CR 613 layer 2, and it is computed** (ADR 0005 §1/§3). `Permanent::controller`
+is the *base* controller, not the answer: every rule that asks who controls a permanent —
+attacking, activating, `creatures you control`, combat damage, the untap step — goes through
+`characteristics::controller_of`, which folds `Modification::GainControl` over the stored
+field. Reading the field directly is right **only** for a question about *ownership*, which
+today means the four battlefield-departure seams: because nothing overwrites it, a creature
+that dies while stolen goes to its own graveyard (CR 400.7) with no ownership model needed. A
+control change restamps `entered_turn` (CR 302.6), which is why a card that steals a creature
+to attack with also grants it haste.
+
+### Questions asked mid-resolution
+
+**A mid-resolution player choice is queued state, never a flag** (ADR 0013). An effect that
+asks a player to choose cards (discard, scry, look at the top N, search) pushes a
+`PendingChoice` onto `GameState::pending_choices` and *suspends* the resolution, carrying the
+rest of it — remaining effects, remaining targets, and the spell's final zone — in the
+choice's `Resume`. Whether a choice is owed is derived (`pending_player_choice`), and so are
+the cards it offers (`choice_candidates`); nothing snapshots a candidate list. A choice whose
+clamped maximum is zero is applied outright instead of posed, which is the whole of the
+never-stall guarantee. Priority goes to the chooser and returns via the one
+`interrupted_priority` slot shared with trigger aiming — a third interrupting choice must
+join that check rather than add a second slot.
+
+**A choice a permanent makes as it enters is the same queue, and the permanent waits off the
+battlefield for it** (ADR 0013 §8–§9). `EntersChoosingColor` and `EntersNamingCard` declare
+that a card's controller answers something as it arrives (CR 614.12), and each answer is an
+**unfilled slot on the `PendingEntry`** rather than a branch: `begin_battlefield_entry`
+refuses to finish while one is empty, queues the question, and returns no `PermanentId`;
+answering writes the slot and re-enters that same function, as a CR 616.1 ordering answer
+does. So nothing is on the battlefield to be caught mid-decision, a card asking twice needs
+no code saying which comes first, and the loop terminates because a filled slot is never
+emptied. The answers are stored once on `Permanent::chosen_color` and `Permanent::named_card`.
+**A named card is a `FunctionalId`, never prose**: `named_card_candidates` derives the answer
+set from the *catalog*, the action carries a `CardId`, and the gate re-checks it, so no card
+name SAGE has not defined can reach a game state. Naming a **type** is still unwritable, only
+a nonbasic land may be named, and nothing records a choice on a spell.
+
+A choice asks one shape of **question** (`ChoiceQuestion`, ADR 0014): pick cards, pick
+**permanents** (the sacrifice — a separate shape because a token has no `CardInstance` to
+name, CR 111), answer a `you may` yes-or-no, name a colour, name a card, order applicable
+replacements by position in a derived list, or arrange cards into a **permutation** — the
+*in any order* a look bottoms its remainder in. Everything around them is single — one queue,
+one chooser, one `Resume` — and only the answer branches, so a new question shape is a
+variant plus its own `Action`, never a second queue. Two rules the permutation added and
+every later answer inherits: an answer replacing something the game used to **roll** for
+consumes no randomness (`BottomOrder::Chosen` leaves `rng_seed` where `Random` advances it,
+or a replay diverges), and an outcome may pose the *next* question — "the rest" is unknown
+until the taking is answered — so a `Resume` travels onto the question that follows.
+
+An accepted optional effect is *spliced onto the front of the remainder*, not applied on the
+spot; declining is the same path with nothing spliced, which is why "a decline leaves the
+game as if the effect were absent" needs no proof. An optional **cost** is mana, a permanent
+the chooser picks, or a discard (`OptionalCost`); a cost naming the **source** does not
+parse, because the queue carries no source. Mana is charged from the chooser's pool, the one
+place mana moves outside the cast path; the other two are decisions, so accepting poses one
+of the questions above and hangs the whole remainder behind it — the cost is therefore paid
+before what it bought, and the sacrifice is a real death. While a costed question is owed its
+chooser may activate mana abilities (CR 605.3a) and nothing else, and a picked cost does not
+widen that. A mana cost is *posed* against the mana the board could still make
+(`potential_mana_pool`, shared with the idle-seat predicate) and *accepted* against the pool
+as it stands; a picked payment has no such gap, so one construction of its request answers
+both.
+
+### Deferred and replaceable events
+
+**A replaceable event is a value, and there is exactly one road onto the battlefield**
+(ADR 0019). `PendingEntry` describes an arrival *before it happens* — the object, its
+controller, the tapped state and counters it would carry, and whether it got there by being
+cast — and `begin_battlefield_entry` is the only place a `Permanent` is born: a land played,
+a token created, a permanent spell resolving, and a card an effect put there all build one.
+Applicable replacements are **derived** from two source lists (the entering object's own
+`EntersTapped`/`EntersWithCounters`, and the one-shot `GameState::replacements` an ability
+created for the turn), the affected object's **controller** orders them when more than one
+applies (CR 616.1, through the same choice queue), and `PendingEntry::applied` is what stops
+any of them applying twice (CR 614.5) — which is also what makes the loop terminate. Applying
+either modifies the event or replaces it outright, and answering an ordering question
+re-enters the same function. `EntersChoosingColor`, `EntersNamingCard`, and `EntersAsCopy`
+are not collected here — they are questions, not modifications to order.
+
+**A delayed triggered ability is a fourth source list** (CR 603.7).
+`GameState::delayed_triggers` is one-shot and one-turn like `replacements`, fires from a
+sibling of `collect_triggers` rather than a branch in it, and is deliberately not gated on
+its source surviving (CR 603.7e) — `AbilitySource::DelayedAbility` names nothing because
+there is nothing honest to name. The object it acts on is fixed by the trigger event, so
+`Trigger::targets` arrives pre-filled.
+
+**Damage is the second replaceable event** (CR 615). `PendingDamage` is the value — the
+recipient, the amount, whether it is *combat* damage — and `GameState::deal_damage` is the
+one seam anything deals damage through, so a prevention shield covers combat, a burn spell,
+and a fight in one place; prevented damage is never marked, never lethal, never life loss,
+and gains a lifelink source nothing. A shield is **not** one-shot: it lives on
+`GameState::prevention` and ends in the cleanup step beside the pumps (CR 514.2), and none is
+ordered against another because every one modeled prevents all of it. A permanent leaving the
+battlefield, a draw, and life gained route nowhere near this, and the leave seams run inside
+the SBA loop where there is nothing to suspend a question onto.
+
 ## Closed schema and generated text
 
 `CardData` uses `deny_unknown_fields`. A definition cannot contain exact Oracle text,
@@ -1532,6 +2738,10 @@ functional definition, and collector numbers must be unique within a set.
 | Printing | set code + collector number | Set file | Stable bibliography |
 | Game object | `CardInstanceId`, `PermanentId` | Engine | One game or battlefield stay |
 
+A **face** is not a layer of identity: a two-faced card has one `FunctionalId`, one
+printing, and one `CardId`, and which face is up is per-permanent state
+(`Printed::Card`'s `face`), not part of naming the card.
+
 Never persist or hand-author a `CardId`. Adding a definition can change sorted interning and
 renumber handles. Printings, decklists, tests, and scripted code use `FunctionalId` and
 resolve it through `CardDatabase::card_id` when a handle is needed.
@@ -1553,8 +2763,13 @@ The build and loader reject:
 - unknown fields or malformed JSON;
 - unsupported schema versions;
 - malformed, duplicate, or file-mismatched functional ids;
-- missing types or invalid creature power/toughness;
-- a planeswalker with no `loyalty`, or a `loyalty` on anything else;
+- missing types or invalid creature power/toughness (asked of **each** face);
+- a planeswalker with no `loyalty`, or a `loyalty` on anything else (asked of **each**
+  face);
+- a `back_face` that carries a mana cost — a back face has none and can never be cast
+  (CR 712.4a);
+- a `transform_self` or `exile_self_and_return_transformed` on a card with no `back_face`
+  to turn to (CR 701.28d);
 - an `attachment` whose `kind` names a subtype the card does not have;
 - an Equipment with no `equip` cost, or an `equip` cost on an Aura;
 - printed `restrictions` on a card that is not a creature;

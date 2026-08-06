@@ -423,18 +423,26 @@ async fn issue_455_a_resolved_removal_spell_and_its_death_reach_the_skipped_seat
         attacking: None,
         blocking: Vec::new(),
         skips_untap: false,
+        dealt_damage: false,
         damage: 0,
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
+        copied: None,
     });
     // Seat 1's Shock, already cast and aimed, with seat 0 holding priority over it.
     let shock = state.new_instance(fixture("shock"));
     let sid = sage_engine::StackId(state.mint_id());
     state.stack.push(sage_engine::StackObject {
+        paid: Default::default(),
         id: sid,
         controller: PlayerId(1),
-        kind: sage_engine::StackObjectKind::Spell { card: shock },
+        kind: sage_engine::StackObjectKind::Spell {
+            card: shock,
+            mode: None,
+            x: None,
+        },
         targets: vec![sage_engine::Target::Permanent(elves)],
     });
     state.priority = PlayerId(0);

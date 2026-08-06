@@ -284,15 +284,89 @@ pub(crate) fn ability_requirements(
     db: &CardDatabase,
     action: &Action,
 ) -> Vec<TargetRequirement> {
+    // A modal cast is the one action whose slots are not knowable yet: the mode decides
+    // which they are (CR 700.2), and the offer goes out before the mode is chosen. So it
+    // advertises **every mode's** slots at once, each named for the mode it belongs to,
+    // and the mode prompt says which ones its choice owes an answer to
+    // ([`PromptOption::requires`], the mechanism a mulligan keep already uses). All of
+    // them are optional at this level because at most one mode's are ever filled; the
+    // chosen mode's own requirements are what [`bind_ability_targets`] holds the answer
+    // to, and the engine's gate is what holds it in the end.
+    if let Some(modes) = modal_cast_modes(state, db, action) {
+        return modes
+            .into_iter()
+            .flat_map(|mode| {
+                let with_mode = cast_with_announcement(action, Some(mode.index), None);
+                slots_for(state, db, &with_mode, Some(mode.index), true)
+            })
+            .collect();
+    }
+    slots_for(state, db, action, None, false)
+}
+
+/// The offered modes of `action`, when it is a cast of a modal card that has not chosen
+/// one yet; `None` for every other action, including a modal cast that has.
+pub(crate) fn modal_cast_modes(
+    state: &GameState,
+    db: &CardDatabase,
+    action: &Action,
+) -> Option<Vec<sage_engine::ModeOption>> {
+    let Action::CastSpell { mode: None, .. } = action else {
+        return None;
+    };
+    let modes = sage_engine::mode_options(state, db, action);
+    (!modes.is_empty()).then_some(modes)
+}
+
+/// `action` with its announcement choices filled in — the shape
+/// [`target_requirements`] can actually answer for.
+///
+/// A cast's slots are a function of its mode, so asking the engine what a modal cast
+/// targets means handing it a mode. Every other action is returned unchanged.
+pub(crate) fn cast_with_announcement(action: &Action, mode: Option<u8>, x: Option<u32>) -> Action {
+    match action {
+        Action::CastSpell { card, .. } => Action::CastSpell {
+            card: *card,
+            mode,
+            x,
+            targets: Vec::new(),
+            payment: Vec::new(),
+        },
+        other => other.clone(),
+    }
+}
+
+/// The slot id one target requirement is answered on: `t0`, `t1`, … for an action with
+/// one set of slots, and `m1t0` for the first slot of a modal cast's second mode.
+///
+/// Scoped by mode because a modal cast advertises every mode's slots side by side, and
+/// two modes' first slots are different questions with different candidates. Recomputed
+/// and matched, never parsed — like every other slot id.
+pub(crate) fn target_slot(mode: Option<u8>, index: usize) -> String {
+    match mode {
+        None => format!("t{index}"),
+        Some(chosen) => format!("m{chosen}t{index}"),
+    }
+}
+
+/// One action's target slots, projected. `mode` names them, and `always_optional` marks
+/// them all skippable — which is what a mode that was not chosen owes.
+fn slots_for(
+    state: &GameState,
+    db: &CardDatabase,
+    action: &Action,
+    mode: Option<u8>,
+    always_optional: bool,
+) -> Vec<TargetRequirement> {
     target_requirements(state, db, action)
         .into_iter()
         .enumerate()
         .map(|(index, req)| TargetRequirement {
-            slot: format!("t{index}"),
-            prompt: target_spec_prompt(req.spec).to_string(),
+            slot: target_slot(mode, index),
+            prompt: target_spec_prompt(req.spec),
             // The slots past a group's minimum may be left empty ("up to two target
             // creatures"). The engine decides which; the projection only carries it.
-            optional: req.optional,
+            optional: always_optional || req.optional,
             candidates: req.candidates.into_iter().map(target_entity_id).collect(),
             // Choosing a target does nothing to the target. What a spell costs is posed
             // on its own `pay_mana` slots, and each of those states its own tapping.
@@ -322,7 +396,7 @@ pub(crate) fn ability_label(
         .iter()
         .find(|perm| perm.id == permanent)
         .and_then(|perm| {
-            let name = permanent_name(perm, db);
+            let name = permanent_name(state, perm, db);
             abilities_of_permanent(state, db, perm)
                 .get(index)
                 .map(|ability| ability_text(&name, ability))
@@ -365,10 +439,15 @@ pub(crate) fn trigger_label(state: &GameState, db: &CardDatabase, ability: Stack
                     .and_then(|id| state.battlefield.iter().find(|p| p.id == id))
                     .map_or_else(
                         || "This ability's source".to_string(),
-                        |p| permanent_name(p, db),
+                        |p| permanent_name(state, p, db),
                     ),
                 effects,
             )),
+            // A copy of a spell being re-aimed (CR 707.10c) is labelled by the spell it
+            // copies, which is exactly what a player is choosing targets for.
+            StackObjectKind::SpellCopy { card, .. } => {
+                Some(format!("Copy of {}", card_name(*card, db)))
+            }
             StackObjectKind::Spell { .. } => None,
         })
         .unwrap_or_else(|| "Choose targets".to_string())
@@ -394,6 +473,9 @@ pub(crate) fn trigger_subject(state: &GameState, ability: StackId) -> Vec<String
                     .chain(source.permanent().map(permanent_entity_id))
                     .collect(),
             ),
+            // A copy has no source object on the board to highlight — it *is* the object
+            // being aimed, and the stack is the only place it exists.
+            StackObjectKind::SpellCopy { .. } => Some(vec![stack_entity_id(ability)]),
             StackObjectKind::Spell { .. } => None,
         })
         .unwrap_or_default()
@@ -406,7 +488,7 @@ fn permanent_card_name(state: &GameState, id: PermanentId, db: &CardDatabase) ->
         .battlefield
         .iter()
         .find(|perm| perm.id == id)
-        .map(|perm| permanent_name(perm, db))
+        .map(|perm| permanent_name(state, perm, db))
         .unwrap_or_else(|| "the attacker".to_string())
 }
 

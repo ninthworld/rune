@@ -7,18 +7,21 @@ use super::*;
 mod tests;
 
 /// Apply a single [`Effect`] to `state` on behalf of `controller`, resolving in a window
-/// that began at log sequence `resolution_start`.
+/// described by `resolution` (its log window, its announced X, whether its damage can be
+/// prevented, and what its cost payment recorded).
 ///
-/// The window is the same one an intervening condition is judged over, and it is here for
-/// the same reason: an amount that says "this way" ([`DerivedAmount::MilledThisWay`]) is
-/// a question about what *this* resolution has already done, which no snapshot of the
-/// game can answer.
+/// The frame carries the window an intervening condition is judged over, and it is here
+/// for the same reason: an amount that says "this way"
+/// ([`DerivedAmount::MilledThisWay`]) is a question about what *this* resolution has
+/// already done, which no snapshot of the game can answer. It also carries what paying for
+/// the object recorded (CR 601.2h), which no snapshot can answer either — by now the
+/// permanents that paid are gone.
 pub(crate) fn apply_effect(
     state: &mut GameState,
     effect: &Effect,
     controller: PlayerId,
     source: Option<crate::stack::AbilitySource>,
-    resolution_start: u64,
+    resolution: crate::resolve::Resolution,
     db: &CardDatabase,
 ) {
     if state.players.get(controller.0).is_none() {
@@ -119,13 +122,40 @@ pub(crate) fn apply_effect(
                     turn,
                 });
         }
+        // CR 615.1: a prevention shield that covers every damage event it names for the
+        // rest of the turn. It is not spent by applying — the cleanup step's turn-based
+        // action is what ends it (CR 514.2) — and it belongs to nobody: no target, no
+        // player, and no controller anything reads back.
+        Effect::PreventDamage { damage } => state.prevention.push(damage.clone()),
+        // CR 603.7a: a delayed triggered ability is created during a resolution and waits
+        // for its event. Recorded exactly as a created replacement is, on a per-turn list
+        // carrying the turn it was made on, and controlled by whoever controlled the
+        // spell or ability as it resolved (CR 603.7d/e) — which is `controller`.
+        Effect::CreateDelayedTrigger { trigger } => {
+            let id = state.mint_id();
+            let turn = state.turn;
+            state
+                .delayed_triggers
+                .push(crate::delayed::PendingDelayedTrigger {
+                    id,
+                    controller,
+                    trigger: trigger.clone(),
+                    turn,
+                });
+        }
         Effect::DrawCard { count } => draw_cards(state, controller, u32::from(*count)),
         // The same draw, with the number taken off the game instead of off the card
         // (CR 608.2) — once, here, so a mill this same resolution performed is what the
         // "this way" sources read.
         Effect::DrawCardsByAmount { amount } => {
-            let count =
-                crate::condition::derived_amount(state, amount, controller, resolution_start, db);
+            let count = crate::condition::derived_amount(
+                state,
+                amount,
+                controller,
+                controller,
+                resolution,
+                db,
+            );
             draw_cards(state, controller, count);
         }
         // CR 119.3: the referenced player gains life. A non-targeting reference names
@@ -143,6 +173,18 @@ pub(crate) fn apply_effect(
             let delta = i32::try_from(*amount).unwrap_or(i32::MAX);
             for seat in non_targeting_subjects(state, *player_ref, controller) {
                 state.change_life(seat, -delta);
+            }
+        }
+        // The same loss with X off the game rather than off the card (CR 608.2), read
+        // once **per named seat**: `each player loses half their life` is each of them
+        // reading their own total, which is why the amount is asked about `seat` and
+        // not about the controller.
+        Effect::LoseLifeByAmount { player_ref, amount } => {
+            for seat in non_targeting_subjects(state, *player_ref, controller) {
+                let lost = crate::condition::derived_amount(
+                    state, amount, controller, seat, resolution, db,
+                );
+                state.change_life(seat, -i32::try_from(lost).unwrap_or(i32::MAX));
             }
         }
         // CR 701.13: the referenced player puts the top `count` cards of their
@@ -203,7 +245,42 @@ pub(crate) fn apply_effect(
         // each player (CR 120.3a). A targeting subject named a target instead and is
         // applied through [`apply_targeted_effect`], so it is a no-op here.
         Effect::DealDamage { subject, amount } => {
-            apply_class_damage(state, subject, *amount, controller, db);
+            apply_class_damage(
+                state,
+                subject,
+                *amount,
+                controller,
+                resolution,
+                permanent_source,
+                db,
+            );
+        }
+        // The same damage with the amount taken off the announcement instead of off the
+        // card (CR 608.2). A class-subject form chose no target and is applied here; a
+        // targeted one goes through [`apply_targeted_effect`] and is a no-op in this arm.
+        Effect::DealDamageByAmount { subject, amount } => {
+            let value = crate::condition::derived_amount(
+                state, amount, controller, controller, resolution, db,
+            );
+            apply_class_damage(
+                state,
+                subject,
+                value,
+                controller,
+                resolution,
+                permanent_source,
+                db,
+            );
+        }
+        // CR 701.7, over a class instead of a target. The set is enumerated **here**, on
+        // resolution (CR 611.2c), and each member leaves through the one destruction seam
+        // a single `Destroy` uses — so a token ceases to exist (CR 111.7) and a death
+        // trigger sees every one of them. Collected before any of it happens, because
+        // destroying the first member moves the battlefield out from under the scan.
+        Effect::DestroyAll { affects } => {
+            for id in permanents_to_destroy(state, *affects, db) {
+                state.destroy_permanent(id, db);
+            }
         }
         // A mass, non-targeting until-end-of-turn modification (CR 611.2c): the
         // affected class is enumerated **once, here**, and one modifier is keyed to
@@ -319,6 +396,15 @@ pub(crate) fn apply_effect(
                 }
             }
         }
+        // The source puts *itself* back in the deck (CR 701.19). The same implicit
+        // subject every self-referential effect has, and the same no-op when the source
+        // is gone — a creature already destroyed in response is not there to shuffle, and
+        // nothing is shuffled in its place.
+        Effect::ShuffleSelfIntoLibrary => {
+            if let Some(id) = permanent_source {
+                state.shuffle_permanent_into_library(id);
+            }
+        }
         Effect::PutCountersOnSelf { counter, count } => {
             if let Some(id) = permanent_source {
                 if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
@@ -367,6 +453,11 @@ pub(crate) fn apply_effect(
         // the interception was missed, so both arms are deliberately empty rather
         // than silently doing half the effect.
         Effect::Discard { .. }
+        // Both derived-number verbs that ask a player something suspend the same way,
+        // and for the same reason: the number is fixed when the choice is posed, not
+        // when the answer comes back.
+        | Effect::DiscardByAmount { .. }
+        | Effect::Sacrifice { .. }
         | Effect::Scry { .. }
         | Effect::LookAtTop { .. }
         | Effect::SearchLibrary { .. }
@@ -379,6 +470,9 @@ pub(crate) fn apply_effect(
         // so it is applied via [`apply_targeted_effect`] and is a no-op here.
         Effect::Tap { .. }
         | Effect::CounterSpell { .. }
+        // Copying a spell names the spell it copies in a slot, so it arrives with a
+        // chosen value and is applied there.
+        | Effect::CopySpell { .. }
         | Effect::Destroy { .. }
         | Effect::Exile { .. }
         | Effect::ReturnToHand { .. }
@@ -422,7 +516,15 @@ pub(crate) fn apply_effect(
         } => {
             let count = crate::condition::count_permanents(state, count_of, controller, db);
             let amount = amount_per.saturating_mul(count);
-            apply_class_damage(state, subject, amount, controller, db);
+            apply_class_damage(
+                state,
+                subject,
+                amount,
+                controller,
+                resolution,
+                permanent_source,
+                db,
+            );
         }
         // Every card of the named graveyard, at once. An empty graveyard is a legal
         // subject and a resolution that does nothing.
@@ -432,6 +534,42 @@ pub(crate) fn apply_effect(
                     let cards: Vec<_> = player.graveyard.drain(..).collect();
                     player.exile.extend(cards);
                 }
+            }
+        }
+        // The library counterpart, and the one place a hidden zone is emptied wholesale.
+        // The bottom card is the first element (the top is the last, as everywhere else),
+        // so what is exiled is everything after it — in library order, so the exile pile
+        // reads bottom-upward exactly as the library did.
+        Effect::ExileLibraryExceptBottom { target } => {
+            for seat in non_targeting_subjects(state, *target, controller) {
+                if let Some(player) = state.players.get_mut(seat.0) {
+                    if player.library.len() > 1 {
+                        let cards: Vec<_> = player.library.drain(1..).collect();
+                        player.exile.extend(cards);
+                    }
+                }
+            }
+        }
+        // CR 701.28a: the permanent turns over. Nothing else about it changes, which is
+        // CR 712.a in one line — the object keeps its id, its counters, its damage, its
+        // attachments, and its combat state, because none of them is where the face is.
+        Effect::TransformSelf => {
+            if let Some(id) = permanent_source {
+                if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
+                    perm.printed.transform(db);
+                }
+            }
+        }
+        // Exile the source and bring it back on its other face. Two zone changes, so the
+        // permanent that arrives is a new object (CR 400.7) with a fresh id and its back
+        // face's starting loyalty — the exile is what makes it *return* rather than turn
+        // over, and both halves use the seams every other exile and arrival use.
+        //
+        // The source is looked up now, on resolution: a permanent that has already left
+        // leaves nothing to exile, and the ability resolves and does nothing (CR 608.2).
+        Effect::ExileSelfAndReturnTransformed => {
+            if let Some(id) = permanent_source {
+                state.exile_and_return_transformed(id, db);
             }
         }
     }
@@ -626,12 +764,23 @@ fn permanents_in(
                     // A subtype narrows the class to a lord's tribe ("Dragons you
                     // control"), read off the printed face — the same place every other
                     // subtype question is answered.
-                    MassAffects::CreaturesYouControl { subtype } => {
+                    MassAffects::CreaturesYouControl { subtype, min_power } => {
                         crate::characteristics::controller_of(state, p) == controller
                             && subtype.as_deref().is_none_or(|wanted| {
                                 p.printed
                                     .face(db)
                                     .is_some_and(|face| face.has_subtype(wanted))
+                            })
+                            // A power bound is the one field here read through the
+                            // **computed** characteristics (CR 613.1f): "each creature
+                            // you control with power 4 or greater" means the power the
+                            // creature has now, so one pumped up to 4 is in the class
+                            // and one shrunk below it is out. Safe from inside a
+                            // resolution, which is outside the layer system.
+                            && min_power.is_none_or(|min| {
+                                crate::characteristics::characteristics(state, p.id, db)
+                                    .power
+                                    .is_some_and(|power| power >= min)
                             })
                     }
                     MassAffects::EachCreature => true,
@@ -691,6 +840,16 @@ pub(crate) fn non_targeting_subjects(
             .filter(|(seat, player)| PlayerId(*seat) != controller && !player.has_lost)
             .map(|(seat, _)| PlayerId(seat))
             .collect(),
+        // Every seat still in the game, the controller included — the symmetric class,
+        // and the reason it is not `EachOpponent` plus the caster is that a spell which
+        // names it hits the caster whether they like it or not.
+        PlayerRef::EachPlayer => state
+            .players
+            .iter()
+            .enumerate()
+            .filter(|(_, player)| !player.has_lost)
+            .map(|(seat, _)| PlayerId(seat))
+            .collect(),
         PlayerRef::TargetPlayer | PlayerRef::TargetOpponent => Vec::new(),
     }
 }
@@ -707,19 +866,66 @@ fn apply_class_damage(
     subject: &DamageSubject,
     amount: u32,
     controller: PlayerId,
+    resolution: crate::resolve::Resolution,
+    source: Option<PermanentId>,
     db: &CardDatabase,
 ) {
+    let mut dealt = false;
     match subject {
         DamageSubject::Target(_) => {}
         DamageSubject::Players(player_ref) => {
             for seat in non_targeting_subjects(state, *player_ref, controller) {
-                state.deal_damage_to_player(seat, amount);
+                // Prevented damage was never dealt (CR 615.1), so a shield is also what
+                // keeps `hasn't dealt damage yet` true — the flag follows the amount that
+                // actually landed rather than the amount that was aimed.
+                dealt |= state.deal_damage(
+                    resolution.damage(PendingDamage::to_player(seat, amount)),
+                    db,
+                ) > 0;
             }
         }
         DamageSubject::Permanents(affects) => {
             for id in permanents_in(state, affects, controller, db) {
-                state.deal_damage_to_permanent(id, amount, db);
+                dealt |= state.deal_damage(
+                    resolution.damage(PendingDamage::to_permanent(id, amount)),
+                    db,
+                ) > 0;
             }
         }
     }
+    // CR 609.7: an ability's damage comes from the permanent the ability is on, so a
+    // class-wide hit is still that permanent dealing damage.
+    if dealt {
+        if let Some(source) = source {
+            state.note_damage_dealt_by(source);
+        }
+    }
+}
+
+/// The permanents a [`DestroyAffects`] class names, in battlefield order.
+///
+/// The mass-destruction counterpart of [`permanents_in`], and separate from it for the
+/// reason [`DestroyAffects`] is separate from [`MassAffects`]: nothing here is
+/// controller-relative and nothing here is limited to creatures, so sharing the scan
+/// would mean a filter with two halves that never both apply.
+fn permanents_to_destroy(
+    state: &GameState,
+    affects: crate::ability::DestroyAffects,
+    db: &CardDatabase,
+) -> Vec<PermanentId> {
+    use crate::ability::DestroyAffects;
+    use crate::card_type::CardType;
+    state
+        .battlefield
+        .iter()
+        .filter(|p| {
+            p.printed.face(db).is_some_and(|face| match affects {
+                DestroyAffects::EachCreature => face.has_type(CardType::Creature),
+                DestroyAffects::EachArtifactOrEnchantment => {
+                    face.has_type(CardType::Artifact) || face.has_type(CardType::Enchantment)
+                }
+            })
+        })
+        .map(|p| p.id)
+        .collect()
 }

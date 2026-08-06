@@ -39,8 +39,10 @@ mod eligibility;
 mod helpers;
 mod requirements;
 
+#[cfg(test)]
+pub(crate) use damage::combat_damage;
 pub(crate) use damage::{
-    blocked_attackers, combat_damage, combat_has_first_strike, CombatDamage, DamageStep,
+    blocked_attackers, combat_damage_and_dealers, combat_has_first_strike, CombatDamage, DamageStep,
 };
 pub(crate) use declaration::priority_after_step_change;
 pub use declaration::{
@@ -52,6 +54,7 @@ pub use eligibility::{
     blocker_candidates_for, declared_attackers, defender_candidates, defending_player,
     defending_player_candidates, AttackTarget,
 };
+pub(crate) use helpers::{assigned_combat_damage, defender_stops_attacking};
 pub use helpers::{
     attacking_taps, blocked_by_at_most_one, blocker_can_block_attacker, blocks_allowed,
     permanent_has_menace, permanent_has_restriction, permanent_restrictions,

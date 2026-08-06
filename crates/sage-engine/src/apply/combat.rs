@@ -12,11 +12,14 @@
 
 use super::*;
 use crate::actions::{Attack, Block, DamageOrder};
+#[cfg(test)]
+use crate::combat::combat_damage;
 use crate::combat::{
-    attacking_taps, blocked_attackers, combat_damage, combat_has_first_strike, defending_player,
-    pending_blocker_declarer, CombatDamage, DamageStep,
+    attacking_taps, blocked_attackers, combat_damage_and_dealers, combat_has_first_strike,
+    defending_player, pending_blocker_declarer, CombatDamage, DamageStep,
 };
-use crate::id::{CardId, PermanentId};
+use crate::id::{CardId, PermanentId, PlayerId};
+use crate::replacement::PendingDamage;
 use crate::state::{LoggedIdentity, LoggedPermanent};
 
 mod declare;

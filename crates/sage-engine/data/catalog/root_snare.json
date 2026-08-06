@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "functional_id": "root_snare",
+  "name": "Root Snare",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{1}{G}",
+  "colors": [
+    "green"
+  ],
+  "spell_effects": [
+    {
+      "kind": "prevent_damage",
+      "damage": {
+        "combat_only": true
+      }
+    }
+  ]
+}

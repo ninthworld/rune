@@ -220,10 +220,13 @@ mod tests {
             attacking: None,
             blocking: Vec::new(),
             skips_untap: false,
+            dealt_damage: false,
             damage: 0,
             counters: Default::default(),
             attached_to: None,
             chosen_color: None,
+            named_card: None,
+            copied: None,
         });
         PermanentId(id)
     }
@@ -406,9 +409,14 @@ mod tests {
         let boar = state.new_instance(fixture("onakke_ogre"));
         let sid = crate::stack::StackId(state.mint_id());
         state.stack.push(crate::stack::StackObject {
+            paid: Default::default(),
             id: sid,
             controller: PlayerId(0),
-            kind: crate::stack::StackObjectKind::Spell { card: boar },
+            kind: crate::stack::StackObjectKind::Spell {
+                card: boar,
+                mode: None,
+                x: None,
+            },
             targets: Vec::new(),
         });
         assert!(

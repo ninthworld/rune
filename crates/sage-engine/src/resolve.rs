@@ -18,6 +18,85 @@ use crate::stack::{AbilitySource, StackObject, StackObjectKind};
 use crate::state::{GameEvent, GameState, Permanent};
 use crate::CardDatabase;
 
+/// What a resolution knows **about itself** — the facts every effect it applies may need
+/// and none of them can look up.
+///
+/// One value rather than four parameters because they travel together everywhere,
+/// including through a suspension: an effect that stops to ask a question resumes with
+/// the same window, the same announced X, the same declaration about its damage, and the
+/// same record of what its cost ate as it started with. Adding a fifth fact is then a
+/// field, not another argument on nine functions.
+///
+/// All but one come from the object being resolved and are fixed before the first effect
+/// runs — which is the point. A resolution does not re-read the cost to find its X, re-read
+/// the card to find out whether its damage is preventable, or re-scan the board for the
+/// creature its cost sacrificed; those were settled at announcement (CR 601.2b/601.2h) and
+/// are carried, not derived. The exception is [`sacrificed`](Self::sacrificed), which the
+/// resolution writes about *itself* as it goes, because the answer does not exist until a
+/// player gives it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Resolution {
+    /// The log sequence this resolution began at — the window a "…this way" question
+    /// reads over ([`Condition::MilledThisWay`](crate::Condition)).
+    pub start: u64,
+    /// The X its object announced (CR 601.2b), or `None` for the overwhelming majority
+    /// of objects, which announce none. Read by
+    /// [`DerivedAmount::AnnouncedX`](crate::DerivedAmount).
+    pub announced_x: Option<u32>,
+    /// Whether damage this resolution deals may be prevented (CR 615.1). `true` only
+    /// while the object's card declares
+    /// [`SpellTrait::DamageCantBePrevented`](crate::SpellTrait) *and* the announced X
+    /// meets whatever threshold that declaration names.
+    pub damage_unpreventable: bool,
+    /// What this object's cost payment recorded (CR 601.2h) — read by
+    /// [`DerivedAmount::SacrificedCreaturePower`](crate::DerivedAmount).
+    ///
+    /// The one fact here that could not be recovered from anywhere at all: a cost is paid
+    /// as the object goes on the stack, so the permanents it ate are gone by the time it
+    /// resolves.
+    pub paid: crate::stack::PaidCost,
+    /// How many permanents **this resolution has sacrificed so far** (CR 701.17) — read by
+    /// [`DerivedAmount::SacrificedThisWay`](crate::DerivedAmount), the `that many` of
+    /// `Sacrifice any number of lands. Search your library for up to that many land cards`.
+    ///
+    /// Written by the answer that performs the sacrifice, on the way back into the
+    /// suspended remainder, which is the only moment it could be: the size of an open
+    /// sacrifice is a decision, so it does not exist at announcement, and the event log
+    /// cannot supply it afterwards because only a *creature*'s departure is recorded
+    /// (CR 700.4) — a sacrificed land leaves no trace a later effect could count.
+    pub sacrificed: u32,
+}
+
+impl Resolution {
+    /// A resolution beginning at log sequence `start` with nothing announced — the shape
+    /// every ability's resolution has, and every spell's that prints neither an X nor a
+    /// clause about its damage.
+    #[must_use]
+    pub fn at(start: u64) -> Self {
+        Self {
+            start,
+            ..Self::default()
+        }
+    }
+
+    /// `damage` as this resolution deals it: the same event, marked unpreventable when
+    /// this resolution's object says its damage cannot be prevented.
+    ///
+    /// The one place that declaration is applied, so every damage verb inherits it by
+    /// going through here rather than by each remembering to ask.
+    #[must_use]
+    pub(crate) fn damage(
+        self,
+        damage: crate::replacement::PendingDamage,
+    ) -> crate::replacement::PendingDamage {
+        if self.damage_unpreventable {
+            damage.unpreventable()
+        } else {
+            damage
+        }
+    }
+}
+
 /// Whether the player in seat `player` is still in the game — the shared condition
 /// under every player-shaped [`TargetSpec`] (CR 115.1: a player who has left is not
 /// a legal target).
@@ -144,6 +223,18 @@ pub(crate) fn target_is_legal(
                     && !has_type(p, CardType::Land, db)
             })
         }
+        // A mana value read off the permanent's printed face (CR 202.3), through the
+        // same accessor a card and a token both answer — so a token is a candidate at
+        // mana value 0 (CR 111.4) rather than being quietly absent from the universe.
+        // Nothing in the engine modifies a permanent's mana value, so the printed face
+        // is the whole answer; when something does, this is the one place that changes.
+        (TargetSpec::AnyPermanentWithManaValue { mana_value }, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| {
+                p.printed
+                    .face(db)
+                    .is_some_and(|face| face.mana_value() == mana_value)
+            })
+        }
         // A creature target additionally requires the permanent's printed types
         // to include Creature (the layer system's type-changing effects are
         // future work, so printed types are authoritative here).
@@ -180,6 +271,17 @@ pub(crate) fn target_is_legal(
                     && has_type(p, CardType::Creature, db)
             })
         }
+        // CR 105.2: colourless is the absence of every colour, read off the printed
+        // face — the same reading the count selector and the blocking restriction use,
+        // because no colour-changing layer exists to disagree with them.
+        (TargetSpec::AnyColorlessCreature, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| {
+                has_type(p, CardType::Creature, db)
+                    && p.printed
+                        .face(db)
+                        .is_some_and(|face| face.colors().is_empty())
+            })
+        }
         (TargetSpec::AnyTappedCreature, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| {
                 p.tapped && has_type(p, CardType::Creature, db)
@@ -200,6 +302,15 @@ pub(crate) fn target_is_legal(
         }
         (TargetSpec::AnyLand, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| has_type(p, CardType::Land, db))
+        }
+        // One slot that accepts either type (CR 601.2c). The two classes are disjoint on
+        // every card the schema can express, so this is a plain either-or — but a
+        // permanent that has *transformed* from one into the other is read on the face
+        // that is up, which is what `has_type` already does.
+        (TargetSpec::AnyCreatureOrPlaneswalker, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| {
+                has_type(p, CardType::Creature, db) || has_type(p, CardType::Planeswalker, db)
+            })
         }
         // One slot accepting any of three classes (CR 601.2c), not three slots: Vivien
         // Reid's `-3` names a single target that may be an artifact, an enchantment, or
@@ -247,20 +358,28 @@ pub(crate) fn target_is_legal(
         // A spell target is legal while that exact spell is still on the stack
         // (CR 701.5): once it has resolved (or been countered) it is gone, so a
         // counterspell aimed at it fizzles (CR 608.2b). An ability on the stack is
-        // not a spell and is never a legal "counter target spell" target.
-        (TargetSpec::SpellOnStack, Target::Spell(id)) => state
-            .stack
-            .iter()
-            .any(|o| o.id == id && matches!(o.kind, StackObjectKind::Spell { .. })),
+        // not a spell and is never a legal "counter target spell" target — a **copy**
+        // of a spell is one (CR 707.10), so it is, and whether countering it then
+        // achieves anything is the separate question `has_trait` answers.
+        (TargetSpec::SpellOnStack, Target::Spell(id)) => state.stack.iter().any(|o| {
+            o.id == id
+                && matches!(
+                    o.kind,
+                    StackObjectKind::Spell { .. } | StackObjectKind::SpellCopy { .. }
+                )
+        }),
         // A *creature* spell is one whose card has the creature type while it is
         // still on the stack — read off the card, since no permanent exists yet.
         (TargetSpec::CreatureSpellOnStack, Target::Spell(id)) => state.stack.iter().any(|o| {
             o.id == id
                 && match o.kind {
-                    StackObjectKind::Spell { card } => db
+                    StackObjectKind::Spell { card, .. } => db
                         .card(card.card)
                         .is_some_and(|c| c.has_type(CardType::Creature)),
-                    StackObjectKind::Ability { .. } => false,
+                    // A copy of a spell is a spell (CR 707.10), but this spec names a
+                    // *creature* spell and no permanent spell is ever copied here
+                    // (CR 707.10f is unmodeled), so a copy is never one.
+                    StackObjectKind::Ability { .. } | StackObjectKind::SpellCopy { .. } => false,
                 }
         }),
         // Any other spec/value pairing names the wrong kind of object and is
@@ -279,9 +398,23 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
     // chosen for (same order the targeting effects consume them). An ability
     // carries its effects on the stack object; a spell's effects are read from
     // its card's spell IR ([`spell_effects_of`], CR 601.2c/608.2c).
+    // The mode and the X this object announced (CR 601.2b), read once here and used by
+    // everything below: which effects there are at all, which target slots they declare,
+    // what X the resolution reads, and which spell traits are in force.
+    let (announced_mode, announced_x) = match &object.kind {
+        StackObjectKind::Spell { mode, x, .. } | StackObjectKind::SpellCopy { mode, x, .. } => {
+            (*mode, *x)
+        }
+        StackObjectKind::Ability { .. } => (None, None),
+    };
     let effects: Vec<Effect> = match &object.kind {
         StackObjectKind::Ability { effects, .. } => effects.clone(),
-        StackObjectKind::Spell { card } => spell_effects_of(db, card.card),
+        StackObjectKind::Spell { card, .. } => spell_effects_of(db, card.card, announced_mode),
+        // CR 707.2: a copy has the copiable values of what it copied, and rules text is
+        // one of them — so a copy's effects are read from the copied card exactly as the
+        // original's are from its own. A copy is never modal: a copied modal spell keeps
+        // the mode the original announced, which travels with it.
+        StackObjectKind::SpellCopy { card, .. } => spell_effects_of(db, *card, announced_mode),
     };
     // The groups the stored targets were chosen for (CR 601.2c), in slot order.
     // An ability's groups come from its effects; a spell's include any spell-effect
@@ -290,9 +423,13 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
     // re-checked on the same path as any other (CR 608.2b).
     let groups: Vec<TargetGroup> = match &object.kind {
         StackObjectKind::Ability { .. } => effects.iter().flat_map(Effect::target_groups).collect(),
-        StackObjectKind::Spell { card } => db
+        StackObjectKind::Spell { card, .. } => db
             .card(card.card)
-            .map(CardData::cast_target_groups)
+            .map(|data| data.cast_target_groups(announced_mode))
+            .unwrap_or_default(),
+        StackObjectKind::SpellCopy { card, .. } => db
+            .card(*card)
+            .map(|data| data.cast_target_groups(announced_mode))
             .unwrap_or_default(),
     };
     // The spec each stored target was chosen for, flattened out of the groups in the
@@ -322,7 +459,9 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
             .zip(&object.targets)
             .all(|(&spec, &target)| !target_is_legal(spec, target, state, object.controller, db))
     {
-        if let StackObjectKind::Spell { card } = object.kind {
+        // CR 707.10a: a copy that fizzles has no card to put anywhere and simply ceases
+        // to exist, which is what happening nothing at all amounts to.
+        if let StackObjectKind::Spell { card, .. } = object.kind {
             if let Some(player) = state.players.get_mut(object.controller.0) {
                 player.graveyard.push(card);
             }
@@ -339,7 +478,7 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
     // A spell begins resolving (CR 608.2): log it before its effects so the history
     // reads header-then-consequences (`spell_resolved` precedes any damage/draw/death
     // the spell causes). An ability on the stack is not a "spell" and is not logged.
-    if let StackObjectKind::Spell { card } = object.kind {
+    if let StackObjectKind::Spell { card, .. } = object.kind {
         state.record_event(GameEvent::SpellResolved {
             player: object.controller,
             card,
@@ -359,25 +498,44 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
     // the same answer a spell gives and needs no special case anywhere.
     let source = match &object.kind {
         StackObjectKind::Ability { source, .. } => Some(*source),
-        StackObjectKind::Spell { .. } => None,
+        StackObjectKind::Spell { .. } | StackObjectKind::SpellCopy { .. } => None,
     };
     // A spell still owes its card a final zone (CR 608.3) after its effects. Carried
     // into the effect loop so that, if an effect suspends on a player choice, the
     // remainder — including this last step — travels with the suspension instead of
     // being skipped.
     let spell = match &object.kind {
-        StackObjectKind::Spell { card } => Some(SuspendedSpell {
+        StackObjectKind::Spell { card, .. } => Some(SuspendedSpell {
             card: *card,
             targets: object.targets.clone(),
         }),
-        StackObjectKind::Ability { .. } => None,
+        // A copy owes its card no final zone, because it has no card: when it finishes
+        // resolving it simply ceases to exist (CR 707.10a). That is the whole of how a
+        // copied spell stays distinct from a cast one on the way out, and it is an
+        // absence rather than a rule anyone has to apply.
+        StackObjectKind::Ability { .. } | StackObjectKind::SpellCopy { .. } => None,
     };
-    // The point in the event log this resolution begins at — the window an intervening
-    // condition about what *this* resolution did reads over
-    // ([`Condition::MilledThisWay`](crate::Condition)). Captured before any effect runs
-    // and carried through a suspension, so a mill that stops to ask a question still
-    // answers the question about itself correctly when it resumes.
-    let resolution_start = state.next_log_sequence;
+    // What this resolution knows about itself, settled once, before any effect runs, and
+    // carried through a suspension — so a mill that stops to ask a question still answers
+    // the question about itself correctly when it resumes, a spell that stops to ask one
+    // resumes with the X it was cast for, and a spell that suspends still knows what its
+    // cost ate.
+    let resolution = Resolution {
+        start: state.next_log_sequence,
+        announced_x,
+        // CR 615.1: whether this object's damage can be prevented is settled here, once,
+        // off the card and the value it announced — never asked again at each damage
+        // verb, and never re-derived from a cost that has already been paid.
+        damage_unpreventable: object
+            .has_trait(db, crate::stack::SpellTraitKind::DamageCantBePrevented),
+        // What paying for the object recorded back at announcement (CR 601.2h); the
+        // permanents it names have left, which is why it was written down rather than
+        // looked up.
+        paid: object.paid,
+        // Nothing has been sacrificed by a resolution that has not started; the answer to
+        // an open sacrifice writes this on its way back in.
+        sacrificed: 0,
+    };
     let suspended = apply_effects_with_targets(
         state,
         &effects,
@@ -385,7 +543,7 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         object.controller,
         source,
         spell.clone(),
-        resolution_start,
+        resolution,
         db,
     );
     if suspended {
@@ -469,20 +627,9 @@ pub(crate) fn apply_effects_with_targets(
     controller: crate::id::PlayerId,
     source: Option<AbilitySource>,
     spell: Option<SuspendedSpell>,
-    resolution_start: u64,
+    resolution: Resolution,
     db: &CardDatabase,
 ) -> bool {
-    // The printed card a `same_name_as_source` filter compares against, resolved now
-    // because the source permanent may be gone by the time the choice is answered.
-    // A token has no card to compare against, and no card in a library or hand can
-    // share an identity it has not got (CR 111), so it simply matches nothing.
-    let source_card = source.and_then(AbilitySource::permanent).and_then(|id| {
-        state
-            .battlefield
-            .iter()
-            .find(|perm| perm.id == id)
-            .and_then(|perm| perm.printed.card())
-    });
     // A work queue rather than a walk over a fixed list, because a conditional's chosen
     // branch is *spliced in front of what is left*: the branch then travels through the
     // same targeting, choice-posing, and suspension machinery every other effect does,
@@ -504,7 +651,8 @@ pub(crate) fn apply_effects_with_targets(
                 state,
                 condition,
                 controller,
-                resolution_start,
+                source.and_then(AbilitySource::permanent),
+                resolution.start,
                 db,
             ) {
                 then
@@ -535,12 +683,13 @@ pub(crate) fn apply_effects_with_targets(
             (0..take).filter_map(|_| targets.pop_front()).collect()
         };
 
-        // A choice-posing effect (CR 701.8 discard, 701.17 scry, 701.19 search) stops
-        // here. Choices whose clamped maximum is zero are applied outright inside
-        // `pose_choices`, so an empty hand or an empty library never suspends anything.
-        if let Some(choices) =
-            crate::choice::choices_for_effect(state, &effect, controller, source_card, &taken)
-        {
+        // A choice-posing effect (CR 701.8 discard, 701.17 sacrifice, 701.19 search, and
+        // the scry) stops here. Choices whose clamped maximum is zero are applied
+        // outright inside `pose_choices`, so an empty hand, an empty library, or a board
+        // with nothing of the named class never suspends anything.
+        if let Some(choices) = crate::choice::choices_for_effect(
+            state, &effect, controller, source, &taken, resolution, db,
+        ) {
             if crate::choice::pose_choices(state, choices, db) {
                 crate::choice::attach_resume(
                     state,
@@ -550,7 +699,7 @@ pub(crate) fn apply_effects_with_targets(
                         effects: queue.into_iter().collect(),
                         targets: targets.into_iter().collect(),
                         spell,
-                        resolution_start,
+                        resolution,
                     },
                 );
                 return true;
@@ -559,7 +708,7 @@ pub(crate) fn apply_effects_with_targets(
         }
 
         match groups.as_slice() {
-            [] => apply_effect(state, &effect, controller, source, resolution_start, db),
+            [] => apply_effect(state, &effect, controller, source, resolution, db),
             // CR 608.2c: each chosen target is re-checked on its own, and an
             // individually-illegal one is skipped while its legal siblings resolve. For
             // an "up to two" effect that is the difference between one dead target
@@ -568,13 +717,7 @@ pub(crate) fn apply_effects_with_targets(
                 for target in taken {
                     if target_is_legal(group.spec, target, state, controller, db) {
                         apply_targeted_effect(
-                            state,
-                            &effect,
-                            target,
-                            controller,
-                            source,
-                            resolution_start,
-                            db,
+                            state, &effect, target, controller, source, resolution, db,
                         );
                     }
                 }
@@ -614,7 +757,7 @@ pub(crate) fn resume_after_choice(state: &mut GameState, resume: Resume, db: &Ca
         resume.controller,
         resume.source,
         resume.spell.clone(),
-        resume.resolution_start,
+        resume.resolution,
         db,
     );
     if suspended {

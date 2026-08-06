@@ -17,6 +17,7 @@ fn valid_action_serializes_type_and_omits_empty_subject() {
         subject: vec![],
         requirements: vec![],
         prompts: vec![],
+        cost: None,
         destinations: vec![],
         token: String::new(),
     };
@@ -39,6 +40,7 @@ fn cr_605_mana_ability_flag_round_trips_and_defaults_off() {
         subject: vec!["perm_1".into()],
         requirements: vec![],
         prompts: vec![],
+        cost: None,
         destinations: vec![],
         token: "h:1".into(),
     };
@@ -77,6 +79,14 @@ fn valid_action_carries_requirements_and_token() {
             subject: None,
         }],
         prompts: vec![],
+        // A cast states what it costs, printed and as the game has it (CR 601.2f). The
+        // two agree here — nothing is modifying this bolt's cost — and the field still
+        // rides the wire, because "unchanged" is an answer a client draws rather than
+        // one it infers from an absence.
+        cost: Some(ActionCost {
+            printed: "{R}".into(),
+            modified: "{R}".into(),
+        }),
         destinations: vec![],
         token: "h:9f2c".into(),
     };
@@ -93,6 +103,7 @@ fn valid_action_carries_requirements_and_token() {
                 "prompt": "target creature or player",
                 "candidates": ["perm_bear", "p1", "p2"]
             }],
+            "cost": {"printed": "{R}", "modified": "{R}"},
             "token": "h:9f2c"
         })
     );
@@ -393,6 +404,7 @@ fn issue_554_number_prompt_round_trips_and_tags_its_kind() {
         prompt: "Choose a value for X".into(),
         min: 0,
         max: 4,
+        values: Vec::new(),
     };
     let json = serde_json::to_value(&prompt).unwrap();
     assert_eq!(
@@ -414,10 +426,46 @@ fn issue_554_number_prompt_round_trips_and_tags_its_kind() {
         prompt: "How many?".into(),
         min: 1,
         max: 1,
+        values: Vec::new(),
     })
     .unwrap();
     assert_eq!(one_only["min"], 1);
     assert_eq!(one_only["max"], 1);
+
+    // An X in a mana cost additionally states **what each value costs**, because a
+    // client may not multiply a cost out for itself (issue #733). The list rides beside
+    // the range and is omitted entirely for a number that costs nothing, so the shape
+    // above is unchanged for every prompt that predates it.
+    let announced = Prompt::Number {
+        slot: "x".into(),
+        prompt: "Choose a value for X".into(),
+        min: 0,
+        max: 2,
+        values: vec![
+            NumberValue {
+                value: 0,
+                cost: "{R}".into(),
+            },
+            NumberValue {
+                value: 1,
+                cost: "{1}{R}".into(),
+            },
+            NumberValue {
+                value: 2,
+                cost: "{2}{R}".into(),
+            },
+        ],
+    };
+    let json = serde_json::to_value(&announced).unwrap();
+    assert_eq!(
+        json["values"],
+        serde_json::json!([
+            { "value": 0, "cost": "{R}" },
+            { "value": 1, "cost": "{1}{R}" },
+            { "value": 2, "cost": "{2}{R}" }
+        ])
+    );
+    assert_eq!(serde_json::from_value::<Prompt>(json).unwrap(), announced);
 
     // The answer is the numeral as a string, in the shared slot-answer shape.
     let answer = TargetChoice {
@@ -547,6 +595,7 @@ fn valid_action_carries_prompts_and_is_answered_by_target_choice() {
                 candidates: vec!["card_1".into(), "card_2".into()],
             },
         ],
+        cost: None,
         destinations: vec![],
         token: "t0123456789abcdef".into(),
     };

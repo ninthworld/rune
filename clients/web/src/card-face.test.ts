@@ -22,7 +22,7 @@ import {
   permanentFace,
   stackFace,
 } from './card-face'
-import { CatalogView, GameView, type Permanent } from './protocol'
+import { CatalogView, GameView, type CardView, type Permanent } from './protocol'
 
 const FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -430,5 +430,97 @@ describe('a loyalty ability', () => {
     expect(loyaltyCost('Flying')).toBeUndefined()
     // A colon with no number in front of it is an activated ability, not a loyalty one.
     expect(loyaltyCost('{T}: Add {G}.')).toBeUndefined()
+  })
+})
+
+/**
+ * A card with two faces (CR 712, `docs/client-design.md` §6.7). The fields on a `CardView`
+ * describe the side that is **up**; `other_face` is the side that is not, and both facts it
+ * carries — that there is one, and what is on it — are things a client cannot work out.
+ */
+describe('a card with two faces', () => {
+  const NICOL_BOLAS: CardView = {
+    id: 'card_bolas',
+    name: 'Nicol Bolas, the Ravager',
+    type_line: 'Legendary Creature — Elder Dragon',
+    mana_cost: '{1}{U}{B}{R}',
+    power: '4',
+    toughness: '4',
+    functional_id: 'nicol_bolas_the_ravager',
+    other_face: {
+      name: 'Nicol Bolas, the Arisen',
+      type_line: 'Legendary Planeswalker — Bolas',
+      loyalty: '7',
+      rules_text: '+2: Draw two cards.',
+    },
+  }
+
+  it('draws the face that is up, and carries the other one whole', () => {
+    const face = cardFace(NICOL_BOLAS)
+
+    expect(face.name).toBe('Nicol Bolas, the Ravager')
+    expect(face.stat).toEqual({ kind: 'power_toughness', value: '4/4', label: 'Power/toughness' })
+    expect(face.otherFace?.name).toBe('Nicol Bolas, the Arisen')
+    expect(face.otherFace?.rulesText).toBe('+2: Draw two cards.')
+    // The same card and the same object, so the same entity id (`docs/protocol.md`).
+    expect(face.otherFace?.id).toBe('card_bolas')
+  })
+
+  it('gives a back face no mana cost and no art of the front’s', () => {
+    // CR 712.4a: a back face has no cost, so the title band's trailing slot is simply empty and
+    // the name is fitted against the whole band — which the existing fitting does with no
+    // special case, because the pips take a constant share of the drawing and there are none.
+    const back = cardFace(NICOL_BOLAS).otherFace
+    expect(back?.manaCost).toBeUndefined()
+    // And no art key: a picture looked up by card identity is the *card's*, so drawing it
+    // behind the other side's text would be inventing a face.
+    expect(back?.artKey).toBeUndefined()
+    expect(back?.stat).toEqual({ kind: 'loyalty', value: '7', label: 'Starting loyalty' })
+  })
+
+  it('says there is another side, and never what is on it', () => {
+    // The board's mark is one glyph in the run of state marks; the word is here, because a
+    // glyph is not readable. Naming the back would put a fact on the board that is not on it.
+    const summary = faceSummary(cardFace(NICOL_BOLAS))
+    expect(summary).toContain('has another face')
+    expect(summary).not.toContain('Arisen')
+  })
+
+  it('says nothing of the kind about a card with one face', () => {
+    // Absence is the whole of the signal: a client cannot tell a transforming card from an
+    // ordinary one, so a card the server said nothing about has no mark and no other side.
+    const forest = cardFace(view('gameview.json').my_hand![1]!)
+    expect(forest.otherFace).toBeUndefined()
+    expect(faceSummary(forest)).not.toContain('another face')
+  })
+
+  it('follows a permanent that has transformed, which carries its front face', () => {
+    // Which side is up is the server's to say and never worked out here: a permanent that has
+    // transformed carries its *front* face in the same field, and the board draws what it is
+    // told is up.
+    const transformed: Permanent = {
+      id: 'perm_bolas',
+      controller: 'p0',
+      owner: 'p0',
+      card: {
+        ...NICOL_BOLAS,
+        name: 'Nicol Bolas, the Arisen',
+        type_line: 'Legendary Planeswalker — Bolas',
+        mana_cost: undefined,
+        power: undefined,
+        toughness: undefined,
+        other_face: {
+          name: 'Nicol Bolas, the Ravager',
+          type_line: 'Legendary Creature — Elder Dragon',
+          mana_cost: '{1}{U}{B}{R}',
+        },
+      },
+      counters: [{ kind: 'loyalty', count: 7 }],
+    }
+    const face = permanentFace(transformed)
+    expect(face.name).toBe('Nicol Bolas, the Arisen')
+    expect(face.stat).toEqual({ kind: 'loyalty', value: '7', label: 'Loyalty' })
+    expect(face.otherFace?.name).toBe('Nicol Bolas, the Ravager')
+    expect(face.otherFace?.manaCost).toBe('{1}{U}{B}{R}')
   })
 })

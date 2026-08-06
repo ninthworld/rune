@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "functional_id": "metamorphic_alteration",
+  "name": "Metamorphic Alteration",
+  "types": [
+    "enchantment"
+  ],
+  "subtypes": [
+    "Aura"
+  ],
+  "mana_cost": "{1}{U}",
+  "colors": [
+    "blue"
+  ],
+  "abilities": [
+    {
+      "type": "enters_as_copy",
+      "of": "any_creature",
+      "subject": "attached"
+    }
+  ],
+  "attachment": {
+    "kind": "aura",
+    "attach_to": "any_creature"
+  }
+}

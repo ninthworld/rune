@@ -218,6 +218,8 @@ fn issue_620_every_planeswalker_enters_with_its_printed_loyalty() {
             &state,
             &Action::CastSpell {
                 card: instance,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment: Vec::new(),
             },
@@ -685,6 +687,8 @@ fn issue_620_liliana_minus_three_lets_zombie_creature_spells_be_cast_from_the_gr
 
     let cast = |card: CardInstance| Action::CastSpell {
         card,
+        mode: None,
+        x: None,
         targets: Vec::new(),
         payment: Vec::new(),
     };
@@ -857,6 +861,8 @@ fn issue_620_sarkhan_plus_one_asks_for_each_colour_and_restricts_the_mana_to_dra
     assert!(
         offered.contains(&Action::CastSpell {
             card: dragon,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         }),
@@ -865,6 +871,8 @@ fn issue_620_sarkhan_plus_one_asks_for_each_colour_and_restricts_the_mana_to_dra
     assert!(
         !offered.contains(&Action::CastSpell {
             card: ogre,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         }),
@@ -875,6 +883,8 @@ fn issue_620_sarkhan_plus_one_asks_for_each_colour_and_restricts_the_mana_to_dra
         &state,
         &Action::CastSpell {
             card: dragon,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -1096,6 +1106,8 @@ fn issue_620_indestructible_survives_a_destroy_effect() {
         &after,
         &Action::CastSpell {
             card: murder,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(mine)],
             payment: Vec::new(),
         },
@@ -1138,6 +1150,8 @@ fn lava_axe_may_be_aimed_at_a_planeswalker_and_never_at_a_creature() {
 
     let cast = Action::CastSpell {
         card: axe,
+        mode: None,
+        x: None,
         targets: Vec::new(),
         payment: Vec::new(),
     };
@@ -1163,6 +1177,8 @@ fn lava_axe_may_be_aimed_at_a_planeswalker_and_never_at_a_creature() {
         &state,
         &Action::CastSpell {
             card: axe,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(walker)],
             payment: Vec::new(),
         },

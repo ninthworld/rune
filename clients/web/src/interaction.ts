@@ -68,6 +68,7 @@ import type { ActionAck, ValidAction } from './protocol'
 import {
   advertisedCount,
   advertisedMinimum,
+  conditionalSlots,
   isSubmittable,
   requiredSlots,
   toggleSelection,
@@ -188,6 +189,16 @@ export function needsConfirmation(action: ValidAction): boolean {
   return action.type === 'concede'
 }
 
+/**
+ * The slot a modal cast announces its mode on (CR 700.2).
+ *
+ * Published by the protocol as the name of that question — `docs/protocol.md` lists `mode` and
+ * `x` in a table of the two announcement slots — so this is a stated constant matched whole, not
+ * a slot id parsed for what is inside it. Nothing about the *answer* is read from it: the option
+ * ids and their labels are the server's, and which target slots a mode owes is `requires`.
+ */
+export const MODE_SLOT = 'mode'
+
 export type SlotKind = 'target' | 'zone' | 'order' | 'option' | 'number' | 'mana'
 
 /** One question an armed action is asking, with everything needed to draw and answer it. */
@@ -226,6 +237,28 @@ export interface Slot {
    * Absent for every other kind.
    */
   range?: { min: number; max: number }
+  /**
+   * Every value a `number` slot enumerates, and what choosing each one costs — the X of a mana
+   * cost, and nothing else (`docs/protocol.md`).
+   *
+   * **The stops of the stepper, and the whole of them.** When the server sends these they are
+   * the set of legal values; the client walks the list and stops at its ends. It never adds one
+   * to a number, never reads a cost for a value, and never works out what any value would cost:
+   * "a client that reproduced it would be computing cost", which is the one thing this module
+   * exists not to do. Absent for a number that costs nothing, which keeps its `range`.
+   */
+  values?: readonly { value: number; cost?: string }[]
+  /**
+   * Whether an `option` slot is the **announcement's mode** (CR 700.2) — the one option slot
+   * drawn as numbered rows rather than as controls in a line.
+   *
+   * Read off the slot the protocol publishes for it (`docs/protocol.md`, *Announcing a spell:
+   * the mode and X*), which is a stated name rather than an id parsed for structure. It is a
+   * presentation fact and only that: a mode is bounded at three by the catalog's own validator
+   * and its labels are sentences, where a colour choice or a card being named is a short word
+   * and may be a long list.
+   */
+  numbered?: boolean
   /**
    * The mana symbol this slot pays, for a `mana` slot. The still-to-pay line is the pips of the
    * slots not yet answered — which is why nothing anywhere subtracts a cost from anything.
@@ -288,21 +321,49 @@ export function slotsOf(action: ValidAction, draft: Draft): readonly Slot[] {
   const choosable = choosableSubjects(action)
   const chosen = drafted(draft)
   const slots: Slot[] = []
-  // A cost is paid *as part of* casting, after the spell's targets are chosen (CR 601.2c,
-  // then 601.2f–h), and the client asks in that order for the same reason the rules do it in
-  // that order: a player deciding what to pay has already decided what they are aiming at.
-  // Until then the pips are held back — so a spell that asks for a target says so, alone,
-  // instead of putting a payment line above a question nobody has answered yet.
-  const aimed = (action.requirements ?? []).every(
-    (requirement) => (requirement.optional ?? false) || (draft[requirement.slot] ?? []).length > 0,
+  // Slots that belong to a *named choice* rather than to the action outright — a mulligan's
+  // bottoming, and every target slot of a modal spell. "A mode decides which target slots the
+  // spell has" (`docs/protocol.md`): the server advertises every mode's side by side, all
+  // marked optional, and `requires` is how a client tells which belong to which. So a slot no
+  // chosen option owes is not drawn, which is what keeps a spell from asking for both modes'
+  // targets before anybody has picked a mode (§6.7).
+  const perOption = conditionalSlots(action)
+  const drawnRequirement = (requirement: { slot: string; subject?: string }): boolean => {
+    if (perOption.has(requirement.slot) && !owed.has(requirement.slot)) return false
+    const subject = requirement.subject
+    // A question about a choice that has not been made is not a question yet. Declaring three
+    // attackers used to show a defender slot for every creature that *could* have attacked.
+    return subject === undefined || !choosable.has(subject) || chosen.has(subject)
+  }
+
+  // A cost is paid *as part of* casting, after the announcement and after the spell's targets
+  // are chosen (CR 601.2b, then 601.2c, then 601.2f–h), and the client asks in that order for
+  // the same reason the rules do: a player deciding what to pay has already decided what they
+  // are announcing and what they are aiming at. Until then the pips are held back — so a spell
+  // that asks for a mode says so, alone, instead of putting a payment line above a question
+  // nobody has answered yet.
+  // The announcement is the named choice and the number — a mode and an X — and it is those two
+  // shapes rather than every prompt: an additional cost paid by discarding is *part of* the
+  // payment (CR 601.2f–h) and is asked beside the pips, not ahead of them.
+  const answeredAnnouncement = (action.prompts ?? []).every(
+    (prompt) =>
+      (prompt.kind !== 'option' && prompt.kind !== 'number') ||
+      !owed.has(prompt.slot) ||
+      (draft[prompt.slot] ?? []).length > 0,
   )
+  const aimed =
+    answeredAnnouncement &&
+    (action.requirements ?? [])
+      .filter(drawnRequirement)
+      .every(
+        (requirement) =>
+          (requirement.optional ?? false) || (draft[requirement.slot] ?? []).length > 0,
+      )
 
   for (const requirement of action.requirements ?? []) {
     const subject = requirement.subject
     const conditional = subject !== undefined && choosable.has(subject)
-    // A question about a choice that has not been made is not a question yet. Declaring three
-    // attackers used to show a defender slot for every creature that *could* have attacked.
-    if (conditional && subject !== undefined && !chosen.has(subject)) continue
+    if (!drawnRequirement(requirement)) continue
     slots.push({
       slot: requirement.slot,
       kind: 'target',
@@ -346,6 +407,7 @@ export function slotsOf(action: ValidAction, draft: Draft): readonly Slot[] {
           optional: false,
           byEntity: false,
           conditional: false,
+          ...(prompt.slot === MODE_SLOT ? { numbered: true } : {}),
         })
         break
       case 'select_from_zone':
@@ -383,6 +445,16 @@ export function slotsOf(action: ValidAction, draft: Draft): readonly Slot[] {
           taps: [],
           // The bounds are the server's, computed from mana, the source's text, and the state.
           range: { min: prompt.min, max: prompt.max },
+          // And where the number is the X of a cost, the values themselves are the server's
+          // too, each with what it costs. Carried through untouched.
+          ...(prompt.values !== undefined && prompt.values.length > 0
+            ? {
+                values: prompt.values.map((entry) => ({
+                  value: entry.value,
+                  ...(entry.cost === undefined ? {} : { cost: entry.cost }),
+                })),
+              }
+            : {}),
           optional: false,
           byEntity: false,
           conditional: false,
@@ -462,6 +534,54 @@ const answered = (slot: Slot): boolean => {
   if (slot.chosen.length > 0) return true
   if (slot.conditional) return false
   return slot.kind !== 'target' || slot.optional
+}
+
+/**
+ * Where the stepper is standing, out of the values the server enumerated.
+ *
+ * The answer the draft holds, matched against the list by its own text; and before anything has
+ * been chosen, the **first value the server sent** — which is where a stepper starts because
+ * that is what the server put first, not because zero is a number this client knows about. A
+ * card that forbids X = 0 simply does not enumerate it and nothing here is any the wiser.
+ */
+export function stepperAt(slot: Slot): { index: number; value: number; cost?: string } | undefined {
+  const values = slot.values
+  if (values === undefined || values.length === 0) return undefined
+  const held = slot.chosen[0]
+  const index = Math.max(
+    0,
+    values.findIndex((entry) => String(entry.value) === held),
+  )
+  const entry = values[index]
+  return entry === undefined ? undefined : { index, ...entry }
+}
+
+/**
+ * The value one press of a stepper control moves to, or nothing at an end of the list.
+ *
+ * A walk along the list the server sent, and deliberately not arithmetic on a number: the stops
+ * are the values it enumerated, in its order, and a step past either end is not a value at all.
+ * Returned as the decimal string a `number` slot is answered with.
+ */
+export function stepTo(slot: Slot, delta: number): string | undefined {
+  const at = stepperAt(slot)
+  const values = slot.values
+  if (at === undefined || values === undefined) return undefined
+  const next = values[at.index + delta]
+  return next === undefined ? undefined : String(next.value)
+}
+
+/**
+ * Where `id` sits in the order being assembled, counting from one — or nothing, for an item
+ * that has not been picked yet.
+ *
+ * The badge a card wears in the pile the ordering is answered in (`docs/client-design.md` §6.7).
+ * It is the position in the draft's own list and nothing else, which is what makes taking a card
+ * back out renumber the rest for free.
+ */
+export function ordinalIn(slot: Slot, id: string): number | undefined {
+  const at = slot.chosen.indexOf(id)
+  return at < 0 ? undefined : at + 1
 }
 
 /**

@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "functional_id": "banefire",
+  "name": "Banefire",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{X}{R}",
+  "colors": [
+    "red"
+  ],
+  "spell_effects": [
+    {
+      "kind": "deal_damage_by_amount",
+      "target": "any_target",
+      "amount": {
+        "source": "announced_x"
+      }
+    }
+  ],
+  "spell_traits": [
+    {
+      "kind": "cant_be_countered",
+      "if_x_at_least": 5
+    },
+    {
+      "kind": "damage_cant_be_prevented",
+      "if_x_at_least": 5
+    }
+  ]
+}

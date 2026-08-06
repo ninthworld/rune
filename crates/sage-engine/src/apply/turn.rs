@@ -193,6 +193,10 @@ fn cleanup_turn_based_actions(state: &mut GameState) {
     state
         .static_effects
         .retain(|effect| effect.duration != Duration::UntilEndOfTurn);
+    // A `this turn` damage-prevention shield (CR 615.1) is one of those effects, and
+    // ends here for the same reason a pump does — it just is not a CR 613 layer effect,
+    // so it is held on its own list and cleared beside them rather than by their filter.
+    state.prevention.clear();
     state.deathtouch_struck.clear();
 }
 

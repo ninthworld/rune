@@ -1,9 +1,10 @@
 //! Action generation — enumeration of legal actions from game state.
 
-use crate::ability::{is_equip_ability, is_loyalty_ability, is_mana_ability, Ability, Effect};
+use crate::ability::{
+    is_equip_ability, is_loyalty_ability, is_mana_ability, is_sorcery_speed_ability, Ability,
+    Effect,
+};
 use crate::choice::ChoiceQuestion;
-use crate::commander::commander_tax_cost;
-use crate::mana::parse_mana_cost;
 use crate::phase::Step;
 use crate::state::GameState;
 use crate::CardDatabase;
@@ -11,8 +12,8 @@ use crate::CardDatabase;
 use super::definition::Action;
 use super::targeting::legal_targets_for_spec;
 use super::utilities::{
-    castable_at_instant_speed, cost_payable, equip_timing_allows, graveyard_ability,
-    graveyard_cost_payable, is_castable_spell, is_land, loyalty_timing_allows,
+    cast_cost, castable_at_instant_speed, cost_payable, graveyard_ability, graveyard_cost_payable,
+    is_castable_spell, is_land, loyalty_timing_allows, sorcery_timing_allows,
     tap_cost_is_summoning_sick,
 };
 
@@ -74,12 +75,39 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 // above; the answer names a position in the freshly derived option list
                 // ([`crate::pending_replacement_options`]).
                 ChoiceQuestion::Replacement(_) => vec![Action::AnswerReplacement { index: 0 }],
+                // CR 614.12: the entering permanent's controller names a card.
+                // Advertised as the bare question like the three above; the answer
+                // names a card in the freshly derived candidate list
+                // ([`crate::named_card_candidates`]).
+                ChoiceQuestion::CardName(_) => vec![Action::AnswerCardName {
+                    card: crate::id::CardId(0),
+                }],
+                // A card ordering is advertised the same way: one bare question, whose
+                // answer is the permutation the submitted action carries. It is posed
+                // only over two cards or more, so it is always answerable.
+                ChoiceQuestion::Order(_) => vec![Action::AnswerOrder { order: Vec::new() }],
+                // A sacrifice is advertised as the bare question too; the chosen
+                // permanents ride in the submitted action, exactly as a discard's
+                // chosen cards do.
+                ChoiceQuestion::Permanents(_) => {
+                    vec![Action::AnswerPermanents { chosen: Vec::new() }]
+                }
+                // CR 614.12: a permanent named as a card enters. Advertised as the bare
+                // question too; the answer names one of the freshly derived candidates
+                // ([`crate::copy_choice_candidates`]), or none where the card said "may".
+                ChoiceQuestion::Permanent(_) => vec![Action::AnswerPermanent { chosen: None }],
             };
             // CR 605.3a: a player asked to pay a cost while something resolves may
             // activate mana abilities to pay it — the one thing the freeze lets
             // through, and only because a mana ability uses no stack and hands nobody
             // priority. Anything else would let the game move under a question that is
             // still owed.
+            //
+            // A cost paid by sacrificing or discarding does not widen that by a single
+            // action: it is asked of a player who may still be holding mana abilities,
+            // so the permission is the same one, and what the cost is paid *with* is
+            // asked afterwards as its own question, where nothing at all is legal but
+            // the answer.
             if pending
                 .question
                 .confirm()
@@ -270,8 +298,18 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             // CR 117.1a: an instant — or a card with flash (CR 702.8) — ignores the
             // sorcery-speed gate; every other spell is bound by it.
             let timing_ok = castable_at_instant_speed(data) || sorcery_speed;
+            // The cheapest this cast can be: X = 0 (CR 202.3b), and the cost the
+            // *charge* will take rather than the printed one — a cast made affordable by
+            // a reducer on the battlefield (CR 601.2f) is offered, and one made
+            // unaffordable by a tax is not. Read through the one function that answers
+            // what a cast costs, so the offer and the charge can never price the same
+            // spell differently. A larger X is enumerated separately, by
+            // [`crate::x_options`], against the same function.
+            let base_cost = cast_cost(state, db, card, None).map(|(cost, _)| cost);
             if timing_ok
-                && payable.covers(&parse_mana_cost(&data.mana_cost), spend_purpose(data))
+                && base_cost
+                    .as_ref()
+                    .is_some_and(|cost| payable.covers(cost, spend_purpose(data)))
                 && additional_cost_is_payable(state, priority, data, card.id, db)
             {
                 // A targeted spell is offered only when *every* target slot has at
@@ -280,9 +318,11 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 // "no legal object to enchant" rule). A slot's candidates come from
                 // the same per-slot enumeration abilities use, so this stays O(N)
                 // per slot and never forms the cartesian product.
-                if groups_are_fillable(&data.cast_target_groups(), state, priority, db) {
+                if cast_is_announceable(state, db, data, priority) {
                     actions.push(Action::CastSpell {
                         card,
+                        mode: None,
+                        x: None,
                         targets: Vec::new(),
                         payment: Vec::new(),
                     });
@@ -306,13 +346,18 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 continue;
             }
             let timing_ok = castable_at_instant_speed(data) || sorcery_speed;
+            let base_cost = cast_cost(state, db, card, None).map(|(cost, _)| cost);
             if timing_ok
-                && payable.covers(&parse_mana_cost(&data.mana_cost), spend_purpose(data))
+                && base_cost
+                    .as_ref()
+                    .is_some_and(|cost| payable.covers(cost, spend_purpose(data)))
                 && additional_cost_is_payable(state, priority, data, card.id, db)
-                && groups_are_fillable(&data.cast_target_groups(), state, priority, db)
+                && cast_is_announceable(state, db, data, priority)
             {
                 actions.push(Action::CastSpell {
                     card,
+                    mode: None,
+                    x: None,
                     targets: Vec::new(),
                     payment: Vec::new(),
                 });
@@ -326,7 +371,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
         // its cost *plus the commander tax*: {2} generic for each previous cast from
         // the command zone this game. Payability is checked against that taxed cost,
         // so the offer and the charge (in `apply_cast_spell`) always agree.
-        if let Some(commander) = &player.commander {
+        if player.commander.is_some() {
             for &card in &player.command {
                 let Some(data) = db.card(card.card) else {
                     continue;
@@ -335,14 +380,22 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                     continue;
                 }
                 let timing_ok = castable_at_instant_speed(data) || sorcery_speed;
-                let cost = commander_tax_cost(&parse_mana_cost(&data.mana_cost), commander.casts);
+                // The commander tax (CR 903.8) is part of what the cast costs, not a
+                // surcharge added afterwards, so it comes out of the same function every
+                // other cost does rather than being re-applied here — which is also what
+                // puts a command-zone cast under any cost modification in force.
+                let Some((cost, _)) = cast_cost(state, db, card, None) else {
+                    continue;
+                };
                 if timing_ok
                     && payable.covers(&cost, spend_purpose(data))
                     && additional_cost_is_payable(state, priority, data, card.id, db)
-                    && groups_are_fillable(&data.cast_target_groups(), state, priority, db)
+                    && cast_is_announceable(state, db, data, priority)
                 {
                     actions.push(Action::CastSpell {
                         card,
+                        mode: None,
+                        x: None,
                         targets: Vec::new(),
                         payment: Vec::new(),
                     });
@@ -372,7 +425,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
 /// target creatures" is a legal announcement with no creatures on the board, choosing
 /// none. That is the whole difference an arity-aware gate makes, and it is why this asks
 /// the group rather than the spec.
-fn groups_are_fillable(
+pub(super) fn groups_are_fillable(
     groups: &[crate::ability::TargetGroup],
     state: &GameState,
     actor: crate::id::PlayerId,
@@ -381,6 +434,31 @@ fn groups_are_fillable(
     groups.iter().all(|group| {
         group.min == 0 || !legal_targets_for_spec(group.spec, state, actor, db).is_empty()
     })
+}
+
+/// Whether a cast of `data` could be **announced** at all right now — the CR 601.2c
+/// target gate, asked over whichever modes the card offers.
+///
+/// A non-modal card has one set of slots and this is [`groups_are_fillable`] over them.
+/// A **modal** card has one set per mode (CR 700.2) and is castable while *any* of them
+/// can be filled: choosing a mode whose targets are unavailable is illegal, but choosing
+/// another one is not, and a spell with one live mode is a spell you may cast.
+///
+/// Which modes those are is enumerated separately, by
+/// [`mode_options`](crate::mode_options), against this same per-slot check — so the modes
+/// on offer and the reason the cast is on offer are one answer.
+fn cast_is_announceable(
+    state: &GameState,
+    db: &CardDatabase,
+    data: &crate::card::CardData,
+    actor: crate::id::PlayerId,
+) -> bool {
+    if !data.is_modal() {
+        return groups_are_fillable(&data.cast_target_groups(None), state, actor, db);
+    }
+    (0..data.modes.len())
+        .filter_map(|index| u8::try_from(index).ok())
+        .any(|index| groups_are_fillable(&data.cast_target_groups(Some(index)), state, actor, db))
 }
 
 /// Whether `data`'s additional cast cost (CR 601.2b) can be paid by `actor` right now,
@@ -498,7 +576,14 @@ fn offer_activations(
                 // sorcery. Gated here beside the loyalty rule and for the same reason —
                 // it is a timing fact about *this* activation rather than about its
                 // cost — and re-derived independently in `apply_action`.
-                if is_equip_ability(ability) && !equip_timing_allows(state, perm) {
+                if is_equip_ability(ability) && !sorcery_timing_allows(state, perm) {
+                    continue;
+                }
+                // CR 602.5d: an ability that prints `Activate only as a sorcery.` says so
+                // itself. The third timing gate in the same place, measured by the same
+                // expression of "sorcery speed" the other two use, and re-derived in
+                // `apply_action` exactly as they are.
+                if is_sorcery_speed_ability(ability) && !sorcery_timing_allows(state, perm) {
                     continue;
                 }
                 // CR 601.2c via CR 602.2b: an ability whose required target slots have
@@ -555,7 +640,7 @@ fn offer_graveyard_activations(
             let Some(ability) = graveyard_ability(state, db, seat, card, index) else {
                 continue;
             };
-            let Ability::Activated { cost, effects } = &ability else {
+            let Ability::Activated { cost, effects, .. } = &ability else {
                 continue;
             };
             let groups: Vec<crate::ability::TargetGroup> =
@@ -621,10 +706,13 @@ mod tests {
             attacking: None,
             blocking: Vec::new(),
             skips_untap: false,
+            dealt_damage: false,
             damage: 0,
             counters: Default::default(),
             attached_to: None,
             chosen_color: None,
+            named_card: None,
+            copied: None,
         });
         id
     }

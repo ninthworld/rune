@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "functional_id": "fraying_omnipotence",
+  "name": "Fraying Omnipotence",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{3}{B}{B}",
+  "colors": [
+    "black"
+  ],
+  "spell_effects": [
+    {
+      "kind": "lose_life_by_amount",
+      "player_ref": "each_player",
+      "amount": {
+        "source": "half_rounded_up",
+        "of": "life_total"
+      }
+    },
+    {
+      "kind": "discard_by_amount",
+      "player_ref": "each_player",
+      "amount": {
+        "source": "half_rounded_up",
+        "of": "hand_size"
+      }
+    },
+    {
+      "kind": "sacrifice",
+      "player_ref": "each_player",
+      "card_type": "creature",
+      "amount": {
+        "source": "half_rounded_up",
+        "of": "creatures_controlled"
+      }
+    }
+  ]
+}

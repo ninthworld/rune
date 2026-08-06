@@ -1,7 +1,7 @@
 //! Action types and core methods: the closed set of legal player choices.
 
 use crate::ability::Target;
-use crate::id::{CardInstance, CardInstanceId, PermanentId};
+use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId};
 
 /// One mana ability a payment activates: a permanent under the payer's control and an
 /// index into [`crate::abilities_of_permanent`], addressed exactly as
@@ -50,6 +50,15 @@ pub enum CostPayment {
     /// left to take back. The permanent must be one the caster controls (CR 701.17b) and
     /// of the type the cost names.
     Sacrifice(PermanentId),
+    /// One card exiled from the payer's **graveyard** to pay a cost
+    /// (CR 601.2b / 701.19).
+    ///
+    /// Named on the action for the reason a sacrifice is, and distinct from it for the
+    /// reason the cost is: a card in a graveyard has a [`CardInstanceId`] and no
+    /// [`PermanentId`], so naming one with the other would be naming a different kind of
+    /// object. Nothing dies here — the card moves graveyard→exile — which is why it is not
+    /// a sacrifice with a different destination.
+    Exile(CardInstanceId),
 }
 
 impl CostPayment {
@@ -58,7 +67,7 @@ impl CostPayment {
     pub fn mana(self) -> Option<ManaSource> {
         match self {
             CostPayment::Mana(source) => Some(source),
-            CostPayment::Discard(_) | CostPayment::Sacrifice(_) => None,
+            CostPayment::Discard(_) | CostPayment::Sacrifice(_) | CostPayment::Exile(_) => None,
         }
     }
 
@@ -67,7 +76,7 @@ impl CostPayment {
     pub fn discard(self) -> Option<CardInstanceId> {
         match self {
             CostPayment::Discard(card) => Some(card),
-            CostPayment::Mana(_) | CostPayment::Sacrifice(_) => None,
+            CostPayment::Mana(_) | CostPayment::Sacrifice(_) | CostPayment::Exile(_) => None,
         }
     }
 
@@ -76,7 +85,16 @@ impl CostPayment {
     pub fn sacrifice(self) -> Option<PermanentId> {
         match self {
             CostPayment::Sacrifice(permanent) => Some(permanent),
-            CostPayment::Mana(_) | CostPayment::Discard(_) => None,
+            CostPayment::Mana(_) | CostPayment::Discard(_) | CostPayment::Exile(_) => None,
+        }
+    }
+
+    /// The exiled graveyard card this entry names, if it names one.
+    #[must_use]
+    pub fn exile(self) -> Option<CardInstanceId> {
+        match self {
+            CostPayment::Exile(card) => Some(card),
+            CostPayment::Mana(_) | CostPayment::Discard(_) | CostPayment::Sacrifice(_) => None,
         }
     }
 }
@@ -100,6 +118,12 @@ pub(crate) fn sacrifices_of(payment: &[CostPayment]) -> Vec<PermanentId> {
         .iter()
         .filter_map(|entry| entry.sacrifice())
         .collect()
+}
+
+/// The graveyard cards a payment exiles, in the order the player chose them.
+#[must_use]
+pub(crate) fn exiles_of(payment: &[CostPayment]) -> Vec<CardInstanceId> {
+    payment.iter().filter_map(|entry| entry.exile()).collect()
 }
 
 /// An action a player may take. The engine generates the legal set with
@@ -134,8 +158,9 @@ pub enum Action {
         /// is validated slot-by-slot in [`crate::apply_action`].
         targets: Vec<Target>,
         /// The parts of the activation cost the player **chose** (CR 601.2b): the
-        /// permanents sacrificed to a `Sacrifice another creature`, and the cards
-        /// discarded to a `Discard a card`. Empty for every ability whose cost is
+        /// permanents sacrificed to a `Sacrifice another creature`, the cards
+        /// discarded to a `Discard a card`, and the cards exiled to an `Exile a creature
+        /// card from your graveyard`. Empty for every ability whose cost is
         /// entirely about its own source and the pool, which is almost all of them.
         ///
         /// Carried here for the reason [`Self::CastSpell::payment`] is: a cost is paid as
@@ -280,11 +305,126 @@ pub enum Action {
         /// was snapshotted when the question was posed.
         index: u8,
     },
+    /// Answer the **CR 614.12 card-naming choice** the game is currently waiting on: a
+    /// permanent is entering the battlefield and its controller names a card (see
+    /// [`crate::named_card_candidates`]).
+    ///
+    /// The fifth answer shape beside the four above, routed identically — offered to the
+    /// choice's chooser and to no other seat, and nothing else happens until it arrives.
+    ///
+    /// The answer is a **[`CardId`]: a handle to a card the catalog defines**, validated
+    /// against the freshly derived candidate list, and never a name a player typed. That
+    /// is not a convenience — it is the legal posture. SAGE ships no card name it has not
+    /// itself written down, and an action that carried a string would be the one way a
+    /// game in progress could come to hold one.
+    AnswerCardName {
+        /// The card named, which must be in [`crate::named_card_candidates`] for the
+        /// class the entering card's ability declared. Recorded on the permanent that
+        /// then enters ([`Permanent::named_card`](crate::Permanent)).
+        card: CardId,
+    },
+    /// Answer the **mid-resolution card-ordering choice** the game is currently waiting
+    /// on: the *in any order* of a look that puts what it did not take on the bottom of
+    /// the library (see [`crate::order_candidates`]).
+    ///
+    /// The sixth answer shape, routed identically to the five above — offered to the
+    /// choice's chooser and to no other seat, and nothing else happens until it arrives.
+    ///
+    /// What makes it its own action rather than another [`Self::AnswerChoice`] is the
+    /// **legality rule**, not the payload: a selection is *between min and max of these
+    /// cards*, and an ordering is *all of these cards, once each*. Sharing a variant
+    /// would mean one gate reading a pending question to decide which of two rules it was
+    /// enforcing, which is exactly the disagreement the choice queue is built to avoid.
+    ///
+    /// A remainder of nothing or of one card is never posed — there is no arrangement to
+    /// make — so like [`Self::ChooseTriggerTargets`] this action is only ever offered
+    /// when it can be answered.
+    AnswerOrder {
+        /// The cards in the order they are put on the bottom of the library, the **first
+        /// named ending up deepest** — the convention every bottoming in the engine
+        /// follows. It must be a permutation of the freshly recomputed
+        /// [`crate::order_candidates`]: a duplicate, a card the remainder does not
+        /// contain, and a short list are each rejected outright rather than tolerated.
+        order: Vec<CardInstanceId>,
+    },
+    /// Answer the **mid-resolution permanent choice** the game is currently waiting on:
+    /// which permanents to sacrifice (CR 701.17 — see
+    /// [`crate::Effect::Sacrifice`](crate::Effect)).
+    ///
+    /// The fifth answer shape, routed exactly as the other four are — offered to the
+    /// choice's chooser and to no other seat, with nothing else happening until it
+    /// arrives. It is a separate action from [`Self::AnswerChoice`] because it names
+    /// objects on the battlefield rather than cards in a zone, and a token has no card
+    /// to name (CR 111): folding the two together would make a board of tokens
+    /// unsacrificeable.
+    ///
+    /// A choice with no legal answer is never queued at all — a player who controls
+    /// nothing of the named class simply sacrifices nothing — so like the others this
+    /// action is only ever offered when it can be answered.
+    AnswerPermanents {
+        /// The permanents chosen. Each names one in the choice's freshly recomputed
+        /// candidate set ([`crate::permanent_choice_candidates`]), no id twice, and the
+        /// selection size must fall within that choice's clamped bounds
+        /// ([`crate::permanent_choice_bounds`]).
+        chosen: Vec<crate::id::PermanentId>,
+    },
+    /// Answer the **CR 614.12 permanent choice** the game is currently waiting on: a card
+    /// entering the battlefield names a permanent whose copiable values it (or its host)
+    /// takes — `As this Aura enters, choose a creature` (see
+    /// [`crate::copy_choice_candidates`]).
+    ///
+    /// The fifth answer shape beside the four above, routed identically — offered to the
+    /// choice's chooser and to no other seat, and nothing else happens until it arrives.
+    /// The entering card waits in no zone at all while it is owed, which is what makes a
+    /// permanent that enters as a copy (CR 707.5) never briefly a permanent that is not.
+    ///
+    /// It names a **permanent, not a target** (CR 115.1): nothing is aimed, so hexproof
+    /// and shroud have nothing to say about the answer, and it is validated against the
+    /// class the card printed rather than against a target spec.
+    AnswerPermanent {
+        /// The permanent named, or `None` for a decline — `You may have this creature
+        /// enter as a copy …`, answered with "no". `None` is legal only for a question
+        /// the card wrote as optional.
+        chosen: Option<PermanentId>,
+    },
     /// Cast a spell from hand, paying its mana cost from the caster's pool.
     CastSpell {
         /// The specific card in the caster's hand to cast. Names the physical
         /// copy, so two identical cards in hand are distinguishable.
         card: CardInstance,
+        /// The **mode** chosen for a modal spell (CR 700.2), as an index into
+        /// [`CardData::modes`](crate::CardData::modes). `None` for every card that is
+        /// not modal, and refused for one that is.
+        ///
+        /// It rides here for the same reason the targets do — it is chosen as part of
+        /// casting, and a player assembling one has sent nothing — but it is chosen
+        /// **before** them, and that ordering is a structural fact rather than a
+        /// convention. The mode decides which effects the spell has, the effects decide
+        /// which target slots exist, and so
+        /// [`crate::target_requirements`] cannot answer for a modal cast until this
+        /// field is filled: it reads the action, finds no chosen mode, and reports no
+        /// slots. An announcement that skipped the choice is therefore not a cast with
+        /// zero targets, it is one [`crate::apply_action`] rejects.
+        ///
+        /// Advertised as `None` in the requirement form; the offered options come from
+        /// [`crate::mode_options`], and a submitted index is re-derived against the
+        /// card's own list at apply, so a forged mode is refused rather than resolved.
+        mode: Option<u8>,
+        /// The value announced for **X** (CR 601.2b) on a spell whose mana cost carries
+        /// `{X}`. `None` for every card whose cost does not, and refused for one whose
+        /// cost does.
+        ///
+        /// **Announced, then locked.** This single number is what the cost is computed
+        /// from ([`cast_cost`](crate::actions::cast_cost)), what the payment is checked
+        /// against, what is recorded on the stack object, and what the resolving effect
+        /// reads ([`DerivedAmount::AnnouncedX`](crate::DerivedAmount)) — so payment,
+        /// resolution, and the text a player is shown cannot disagree about a value none
+        /// of them derived independently.
+        ///
+        /// Advertised as `None` in the requirement form; the legal values, and what each
+        /// one costs, come from [`crate::x_options`]. A value the caster's payment
+        /// cannot cover is refused at apply, not merely left unoffered.
+        x: Option<u32>,
         /// The targets chosen for this cast, one per target slot the card's spell
         /// effects declare (see [`crate::Effect::target_spec`]), in that order. Empty for
         /// a spell that targets nothing.
@@ -477,6 +617,10 @@ impl Action {
             | Action::AnswerConfirm { .. }
             | Action::AnswerColor { .. }
             | Action::AnswerReplacement { .. }
+            | Action::AnswerCardName { .. }
+            | Action::AnswerOrder { .. }
+            | Action::AnswerPermanents { .. }
+            | Action::AnswerPermanent { .. }
             | Action::PlayLand { .. }
             | Action::Discard { .. }
             | Action::Mulligan
@@ -519,12 +663,15 @@ impl Action {
                     targets: Vec::new(),
                 }
             }
-            // A cast drops its target selection *and its payment* to its requirement
-            // form, the shape `valid_actions` advertises. Both are filled in later and
-            // by the same rule (CR 601.2): the process announces the spell first, and
-            // chooses targets and activates mana abilities as steps within it.
+            // A cast drops its **announcement choices**, its target selection, and its
+            // payment to its requirement form, the shape `valid_actions` advertises. All
+            // of them are filled in later and by the same rule (CR 601.2): the process
+            // announces the spell first, and chooses modes, then targets, then activates
+            // mana abilities as steps within it. The bare announcement is the card.
             Action::CastSpell { card, .. } => Action::CastSpell {
                 card: *card,
+                mode: None,
+                x: None,
                 targets: Vec::new(),
                 payment: Vec::new(),
             },
@@ -553,6 +700,24 @@ impl Action {
             // answer names a position in the submitted action. Zero is the requirement
             // form's stand-in, never a default anyone is held to.
             Action::AnswerReplacement { .. } => Action::AnswerReplacement { index: 0 },
+            // And a card-naming answer the same way: one bare question, whose answer
+            // names a card in the submitted action. `CardId(0)` is the requirement
+            // form's stand-in — the same role White plays for a colour — and never a
+            // card anyone is held to having named; the legality gate checks the
+            // submitted handle against the freshly derived candidates.
+            Action::AnswerCardName { .. } => Action::AnswerCardName { card: CardId(0) },
+            // A card ordering is advertised as the bare question too, and its answer is
+            // the permutation the submitted action carries — never one offer per
+            // arrangement, which for five cards would be a hundred and twenty of them.
+            Action::AnswerOrder { .. } => Action::AnswerOrder { order: Vec::new() },
+            // And a permanent selection the same way, for the reason a card selection
+            // is: the offer is the bare question and the chosen ids ride in the
+            // submitted action.
+            Action::AnswerPermanents { .. } => Action::AnswerPermanents { chosen: Vec::new() },
+            // And a permanent choice the same way: one bare question, whose answer names
+            // a permanent — or names none — in the submitted action. The declining form
+            // is the stand-in, never a default anyone is held to.
+            Action::AnswerPermanent { .. } => Action::AnswerPermanent { chosen: None },
             // The requirement form of a combat declaration is the empty selection —
             // exactly what `valid_actions` advertises during the declare window.
             Action::DeclareAttackers { .. } => Action::DeclareAttackers {

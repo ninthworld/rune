@@ -3,6 +3,8 @@
 
 use super::*;
 
+mod targets;
+
 /// A single effect an ability (or spell) produces.
 ///
 /// Deserialized with an internal `kind` tag, e.g.
@@ -31,23 +33,31 @@ pub enum Effect {
         /// How much colorless mana is produced.
         amount: u8,
     },
-    /// Add `amount` mana **in any combination of colors** — the player chooses each
-    /// point's color as the effect resolves (`Add two mana in any combination of
-    /// colors.`).
+    /// Add `amount` mana whose **colors the player chooses** as the effect resolves —
+    /// `Add two mana in any combination of colors.`, and, with
+    /// [`same_color`](Self::AddManaAnyColor::same_color) set, `Add two mana of any one
+    /// color.`
     ///
-    /// The choice is real and it is per point: the player is asked once for each mana,
-    /// so two mana may be two of one color or one each of two. The questions ride the
-    /// ordinary mid-resolution choice queue ([`crate::ChoiceQuestion::Color`]), which
-    /// is why an effect that looks like a variant of [`Effect::AddMana`] is a separate
-    /// verb — the amount is fixed, but the *colors* are not authored at all.
+    /// The choice is real, and how many times it is asked is the whole of the difference
+    /// between the two printed phrases: a combination asks once per point, so two mana
+    /// may be one each of two colors, while "of any one color" asks once and pays out
+    /// the whole amount in the answer. The questions ride the ordinary mid-resolution
+    /// choice queue ([`crate::ChoiceQuestion::Color`]), which is why an effect that
+    /// looks like a variant of [`Effect::AddMana`] is a separate verb — the amount is
+    /// fixed, but the *colors* are not authored at all.
     ///
     /// The optional `restriction` rides on every point produced, exactly as
     /// [`Effect::AddRestrictedMana`]'s does (CR 106.6), so `Add two mana in any
     /// combination of colors. Spend this mana only to cast Dragon spells.` is one
     /// effect rather than a colored one repeated five ways.
     AddManaAnyColor {
-        /// How many mana are produced, and therefore how many colors are chosen.
+        /// How many mana are produced in total.
         amount: u8,
+        /// Whether all of it must be **one** color — one question answered once, rather
+        /// than one question per point. Defaults to `false`, the combination form every
+        /// card authored before a land Aura needed the other one writes.
+        #[serde(default)]
+        same_color: bool,
         /// What the produced mana may be spent on (CR 106.6). Absent means
         /// unrestricted.
         #[serde(default)]
@@ -142,6 +152,20 @@ pub enum Effect {
         /// What this effect is allowed to target (typically a creature).
         target: TargetSpec,
     },
+    /// Destroy **every permanent in a named class** (CR 701.7) — `Destroy all
+    /// creatures.`, `Destroy all artifacts and enchantments.` — the mass, non-targeting
+    /// counterpart of [`Effect::Destroy`].
+    ///
+    /// Chooses no target, so it can never fizzle and never asks a question; the affected
+    /// set is enumerated **on resolution** (CR 611.2c) and every member goes to its
+    /// owner's graveyard through the same battlefield-departure seam a single destroy
+    /// uses, so a token ceases to exist (CR 111.7) and a death trigger sees each one.
+    ///
+    /// Indestructible and regeneration are unmodeled, so nothing survives this.
+    DestroyAll {
+        /// The class of permanents destroyed.
+        affects: DestroyAffects,
+    },
     /// Exile the single permanent this effect targets (CR 406.2 / CR 701.19): it is
     /// moved from the battlefield to its owner's exile zone through the one
     /// battlefield→exile seam ([`crate::GameState::move_permanent_to_exile`]), the
@@ -155,6 +179,18 @@ pub enum Effect {
     Exile {
         /// What this effect is allowed to target (typically a creature or permanent).
         target: TargetSpec,
+        /// The effect's controller **gains life equal to** this, read off the exiled
+        /// permanent — `Exile target colorless creature. You gain life equal to its
+        /// power.` Absent for the ordinary exile, which is nearly every one.
+        ///
+        /// A field on the exile rather than a life-gain effect standing after it, and
+        /// CR 608.2h is the whole reason. "Its power" is a question about an object this
+        /// effect has just removed from the battlefield; a second effect asking it would
+        /// be asking about something that is no longer there, so the number is read
+        /// *here*, before the permanent moves, and the life is gained in the same breath.
+        /// The rider is therefore never a separate amount the IR could get out of order.
+        #[serde(default)]
+        gain_life: Option<PermanentAmount>,
     },
     /// Two chosen creatures and the damage their power deals (CR 701.12): the first
     /// deals damage equal to its power to the second, and — when the card prints the
@@ -277,6 +313,26 @@ pub enum Effect {
         /// the ordinary pump that only changes numbers.
         #[serde(default)]
         keywords: Vec<Keyword>,
+        /// **Written-out** abilities granted to the same target until end of turn — the
+        /// `and gains "When this creature dies, return it to the battlefield tapped under
+        /// its owner's control"` of a black combat trick — applied at CR 613 layer 6 as a
+        /// [`Modification::GrantAbility`](crate::Modification::GrantAbility) keyed to that
+        /// one permanent. Empty for every pump that grants only words from the keyword
+        /// list.
+        ///
+        /// Beside [`keywords`](Self::Pump::keywords) rather than in a verb of its own for
+        /// the reason the keywords are beside the numbers: one effect declares one target
+        /// group, and a card that says `gets +2/+0 **and** gains "…"` names one creature.
+        /// Unlike a keyword grant it is not idempotent — two castings give two abilities,
+        /// because two grants are two abilities (CR 613.1f adds, it does not merge).
+        ///
+        /// A granted **dies** trigger is the shape the catalog needs it for, and it is
+        /// the one grant that outlives the grant: the trigger fires on the way out
+        /// (CR 603.6c), read from the state the permanent was still in and still granted
+        /// in, and what its effects then do to the card in the graveyard is the ability's
+        /// business rather than the creature's.
+        #[serde(default)]
+        abilities: Vec<Ability>,
         /// Combat restrictions imposed on the same target until end of turn, applied at
         /// CR 613 layer 6 exactly as [`Effect::Restrict`] imposes one — including the
         /// one *requirement* in that vocabulary, `all creatures able to block it do so`.
@@ -399,9 +455,19 @@ pub enum Effect {
     /// (CR 601.2c) and re-checked on resolution (CR 608.2b). The restriction folds into
     /// the target's computed restrictions on demand and binds exactly as a printed one
     /// does; a duplicate imposition is redundant, not additive.
+    ///
+    /// The third effect that may name **more than one** target, beside
+    /// [`Effect::PutCounters`] and [`Effect::ReturnCardToHand`]: `up to two target
+    /// creatures can't be blocked this turn` is one effect with a two-slot group,
+    /// imposed once per target still legal on resolution (CR 608.2c). Omitting the
+    /// field leaves it at one target, which is what every other card using this effect
+    /// says.
     Restrict {
-        /// What this effect is allowed to target (a creature).
+        /// What each of this effect's slots is allowed to target (a creature).
         target: TargetSpec,
+        /// How many targets are chosen. Defaults to exactly one.
+        #[serde(default)]
+        targets: TargetCount,
         /// The restriction imposed until end of turn.
         restriction: CombatRestriction,
     },
@@ -544,25 +610,42 @@ pub enum Effect {
         count: u8,
     },
     /// Look at the top `count` cards of the controller's library, put up to `take` of
-    /// them matching `filter` into `destination`, and put the rest on the bottom in a
-    /// random order — the "look at the top N and take one" verb.
+    /// them matching `filter` into `destination`, and put the rest on the bottom — the
+    /// "look at the top N and take one" verb.
     ///
-    /// Taking is optional (every card printed this way says "you may"), so a look that
-    /// turns up nothing legal still bottoms what it looked at rather than stalling. The
-    /// unchosen cards are bottomed in a random order drawn from the seeded RNG
-    /// ([`crate::GameState::rng_seed`]), which is what the cards printed with this
-    /// wording say and what keeps the looked-at cards from becoming known future draws.
+    /// `take` and `take_min` are the two ends of one range, because the cards print
+    /// both: *you may reveal a creature card from among them and put it into your hand*
+    /// leaves the take optional, and *put one of them into your hand* does not. Whichever
+    /// it is, the bounds are **clamped to what is actually there**
+    /// ([`choice_bounds`](crate::choice_bounds)), so a mandatory take over a library that
+    /// cannot supply one resolves with nothing taken rather than stalling — the
+    /// never-stall rule owns the floor, not the card.
+    ///
+    /// `bottom_order` is the second half of the card, and it is a rule rather than a
+    /// flourish: *in a random order* is the game deciding and *in any order* is the
+    /// looker deciding, so the second poses a **second question** over the remainder
+    /// through the same choice queue the taking used. A remainder of nothing or of one
+    /// card is not a decision and is never asked (ADR 0013 §5).
     LookAtTop {
         /// How many cards from the top are looked at.
         count: u8,
-        /// How many of them may be taken.
+        /// The **most** of them that may be taken.
         take: u8,
+        /// The **fewest** of them a legal answer may take, before clamping. Defaults to
+        /// `0` — every look printed with "you may" — so a card that says nothing keeps
+        /// the take optional.
+        #[serde(default)]
+        take_min: u8,
         /// Which of the looked-at cards may be taken. Defaults to any of them.
         #[serde(default)]
         filter: CardFilter,
         /// Where a taken card goes. Defaults to its owner's hand.
         #[serde(default)]
         destination: FoundDestination,
+        /// How the cards not taken reach the bottom. Defaults to
+        /// [`BottomOrder::Random`], the conservative reading.
+        #[serde(default)]
+        bottom_order: BottomOrder,
     },
     /// **Search** the controller's library for up to `take` cards matching `filter`,
     /// put them into `destination`, then shuffle (CR 701.19).
@@ -574,7 +657,25 @@ pub enum Effect {
     /// post-search order replays identically.
     SearchLibrary {
         /// How many matching cards may be found.
+        ///
+        /// Ignored when [`take_amount`](Self::SearchLibrary::take_amount) is present,
+        /// which is where the number comes from then.
         take: u8,
+        /// Where the number of cards comes from, when the card does not print one — the
+        /// `up to that many` of `Sacrifice any number of lands. Search your library for
+        /// up to that many land cards`.
+        ///
+        /// A field rather than a `search_library_by_amount` twin, for the reason
+        /// [`Effect::CreateToken`]'s `count_of` is one: a second variant would duplicate
+        /// the filter and the destination, and the number is the *same* number this effect
+        /// already carries. The field says where it comes from; it does not add a verb.
+        ///
+        /// Taken **once**, as the effect is reached (CR 608.2), and it is a *ceiling*: the
+        /// search that follows is the ordinary one, so a player may always find fewer or
+        /// fail to find entirely (CR 701.19c), and an amount of zero is a search that
+        /// shuffles and finds nothing rather than a stall.
+        #[serde(default)]
+        take_amount: Option<DerivedAmount>,
         /// Which cards of the library may be found. Defaults to any of them.
         #[serde(default)]
         filter: CardFilter,
@@ -658,7 +759,9 @@ pub enum Effect {
         attacking: bool,
     },
     /// **You may** apply `effects`, and — when `cost` is present — only if you pay it:
-    /// `you may draw a card`, and `you may pay {1}. If you do, draw a card`.
+    /// `you may draw a card`, `you may pay {1}. If you do, draw a card`, and `you may
+    /// sacrifice another creature. If you do, this creature gets +2/+2 until end of
+    /// turn`.
     ///
     /// The first effect in the IR whose mid-resolution question is a *decision* rather
     /// than a selection (CR 608.2). It suspends resolution and asks the ability's
@@ -668,8 +771,9 @@ pub enum Effect {
     ///
     /// Declining is not a fizzle: it skips these effects and nothing else, so an
     /// optional effect sitting between two mandatory ones leaves both of them intact.
-    /// A cost the controller could not pay under any tapping is never posed at all —
-    /// it is declined outright — and either way the log records that the question was
+    /// A cost the controller could not pay — no mana any tapping could make, no
+    /// permanent of the named class, not enough cards in hand — is never posed at all,
+    /// it is declined outright, and either way the log records that the question was
     /// asked and answered, so a declined effect never reads as one that was silently
     /// dropped.
     ///
@@ -688,17 +792,18 @@ pub enum Effect {
     /// ordinary CR 608.2b path: an object whose every target is illegal never resolves
     /// and the question is never asked at all.
     May {
-        /// The mana cost the controller pays to apply the effects, in the same
-        /// `{...}` notation an activation cost is written in. Absent for a plain
-        /// `you may …`, which asks only for a yes.
+        /// What accepting charges, or absent for a plain `you may …` that asks only for
+        /// a yes.
         ///
-        /// Paid from the controller's mana pool through the one
-        /// [`ManaPool::pay`](crate::ManaPool::pay) seam a cast and an activation use,
-        /// so the three can never disagree about what a cost string means. A player
-        /// asked to pay here may still activate mana abilities to do it (CR 605.3a),
-        /// which is the one thing that stays legal while a choice is owed.
+        /// The [`OptionalCost`] vocabulary: mana, a permanent the chooser picks, or a
+        /// discard. A mana cost is charged from the pool as the answer is given; the
+        /// other two are *questions of their own*, posed on acceptance and answered
+        /// before the wrapped effects run, so the payment always precedes what it bought.
+        /// Whichever it is, a cost the controller could not pay is never posed at all
+        /// (see below) and a player asked to pay may still activate mana abilities
+        /// (CR 605.3a) — the one thing that stays legal while a choice is owed.
         #[serde(default)]
-        cost: Option<String>,
+        cost: Option<OptionalCost>,
         /// What happens on acceptance, applied in order and in the surrounding
         /// object's frame — the same controller and the same source permanent the
         /// enclosing effects resolve in.
@@ -855,6 +960,77 @@ pub enum Effect {
         /// How many cards are drawn.
         amount: DerivedAmount,
     },
+    /// The referenced player loses a number of life the card does not print — `Each
+    /// player loses half their life, rounded up.`
+    ///
+    /// The derived-amount counterpart of [`Effect::LoseLife`], whose `amount` is a
+    /// printed number, and the sibling of [`Effect::DrawCardsByAmount`] on the life
+    /// total. It reaches the same [`Effect::LoseLife`] seam, so the loss still drives the
+    /// CR 704.5a state-based action.
+    ///
+    /// The amount is read **once per named player, as the effect applies** (CR 608.2),
+    /// and it is read *of that player*: `half their life` is each seat's own half, so a
+    /// reference naming three seats reads three different numbers rather than the
+    /// controller's one three times.
+    LoseLifeByAmount {
+        /// Which player loses the life.
+        player_ref: PlayerRef,
+        /// How much they lose.
+        amount: DerivedAmount,
+    },
+    /// The referenced player **discards** a number of cards the card does not print —
+    /// `Each player … discards half the cards in their hand, rounded up.`
+    ///
+    /// The derived-amount counterpart of [`Effect::Discard`], and deliberately the
+    /// narrow one: the cards are picked by the player discarding them and any card in the
+    /// hand may be picked. A coercive or filtered discard of a derived number is a card
+    /// nobody has printed, and giving this variant the other two fields would make it
+    /// authorable ahead of the card that means it.
+    ///
+    /// Like the fixed-count discard it poses one mid-resolution choice per named player
+    /// ([`crate::PendingChoice`]) and suspends. The number is fixed when the choice is
+    /// *posed*, from the hand as it stands then (CR 608.2), so a hand the same resolution
+    /// already emptied asks for nothing.
+    DiscardByAmount {
+        /// Whose hands the cards leave.
+        player_ref: PlayerRef,
+        /// How many each of them discards.
+        amount: DerivedAmount,
+    },
+    /// The referenced player **sacrifices** that many permanents they control (CR 701.17)
+    /// — `Each player … sacrifices half the creatures they control, rounded up.`
+    ///
+    /// The first sacrifice in the IR that is an *effect* rather than a cost, and the two
+    /// are not the same shape. A cost is paid as the spell is cast or the ability is
+    /// activated, so the permanent rides on the action; this happens in the middle of a
+    /// resolution, so it poses a mid-resolution choice ([`crate::PendingChoice`]) and
+    /// suspends exactly as a discard does — and it is the only choice in the IR whose
+    /// candidates are *permanents*, which is why a token can be picked.
+    ///
+    /// **Whose permanents is not a field.** CR 701.17b lets a player sacrifice only what
+    /// they control, so the class is always the named player's own; `card_type` narrows
+    /// it to one printed type and nothing more. The count is fixed when the choice is
+    /// posed (CR 608.2) and clamped to what is actually there, so a player with one
+    /// creature asked for two sacrifices the one.
+    ///
+    /// **An absent [`amount`](Self::Sacrifice::amount) is the open form** — `Sacrifice any
+    /// number of lands` — and it is the same question with different bounds rather than a
+    /// second verb: a floor of none and a ceiling of the whole class. That shape belongs
+    /// here and not to a cost, because how many to sacrifice is a *decision*, and a
+    /// decision needs a resolution to be asked during: Scapeshift's lands go when it
+    /// resolves, so countering it takes none of them.
+    Sacrifice {
+        /// Which player sacrifices.
+        player_ref: PlayerRef,
+        /// How many permanents they sacrifice, or `None` for **any number they choose**,
+        /// including none.
+        #[serde(default)]
+        amount: Option<DerivedAmount>,
+        /// Restrict the choice to permanents with this printed card type. Absent lets
+        /// any permanent they control be picked.
+        #[serde(default)]
+        card_type: Option<CardType>,
+    },
     /// The referenced player gains `amount_per` life **per permanent** matching
     /// `count_of` (`You gain 1 life for each creature you control.`) — the
     /// count-derived counterpart of [`Effect::GainLife`], and the life-total sibling of
@@ -889,6 +1065,32 @@ pub enum Effect {
         amount_per: u32,
         /// Which permanents are counted, relative to the effect's controller.
         count_of: PermanentCount,
+    },
+    /// Deal damage equal to a [`DerivedAmount`] to what [`DamageSubject`] names —
+    /// `deals X damage to any target`, where X is the value announced as the spell was
+    /// cast (CR 601.2b), and `Thud deals damage equal to the sacrificed creature's power
+    /// to any target.`
+    ///
+    /// The [`DerivedAmount`] counterpart of [`Effect::DealDamage`], and the sibling of
+    /// [`Effect::DealDamageByCount`] for every X that is not a count of permanents,
+    /// exactly as [`Effect::PumpByAmount`] is [`Effect::PumpByCount`]'s — a separate
+    /// variant for the same reason: a card names one source or the other, never both, and
+    /// two optional fields would make "neither" and "both" authorable shapes that mean
+    /// nothing. The subject decides on its own whether a target is chosen, like every
+    /// other damage verb.
+    ///
+    /// The amount is read **once**, where the effect applies (CR 608.2). For an announced
+    /// X that reading is a lookup of a number already fixed — which is the whole point of
+    /// announcing it: payment and resolution cannot disagree about a value neither of them
+    /// computed. For an amount read off the object's own cost payment it is the moment the
+    /// *stored* number is read, not the moment it was decided — the payment happened at
+    /// announcement, and the creature it spent is already gone.
+    DealDamageByAmount {
+        /// Who or what takes the damage — one chosen target, or a class.
+        #[serde(flatten)]
+        subject: DamageSubject,
+        /// Where the amount comes from.
+        amount: DerivedAmount,
     },
     /// **Exile the referenced player's whole graveyard** (`Exile target player's
     /// graveyard.`) — the graveyard-hate verb.
@@ -1015,6 +1217,26 @@ pub enum Effect {
         /// The replacement effect to create: what it watches, and what happens instead.
         replacement: crate::replacement::ReplacementEffect,
     },
+    /// Raise a **damage-prevention shield** for the rest of the turn (CR 615.1) —
+    /// `Prevent all combat damage that would be dealt this turn.`
+    ///
+    /// The prevention half of [`Self::CreateReplacement`], and separate from it for the
+    /// one reason that matters: a shield is **not** one-shot. `The next time …` is spent
+    /// by applying it; `this turn` is not, and covers every damage event until the turn
+    /// ends. So it is recorded on [`GameState::prevention`](crate::GameState) with a
+    /// duration rather than on the one-shot list, and it ends in the **cleanup step**,
+    /// simultaneously with the marked damage and the pumps (CR 514.2), instead of at the
+    /// turn boundary.
+    ///
+    /// Like a replacement it names no target and no player: a shield watches an
+    /// **event**, and which events it covers is [`DamageFilter`](crate::DamageFilter) —
+    /// chosen when the card was written, not aimed when the spell was cast. It applies to
+    /// damage *anyone* would deal, which is what `all combat damage` says.
+    PreventDamage {
+        /// Which damage the shield prevents. An absent filter prevents all of it.
+        #[serde(default)]
+        damage: crate::replacement::DamageFilter,
+    },
     /// Move **this ability's own card** out of the graveyard it is in
     /// (`Return this card from your graveyard to the battlefield tapped.`).
     ///
@@ -1041,174 +1263,104 @@ pub enum Effect {
         /// this shape names: a hand, the battlefield, or the battlefield tapped.
         destination: FoundDestination,
     },
-}
-
-impl Effect {
-    /// The [`TargetSpec`] this effect names, for the effects that name exactly **one**.
+    /// **Shuffle this ability's own source into its owner's library** (CR 701.19) —
+    /// `its owner shuffles it into their library`.
     ///
-    /// The convenience over [`Self::target_groups`] for the great majority of callers,
-    /// which care what may be targeted and not how many. `None` for an effect with an
-    /// implicit subject ([`Effect::AddMana`], [`Effect::DrawCard`]) *and* for one that
-    /// declares more than one group ([`Effect::Fight`]): a two-slot effect has no single
-    /// spec, and answering with the first one would be a wrong answer rather than a
-    /// partial one.
-    #[must_use]
-    pub fn target_spec(&self) -> Option<TargetSpec> {
-        match self.target_groups().as_slice() {
-            [group] => Some(group.spec),
-            _ => None,
-        }
-    }
-
-    /// The [`TargetGroup`] this effect must be given chosen targets for, for an effect
-    /// that declares exactly one; `None` for an effect with an implicit subject and for
-    /// one that declares two ([`Effect::Fight`]).
+    /// The fourth destination beside [`Effect::ReturnToHand`]'s hand, [`Effect::Exile`]'s
+    /// exile, and [`Effect::PutOnTopOfLibrary`]'s top of a library, and the only one that
+    /// is not a place: a shuffled card is somewhere in the deck and nowhere in particular,
+    /// which is what separates this from putting it on top. The shuffle draws from the
+    /// seeded stream (ADR 0006), so a game replays identically through it.
     ///
-    /// The single-group narrowing of [`Self::target_groups`], kept for the resolve and
-    /// legality paths that have already established they are looking at one slot.
-    #[must_use]
-    pub fn target_group(&self) -> Option<TargetGroup> {
-        match self.target_groups().as_slice() {
-            [group] => Some(*group),
-            _ => None,
-        }
-    }
-
-    /// The [`TargetGroup`]s this effect must be given chosen targets for, in slot
-    /// order — empty for an effect with an implicit subject ([`Effect::AddMana`],
-    /// [`Effect::DrawCard`]).
+    /// Self-referential, like [`Effect::PumpSelf`]: the subject is the ability's own
+    /// source, which is not a target (CR 115.1), so this fills no slot and can never
+    /// fizzle. A source that has already left the battlefield is not there to move, and
+    /// the effect does nothing. A **token** ceases to exist on the way (CR 111.7) and
+    /// never reaches the library; the library is still shuffled, because the instruction
+    /// was to shuffle.
+    ShuffleSelfIntoLibrary,
+    /// **Transform** this ability's own source (CR 701.28a): the permanent turns over,
+    /// and the face that was down is now up.
     ///
-    /// **An ordered list rather than one group**, because an effect's slots need not all
-    /// share a spec: a fight names "target creature you control" and "target creature you
-    /// don't control" in one sentence (CR 701.12), and the two are aimed together or not
-    /// at all. Every other effect in the vocabulary returns zero or one group and behaves
-    /// exactly as it did when this answered `Option`.
+    /// The primitive CR 712.a is about, and the whole of it is that *nothing else
+    /// happens*. The permanent is the same object: its counters, its marked damage, the
+    /// Auras and Equipment attached to it, whether it is attacking or blocking, and the
+    /// turn it came under its controller's control all survive, because turning it over
+    /// changes one field ([`Printed::Card`](crate::Printed)'s face) and touches no other.
+    /// It is not a zone change, so no [`PermanentId`](crate::PermanentId) is minted, no
+    /// enters-the-battlefield trigger fires, and CR 400.7 never applies.
     ///
-    /// The resolution path uses this to pair each of an object's stored [`Target`]s with
-    /// the effect that consumes it and to re-check that target's legality (CR 608.2b).
-    /// Kept exhaustive so a new targeting [`Effect`] variant must declare its specs here.
-    #[must_use]
-    pub fn target_groups(&self) -> Vec<TargetGroup> {
-        match self {
-            // The one variable-arity effect: `put a +1/+1 counter on each of up to two
-            // target creatures` chooses between zero and two, and every other authoring
-            // of the same effect leaves the count at its default of one.
-            Effect::PutCounters {
-                target, targets, ..
-            }
-            | Effect::ReturnCardToHand { target, targets } => {
-                vec![TargetGroup::counted(*target, *targets)]
-            }
-            // An optional effect declares the group of the **one** effect it wraps, so
-            // "you may destroy target artifact" names its target once, at announcement
-            // (CR 601.2c), and the yes-or-no comes later. The wrapper is a forwarder
-            // rather than a second slot: the same group is answered for here and by the
-            // wrapped effect once it is spliced in, which is what keeps the flat stored
-            // target list pairing back exactly. The catalog validator holds a `may` to
-            // one such effect, so this is a lookup and never a choice between two.
-            Effect::May { effects, .. } => effects
-                .iter()
-                .flat_map(Effect::target_groups)
-                .collect(),
-            // The one effect whose slots do **not** share a spec (CR 701.12): each of the
-            // two creatures is chosen from its own class, in the order the printed
-            // sentence names them, and both slots are required.
-            Effect::Fight {
-                dealer, dealt_to, ..
-            } => vec![TargetGroup::single(*dealer), TargetGroup::single(*dealt_to)],
-            Effect::Tap { target }
-            | Effect::CounterSpell { target }
-            | Effect::Destroy { target }
-            | Effect::Exile { target }
-            | Effect::Pump { target, .. }
-            | Effect::PumpByCount { target, .. }
-            | Effect::PumpByAmount { target, .. }
-            | Effect::GrantKeyword { target, .. }
-            | Effect::Restrict { target, .. }
-            | Effect::GainControl { target, .. }
-            | Effect::ReturnCardToBattlefield { target, .. }
-            | Effect::PutOnTopOfLibrary { target }
-            // An equip names its *host* as a target and its own source as everything
-            // else, so it declares exactly one slot (CR 702.6b).
-            | Effect::Attach { target }
-            | Effect::ReturnToHand { target } => vec![TargetGroup::single(*target)],
-            // A player-subject effect targets exactly when its reference does
-            // (CR 115.1) — "target opponent loses 2 life" fills a slot, "each
-            // opponent loses 2 life" fills none. One answer, from the reference.
-            Effect::GainLife { player_ref, .. }
-            | Effect::LoseLife { player_ref, .. }
-            | Effect::Mill { player_ref, .. }
-            // A discard names its hand the same way, and for the same reason: "target
-            // player discards two cards" fills a slot and can fizzle, "each opponent
-            // discards a card" fills none and cannot.
-            | Effect::Discard { player_ref, .. }
-            | Effect::GainLifeByCount { player_ref, .. }
-            | Effect::ExileGraveyard { player_ref }
-            // And a mass tap names whose creatures the same way: "tap all creatures
-            // target player controls" fills a slot, and a class relative to the
-            // controller would not.
-            | Effect::TapAll { player_ref, .. }
-            // And a token creation names its creator the same way: "create a 2/4 white
-            // Ox token" is made by you, "target player creates …" fills a slot.
-            | Effect::CreateToken { player_ref, .. } => player_ref
-                .target_spec()
-                .map(TargetGroup::single)
-                .into_iter()
-                .collect(),
-            // Damage asks its subject the same question: "any target" fills a slot,
-            // "each opponent" and "each creature" fill none (CR 115.1).
-            Effect::DealDamage { subject, .. } | Effect::DealDamageByCount { subject, .. } => {
-                subject
-                    .target_spec()
-                    .map(TargetGroup::single)
-                    .into_iter()
-                    .collect()
-            }
-            Effect::AddMana { .. }
-            | Effect::AddColorlessMana { .. }
-            | Effect::AddRestrictedMana { .. }
-            // A color choice names no target: the question is about mana, and the
-            // player answering it is the effect's controller by definition.
-            | Effect::AddManaAnyColor { .. }
-            | Effect::DrawCard { .. }
-            // A derived number of cards is still drawn by the controller, so it names no
-            // target either — where the number comes from is not a subject.
-            | Effect::DrawCardsByAmount { .. }
-            // An emblem is given to a named player, never a targeted one (CR 114.3 —
-            // "you get an emblem"), and a graveyard-casting permission likewise names
-            // its player without targeting.
-            | Effect::CreateEmblem { .. }
-            | Effect::AllowCastingFromGraveyard { .. }
-            // A hexproof-ignoring permission names its player the same way, and for the
-            // same reason: it is a fact about a seat, not about an object.
-            | Effect::IgnoreHexproof { .. }
-            // A replacement effect names an *event*, which is not an object and so
-            // cannot be targeted (CR 115.1).
-            | Effect::CreateReplacement { .. }
-            // A choice over the controller's own library names no target: the library
-            // is theirs by definition (CR 115.1).
-            | Effect::Scry { .. }
-            | Effect::LookAtTop { .. }
-            | Effect::SearchLibrary { .. }
-            // A conditional declares no slot: it has two branches and one flat target
-            // list, so a group named in either one could not be paired back onto the
-            // branch that was actually taken. The catalog validator rejects a branch
-            // that tries.
-            | Effect::Conditional { .. }
-            // A class of permanents is not a target (CR 115.1), and neither is the
-            // ability's own source.
-            | Effect::PumpAll { .. }
-            | Effect::GrantKeywordAll { .. }
-            | Effect::RestrictAll { .. }
-            | Effect::PumpSelf { .. }
-            | Effect::RestrictSelf { .. }
-            | Effect::AlterAbilitiesSelf { .. }
-
-            // A card returning itself out of a graveyard names its own source, which is
-            // not a target either (CR 115.1) — the reason a graveyard activation needs no
-            // candidate set to be offered.
-            | Effect::ReturnSelfFromGraveyard { .. }
-            | Effect::PutCountersOnSelf { .. } => Vec::new(),
-        }
-    }
+    /// A source that has no other face — a single-faced card, a token — is simply not
+    /// turned over (CR 701.28d). Authored as `{"kind":"transform_self"}`.
+    TransformSelf,
+    /// Exile this ability's own source and return it to the battlefield **transformed**,
+    /// under its owner's control — `Exile this, then return it transformed.`
+    ///
+    /// Deliberately **not** [`Self::TransformSelf`] with extra steps, and the difference
+    /// is the one thing a player has to know: this is two zone changes, so what comes
+    /// back is a *new object* (CR 400.7). It has a fresh
+    /// [`PermanentId`](crate::PermanentId), no counters but the ones it enters with, no
+    /// damage, nothing attached, no combat state, and summoning sickness. A planeswalker
+    /// back face therefore arrives with its printed starting loyalty (CR 306.5b), which
+    /// is exactly what makes the printed card work.
+    ///
+    /// The two halves go through the seams every other exile and every other arrival go
+    /// through, so the entry runs the CR 614 replacement layer and is seen by the trigger
+    /// diff like any other. Authored as `{"kind":"exile_self_and_return_transformed"}`.
+    ExileSelfAndReturnTransformed,
+    /// Exile every card in the targeted player's library **except the bottom one** —
+    /// `Exile all but the bottom card of target player's library.`
+    ///
+    /// A library is hidden, so this is the one effect that moves a large number of unseen
+    /// cards to a public zone at once. The bottom card is the library's first element,
+    /// matching every other read of a library in the engine (the top is the last), and it
+    /// stays where it is: a player left with one card draws once more before CR 704.5c
+    /// takes the game.
+    ExileLibraryExceptBottom {
+        /// Whose library. Always a player reference that targets, since the printed card
+        /// says `target player`.
+        target: PlayerRef,
+    },
+    /// Create a **delayed triggered ability** for the rest of the turn (CR 603.7) — the
+    /// `When you next … this turn, …` of a printed card.
+    ///
+    /// The fourth per-turn thing an ability can leave on the state, and recorded exactly
+    /// like the three before it: on a list carrying the turn it was created on
+    /// ([`PendingDelayedTrigger`](crate::PendingDelayedTrigger)), dropped at the turn
+    /// boundary, and — like a created replacement — **spent by firing**, because `the
+    /// next time` happens once (CR 603.7b).
+    ///
+    /// It names no target: a delayed ability watches an *event*, and the object it then
+    /// acts on is whatever that event produced (CR 603.7c) rather than anything aimed
+    /// when this resolved.
+    CreateDelayedTrigger {
+        /// What it waits for, and what it does when it fires.
+        trigger: crate::delayed::DelayedTrigger,
+    },
+    /// **Copy the spell** this effect names (CR 707.10): put a copy of it onto the stack,
+    /// above the original.
+    ///
+    /// A different operation from copying a permanent, and kept a different one. The copy
+    /// is a new object on the stack that **was not cast** — no cast trigger fires for it,
+    /// nothing that asks "was this cast" says yes, and it has no card, so when it finishes
+    /// resolving it simply ceases to exist rather than reaching a graveyard (CR 707.10a).
+    /// It acquires the original's characteristics *and* the decisions made for it
+    /// (CR 707.10), which here means its chosen targets.
+    ///
+    /// The spell rides a target slot ([`TargetSpec::SpellOnStack`]), which for the delayed
+    /// ability that creates today's only use is filled by the **trigger event** rather
+    /// than by a player (CR 603.7c). The slot buys the CR 608.2b re-check: a spell that has
+    /// been countered or has already resolved is no longer there to copy, and nothing
+    /// happens — which is what CR 603.7c says in its own words.
+    ///
+    /// Only an instant or sorcery is copied. A copy of a **permanent** spell becomes a
+    /// token as it resolves (CR 707.10f), and no token is created as a copy of anything
+    /// here — so such a copy is not made at all rather than made wrongly.
+    CopySpell {
+        /// What may be copied. Always a spell on the stack.
+        target: TargetSpec,
+        /// Whether the copy's controller may choose new targets for it (CR 707.10c).
+        #[serde(default)]
+        new_targets: bool,
+    },
 }

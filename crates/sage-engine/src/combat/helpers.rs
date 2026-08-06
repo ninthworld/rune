@@ -1,4 +1,4 @@
-use crate::card::{CombatRestriction, Keyword};
+use crate::card::{CombatRestriction, DamageCharacteristic, Keyword};
 use crate::card_type::CardType;
 use crate::characteristics::{characteristics, permanent_has_keyword};
 use crate::id::{PermanentId, PlayerId};
@@ -325,13 +325,57 @@ pub(crate) fn deals_in_step(
     }
 }
 
-/// The current power of `id` as a non-negative amount of combat damage: a
-/// creature assigns combat damage equal to its power (CR 510.1a), and a creature
-/// with `0` or negative power (or none at all) assigns none. Reads current
-/// power through [`characteristics`], so counters and anthems are folded in.
-pub(crate) fn combat_power(state: &GameState, id: PermanentId, db: &CardDatabase) -> u32 {
-    let power = characteristics(state, id, db).power.unwrap_or(0);
-    u32::try_from(power.max(0)).unwrap_or(0)
+/// How much combat damage `id` assigns, as a non-negative amount: its current power
+/// (CR 510.1a), or the characteristic named instead while a
+/// [`RuleModification::AssignsCombatDamageBy`](crate::RuleModification::AssignsCombatDamageBy)
+/// applies. A creature with `0` or negative value there (or none at all) assigns none.
+///
+/// **The one place the question is asked**, which is what lets the override be a single
+/// substitution rather than a clause repeated three times. The combat-damage step spreads
+/// this number across the blockers, so trample's excess (CR 702.19e) is what is left of
+/// *this* after each blocker's lethal, and the damage the lethal-damage state-based
+/// action reads (CR 704.5g) is what of *this* was marked. Neither needs to know the
+/// substitution happened.
+///
+/// Both readings go through [`characteristics`], so counters, anthems, and pumps fold
+/// into the substitute exactly as they fold into the power it replaced — a Wall under
+/// Arcades with a `+1/+1` counter assigns one more.
+///
+/// Note what this is *not*: the creature's power is unchanged and nothing else reads
+/// this. [`attacker_candidates`](super::attacker_candidates), the evasion gates, every
+/// selector with a power bound, and the projected view all keep reading
+/// [`Characteristics::power`](crate::Characteristics::power).
+pub(crate) fn assigned_combat_damage(state: &GameState, id: PermanentId, db: &CardDatabase) -> u32 {
+    let current = characteristics(state, id, db);
+    let amount = match crate::characteristics::assigns_combat_damage_by(state, id, db) {
+        DamageCharacteristic::Power => current.power,
+        DamageCharacteristic::Toughness => current.toughness,
+    };
+    u32::try_from(amount.unwrap_or(0).max(0)).unwrap_or(0)
+}
+
+/// Whether CR 702.3b currently stops `perm` being declared as an attacker: it has
+/// defender, and nothing lets it attack as though it did not (CR 609.4).
+///
+/// The **one** gate on the keyword, so the permission cannot be honoured in one place and
+/// missed in another. Both halves read a computed answer: the keyword through
+/// [`characteristics`] (CR 613.1f — a *granted* defender stops a creature exactly as a
+/// printed one does) and the permission through
+/// [`attacks_as_though_no_defender`](crate::characteristics::attacks_as_though_no_defender),
+/// which is in no layer and changes no keyword.
+///
+/// A creature under the permission is therefore still a creature *with defender*
+/// everywhere else — which is not a curiosity but the requirement: Arcades grants the
+/// permission to "each creature you control with defender", and a permission that took the
+/// keyword away would take its holder out of the class that granted it on the very next
+/// read.
+pub(crate) fn defender_stops_attacking(
+    state: &GameState,
+    perm: &Permanent,
+    db: &CardDatabase,
+) -> bool {
+    has_keyword(state, perm, Keyword::Defender, db)
+        && !crate::characteristics::attacks_as_though_no_defender(state, perm.id, db)
 }
 
 /// The damage the assigning creature must put on blocker `id` to count as lethal
@@ -363,54 +407,42 @@ pub(crate) fn lethal_needed(
     }
 }
 
-/// Record `amount` combat damage a `source_controller`'s creature deals to
-/// `player`, plus the simultaneous lifelink life gain if the source has it
-/// (CR 702.15e). `source_commander` carries the source's commander designation
-/// (its owning player) when the striking creature is a commander, so the batch
-/// application can feed the CR 903.10a commander-damage tally (`None` otherwise).
+/// Record `amount` combat damage a creature deals to `player`, carrying the seat a
+/// lifelink source gains life (CR 702.15e — `None` without lifelink).
+/// `source_commander` carries the source's commander designation (its owning player)
+/// when the striking creature is a commander, so the batch application can feed the
+/// CR 903.10a commander-damage tally (`None` otherwise).
 pub(crate) fn push_player_damage(
     out: &mut Vec<crate::combat::CombatDamage>,
     player: crate::id::PlayerId,
     amount: u32,
-    source_controller: crate::id::PlayerId,
-    lifelink: bool,
+    lifelink: Option<crate::id::PlayerId>,
     source_commander: Option<crate::id::PlayerId>,
 ) {
     out.push(crate::combat::CombatDamage::ToPlayer {
         player,
         amount,
         source_commander,
+        lifelink,
     });
-    if lifelink && amount > 0 {
-        out.push(crate::combat::CombatDamage::GainLife {
-            player: source_controller,
-            amount,
-        });
-    }
 }
 
-/// Record `amount` combat damage a `source_controller`'s creature deals to
-/// `permanent`, carrying the source's deathtouch flag (CR 702.2b) and adding the
-/// simultaneous lifelink life gain if the source has it (CR 702.15e).
+/// Record `amount` combat damage a creature deals to `permanent`, carrying the
+/// source's deathtouch flag (CR 702.2b) and the seat a lifelink source gains life
+/// (CR 702.15e — `None` without lifelink).
 pub(crate) fn push_permanent_damage(
     out: &mut Vec<crate::combat::CombatDamage>,
     permanent: PermanentId,
     amount: u32,
     deathtouch: bool,
-    source_controller: crate::id::PlayerId,
-    lifelink: bool,
+    lifelink: Option<crate::id::PlayerId>,
 ) {
     out.push(crate::combat::CombatDamage::ToPermanent {
         permanent,
         amount,
         deathtouch,
+        lifelink,
     });
-    if lifelink && amount > 0 {
-        out.push(crate::combat::CombatDamage::GainLife {
-            player: source_controller,
-            amount,
-        });
-    }
 }
 
 #[cfg(test)]
@@ -474,10 +506,13 @@ mod tests {
             attacking: None,
             blocking: Vec::new(),
             skips_untap: false,
+            dealt_damage: false,
             damage: 0,
             counters: Default::default(),
             attached_to: None,
             chosen_color: None,
+            named_card: None,
+            copied: None,
         });
         id
     }

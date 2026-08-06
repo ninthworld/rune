@@ -348,12 +348,20 @@ ephemeral presentation only (an auto-dismissing toast) — never load-bearing st
 | `card_types` | `CardType[]?` | The card's types (CR 300), as the structured set `type_line` is rendered from; omitted when the server states none |
 | `color_identity` | `Color[]?` | The card's **colour identity** (CR 903.4), in WUBRG order; omitted when empty |
 | `token` | `boolean?` | The object is a **token** (CR 111) rather than a card; omitted (and `false`) for every card |
+| `other_face` | `CardFace?` | The card's **other face**, for a card that has two (CR 712); omitted for every single-faced card |
 
 `id` identifies one physical game object and is used by actions. `functional_id` identifies
 the underlying card definition and is not a legal-action handle. Clients treat both as
 opaque strings. The web client uses `functional_id` as the key of its client-local card-art
 cache (ADR 0012) — a pure presentation enrichment; the wire contract is unchanged and a
 client that ignores the field renders completely without it.
+
+For a **battlefield permanent** every one of these fields is the permanent's *current*
+answer, not its card's printed one. That includes a **copy** (CR 707, CR 613 layer 1): a
+permanent that is a copy of something else projects the copied name, mana cost, type line,
+card types, rules text, and power/toughness, and there is no copy badge or second identity
+on the wire — the client is told what the permanent is and draws it. `id` is still the
+permanent's own; only the characteristics come from elsewhere.
 
 `color_identity` (issue #700) is what a card *belongs to*: its colours, the colours of the
 mana symbols in its cost, and the colours of the mana symbols in its rules text. It is stated
@@ -382,6 +390,41 @@ server stated no types — a defensive placeholder for an object it could not re
 never "this card has no types"; a client renders such an object normally rather than
 concluding anything from the absence. `CatalogCard` carries the same field, so a card being
 browsed and the same card in a hand present identically.
+
+A card with **two faces** (CR 712) states the face that is **up** in every field above,
+and the other one in `other_face`:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `name` | `string` | The face's display name — different from the up face's on every printed two-faced card |
+| `type_line` | `string` | The face's type line |
+| `mana_cost` | `string?` | Absent for a back face (CR 712.4a); present when this is the front face of a permanent that has transformed |
+| `rules_text` | `string?` | The face's generated rules text; omitted when empty |
+| `power`, `toughness` | `string?` | Printed values, when that face is a creature |
+| `loyalty` | `string?` | Printed starting loyalty, when that face is a planeswalker |
+| `keywords` | `string[]?` | The face's printed keywords |
+| `card_types` | `CardType[]?` | The face's types, as the set behind its `type_line` |
+
+`other_face` carries two facts in one field, and both are things a client cannot work out.
+Its **presence** is the statement that there is another side — that is what the board's
+state mark is drawn from — and its **contents** are what the pinned preview turns over to
+show (`docs/client-design.md` §6.7). A client cannot tell a transforming card from an
+ordinary one, and it certainly cannot reconstruct a face nobody sent it.
+
+It is **not a second object**. There is one physical card and one `id`; the two faces are
+two sets of characteristics of it, which is why `CardFace` restates none of the fields that
+belong to the *card* rather than to a face — no `id`, no `functional_id` (identity names
+the card, ADR 0008 §3), no `token`, and no `color_identity` (CR 903.4 is computed across
+both faces at once, so the value on the `CardView` is already right for either). A card in
+a hand carries its back face here; a permanent that has transformed carries its **front**
+face here, and a client draws whichever it is told is up without ever knowing which is
+which. A **token** never has one: it has exactly one face, the effect that created it.
+
+Which face is up is decided entirely by the server. A card outside the battlefield always
+projects its front face (CR 712.4a), and a permanent projects the face it is currently
+showing — transforming does not change the object, so the permanent's `id`, counters,
+damage, and combat state are unchanged across it (CR 712.a). Additive: omitted by a server
+predating the field, and a client that ignores it renders exactly as it did.
 
 `loyalty` is what a planeswalker card *enters the battlefield with* — the number printed
 in its corner — and never changes. It is **not** how much loyalty a planeswalker on the
@@ -480,7 +523,14 @@ A `Permanent` contains:
   one object. It is *not* the permanent's colour — a colourless artifact may have named red —
   it is nowhere in `card.color_identity`, and it does not follow from the printed cost, since
   two copies of one card side by side may have chosen differently. Public: it was announced as
-  the permanent entered, so every seat and every spectator receives it.
+  the permanent entered, so every seat and every spectator receives it; and
+- optional `named_card` (issue #738), the card this permanent's controller **named as it
+  entered** the battlefield (CR 614.12) — the "chosen name" its own rules text refers to.
+  `chosen_color`'s sibling in every respect, public the same way, and omitted for every
+  permanent that named none. It is **the catalog's own name for that card**: the engine
+  records a functional identity and the server resolves it here, so a client never handles a
+  card handle and the only names that can appear are names SAGE has itself defined. Render
+  it; never read it as the name of *this* permanent.
 
 These fields describe server-computed state. They do not authorize interaction.
 
@@ -640,6 +690,18 @@ A client that does not know the field renders exactly as it did.
   (CR 605): no targets, no stack, only mana production. Server-computed so a client may
   offer a lighter gesture — one-click tap-for-mana — for exactly these actions without ever
   classifying abilities itself. Omitted when `false`.
+- `cost` (optional, issue #735) states what a **cast** costs in mana, as
+  `{ printed?, modified }` — both in `{...}` notation. `printed` is the cost on the card
+  and `modified` is what the game will charge: the printed cost plus the commander tax
+  where one applies (CR 903.8), after every cost-modification effect in force
+  (CR 601.2f). The two are equal for nearly every cast; they differ when a permanent on
+  the battlefield makes a class of spells cheaper or dearer, and then the difference is
+  the point — the card keeps its printed cost and the surface a player acts on carries
+  the modified one, marked against the printed one beside it. `modified` is `"{0}"` for a
+  cost reduced to nothing, which is a real cost and not an absent one. Present on a cast
+  and omitted for every other action, none of which has a mana cost to state. **Display
+  text**: a client draws the symbols and parses neither value — the arithmetic behind
+  `modified` is the server's, and a client that reproduced it would be computing cost.
 - `destinations` (optional, issue #554) lists the server-authoritative surfaces this
   action may be taken *to*, each `{ type, id, owner?, label? }` where `type` is
   `"zone"`, `"entity"`, or `"player"` (free form — clients ignore kinds they do not
@@ -739,7 +801,7 @@ Non-target choices use tagged `prompts`:
 | `option` | `slot`, `prompt`, `options[{id,label,requires}]` | One option id |
 | `select_from_zone` | `slot`, `prompt`, `zone`, `owner`, `count`, `min?`, `candidates` | Between `min` and `count` candidate ids, in the chosen order |
 | `order` | `slot`, `prompt`, `items` | A permutation of all item ids |
-| `number` | `slot`, `prompt`, `min`, `max` | The chosen number as a decimal string |
+| `number` | `slot`, `prompt`, `min`, `max`, `values?[{value,cost?}]` | The chosen number as a decimal string |
 | `pay_mana` | `slot`, `prompt`, `pip`, `candidates[{id,source,label?,taps?}]` | One candidate `id` |
 
 `option` is used for choices such as keep or mulligan. An option's `requires` (issue #451)
@@ -760,13 +822,22 @@ the server-enumerated `candidates` like any other selection. A client that rende
 from this list" already renders both; one that ignores the slots leaves the cost unpaid,
 and the server pays it (ADR 0010).
 
-**An `activate_ability` carries the same two slots** when its cost asks the player to pick
+**An `activate_ability` carries the same slots** when its cost asks the player to pick
 what pays it — `{B}, Sacrifice another creature:` poses `cost_sacrifice` over the
-battlefield, `{T}, Discard a card:` poses `cost_discard` over the hand — with the same slot
-ids, the same exactness (`count` and no `min`), and the same server fallback. The slot's
+battlefield, `{T}, Discard a card:` poses `cost_discard` over the hand, and
+`{2}{B}, Exile a creature card from your graveyard:` poses `cost_exile` over `"graveyard"`
+(CR 701.19) — with the same slot
+ids, the same server fallback, and no new prompt kind for the third zone, which is the
+whole point of `zone` being free-form. The slot's
 `prompt` is the cost as the card writes it, so a player is asked the question printed on the
-permanent. Nothing about either slot is action-kind-specific on the wire, and a client that
+permanent. Nothing about any of them is action-kind-specific on the wire, and a client that
 already answers them on a cast answers them here without learning anything new.
+
+**Every cost slot is an exact selection.** `Sacrifice two artifacts` is `cost_sacrifice`
+with `count: 2` and no `min`, which is the shape every cost slot has: a cost is paid for
+what it asks and not for less. A sacrifice whose *size* the player picks — `Sacrifice any
+number of lands` — is not a cost at all but a resolution's question, so it reaches the
+client as a `player_choice` prompt over the battlefield rather than as a slot on the cast.
 
 An activation poses **no `pay_mana` slots**: an activated ability's mana comes from its
 controller's pool (CR 602.2b), floated by activating mana abilities as actions in their own
@@ -779,25 +850,57 @@ legally under-fill the slot: scrying *any number* of the cards looked at, taking
 one of them, or failing to find on a search (CR 701.19c). A client that ignores `min`
 therefore behaves as it always did on exact prompts, and only over-constrains the new
 ones. The **order** of the returned ids is significant and is preserved by the server: it
-is the order a scry puts its cards on the bottom in. `order` requests a permutation of its `items`; the
+is the order a scry puts its cards on the bottom in. `order` requests a permutation of its `items`. Two actions emit one: the
 `order_combat_damage` action emits one `order` prompt per attacker blocked by two or more
 creatures, so its controller chooses the combat-damage assignment order (CR 510.1, issue
 #346) — lethal damage is then assigned to the blockers along the chosen order. An attacker
-with 0–1 blockers produces no ordering prompt.
+with 0–1 blockers produces no ordering prompt. And `player_choice` emits one for the *in any
+order* of a look putting cards back on a library (issue #746, below), over two items or
+more. Both follow the same rule: fewer than two items is not a decision, and no prompt is
+emitted for one.
 
 `number` (issue #554) requests a value in the inclusive range `min`..`max` — the value
 of X, how many counters to remove, one share of a divided effect. It is answered with
 the chosen number rendered as a **decimal string** in the slot’s `chosen` array (e.g.
 `["3"]`), sharing `TargetChoice` with every other slot kind so one atomic
 `choose_action` still answers a whole action and the content `token` still binds every
-slot (the bounds are folded into it, so an answer bound to a range the server no longer
-offers is rejected like any other stale binding). **The bounds are the server’s**,
-computed from available mana, the source’s text, and the game state; the client offers a
-control over exactly that range and computes no affordability of its own. Both `min` and
-`max` are always present — a zero `min` is not elided — so the range reads completely
-rather than by inference. A *divided* value is posed as one `number` slot per recipient,
-each with its own bounds, and the server validates the total on resolution; the client
-never enforces a sum.
+slot (the bounds *and the enumerated values* are folded into it, so an answer bound to a
+range or a price the server no longer offers is rejected like any other stale binding).
+**The bounds are the server’s**, computed from available mana, the source’s text, and the
+game state; the client offers a control over exactly that range and computes no
+affordability of its own. Both `min` and `max` are always present — a zero `min` is not
+elided — so the range reads completely rather than by inference. A *divided* value is
+posed as one `number` slot per recipient, each with its own bounds, and the server
+validates the total on resolution; the client never enforces a sum.
+
+`values` (issue #733) is present exactly when the number is **the X of a mana cost**, and
+it lists every legal value together with what announcing it costs:
+
+```json
+{
+  "kind": "number",
+  "slot": "x",
+  "prompt": "Choose a value for X",
+  "min": 0,
+  "max": 3,
+  "values": [
+    { "value": 0, "cost": "{R}" },
+    { "value": 1, "cost": "{1}{R}" },
+    { "value": 2, "cost": "{2}{R}" },
+    { "value": 3, "cost": "{3}{R}" }
+  ]
+}
+```
+
+A range alone is enough for a number that costs nothing. It is not enough for X, because
+**choosing X changes what the spell costs**, and a client that worked the new cost out
+would be deciding what a spell costs — the one thing it must never do. So the server
+never sends `{X}{R}` and leaves a multiplication to whoever draws the bar; it sends the
+values and their prices, and the stepper walks exactly that list (`client-design.md`
+§6.7). Each `cost` is the **whole** cost at that value, in printed `{...}` notation, with
+no `X` left in it and never a delta. Where the list is present it and the range agree;
+`values` is omitted entirely for every other `number` slot, which therefore serializes
+exactly as it did before this field existed.
 
 `pay_mana` pays **one pip** of a cost by tapping something (CR 601.2f–g). A cast poses one
 of these slots per unit of its cost — `{1}{W}` is two of them — and a cast covered by mana
@@ -832,6 +935,40 @@ is confirmed, so a client drawing them as tapped is drawing a board the server h
 told about yet. It must be told which ones turn, because a mana ability that sacrifices its
 source or pays life taps nothing and no client can tell those apart without reading the cost.
 Omitted when `false`.
+
+### Announcing a spell: the mode and X
+
+A cast makes up to two choices **before** it chooses targets and before it pays
+(CR 601.2b, issue #733), and both ride the prompt kinds above rather than a new shape:
+
+| Choice | Slot | Prompt kind |
+| --- | --- | --- |
+| The mode of a modal spell (CR 700.2) | `mode` | `option`, one option per mode |
+| The value of X | `x` | `number`, carrying `values` |
+
+The order is not decoration. **A mode decides which target slots the spell has**, so the
+mode is asked first and the targets cannot be asked at all until it is answered; X is
+asked next because it decides what the spell costs. A spell with neither — every other
+card in the catalog — is unchanged and simply starts at its targets.
+
+A mode option's `label` is the mode's own generated sentence, so a player picks between
+the words the card prints, and its `requires` names the target slots **that mode** owes.
+That is the existing `option` coupling doing exactly what it was built for: a modal cast
+advertises every mode's slots side by side, named `m<mode>t<index>` rather than
+`t<index>`, all marked `optional` because at most one mode's are ever filled, and
+`requires` is how a client tells which belong to which. The server binds the answer
+against the chosen mode's requirements and the engine re-derives the whole thing again;
+`requires` changes no legality.
+
+Both choices are **re-validated independently at apply**. A mode index the card does not
+print is rejected, an announcement that skipped the mode question is rejected, a value of
+X the offer did not enumerate is rejected, and an X the payment cannot cover is rejected —
+each of them at the engine's own gate, not merely left off the offer. The offer is
+computed before the player has chosen anything; what they chose is a separate question.
+
+The stack entry for an announced spell states what was chosen: its `description` carries
+the mode's sentence and the value of X (`Banefire (X=5)`), because two casts of one card
+at different values are two different things to everyone deciding whether to respond.
 
 `choose_targets` aims a **triggered ability already on the stack** (CR 603.3d). A trigger
 is put there by the game rather than by a player, so it arrives unaimed and its controller
@@ -878,7 +1015,11 @@ distinguish it from a card selection:
   abilities** (CR 605.3a: a player asked to pay during resolution may make mana), marked
   as usual with `mana_ability`. Activating one answers nothing — the question stays owed —
   but `accept` appears once the pool can pay. No other action, and no other seat, becomes
-  legal.
+  legal. A cost paid by **sacrificing or discarding** (issue #744) does not widen that:
+  its `accept` is labelled with the payment as the card writes it ("Sacrifice another
+  creature"), and accepting owes the payment as the *next* `player_choice` — the ordinary
+  `select_from_zone` over the battlefield or the hand — which is answered before the
+  effects the payment bought happen. Nothing else is legal while that one is owed.
 - Nothing is revealed: a yes-or-no is about an effect, not a zone, so `revealed` stays
   empty.
 
@@ -899,6 +1040,48 @@ Two things ask it, and the prompt's own sentence is what tells them apart:
   mid-resolution choice suspends it, so a client that renders the board it is sent is never
   showing a permanent whose colour has not been named. Answering makes it appear, with
   `chosen_color` already set on it.
+
+The same `option` prompt carries **which card a permanent names as it enters** (CR 614.12,
+issue #738) — *"Choose a card name as Alpine Moon enters the battlefield"* — under the same
+freeze and with the permanent likewise not yet on the battlefield. Its options are the cards
+the **server** says may be named: each option's `label` is the card's name and its `id` is
+that card's authored `functional_id`, the same stable identity `card.functional_id` carries
+everywhere else. The client picks one and echoes the id; it composes no list, sends no typed
+name, and an id the offer did not list is refused rather than guessed at.
+
+The same `player_choice` action carries another question: **in which order?** (issue #746)
+— the *put the rest on the bottom of your library in any order* of a look. It adds no wire
+shape either: it is the `order` prompt the `order_combat_damage` action already rides on,
+on the same `choice` slot, and it is answered the same atomic way — with a **permutation of
+every one of its `items`**, no more and no fewer. Four things distinguish it from the three
+questions above:
+
+- It is the **second** question one effect asks. A look that says "in any order" poses its
+  card selection first (*which one do you keep?*) and this one only once that is answered,
+  because until then nobody knows what "the rest" is. The action id and the slot are the
+  same both times; the prompt `kind` is what changed.
+- The answer's **order is the whole answer**, and the prompt says which end is which:
+  *"Choose the order these go on the bottom of your library, deepest first"*. The first id
+  sent ends up deepest, which is the same convention a `select_from_zone` bottoming uses.
+- A permutation of one item, or of none, is not a decision, so it is **never posed** — the
+  cards are bottomed and the resolution carries on. A client will not see this prompt with
+  fewer than two items.
+- The items are cards from the top of a library, so they ride the same `revealed` array a
+  search does, on the chooser's view and no other seat's.
+
+The counterpart of *in any order* is *in a random order*, which is not a question at all:
+the server bottoms those cards itself and no prompt is emitted. Which of the two a card
+uses is the card's own text and never a client decision.
+
+And one more: **which permanents to sacrifice** (CR 701.17), for an effect that makes a
+player sacrifice a number of their own permanents mid-resolution. It adds no wire shape
+either — it is the same `select_from_zone` prompt on the same `choice` slot, with a `zone`
+of `"battlefield"` and permanent entity ids for candidates, which is exactly what that
+field being free-form is for. The seat asked is always the sacrificing player (CR 701.17b
+lets nobody sacrifice what they do not control), the count is the engine's already-clamped
+bound — a player told to sacrifice two who controls one is offered `count: 1` — and a
+player who controls nothing of the named class is never asked. Nothing is revealed: the
+battlefield is public.
 
 Combat declarations also use requirements. The `attackers` slot lists creatures eligible to
 attack; blocker slots list eligible blockers for each attacker. When there is more than one

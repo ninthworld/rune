@@ -49,6 +49,8 @@ fn resolving_a_creature_spell_puts_it_on_the_battlefield() {
         &state,
         &Action::CastSpell {
             card: scout,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -80,9 +82,14 @@ fn issue_47_non_permanent_spell_resolves_to_graveyard_not_battlefield() {
     let bolt = state.new_instance(id_in(&db, "test_bolt"));
     let sid = state.mint_id();
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: StackId(sid),
         controller: PlayerId(0),
-        kind: StackObjectKind::Spell { card: bolt },
+        kind: StackObjectKind::Spell {
+            card: bolt,
+            mode: None,
+            x: None,
+        },
         targets: Vec::new(),
     });
 
@@ -109,10 +116,13 @@ fn creature_on_battlefield(state: &mut GameState) -> PermanentId {
         attacking: None,
         blocking: Vec::new(),
         skips_untap: false,
+        dealt_damage: false,
         damage: 0,
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
+        copied: None,
     });
     PermanentId(id)
 }
@@ -122,6 +132,7 @@ fn creature_on_battlefield(state: &mut GameState) -> PermanentId {
 fn tap_ability_targeting(state: &mut GameState, source: PermanentId, target: Target) {
     let sid = state.mint_id();
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: StackId(sid),
         controller: PlayerId(0),
         kind: StackObjectKind::Ability {
@@ -260,14 +271,20 @@ fn issue_148_spell_on_stack_target_is_legal_only_while_the_spell_is_on_the_stack
     let spell = state.new_instance(fixture("onakke_ogre"));
     let sid = StackId(state.mint_id());
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: sid,
         controller: PlayerId(0),
-        kind: StackObjectKind::Spell { card: spell },
+        kind: StackObjectKind::Spell {
+            card: spell,
+            mode: None,
+            x: None,
+        },
         targets: Vec::new(),
     });
     // An ability sharing the stack is not a spell target.
     let aid = StackId(state.mint_id());
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: aid,
         controller: PlayerId(0),
         kind: StackObjectKind::Ability {
@@ -342,10 +359,13 @@ fn issue_149_any_target_is_legal_for_creatures_and_in_game_players() {
         attacking: None,
         blocking: Vec::new(),
         skips_untap: false,
+        dealt_damage: false,
         damage: 0,
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
+        copied: None,
     });
     assert!(!target_is_legal(
         TargetSpec::AnyTarget,
@@ -378,6 +398,7 @@ fn issue_149_put_counters_ability_lands_on_its_target_cr_122() {
     let creature = creature_on_battlefield(&mut state);
     let sid = state.mint_id();
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: StackId(sid),
         controller: PlayerId(0),
         kind: StackObjectKind::Ability {
@@ -565,10 +586,13 @@ fn place(state: &mut GameState, slug: &str) -> PermanentId {
         attacking: None,
         blocking: Vec::new(),
         skips_untap: false,
+        dealt_damage: false,
         damage: 0,
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
+        copied: None,
     });
     id
 }
@@ -604,10 +628,13 @@ fn aura_host(state: &mut GameState, db: &CardDatabase) -> PermanentId {
         attacking: None,
         blocking: Vec::new(),
         skips_untap: false,
+        dealt_damage: false,
         damage: 0,
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
+        copied: None,
     });
     id
 }
@@ -631,6 +658,8 @@ fn issue_152_aura_resolves_attached_to_its_target_and_boosts_it_cr_303_4d() {
         &state,
         &Action::CastSpell {
             card: aura,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(host)],
             payment: Vec::new(),
         },
@@ -673,6 +702,8 @@ fn issue_152_aura_fizzles_when_its_target_left_before_resolution_cr_608_2b() {
         &state,
         &Action::CastSpell {
             card: aura,
+            mode: None,
+            x: None,
             targets: vec![Target::Permanent(host)],
             payment: Vec::new(),
         },
@@ -726,6 +757,8 @@ fn issue_155_zero_zero_entering_with_two_counters_lives_cr_614_12() {
         &state,
         &Action::CastSpell {
             card: hatchling,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -769,9 +802,14 @@ fn issue_155_etb_trigger_observes_the_replaced_counters_state_cr_614_12() {
     state.players[0].library = vec![draw];
     let sid = state.mint_id();
     state.stack.push(StackObject {
+        paid: Default::default(),
         id: StackId(sid),
         controller: PlayerId(0),
-        kind: StackObjectKind::Spell { card: broodling },
+        kind: StackObjectKind::Spell {
+            card: broodling,
+            mode: None,
+            x: None,
+        },
         targets: Vec::new(),
     });
 

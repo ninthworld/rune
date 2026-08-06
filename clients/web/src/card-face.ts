@@ -120,6 +120,21 @@ export interface CardFace {
    * nothing the client can see would let it work this out.
    */
   skipsNextUntap: boolean
+  /**
+   * The card's **other face**, for a card that has two (CR 712), as a face in its own right.
+   *
+   * Everything else here describes the side that is **up**; this is the side that is not. Its
+   * presence is the whole of the board's mark — *there is another side*, never what is on it
+   * (`docs/client-design.md` §6.7) — and its contents are what the pinned preview turns over to
+   * show. Neither is inferable: nothing on a face says a card has two, and no client can
+   * reconstruct a side nobody sent it.
+   *
+   * It carries the same entity id, because a two-faced card is one card and one object
+   * (`docs/protocol.md`). It carries no art key: a picture looked up by card identity is the
+   * *card's*, and drawing the front's illustration behind the back's text would be this client
+   * inventing a face.
+   */
+  otherFace?: CardFace
 }
 
 /**
@@ -198,6 +213,17 @@ export function cardFace(card: CardView): CardFace {
     markers: card.token ? ['Token'] : [],
     artKey: card.token ? undefined : card.functional_id || undefined,
     cardTypes: list(card.card_types),
+    // The side that is not up, when the server said there is one (CR 712). Read exactly as
+    // sent: which of a card's two faces this is — a back face in hand, a *front* face under a
+    // permanent that has transformed — is the server's to say and never worked out here.
+    ...(card.other_face === undefined
+      ? {}
+      : {
+          otherFace: {
+            ...printedFace(card.id, card.other_face),
+            cardTypes: list(card.other_face.card_types),
+          },
+        }),
   }
 }
 
@@ -392,6 +418,10 @@ export function faceSummary(face: CardFace): string {
   // Read aloud with the rest of what is true of the object, because it is not in the card's
   // printed text and a reader that skipped it would describe a creature without its trample.
   parts.push(...face.grantedKeywords)
+  // The glyph in the run of state marks says this; a reader perceives no glyph, so the word is
+  // here. It says *that* there is another side and never what is on it (§6.7) — naming the back
+  // of a card a player has not turned over would put a fact on the board that is not on it.
+  if (face.otherFace) parts.push('has another face')
   if (face.damage !== undefined) parts.push(`${face.damage} damage`)
   for (const counter of face.counters) parts.push(`${counter.count}× ${counter.kind}`)
   parts.push(...face.markers)

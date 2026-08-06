@@ -66,6 +66,8 @@ fn hand_of(state: &mut GameState, db: &CardDatabase, slugs: &[&str]) -> Vec<Card
 fn offers_cast(state: &GameState, db: &CardDatabase, card: CardInstance) -> bool {
     valid_actions(state, db).contains(&Action::CastSpell {
         card,
+        mode: None,
+        x: None,
         targets: Vec::new(),
         payment: Vec::new(),
     })
@@ -91,6 +93,8 @@ fn tormenting_voice_is_uncastable_with_no_other_card_to_discard() {
         &state,
         &Action::CastSpell {
             card: voice,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -123,6 +127,8 @@ fn the_discard_rides_in_the_payment_and_the_whole_cast_is_one_action() {
         &state,
         &Action::CastSpell {
             card: voice,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: vec![CostPayment::Discard(murder.id)],
         },
@@ -131,7 +137,7 @@ fn the_discard_rides_in_the_payment_and_the_whole_cast_is_one_action() {
     assert!(
         cast.stack.iter().any(|o| matches!(
             o.kind,
-            StackObjectKind::Spell { card } if card.id == voice.id
+            StackObjectKind::Spell { card, .. } if card.id == voice.id
         )),
         "the spell is on the stack"
     );
@@ -167,6 +173,8 @@ fn a_cast_that_names_no_discard_is_a_no_op() {
         &state,
         &Action::CastSpell {
             card: voice,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },
@@ -188,6 +196,8 @@ fn the_spell_being_cast_cannot_pay_for_itself() {
         &state,
         &Action::CastSpell {
             card: voice,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: vec![CostPayment::Discard(voice.id)],
         },
@@ -221,10 +231,13 @@ fn a_discard_is_refused_on_a_card_that_owes_no_additional_cost() {
         attacking: None,
         blocking: Vec::new(),
         skips_untap: false,
+        dealt_damage: false,
         damage: 0,
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
+        copied: None,
     });
     let victim = state.battlefield[0].id;
 
@@ -232,6 +245,8 @@ fn a_discard_is_refused_on_a_card_that_owes_no_additional_cost() {
         &state,
         &Action::CastSpell {
             card: murder,
+            mode: None,
+            x: None,
             targets: vec![sage_engine::Target::Permanent(victim)],
             payment: vec![CostPayment::Discard(voice.id)],
         },

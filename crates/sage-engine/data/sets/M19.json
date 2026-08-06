@@ -35,6 +35,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "cleansing_nova",
+    "collector_number": "9",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "daybreak_chaplain",
     "collector_number": "10",
     "rarity": "common"
@@ -63,6 +68,11 @@
     "functional_id": "invoke_the_divine",
     "collector_number": "16",
     "rarity": "common"
+  },
+  {
+    "functional_id": "isolate",
+    "collector_number": "17",
+    "rarity": "rare"
   },
   {
     "functional_id": "knight_of_the_tusk",
@@ -120,6 +130,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "novice_knight",
+    "collector_number": "30",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "oreskos_swiftclaw",
     "collector_number": "31",
     "rarity": "common"
@@ -163,6 +178,11 @@
     "functional_id": "aether_tunnel",
     "collector_number": "43",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "anticipate",
+    "collector_number": "44",
+    "rarity": "common"
   },
   {
     "functional_id": "aven_wind_mage",
@@ -215,8 +235,23 @@
     "rarity": "common"
   },
   {
+    "functional_id": "ghostform",
+    "collector_number": "58",
+    "rarity": "common"
+  },
+  {
     "functional_id": "horizon_scholar",
     "collector_number": "59",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "metamorphic_alteration",
+    "collector_number": "60",
+    "rarity": "rare"
+  },
+  {
+    "functional_id": "mirror_image",
+    "collector_number": "61",
     "rarity": "uncommon"
   },
   {
@@ -248,6 +283,11 @@
     "functional_id": "psychic_corrosion",
     "collector_number": "68",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "sai_master_thopterist",
+    "collector_number": "69",
+    "rarity": "rare"
   },
   {
     "functional_id": "salvager_of_secrets",
@@ -305,6 +345,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "abnormal_endurance",
+    "collector_number": "85",
+    "rarity": "common"
+  },
+  {
     "functional_id": "blood_divination",
     "collector_number": "86",
     "rarity": "uncommon"
@@ -350,13 +395,38 @@
     "rarity": "common"
   },
   {
+    "functional_id": "fraying_omnipotence",
+    "collector_number": "97",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "gravedigger",
     "collector_number": "98",
     "rarity": "uncommon"
   },
   {
+    "functional_id": "graveyard_marshal",
+    "collector_number": "99",
+    "rarity": "rare"
+  },
+  {
+    "functional_id": "hired_blade",
+    "collector_number": "100",
+    "rarity": "common"
+  },
+  {
     "functional_id": "infectious_horror",
     "collector_number": "101",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "infernal_reckoning",
+    "collector_number": "102",
+    "rarity": "rare"
+  },
+  {
+    "functional_id": "infernal_scarring",
+    "collector_number": "103",
     "rarity": "common"
   },
   {
@@ -460,6 +530,16 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "alpine_moon",
+    "collector_number": "128",
+    "rarity": "rare"
+  },
+  {
+    "functional_id": "banefire",
+    "collector_number": "130",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "boggart_brute",
     "collector_number": "131",
     "rarity": "common"
@@ -478,6 +558,11 @@
     "functional_id": "dismissive_pyromancer",
     "collector_number": "136",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "doublecast",
+    "collector_number": "137",
+    "rarity": "rare"
   },
   {
     "functional_id": "dragon_egg",
@@ -528,6 +613,11 @@
     "functional_id": "hostile_minotaur",
     "collector_number": "147",
     "rarity": "common"
+  },
+  {
+    "functional_id": "inferno_hellion",
+    "collector_number": "148",
+    "rarity": "uncommon"
   },
   {
     "functional_id": "lathliss_dragon_queen",
@@ -582,6 +672,11 @@
   {
     "functional_id": "tectonic_rift",
     "collector_number": "162",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "thud",
+    "collector_number": "163",
     "rarity": "uncommon"
   },
   {
@@ -680,9 +775,19 @@
     "rarity": "common"
   },
   {
+    "functional_id": "gift_of_paradise",
+    "collector_number": "184",
+    "rarity": "common"
+  },
+  {
     "functional_id": "gigantosaurus",
     "collector_number": "185",
     "rarity": "rare"
+  },
+  {
+    "functional_id": "goreclaw_terror_of_qal_sisma",
+    "collector_number": "186",
+    "rarity": "mythic"
   },
   {
     "functional_id": "greenwood_sentinel",
@@ -740,9 +845,19 @@
     "rarity": "common"
   },
   {
+    "functional_id": "root_snare",
+    "collector_number": "199",
+    "rarity": "common"
+  },
+  {
     "functional_id": "runic_armasaur",
     "collector_number": "200",
     "rarity": "rare"
+  },
+  {
+    "functional_id": "scapeshift",
+    "collector_number": "201",
+    "rarity": "mythic"
   },
   {
     "functional_id": "talons_of_wildwood",
@@ -785,14 +900,39 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "arcades_the_strategist",
+    "collector_number": "212",
+    "rarity": "mythic"
+  },
+  {
+    "functional_id": "brawl_bash_ogre",
+    "collector_number": "213",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "draconic_disciple",
     "collector_number": "215",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "enigma_drake",
+    "collector_number": "216",
     "rarity": "uncommon"
   },
   {
     "functional_id": "heroic_reinforcements",
     "collector_number": "217",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "nicol_bolas_the_ravager",
+    "collector_number": "218",
+    "rarity": "mythic"
+  },
+  {
+    "functional_id": "palladia_mors_the_ruiner",
+    "collector_number": "219",
+    "rarity": "mythic"
   },
   {
     "functional_id": "poison_tip_archer",

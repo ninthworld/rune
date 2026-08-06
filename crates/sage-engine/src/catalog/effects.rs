@@ -135,6 +135,26 @@ pub(super) fn effect_lists(
     {
         lists.push(effects.iter().collect());
     }
+    // Each mode is its own list, because each is announced on its own: one mode's
+    // variable-arity group has nothing to do with another's, and the two are never
+    // resolved together (CR 700.2).
+    for mode in object
+        .get("modes")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+    {
+        if let Some(effects) = mode.get("effects").and_then(serde_json::Value::as_array) {
+            lists.push(effects.iter().collect());
+        }
+    }
+    // An ability an attachment grants is one object's worth of announcement once it is
+    // on its host, so its effect list is its own list here.
+    for ability in granted_abilities(object) {
+        if let Some(effects) = ability.get("effects").and_then(serde_json::Value::as_array) {
+            lists.push(effects.iter().collect());
+        }
+    }
     for effect in every_effect(object) {
         for ability in effect
             .get("abilities")
@@ -242,7 +262,10 @@ const RETURN_SELF_FROM_GRAVEYARD: &str = "return_self_from_graveyard";
 ///
 /// - **Anywhere but an activated or a triggered ability.** A spell effect or an ability
 ///   handed to an emblem has no source in a graveyard for the return to act on, so the
-///   effect would sit in a card that reads as recursive and never is.
+///   effect would sit in a card that reads as recursive and never is. An ability a card
+///   **grants** — an Aura's, or a pump's — counts as one of those positions: it is an
+///   ability, it will sit on an object that can die, and where it happens to be authored
+///   says nothing about whether it works.
 /// - **Beside a cost a card in a graveyard cannot pay.** A card in a zone is not a
 ///   permanent: it cannot be tapped, sacrificed, or have counters removed. Mana is the
 ///   only cost component such an ability can charge, and one that charged anything else
@@ -259,9 +282,9 @@ pub(super) fn graveyard_ability_is_bad(
     }
     /// Occurrences in one ability's own effect tree — its list, and the `may` and
     /// `conditional` wrappers inside it. Deliberately **not** [`nested_effects`], which
-    /// also descends into the abilities a `create_emblem` hands out: an emblem is in no
-    /// zone and has no card in a graveyard, so one authored there is uncounted here and
-    /// falls out as a mismatch below.
+    /// also descends into the abilities an effect hands out: those are counted by walking
+    /// the abilities themselves below, and an emblem's — which are in no zone and have no
+    /// card in a graveyard — are counted nowhere and fall out as a mismatch.
     fn count_in(effects: &[serde_json::Value]) -> usize {
         effects
             .iter()
@@ -275,11 +298,29 @@ pub(super) fn graveyard_ability_is_bad(
             })
             .sum()
     }
-    let abilities = object
+    // Every ability position that becomes a real ability of a real object: the card's
+    // own, and the ones it grants — through an `attachment` block, or through the
+    // `abilities` an effect like a pump hands to the creature it targets. An emblem's are
+    // deliberately absent, which is what makes one authored there a mismatch.
+    let mut abilities: Vec<&serde_json::Value> = object
         .get("abilities")
         .and_then(serde_json::Value::as_array)
         .map(Vec::as_slice)
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .iter()
+        .collect();
+    abilities.extend(granted_abilities(object));
+    for effect in every_effect(object) {
+        if effect.get("kind").and_then(serde_json::Value::as_str) == Some("pump") {
+            abilities.extend(
+                effect
+                    .get("abilities")
+                    .and_then(serde_json::Value::as_array)
+                    .map(Vec::as_slice)
+                    .unwrap_or_default(),
+            );
+        }
+    }
     // Every authored occurrence, at any depth and in any list.
     let total = every_effect(object)
         .into_iter()
@@ -356,6 +397,27 @@ pub(super) fn ability_change_is_empty(effect: &serde_json::Value) -> bool {
         && names_none("gain")
 }
 
+/// The abilities a definition **grants** rather than has: the ones an `attachment` block
+/// hands to whatever it is attached to (CR 613.1f).
+///
+/// A third ability position beside the card's own `abilities` and the ones a
+/// `create_emblem` effect writes, and it has to be walked like the other two: an ability
+/// a card gives away is still an ability this catalog authored, so every rule stated
+/// about "every effect a definition authors" has to be able to see inside it.
+///
+/// The abilities a **pump** grants need no entry here — they hang off an effect, and
+/// [`nested_effects`] already descends into any effect's `abilities`.
+pub(super) fn granted_abilities(
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> &[serde_json::Value] {
+    object
+        .get("attachment")
+        .and_then(|attachment| attachment.get("abilities"))
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+}
+
 /// Every effect a definition authors at the top level of an ability or of its spell
 /// effects, in file order.
 ///
@@ -364,22 +426,52 @@ pub(super) fn ability_change_is_empty(effect: &serde_json::Value) -> bool {
 pub(super) fn authored_effects(
     object: &serde_json::Map<String, serde_json::Value>,
 ) -> impl Iterator<Item = &serde_json::Value> {
-    let abilities = object
-        .get("abilities")
-        .and_then(serde_json::Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or_default()
-        .iter()
-        .filter_map(|ability| ability.get("effects"))
-        .filter_map(serde_json::Value::as_array)
-        .flatten();
+    fn effects_of(abilities: &[serde_json::Value]) -> impl Iterator<Item = &serde_json::Value> {
+        abilities
+            .iter()
+            .filter_map(|ability| ability.get("effects"))
+            .filter_map(serde_json::Value::as_array)
+            .flatten()
+    }
+    let abilities = effects_of(
+        object
+            .get("abilities")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default(),
+    );
     let spell = object
         .get("spell_effects")
         .and_then(serde_json::Value::as_array)
         .map(Vec::as_slice)
         .unwrap_or_default()
         .iter();
-    abilities.chain(spell)
+    // A modal spell's effects hang off its modes instead (CR 700.2), and every rule
+    // stated about "every effect a definition authors" has to reach them — otherwise a
+    // check that holds for a plain spell would quietly not hold once the same text was
+    // written as one bullet of two. An attachment's granted abilities carry effects for
+    // the same reason.
+    let modes = mode_effects(object).into_iter();
+    abilities
+        .chain(spell)
+        .chain(modes)
+        .chain(effects_of(granted_abilities(object)))
+}
+
+/// The effects of every mode a definition declares, flattened (CR 700.2).
+pub(super) fn mode_effects(
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> Vec<&serde_json::Value> {
+    object
+        .get("modes")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|mode| mode.get("effects"))
+        .filter_map(serde_json::Value::as_array)
+        .flatten()
+        .collect()
 }
 
 /// Whether `effect` is a `may` wrapping **more than one** targeting effect.
@@ -482,11 +574,92 @@ pub(super) fn watches_the_chosen_color(
     })
 }
 
+/// Whether `object` reads a sacrifice back that nothing on it ever performs — see
+/// [`Violation::AmountIsNeverSacrificed`](super::Violation::AmountIsNeverSacrificed).
+///
+/// The pair rule that matches [`watches_the_chosen_color`]'s: one half of the card names a
+/// number, the other half has to be the thing that produces it. Reads the authored JSON,
+/// because `build.rs` validates a definition before the typed IR exists (ADR 0008 §5).
+///
+/// **Two sources, two producers**, because the halves are not interchangeable: the power a
+/// creature had is read off a *cost* payment (CR 601.2h), while `that many` counts what the
+/// *resolution* sacrificed — so a card with a sacrifice effect could still name the first
+/// and always answer zero.
+pub(super) fn reads_an_unsacrificed_amount(
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> bool {
+    (reads_amount(object, "sacrificed_creature_power") && !a_cost_sacrifices(object))
+        || (reads_amount(object, "sacrificed_this_way") && !an_effect_sacrifices(object))
+}
+
+/// Whether any effect of `object` reads the [`DerivedAmount`](crate::DerivedAmount)
+/// `source`, wherever in the tree it sits — an `amount`, or a search's `take_amount`.
+fn reads_amount(object: &serde_json::Map<String, serde_json::Value>, source: &str) -> bool {
+    every_effect(object).into_iter().any(|effect| {
+        ["amount", "take_amount"].into_iter().any(|key| {
+            effect
+                .get(key)
+                .and_then(|amount| amount.get("source"))
+                .and_then(serde_json::Value::as_str)
+                == Some(source)
+        })
+    })
+}
+
+/// Whether any effect of `object` is a sacrifice — the resolution-time verb `that many`
+/// counts, wherever in the tree it sits.
+fn an_effect_sacrifices(object: &serde_json::Map<String, serde_json::Value>) -> bool {
+    every_effect(object)
+        .into_iter()
+        .any(|effect| effect.get("kind").and_then(serde_json::Value::as_str) == Some("sacrifice"))
+}
+
+/// Whether any cost of `object` sacrifices a permanent the payer picks — an additional
+/// cast cost, or a component of an activation cost.
+fn a_cost_sacrifices(object: &serde_json::Map<String, serde_json::Value>) -> bool {
+    let kind_is_sacrifice = |value: &serde_json::Value| {
+        value.get("kind").and_then(serde_json::Value::as_str) == Some("sacrifice")
+    };
+    if object.get("additional_cost").is_some_and(kind_is_sacrifice) {
+        return true;
+    }
+    abilities_of(object).iter().any(|ability| {
+        ability
+            .get("cost")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+            .iter()
+            .any(kind_is_sacrifice)
+    })
+}
+
 /// Whether `object` declares the `enters_choosing_color` ability — whether it names a
 /// colour as it enters (CR 614.12), and so whether "the chosen color" refers to anything.
 pub(super) fn object_chooses_a_color(object: &serde_json::Map<String, serde_json::Value>) -> bool {
     abilities_of(object).iter().any(|ability| {
         ability.get("type").and_then(serde_json::Value::as_str) == Some("enters_choosing_color")
+    })
+}
+
+/// Whether any static ability of `object` selects permanents "with the chosen name" —
+/// `{"affects": {"with_the_named_card": true}}`, the selector whose meaning comes from
+/// elsewhere on the same card (CR 614.12).
+pub(super) fn selects_the_named_card(object: &serde_json::Map<String, serde_json::Value>) -> bool {
+    abilities_of(object).iter().any(|ability| {
+        ability
+            .get("affects")
+            .and_then(|affects| affects.get("with_the_named_card"))
+            .and_then(serde_json::Value::as_bool)
+            == Some(true)
+    })
+}
+
+/// Whether `object` declares the `enters_naming_card` ability — whether it names a card
+/// as it enters (CR 614.12), and so whether "the chosen name" refers to anything.
+pub(super) fn object_names_a_card(object: &serde_json::Map<String, serde_json::Value>) -> bool {
+    abilities_of(object).iter().any(|ability| {
+        ability.get("type").and_then(serde_json::Value::as_str) == Some("enters_naming_card")
     })
 }
 

@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "functional_id": "gift_of_paradise",
+  "name": "Gift of Paradise",
+  "types": [
+    "enchantment"
+  ],
+  "subtypes": [
+    "Aura"
+  ],
+  "mana_cost": "{2}{G}",
+  "colors": [
+    "green"
+  ],
+  "attachment": {
+    "kind": "aura",
+    "attach_to": "any_land",
+    "abilities": [
+      {
+        "type": "activated",
+        "cost": [
+          {
+            "kind": "tap"
+          }
+        ],
+        "effects": [
+          {
+            "kind": "add_mana_any_color",
+            "amount": 2,
+            "same_color": true
+          }
+        ]
+      }
+    ]
+  },
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "gain_life",
+          "player_ref": "controller",
+          "amount": 2
+        }
+      ]
+    }
+  ]
+}

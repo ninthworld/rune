@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "functional_id": "alpine_moon",
+  "name": "Alpine Moon",
+  "types": [
+    "enchantment"
+  ],
+  "subtypes": [],
+  "mana_cost": "{R}",
+  "colors": [
+    "red"
+  ],
+  "abilities": [
+    {
+      "type": "enters_naming_card",
+      "class": "nonbasic_land"
+    },
+    {
+      "type": "static",
+      "affects": {
+        "scope": "permanents_your_opponents_control",
+        "card_type": "land",
+        "with_the_named_card": true
+      },
+      "modification": {
+        "kind": "lose_all_abilities"
+      }
+    },
+    {
+      "type": "static",
+      "affects": {
+        "scope": "permanents_your_opponents_control",
+        "card_type": "land",
+        "with_the_named_card": true
+      },
+      "modification": {
+        "kind": "grant_ability",
+        "ability": {
+          "type": "activated",
+          "cost": [
+            {
+              "kind": "tap"
+            }
+          ],
+          "effects": [
+            {
+              "kind": "add_mana_any_color",
+              "amount": 1
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

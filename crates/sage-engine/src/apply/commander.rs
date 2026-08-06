@@ -178,9 +178,13 @@ mod tests {
             PlayerId(1),
         );
 
-        // Non-combat damage (e.g. a burn spell the commander is the source of) uses
-        // the plain player-damage seam, which never feeds the tally.
-        state.deal_damage_to_player(PlayerId(1), 21);
+        // Non-combat damage (e.g. a burn spell the commander is the source of) goes
+        // through the same damage seam flagged as non-combat, and the tally is fed only
+        // by the combat batch.
+        state.deal_damage(
+            crate::replacement::PendingDamage::to_player(PlayerId(1), 21),
+            &db,
+        );
         assert!(
             state.commander_damage.is_empty(),
             "non-combat damage from a commander does not count (CR 903.10a)"

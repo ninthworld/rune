@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "functional_id": "infernal_reckoning",
+  "name": "Infernal Reckoning",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{B}",
+  "colors": [
+    "black"
+  ],
+  "spell_effects": [
+    {
+      "kind": "exile",
+      "target": "any_colorless_creature",
+      "gain_life": "power"
+    }
+  ]
+}

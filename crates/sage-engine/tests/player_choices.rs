@@ -123,6 +123,8 @@ fn cast(state: &GameState, db: &CardDatabase, slug: &str, targets: Vec<Target>) 
         &state,
         &Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets,
             payment: Vec::new(),
         },
@@ -131,7 +133,7 @@ fn cast(state: &GameState, db: &CardDatabase, slug: &str, targets: Vec<Target>) 
     assert!(
         state.stack.iter().any(|o| matches!(
             o.kind,
-            StackObjectKind::Spell { card } if card.id == instance.id
+            StackObjectKind::Spell { card, .. } if card.id == instance.id
         )),
         "{slug} did not reach the stack — the cast was rejected"
     );

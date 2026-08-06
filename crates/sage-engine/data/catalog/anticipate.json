@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "functional_id": "anticipate",
+  "name": "Anticipate",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{1}{U}",
+  "colors": [
+    "blue"
+  ],
+  "spell_effects": [
+    {
+      "kind": "look_at_top",
+      "count": 3,
+      "take": 1,
+      "take_min": 1,
+      "destination": "hand",
+      "bottom_order": "chosen"
+    }
+  ]
+}

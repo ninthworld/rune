@@ -145,6 +145,24 @@ impl CardDatabase {
         self.interned.get(functional_id).copied()
     }
 
+    /// Every definition in the database, paired with its handle, in ascending
+    /// [`CardId`] order — which, ids being interned in sorted [`FunctionalId`] order
+    /// (ADR 0008 §3), is alphabetical by authored identity.
+    ///
+    /// The one read that asks about the catalog *as a whole* rather than about one card,
+    /// and it exists for exactly one question: which cards a player may **name**
+    /// ([`named_card_candidates`](crate::named_card_candidates)). The order is stated
+    /// because the answer is offered to a player as a list, and a `HashMap`'s iteration
+    /// order would make that list — and every replay of a game containing one — differ
+    /// between runs.
+    #[must_use]
+    pub fn all(&self) -> Vec<(CardId, &CardData)> {
+        let mut cards: Vec<(CardId, &CardData)> =
+            self.cards.iter().map(|(id, data)| (*id, data)).collect();
+        cards.sort_by_key(|(id, _)| *id);
+        cards
+    }
+
     /// The number of cards in the database.
     #[must_use]
     pub fn len(&self) -> usize {

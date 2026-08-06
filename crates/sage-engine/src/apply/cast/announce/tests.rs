@@ -21,10 +21,13 @@ fn forest_mana_ability_adds_green_without_using_the_stack() {
         attacking: None,
         blocking: Vec::new(),
         skips_untap: false,
+        dealt_damage: false,
         damage: 0,
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
+        copied: None,
     });
     let after = apply_action(
         &state,
@@ -57,10 +60,13 @@ fn mana_ability_does_not_pass_priority() {
         attacking: None,
         blocking: Vec::new(),
         skips_untap: false,
+        dealt_damage: false,
         damage: 0,
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
+        copied: None,
     });
     let after = apply_action(
         &state,
@@ -86,6 +92,8 @@ fn casting_a_creature_moves_it_to_the_stack_and_pays_mana() {
         &state,
         &Action::CastSpell {
             card: scout,
+            mode: None,
+            x: None,
             targets: Vec::new(),
             payment: Vec::new(),
         },

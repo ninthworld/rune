@@ -114,6 +114,8 @@ fn cast_and_resolve(
         &state,
         &Action::CastSpell {
             card: instance,
+            mode: None,
+            x: None,
             targets,
             payment: Vec::new(),
         },

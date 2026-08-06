@@ -43,28 +43,107 @@ pub(crate) fn cost_symbol(cost: &Cost) -> String {
         Cost::RemoveCounters { counter, count } => {
             format!("Remove {} from this permanent", counters(*counter, *count))
         }
-        // The two costs the *player* picks the payment for read as the card writes them:
-        // "Sacrifice another creature", "Sacrifice a Goblin", "Discard a card". The same
-        // phrase labels the slot the choice is answered on, so what a player is asked and
-        // what the card says are one string.
+        // The three costs the *player* picks the payment for read as the card writes them:
+        // "Sacrifice another creature", "Sacrifice two artifacts", "Discard a card",
+        // "Exile a creature card from your graveyard". The same phrase labels the slot the
+        // choice is answered on, so what a player is asked and what the card says are one
+        // string.
         Cost::Sacrifice {
             card_type,
             subtype,
             another,
+            count,
         } => {
             let noun = sacrifice_noun(*card_type, subtype.as_deref());
-            let article = if *another {
-                "another".to_string()
-            } else {
-                indefinite_article(&noun).to_string()
-            };
-            format!("Sacrifice {article} {noun}")
+            sacrifice_clause(&noun, *count, *another)
         }
         Cost::Discard { count: 1 } => "Discard a card".to_string(),
         Cost::Discard { count } => {
             format!("Discard {} cards", number(u32::from(*count)))
         }
+        Cost::ExileFromGraveyard { class, count } => {
+            // "a card", "a creature card", "two creature cards" — the class is an
+            // adjective before the noun, and an unrestricted cost simply has none.
+            let noun = match graveyard_class_noun(*class) {
+                Some(class) => format!("{class} card"),
+                None => "card".to_string(),
+            };
+            let subject = if *count == 1 {
+                format!("{} {noun}", indefinite_article(&noun))
+            } else {
+                format!("{} {}", number(u32::from(*count)), plural(&noun))
+            };
+            format!("Exile {subject} from your graveyard")
+        }
     }
+}
+
+/// A sacrifice cost as the imperative clause a card prints: `"Sacrifice a creature"`,
+/// `"Sacrifice another creature"`, `"Sacrifice two artifacts"`.
+///
+/// Shared by an activation's cost line ([`cost_symbol`]) and a cast's additional cost
+/// ([`additional_cost_text`]), because a card writes the clause the same way in both
+/// places and two renderings of one cost would be two things to keep in step.
+///
+/// `Sacrifice any number of …` is deliberately not here: it is not a cost at all, it is a
+/// resolution's own sentence ([`Effect::Sacrifice`]).
+pub(super) fn sacrifice_clause(noun: &str, count: SacrificeCount, another: bool) -> String {
+    match count {
+        SacrificeCount::Exactly(1) => {
+            let article = if another {
+                "another"
+            } else {
+                indefinite_article(noun)
+            };
+            format!("Sacrifice {article} {noun}")
+        }
+        SacrificeCount::Exactly(n) => {
+            format!("Sacrifice {} {}", number(u32::from(n)), plural(noun))
+        }
+    }
+}
+
+/// What accepting an optional effect costs, as the **verb phrase** a card prints inside
+/// a sentence: `pay {1}`, `sacrifice another creature`, `discard a card`.
+///
+/// The cost line's own words ([`cost_symbol`]) with the one difference the position makes.
+/// A cost written before a colon is a noun-ish label — `{1}`, `Sacrifice another
+/// creature` — while a cost written after `you may` is something the player *does*, so
+/// the mana gains its verb and the rest lose their capital. Nothing else is re-worded:
+/// one vocabulary, so the printed sentence and the button that answers it cannot describe
+/// the same payment two different ways.
+pub(crate) fn optional_cost_phrase(cost: &OptionalCost) -> String {
+    match cost.mana() {
+        Some(mana) => format!("pay {mana}"),
+        None => {
+            let symbol = cost_symbol(&cost.as_activation_cost());
+            let mut chars = symbol.chars();
+            match chars.next() {
+                Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        }
+    }
+}
+
+/// The class of card an exile cost takes, as the adjective a card writes before "card":
+/// the `creature` of `Exile a creature card from your graveyard`. `None` for the
+/// unrestricted class, which a card writes as plain "a card" with no adjective at all.
+fn graveyard_class_noun(class: GraveyardCardClass) -> Option<&'static str> {
+    match class {
+        GraveyardCardClass::Any => None,
+        GraveyardCardClass::Creature => Some("creature"),
+        GraveyardCardClass::CreatureOrPlaneswalker => Some("creature or planeswalker"),
+        GraveyardCardClass::InstantOrSorcery => Some("instant or sorcery"),
+        GraveyardCardClass::Artifact => Some("artifact"),
+        GraveyardCardClass::Land => Some("land"),
+    }
+}
+
+/// A class noun in the plural, the naive English way — every noun this vocabulary can
+/// produce is a card type or a printed subtype, and none of them is irregular.
+fn plural(noun: &str) -> String {
+    format!("{noun}s")
 }
 
 /// The class of permanent a sacrifice cost takes, as the noun a card writes: the
@@ -73,13 +152,24 @@ pub(crate) fn cost_symbol(cost: &Cost) -> String {
 ///
 /// The same subtype-wins-over-type ordering [`count_noun`](super::effects::count_noun)
 /// uses, because a card writes the class the same way wherever it appears.
-fn sacrifice_noun(card_type: Option<CardType>, subtype: Option<&str>) -> String {
+///
+/// Crate-visible because the prompt a sacrifice is *answered* on names the same class the
+/// cost line names, and two spellings of one class would be two things to keep in step.
+pub(crate) fn sacrifice_noun(card_type: Option<CardType>, subtype: Option<&str>) -> String {
     match (subtype, card_type) {
         (Some(subtype), Some(card_type)) => format!("{subtype} {}", card_type_word(card_type)),
         (Some(subtype), None) => subtype.to_string(),
         (None, Some(card_type)) => card_type_word(card_type).to_string(),
         (None, None) => "permanent".to_string(),
     }
+}
+
+/// The same class in the plural — the `lands` of `Sacrifice any number of lands`.
+///
+/// One spelling of the class for both numbers, so the sentence a resolution's open
+/// sacrifice prints and the prompt it is answered on cannot drift apart.
+pub(crate) fn plural_sacrifice_noun(card_type: Option<CardType>, subtype: Option<&str>) -> String {
+    plural(&sacrifice_noun(card_type, subtype))
 }
 
 /// `amount` mana pips of `color`, e.g. `{G}{G}` — repeated symbols, as a cost is
@@ -112,34 +202,48 @@ pub(crate) fn counters(kind: CounterKind, count: u32) -> String {
 }
 
 /// What an effect may target, as a noun phrase (CR 115.1).
-pub(super) fn target_noun(spec: TargetSpec) -> &'static str {
+///
+/// Returns an owned `String` because one spec carries a **number**: a mana-value filter
+/// names the value the card prints, and no fixed table of borrowed phrasings can hold an
+/// arbitrary one. Every other arm is still a constant and merely pays for the copy.
+pub(super) fn target_noun(spec: TargetSpec) -> String {
     match spec {
-        TargetSpec::AnyPlayer => "target player",
-        TargetSpec::AnyPlayerOrPlaneswalker => "target player or planeswalker",
-        TargetSpec::AnyOpponent => "target opponent",
-        TargetSpec::AnyPermanent => "target permanent",
-        TargetSpec::AnyNonlandPermanent => "target nonland permanent",
+        TargetSpec::AnyPlayer => "target player".to_string(),
+        TargetSpec::AnyPlayerOrPlaneswalker => "target player or planeswalker".to_string(),
+        TargetSpec::AnyOpponent => "target opponent".to_string(),
+        TargetSpec::AnyPermanent => "target permanent".to_string(),
+        TargetSpec::AnyNonlandPermanent => "target nonland permanent".to_string(),
         TargetSpec::AnyNonlandPermanentAnOpponentControls => {
-            "target nonland permanent an opponent controls"
+            "target nonland permanent an opponent controls".to_string()
         }
-        TargetSpec::AnyArtifactCreatureYouControl => "target artifact creature you control",
-        TargetSpec::AnyCreature => "target creature",
-        TargetSpec::AnyCreatureYouControl => "target creature you control",
-        TargetSpec::AnyCreatureAnOpponentControls => "target creature an opponent controls",
-        TargetSpec::AnyCreatureWithFlying => "target creature with flying",
-        TargetSpec::AnyTappedCreature => "target tapped creature",
-        TargetSpec::AnyArtifact => "target artifact",
-        TargetSpec::AnyEnchantment => "target enchantment",
-        TargetSpec::AnyArtifactOrEnchantment => "target artifact or enchantment",
-        TargetSpec::AnyLand => "target land",
-        TargetSpec::SpellOnStack => "target spell",
-        TargetSpec::CreatureSpellOnStack => "target creature spell",
+        // CR 202.3, as the card prints it: the value itself, not a bound around it.
+        TargetSpec::AnyPermanentWithManaValue { mana_value } => {
+            format!("target permanent with mana value {mana_value}")
+        }
+        TargetSpec::AnyArtifactCreatureYouControl => {
+            "target artifact creature you control".to_string()
+        }
+        TargetSpec::AnyCreature => "target creature".to_string(),
+        TargetSpec::AnyCreatureYouControl => "target creature you control".to_string(),
+        TargetSpec::AnyCreatureAnOpponentControls => {
+            "target creature an opponent controls".to_string()
+        }
+        TargetSpec::AnyCreatureWithFlying => "target creature with flying".to_string(),
+        TargetSpec::AnyColorlessCreature => "target colorless creature".to_string(),
+        TargetSpec::AnyTappedCreature => "target tapped creature".to_string(),
+        TargetSpec::AnyArtifact => "target artifact".to_string(),
+        TargetSpec::AnyEnchantment => "target enchantment".to_string(),
+        TargetSpec::AnyArtifactOrEnchantment => "target artifact or enchantment".to_string(),
+        TargetSpec::AnyLand => "target land".to_string(),
+        TargetSpec::AnyCreatureOrPlaneswalker => "target creature or planeswalker".to_string(),
+        TargetSpec::SpellOnStack => "target spell".to_string(),
+        TargetSpec::CreatureSpellOnStack => "target creature spell".to_string(),
         // CR 115.4: "any target" is the phrase itself, not a class of object.
-        TargetSpec::AnyTarget => "any target",
+        TargetSpec::AnyTarget => "any target".to_string(),
         TargetSpec::AnyArtifactEnchantmentOrCreatureWithFlying => {
-            "target artifact, enchantment, or creature with flying"
+            "target artifact, enchantment, or creature with flying".to_string()
         }
-        TargetSpec::CardInGraveyard { .. } => graveyard_noun(spec, true),
+        TargetSpec::CardInGraveyard { .. } => graveyard_noun(spec, true).to_string(),
     }
 }
 
@@ -166,6 +270,7 @@ fn graveyard_noun(spec: TargetSpec, targeted: bool) -> &'static str {
     let kind = match class {
         GraveyardCardClass::Any => "card",
         GraveyardCardClass::Creature => "creature card",
+        GraveyardCardClass::CreatureOrPlaneswalker => "creature or planeswalker card",
         GraveyardCardClass::InstantOrSorcery => "instant or sorcery card",
         GraveyardCardClass::Artifact => "artifact card",
         GraveyardCardClass::Land => "land card",
@@ -182,6 +287,9 @@ fn graveyard_noun(spec: TargetSpec, targeted: bool) -> &'static str {
         (true, "your graveyard", "land card", None) => "target land card in your graveyard",
         (true, "your graveyard", "card", None) => "target card in your graveyard",
         (true, "a graveyard", "creature card", None) => "target creature card in a graveyard",
+        (true, "a graveyard", "creature or planeswalker card", None) => {
+            "target creature or planeswalker card in a graveyard"
+        }
         (true, "a graveyard", _, _) => "target card in a graveyard",
         (true, _, _, _) => "target card of a limited mana value in your graveyard",
         (false, "a graveyard", _, _) => "card in a graveyard",
@@ -191,33 +299,82 @@ fn graveyard_noun(spec: TargetSpec, targeted: bool) -> &'static str {
 
 /// The class of object a target spec names, without the word "target" — what an Aura
 /// enchants (CR 303.4a).
-pub(super) fn object_noun(spec: TargetSpec) -> &'static str {
+///
+/// Owned for [`target_noun`]'s reason, and for the same one arm.
+pub(super) fn object_noun(spec: TargetSpec) -> String {
     match spec {
-        TargetSpec::AnyPlayer => "player",
-        TargetSpec::AnyPlayerOrPlaneswalker => "player or planeswalker",
-        TargetSpec::AnyOpponent => "opponent",
-        TargetSpec::AnyPermanent => "permanent",
-        TargetSpec::AnyNonlandPermanent => "nonland permanent",
+        TargetSpec::AnyPlayer => "player".to_string(),
+        TargetSpec::AnyPlayerOrPlaneswalker => "player or planeswalker".to_string(),
+        TargetSpec::AnyOpponent => "opponent".to_string(),
+        TargetSpec::AnyPermanent => "permanent".to_string(),
+        TargetSpec::AnyNonlandPermanent => "nonland permanent".to_string(),
         TargetSpec::AnyNonlandPermanentAnOpponentControls => {
-            "nonland permanent an opponent controls"
+            "nonland permanent an opponent controls".to_string()
         }
-        TargetSpec::AnyArtifactCreatureYouControl => "artifact creature you control",
-        TargetSpec::AnyCreature => "creature",
-        TargetSpec::AnyCreatureYouControl => "creature you control",
-        TargetSpec::AnyCreatureAnOpponentControls => "creature an opponent controls",
-        TargetSpec::AnyCreatureWithFlying => "creature with flying",
-        TargetSpec::AnyTappedCreature => "tapped creature",
-        TargetSpec::AnyArtifact => "artifact",
-        TargetSpec::AnyEnchantment => "enchantment",
-        TargetSpec::AnyArtifactOrEnchantment => "artifact or enchantment",
-        TargetSpec::AnyLand => "land",
-        TargetSpec::SpellOnStack => "spell",
-        TargetSpec::CreatureSpellOnStack => "creature spell",
-        TargetSpec::AnyTarget => "any target",
+        TargetSpec::AnyPermanentWithManaValue { mana_value } => {
+            format!("permanent with mana value {mana_value}")
+        }
+        TargetSpec::AnyArtifactCreatureYouControl => "artifact creature you control".to_string(),
+        TargetSpec::AnyCreature => "creature".to_string(),
+        TargetSpec::AnyCreatureYouControl => "creature you control".to_string(),
+        TargetSpec::AnyCreatureAnOpponentControls => "creature an opponent controls".to_string(),
+        TargetSpec::AnyCreatureWithFlying => "creature with flying".to_string(),
+        TargetSpec::AnyColorlessCreature => "colorless creature".to_string(),
+        TargetSpec::AnyTappedCreature => "tapped creature".to_string(),
+        TargetSpec::AnyArtifact => "artifact".to_string(),
+        TargetSpec::AnyEnchantment => "enchantment".to_string(),
+        TargetSpec::AnyArtifactOrEnchantment => "artifact or enchantment".to_string(),
+        TargetSpec::AnyLand => "land".to_string(),
+        TargetSpec::AnyCreatureOrPlaneswalker => "creature or planeswalker".to_string(),
+        TargetSpec::SpellOnStack => "spell".to_string(),
+        TargetSpec::CreatureSpellOnStack => "creature spell".to_string(),
+        TargetSpec::AnyTarget => "any target".to_string(),
         TargetSpec::AnyArtifactEnchantmentOrCreatureWithFlying => {
-            "artifact, enchantment, or creature with flying"
+            "artifact, enchantment, or creature with flying".to_string()
         }
-        TargetSpec::CardInGraveyard { .. } => graveyard_noun(spec, false),
+        TargetSpec::CardInGraveyard { .. } => graveyard_noun(spec, false).to_string(),
+    }
+}
+
+/// What a **granted** ability calls the object it was granted to (CR 613.1f) — the
+/// `this creature` of `gains "When this creature dies, draw a card."`
+///
+/// A third naming of the same class beside [`object_noun`] and [`target_noun`], and it
+/// has to be its own: the words inside a granted ability belong to the *host*, so they
+/// say "this creature" where the sentence that grants them says "target creature" and
+/// where the card's own text would say its name. A possessive class — "creature you
+/// control" — loses the possessive here, because the ability speaks from the object
+/// rather than about it.
+///
+/// Exhaustive, so a new [`TargetSpec`] cannot be granted an ability that calls its host
+/// nothing. The classes no printed card grants an ability to still answer, with the
+/// broadest word that is true of them.
+pub(super) fn granted_subject(spec: TargetSpec) -> &'static str {
+    match spec {
+        TargetSpec::AnyCreature
+        | TargetSpec::AnyCreatureYouControl
+        | TargetSpec::AnyCreatureAnOpponentControls
+        | TargetSpec::AnyCreatureWithFlying
+        | TargetSpec::AnyColorlessCreature
+        | TargetSpec::AnyTappedCreature
+        | TargetSpec::AnyArtifactCreatureYouControl
+        | TargetSpec::CreatureSpellOnStack => "this creature",
+        TargetSpec::AnyLand => "this land",
+        TargetSpec::AnyArtifact => "this artifact",
+        TargetSpec::AnyEnchantment => "this enchantment",
+        TargetSpec::AnyCreatureOrPlaneswalker => "this permanent",
+        TargetSpec::AnyPermanent
+        | TargetSpec::AnyPermanentWithManaValue { .. }
+        | TargetSpec::AnyNonlandPermanent
+        | TargetSpec::AnyNonlandPermanentAnOpponentControls
+        | TargetSpec::AnyArtifactOrEnchantment
+        | TargetSpec::AnyArtifactEnchantmentOrCreatureWithFlying
+        | TargetSpec::AnyPlayer
+        | TargetSpec::AnyPlayerOrPlaneswalker
+        | TargetSpec::AnyOpponent
+        | TargetSpec::AnyTarget
+        | TargetSpec::SpellOnStack
+        | TargetSpec::CardInGraveyard { .. } => "this permanent",
     }
 }
 
@@ -235,6 +392,7 @@ pub(super) fn conjugate(player_ref: PlayerRef, verb: &str) -> String {
         // loses", not "lose"), and every verb this is called with is regular, so the
         // agreement is one suffix rather than a table.
         PlayerRef::EachOpponent => format!("each opponent {verb}s"),
+        PlayerRef::EachPlayer => format!("each player {verb}s"),
         PlayerRef::TargetPlayer => format!("target player {verb}s"),
         PlayerRef::TargetOpponent => format!("target opponent {verb}s"),
     }
@@ -372,11 +530,28 @@ pub(super) fn additional_cost_text(cost: AdditionalCost) -> String {
             "As an additional cost to cast this spell, discard {} cards.",
             number(u32::from(count))
         ),
-        AdditionalCost::Sacrifice { card_type } => format!(
-            "As an additional cost to cast this spell, sacrifice {} {}.",
-            indefinite_article(card_type_word(card_type)),
-            card_type_word(card_type)
+        AdditionalCost::Sacrifice { card_type, count } => format!(
+            "As an additional cost to cast this spell, {}.",
+            sacrifice_clause(card_type_word(card_type), count, false).to_lowercase()
         ),
+    }
+}
+
+/// An additional cast cost as the bare imperative clause, for the slot a player answers
+/// it on — `"Discard a card"`, `"Sacrifice a creature"`.
+///
+/// The prompt half of [`additional_cost_text`], which wraps the same clause in its
+/// sentence: what a player is asked and what the card says are one string, exactly as they
+/// are for an activation's [`cost_symbol`].
+pub(crate) fn additional_cost_prompt(cost: AdditionalCost) -> String {
+    match cost {
+        AdditionalCost::Discard { count: 1 } => "Discard a card".to_string(),
+        AdditionalCost::Discard { count } => {
+            format!("Discard {} cards", number(u32::from(count)))
+        }
+        AdditionalCost::Sacrifice { card_type, count } => {
+            sacrifice_clause(card_type_word(card_type), count, false)
+        }
     }
 }
 

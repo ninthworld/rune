@@ -44,19 +44,29 @@ pub(crate) fn activation_payment_prompts(
             candidates: discard.candidates.into_iter().map(card_entity_id).collect(),
         });
     }
-    if let Some(candidates) =
-        sage_engine::activation_sacrifice_candidates(state, db, permanent, index)
-    {
-        prompts.push(Prompt::SelectFromZone {
-            slot: SACRIFICE_SLOT.to_string(),
-            prompt: cost_prompt(state, db, permanent, index, |cost| {
+    if let Some(sacrifice) = sage_engine::activation_sacrifice_cost(state, db, permanent, index) {
+        prompts.push(super::sacrifice_prompt(
+            &sacrifice,
+            cost_prompt(state, db, permanent, index, |cost| {
                 matches!(cost, Cost::Sacrifice { .. })
             }),
-            zone: "battlefield".to_string(),
+            activator(state, permanent),
+        ));
+    }
+    // The third zone, on the same slot shape: a graveyard is a public pile, so the
+    // candidates are ids the client already draws and the question is the same
+    // "pick from this list" every other cost slot poses.
+    if let Some(exile) = sage_engine::activation_exile_cost(state, db, permanent, index) {
+        prompts.push(Prompt::SelectFromZone {
+            slot: EXILE_SLOT.to_string(),
+            prompt: cost_prompt(state, db, permanent, index, |cost| {
+                matches!(cost, Cost::ExileFromGraveyard { .. })
+            }),
+            zone: "graveyard".to_string(),
             owner: player_id(activator(state, permanent)),
-            count: 1,
+            count: u32::from(exile.count),
             min: None,
-            candidates: candidates.into_iter().map(permanent_entity_id).collect(),
+            candidates: exile.candidates.into_iter().map(card_entity_id).collect(),
         });
     }
     prompts
@@ -134,23 +144,39 @@ pub(crate) fn bind_activation_payment(
         || sage_engine::auto_activation_payment(state, db, permanent, index).unwrap_or_default();
     let mut chosen = Vec::new();
 
-    match sage_engine::activation_sacrifice_candidates(state, db, permanent, index) {
-        Some(candidates) => {
-            let answered = chosen_for(targets, SACRIFICE_SLOT);
-            let [id] = answered else {
-                return fallback();
-            };
-            let Some(picked) = candidates
-                .iter()
-                .find(|candidate| permanent_entity_id(**candidate) == *id)
+    match sage_engine::activation_sacrifice_cost(state, db, permanent, index) {
+        Some(cost) => {
+            let Some(picked) =
+                super::bind_chosen_sacrifices(&cost, chosen_for(targets, SACRIFICE_SLOT))
             else {
                 return fallback();
             };
-            chosen.push(CostPayment::Sacrifice(*picked));
+            chosen.extend(picked);
         }
         // A cost that asks for no sacrifice is paid by none: an answer naming one is a
         // wrong answer, not a generous one.
         None if !chosen_for(targets, SACRIFICE_SLOT).is_empty() => return fallback(),
+        None => {}
+    }
+
+    match sage_engine::activation_exile_cost(state, db, permanent, index) {
+        Some(cost) => {
+            let answered = chosen_for(targets, EXILE_SLOT);
+            if answered.len() != usize::from(cost.count) {
+                return fallback();
+            }
+            for id in answered {
+                let Some(picked) = cost
+                    .candidates
+                    .iter()
+                    .find(|candidate| card_entity_id(**candidate) == *id)
+                else {
+                    return fallback();
+                };
+                chosen.push(CostPayment::Exile(*picked));
+            }
+        }
+        None if !chosen_for(targets, EXILE_SLOT).is_empty() => return fallback(),
         None => {}
     }
 
@@ -378,5 +404,127 @@ mod tests {
         let after = sage_engine::apply_action(&state, &bound, &db);
         assert_eq!(after.players[0].graveyard.len(), 1, "the server paid it");
         assert_eq!(after.stack.len(), 1, "and the ability is on the stack");
+    }
+
+    /// A cost that exiles from a graveyard rides the very same slot shape over a third
+    /// zone — no new prompt kind, no new client rule — and the candidates are the
+    /// server's, so the client picks from a list rather than knowing what a creature card
+    /// is (issue #721).
+    #[test]
+    fn issue_721_an_exile_cost_is_posed_over_the_graveyard_and_binds_the_chosen_card() {
+        let db = CardDatabase::bundled().unwrap();
+        let (mut state, _hand) = state_with_hand(&[]);
+        state.turn = 3;
+        let marshal = put_permanent(
+            &mut state,
+            fixture("graveyard_marshal"),
+            PlayerId(0),
+            false,
+            false,
+        );
+        let ogre = state.new_instance(fixture("onakke_ogre"));
+        let land = state.new_instance(fixture("forest"));
+        state.players[0].graveyard = vec![ogre, land];
+        // An opponent's creature card is not the activator's to exile.
+        let theirs = state.new_instance(fixture("centaur_courser"));
+        state.players[1].graveyard = vec![theirs];
+        state.players[0].mana_pool.add(sage_engine::Color::Black, 1);
+        state.players[0].mana_pool.add_colorless(2);
+
+        let action = activation(&state, &db, marshal, "Exile");
+        let (prompt, zone, count, candidates) = zone_slot(&action, EXILE_SLOT);
+        assert_eq!(prompt, "Exile a creature card from your graveyard");
+        assert_eq!(zone, "graveyard");
+        assert_eq!(count, 1);
+        assert_eq!(
+            candidates,
+            vec![card_entity_id(ogre.id)],
+            "not the land, and not the opponent's creature card"
+        );
+
+        let bound = resolve_action(
+            &state,
+            &db,
+            PlayerId(0),
+            &ChooseAction {
+                action_id: action.id.clone(),
+                token: action.token.clone(),
+                targets: vec![TargetChoice {
+                    slot: EXILE_SLOT.to_string(),
+                    chosen: vec![card_entity_id(ogre.id)],
+                }],
+                ..Default::default()
+            },
+        )
+        .expect("the answer binds");
+        let after = sage_engine::apply_action(&state, &bound, &db);
+        assert!(after.players[0].exile.iter().any(|c| c.id == ogre.id));
+        assert!(
+            after.players[0].graveyard.iter().any(|c| c.id == land.id),
+            "the land the player kept is still there"
+        );
+    }
+
+    /// A cost taking a fixed number greater than one is posed as that many, exactly —
+    /// `count` with no `min`, the shape a client already answers (issue #721).
+    #[test]
+    fn issue_721_a_two_permanent_sacrifice_is_posed_as_an_exact_selection_of_two() {
+        let db = CardDatabase::bundled().unwrap();
+        let (mut state, _hand) = state_with_hand(&[]);
+        state.turn = 3;
+        let sai = put_permanent(
+            &mut state,
+            fixture("sai_master_thopterist"),
+            PlayerId(0),
+            false,
+            false,
+        );
+        let first = put_permanent(&mut state, fixture("manalith"), PlayerId(0), false, false);
+        let second = put_permanent(&mut state, fixture("millstone"), PlayerId(0), false, false);
+        state.players[0].mana_pool.add(sage_engine::Color::Blue, 1);
+        state.players[0].mana_pool.add_colorless(1);
+        state.players[0].library = vec![state.new_instance(fixture("forest"))];
+
+        let action = activation(&state, &db, sai, "Sacrifice");
+        let slot = action
+            .prompts
+            .iter()
+            .find_map(|prompt| match prompt {
+                Prompt::SelectFromZone {
+                    slot,
+                    prompt,
+                    count,
+                    min,
+                    candidates,
+                    ..
+                } if slot == SACRIFICE_SLOT => {
+                    Some((prompt.clone(), *count, *min, candidates.clone()))
+                }
+                _ => None,
+            })
+            .expect("the cost is posed as a slot");
+        assert_eq!(slot.0, "Sacrifice two artifacts");
+        assert_eq!(slot.1, 2, "two, and the same two the engine will accept");
+        assert_eq!(slot.2, None, "exact — a fixed cost is not paid for less");
+        assert_eq!(slot.3.len(), 2);
+
+        let bound = resolve_action(
+            &state,
+            &db,
+            PlayerId(0),
+            &ChooseAction {
+                action_id: action.id.clone(),
+                token: action.token.clone(),
+                targets: vec![TargetChoice {
+                    slot: SACRIFICE_SLOT.to_string(),
+                    chosen: vec![permanent_entity_id(first), permanent_entity_id(second)],
+                }],
+                ..Default::default()
+            },
+        )
+        .expect("the answer binds");
+        let after = sage_engine::apply_action(&state, &bound, &db);
+        assert_eq!(after.battlefield.len(), 1, "both artifacts were eaten");
+        assert_eq!(after.stack.len(), 1);
     }
 }
