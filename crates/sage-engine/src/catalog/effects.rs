@@ -230,6 +230,71 @@ pub(super) fn attachment_counts_by_power(
         .is_some()
 }
 
+/// The effect kind that makes an ability function from a graveyard (CR 113.6): the
+/// source moves *itself* out of the graveyard it is in.
+const RETURN_SELF_FROM_GRAVEYARD: &str = "return_self_from_graveyard";
+
+/// Whether `object` authors a `return_self_from_graveyard` anywhere it could not work,
+/// or on an activated ability whose cost a card in a graveyard could not pay.
+///
+/// Two failures, one rule — "where the ability functions is derived from what it does"
+/// only holds if the effect appears where that derivation is true:
+///
+/// - **Anywhere but an activated ability.** A spell effect, a trigger, or a nested branch
+///   has no activation for the graveyard offer to reach, so the effect would sit in a
+///   card that reads as recursive and never is.
+/// - **Beside a cost a card in a graveyard cannot pay.** A card in a zone is not a
+///   permanent: it cannot be tapped, sacrificed, or have counters removed. Mana is the
+///   only cost component such an ability can charge, and one that charged anything else
+///   would simply never be offered — a dead ability, caught here rather than shipped.
+pub(super) fn graveyard_ability_is_bad(
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> bool {
+    fn returns_self(effect: &serde_json::Value) -> bool {
+        effect.get("kind").and_then(serde_json::Value::as_str) == Some(RETURN_SELF_FROM_GRAVEYARD)
+    }
+    let abilities = object
+        .get("abilities")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    // Every authored occurrence, at any depth and in any list.
+    let total = every_effect(object)
+        .into_iter()
+        .filter(|effect| returns_self(effect))
+        .count();
+    // The ones sitting directly on an activated ability, where they work.
+    let mut on_activations = 0;
+    for ability in abilities {
+        if ability.get("type").and_then(serde_json::Value::as_str) != Some("activated") {
+            continue;
+        }
+        let effects = ability
+            .get("effects")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        let here = effects.iter().filter(|effect| returns_self(effect)).count();
+        if here == 0 {
+            continue;
+        }
+        on_activations += here;
+        let payable = ability
+            .get("cost")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+            .iter()
+            .all(|component| {
+                component.get("kind").and_then(serde_json::Value::as_str) == Some("mana")
+            });
+        if !payable {
+            return true;
+        }
+    }
+    total != on_activations
+}
+
 /// Whether `effect` is a `create_emblem` handing out an ability an emblem cannot carry
 /// (CR 114.1) — anything but `static` or `triggered`.
 pub(super) fn emblem_ability_is_bad(effect: &serde_json::Value) -> bool {

@@ -14,7 +14,7 @@ use crate::choice::{Resume, SuspendedSpell};
 use crate::id::{PermanentId, PlayerId};
 #[cfg(test)]
 use crate::stack::AbilityOrigin;
-use crate::stack::{StackObject, StackObjectKind};
+use crate::stack::{AbilitySource, StackObject, StackObjectKind};
 use crate::state::{GameEvent, GameState, Permanent};
 use crate::CardDatabase;
 
@@ -352,12 +352,15 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
     // stored target and applying it only while that target is still legal;
     // individually-illegal targets are skipped (CR 608.2c) while legal ones
     // resolve. Effects with an implicit subject apply unconditionally.
-    // An ability carries the permanent it is on; a spell has no source permanent, so a
-    // self-referential effect on one would modify nothing.
-    // An emblem's ability has no source permanent, which is the same answer a spell
-    // gives: a self-referential effect finds nothing to modify and does nothing.
+    //
+    // An ability carries **what it came from** (CR 113.3) rather than a permanent id,
+    // because not every source is a permanent: an emblem is in no zone at all, and a
+    // graveyard ability's source is a card in one. Each self-referential effect asks the
+    // source the question it can answer — `permanent()` for a pump, `graveyard_card()`
+    // for a return — and gets `None` from the sources that are not that thing, which is
+    // the same answer a spell gives and needs no special case anywhere.
     let source = match &object.kind {
-        StackObjectKind::Ability { source, .. } => source.permanent(),
+        StackObjectKind::Ability { source, .. } => Some(*source),
         StackObjectKind::Spell { .. } => None,
     };
     // A spell still owes its card a final zone (CR 608.3) after its effects. Carried
@@ -464,7 +467,7 @@ pub(crate) fn apply_effects_with_targets(
     effects: &[Effect],
     stored: &[Target],
     controller: crate::id::PlayerId,
-    source: Option<PermanentId>,
+    source: Option<AbilitySource>,
     spell: Option<SuspendedSpell>,
     resolution_start: u64,
     db: &CardDatabase,
@@ -473,7 +476,7 @@ pub(crate) fn apply_effects_with_targets(
     // because the source permanent may be gone by the time the choice is answered.
     // A token has no card to compare against, and no card in a library or hand can
     // share an identity it has not got (CR 111), so it simply matches nothing.
-    let source_card = source.and_then(|id| {
+    let source_card = source.and_then(AbilitySource::permanent).and_then(|id| {
         state
             .battlefield
             .iter()

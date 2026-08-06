@@ -77,6 +77,18 @@ pub(crate) fn action_target_groups(
             };
             effects.iter().filter_map(Effect::target_group).collect()
         }
+        // The graveyard counterpart, read off the card rather than off a permanent that
+        // does not exist (CR 113.6). The same `graveyard_ability` lookup the offer and
+        // the apply-time gate use, so an ability that has stopped being activatable
+        // declares no slots rather than slots nothing can fill.
+        Action::ActivateAbilityFromGraveyard { card, index, .. } => {
+            match super::utilities::graveyard_ability(state, db, state.priority, *card, *index) {
+                Some(Ability::Activated { effects, .. }) => {
+                    effects.iter().filter_map(Effect::target_group).collect()
+                }
+                _ => Vec::new(),
+            }
+        }
         Action::CastSpell { card, .. } => db
             .card(card.card)
             .map(crate::card::CardData::cast_target_groups)

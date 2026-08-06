@@ -220,6 +220,20 @@ pub enum Violation {
         /// The definition at fault.
         functional_id: String,
     },
+    /// A `return_self_from_graveyard` effect is authored where the ability carrying it
+    /// could never function (CR 113.6): anywhere but directly on an activated ability, or
+    /// on one whose cost a card in a graveyard could not pay.
+    ///
+    /// The effect is what *makes* an ability function from a graveyard
+    /// ([`is_graveyard_ability`](crate::is_graveyard_ability)), so the derivation is only
+    /// honest where the ability can actually be activated from there. On a spell, a
+    /// trigger, or a nested branch there is no activation to offer; beside a `{T}` there
+    /// is no permanent to tap. Either way the card reads as recursive and never is, which
+    /// is worth failing the build over rather than shipping.
+    GraveyardAbilityCannotFunction {
+        /// The definition at fault.
+        functional_id: String,
+    },
     /// Two printings in one set claim the same collector number, so one would shadow
     /// the other.
     DuplicatePrinting {
@@ -369,6 +383,12 @@ impl fmt::Display for Violation {
                 f,
                 "{functional_id}: one ability or spell may declare at most one \
                  variable-arity (`up_to`) target group"
+            ),
+            Self::GraveyardAbilityCannotFunction { functional_id } => write!(
+                f,
+                "{functional_id}: `return_self_from_graveyard` must sit on an activated \
+                 ability whose cost is mana only; a card in a graveyard is not a \
+                 permanent and has nothing else to pay with (CR 113.6)"
             ),
             Self::DuplicatePrinting {
                 set_code,

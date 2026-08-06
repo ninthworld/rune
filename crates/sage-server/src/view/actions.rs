@@ -294,6 +294,19 @@ fn valid_action_view(
             vec![permanent_entity_id(*permanent)],
             ability_requirements(state, db, action),
         ),
+        // The same category over a card in a graveyard (CR 113.6): from the client's
+        // side it is the one thing it already knows how to render — an ability offered
+        // on the object that has it — so it keeps the `activate_ability` category and
+        // differs only in that its subject is a *card* entity rather than a permanent.
+        // That entity is the one the graveyard pile already projects, so the offer lands
+        // on the card the player is looking at, with no new wire shape and no rules
+        // knowledge on the client.
+        Action::ActivateAbilityFromGraveyard { card, index, .. } => (
+            "activate_ability".to_string(),
+            graveyard_ability_label(db, *card, *index),
+            vec![card_entity_id(card.id)],
+            ability_requirements(state, db, action),
+        ),
         // Pre-game London mulligan decisions (CR 103.5). Subject-less, so the
         // client renders them in the action bar. A `Mulligan` has no
         // sub-choice; a `Keep` carries the bottoming select-from-zone slot
@@ -846,6 +859,55 @@ mod tests {
                 .filter(|a| a.kind != "activate_ability")
                 .all(|a| !a.mana_ability),
             "no other action kind carries the flag",
+        );
+    }
+
+    #[test]
+    fn issue_723_a_graveyard_activation_is_offered_on_the_card_it_belongs_to() {
+        // CR 113.6: an ability that functions from a graveyard is projected as the same
+        // `activate_ability` category every other activation uses — a client has no new
+        // wire shape to learn — with the *card* entity as its subject, which is the id
+        // the graveyard pile already carries. It is labelled with the ability's own
+        // generated sentence, so a player reads what they are clicking.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        state.priority = PlayerId(0);
+        let skeleton = state.new_instance(fixture("reassembling_skeleton"));
+        state.players[0].graveyard.push(skeleton);
+        state.players[0].mana_pool.add(sage_engine::Color::Black, 2);
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let offered: Vec<&ValidAction> = view
+            .valid_actions
+            .iter()
+            .filter(|a| a.kind == "activate_ability")
+            .collect();
+        assert_eq!(offered.len(), 1, "one activation, from the graveyard");
+        assert_eq!(offered[0].subject, vec![card_entity_id(skeleton.id)]);
+        assert_eq!(
+            offered[0].label,
+            "{1}{B}: Return Reassembling Skeleton from your graveyard to the battlefield tapped."
+        );
+        assert!(!offered[0].mana_ability, "it uses the stack");
+
+        // The graveyard pile projects that same entity, so the offer lands on the card
+        // the player is looking at.
+        assert!(view
+            .graveyards
+            .iter()
+            .flat_map(|pile| pile.cards.iter())
+            .any(|card| card.id == card_entity_id(skeleton.id)));
+
+        // And the action id routes back to the engine action naming that exact copy.
+        let resolved = resolve_action(&state, &db, PlayerId(0), &answer(offered[0]));
+        assert_eq!(
+            resolved,
+            Some(Action::ActivateAbilityFromGraveyard {
+                card: skeleton,
+                index: 0,
+                targets: Vec::new(),
+            })
         );
     }
 

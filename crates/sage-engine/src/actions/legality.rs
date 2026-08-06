@@ -16,8 +16,8 @@ use super::definition::{Action, Attack, Block, DamageOrder};
 use super::generation::valid_actions;
 use super::targeting::action_target_groups;
 use super::utilities::{
-    all_unique, equip_timing_allows, loyalty_cost_is_payable, loyalty_timing_allows,
-    tap_cost_is_summoning_sick,
+    all_unique, equip_timing_allows, graveyard_ability, graveyard_cost_payable,
+    loyalty_cost_is_payable, loyalty_timing_allows, tap_cost_is_summoning_sick,
 };
 
 /// Whether `action` — including any targets it carries — is legal against the
@@ -109,6 +109,23 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         //     current state so a stale or forged action id can never move an Equipment
         //     during combat, on an opponent's turn, or in response to a spell.
         if !equip_activation_is_legal(state, db, *permanent, *index) {
+            return false;
+        }
+    }
+
+    // 1e-ter. Hardening (CR 113.6, issue #723): an activation naming a card in a
+    //     graveyard is legal only while that card is *still there*, the ability it names
+    //     still functions from there, and its cost is still payable out of the seat's
+    //     pool. Check 1 already withholds the offer; this re-derives all three from
+    //     current state, so a stale or forged action id can never activate a card that
+    //     was exiled in response, name an ordinary battlefield ability from a graveyard,
+    //     or spend mana the seat has not got. **Timing is re-derived here too**, and it is
+    //     re-derived by the same mechanism a hand cast's is: check 1 asked
+    //     `valid_actions`, which offers this only to the seat currently holding priority
+    //     and only outside every window that suspends priority (a mulligan, a pending
+    //     choice, a trigger owed targets, the cleanup step, a combat declaration).
+    if let Action::ActivateAbilityFromGraveyard { card, index, .. } = action {
+        if !graveyard_activation_is_legal(state, db, *card, *index) {
             return false;
         }
     }
@@ -271,6 +288,30 @@ fn equip_activation_is_legal(
         }
         _ => true,
     }
+}
+
+/// Whether activating ability `index` of the graveyard card `card` is legal for the
+/// priority holder right now (CR 113.6): the card is in *their* graveyard, the ability
+/// there functions from a graveyard ([`graveyard_ability`]), and its cost is payable out
+/// of their pool ([`graveyard_cost_payable`]).
+///
+/// The exact shape [`activation_clears_summoning_sickness`] and
+/// [`equip_activation_is_legal`] use, over a card in a zone rather than a permanent —
+/// which is the whole reason it exists separately. `false` for a card that is not in the
+/// graveyard: a stale id names nothing to activate, and asking the battlefield about it
+/// would find nothing either, silently.
+fn graveyard_activation_is_legal(
+    state: &GameState,
+    db: &CardDatabase,
+    card: crate::id::CardInstance,
+    index: usize,
+) -> bool {
+    let seat = state.priority;
+    let Some(Ability::Activated { cost, .. }) = graveyard_ability(state, db, seat, card, index)
+    else {
+        return false;
+    };
+    graveyard_cost_payable(state, seat, &cost)
 }
 
 /// Whether a declared attacker selection is legal (CR 508.1a): every named

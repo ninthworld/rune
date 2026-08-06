@@ -129,6 +129,11 @@ fn source_name(state: &GameState, source: AbilitySource, db: &CardDatabase) -> S
             // An emblem (CR 114) has no name of its own — it has only its abilities —
             // so its sentences say what it is rather than inventing a title for it.
             AbilitySource::Emblem(_) => "An emblem".to_string(),
+            // A card in a graveyard *does* have a name, and it is the one its own
+            // sentences use ("return Reassembling Skeleton from your graveyard …"), so
+            // this is the one source that answers with a real title while off the
+            // battlefield.
+            AbilitySource::GraveyardCard(card) => card_name(card.card, db),
             AbilitySource::Permanent(_) => "This ability's source".to_string(),
         },
         |perm| permanent_name(perm, db),

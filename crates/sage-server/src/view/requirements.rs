@@ -311,6 +311,24 @@ pub(crate) fn ability_label(
         .unwrap_or_else(|| "Activate ability".to_string())
 }
 
+/// The dock label for activating an ability of a card in a **graveyard** (CR 113.6): the
+/// same generated sentence [`ability_label`] produces, read off the card rather than off
+/// a permanent that does not exist.
+///
+/// A card in a zone has no [`sage_engine::Permanent`] to name it, so the title comes from
+/// the printed card — which is what the ability's own sentence calls itself anyway
+/// ("Return Reassembling Skeleton from your graveyard …").
+pub(crate) fn graveyard_ability_label(
+    db: &CardDatabase,
+    card: CardInstance,
+    index: usize,
+) -> String {
+    abilities_of(db, card.card)
+        .get(index)
+        .map(|ability| ability_text(&card_name(card.card, db), ability))
+        .unwrap_or_else(|| "Activate ability".to_string())
+}
+
 /// The label for aiming a triggered ability: the ability's own sentence, drawn from
 /// the effects it carries on the stack ([`effects_description`]) — the same words the
 /// stack entry shows, so the prompt and the stack cannot describe it differently.

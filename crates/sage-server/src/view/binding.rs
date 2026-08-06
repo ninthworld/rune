@@ -224,6 +224,16 @@ pub(crate) fn bind_ability_targets(
             index: *index,
             targets: chosen,
         }),
+        // The graveyard activation (CR 113.6) binds through the same per-slot path: the
+        // engine offers one slot per targeting effect whether the source is a permanent
+        // or a card in a zone, so there is nothing zone-specific about the mapping.
+        Action::ActivateAbilityFromGraveyard { card, index, .. } => {
+            Some(Action::ActivateAbilityFromGraveyard {
+                card: *card,
+                index: *index,
+                targets: chosen,
+            })
+        }
         // The payment the player assembled, or — for the pips they left unanswered —
         // the one the server assembles for them (ADR 0010: the rules are the engine's,
         // the policy is the server's). A client that fills every `pay_mana` slot spends

@@ -11,12 +11,17 @@ pub(crate) fn apply_effect(
     state: &mut GameState,
     effect: &Effect,
     controller: PlayerId,
-    source: Option<PermanentId>,
+    source: Option<crate::stack::AbilitySource>,
     db: &CardDatabase,
 ) {
     if state.players.get(controller.0).is_none() {
         return;
     }
+    // What the source is, asked of the source itself (CR 113.3). A permanent-shaped
+    // self-referential effect wants this one; a graveyard-shaped one asks
+    // `graveyard_card()` in its own arm below. Each is `None` when the source is not
+    // that kind of object, which is exactly the no-op an absent source already produced.
+    let permanent_source = source.and_then(crate::stack::AbilitySource::permanent);
     match effect {
         Effect::AddMana { color, amount } => {
             if let Some(player) = state.players.get_mut(controller.0) {
@@ -171,7 +176,8 @@ pub(crate) fn apply_effect(
                 // Every token this seat creates joins the same attack, answered once:
                 // the tokens are created simultaneously and there is one declaration
                 // for them to join.
-                let joins = attack_a_created_token_joins(state, *attacking, source, seat);
+                let joins =
+                    attack_a_created_token_joins(state, *attacking, permanent_source, seat);
                 for _ in 0..made {
                     state.create_token(token.clone(), seat, *tapped, joins, db);
                 }
@@ -235,7 +241,7 @@ pub(crate) fn apply_effect(
         // battlefield is not there to modify, and the effect simply does nothing —
         // the same no-op a fizzled target produces, without the fizzle.
         Effect::PumpSelf { power, toughness } => {
-            if let Some(id) = source {
+            if let Some(id) = permanent_source {
                 if state.battlefield.iter().any(|p| p.id == id) {
                     let stamp = state.mint_id();
                     state.static_effects.push(StaticEffect {
@@ -254,7 +260,7 @@ pub(crate) fn apply_effect(
         // restricts *itself* until end of turn ("this creature can't be blocked this
         // turn"), with nothing targeted and nothing to fizzle.
         Effect::RestrictSelf { restriction } => {
-            if let Some(id) = source {
+            if let Some(id) = permanent_source {
                 if state.battlefield.iter().any(|p| p.id == id) {
                     let stamp = state.mint_id();
                     state.static_effects.push(StaticEffect {
@@ -276,7 +282,10 @@ pub(crate) fn apply_effect(
             lose,
             gain,
         } => {
-            if let Some(id) = source {
+            // A layer-6 clause is about a permanent, so it asks the source for the one
+            // it is: a spell, an emblem, or a card activated from a graveyard answers
+            // `None` and the clause applies to nothing.
+            if let Some(id) = permanent_source {
                 if state.battlefield.iter().any(|p| p.id == id) {
                     let stamp = state.mint_id();
                     let mut push = |modification| {
@@ -300,9 +309,44 @@ pub(crate) fn apply_effect(
             }
         }
         Effect::PutCountersOnSelf { counter, count } => {
-            if let Some(id) = source {
+            if let Some(id) = permanent_source {
                 if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
                     *perm.counters.entry(*counter).or_insert(0) += *count;
+                }
+            }
+        }
+        // The self-referential effect whose source is a **card in a graveyard** rather
+        // than a permanent (CR 113.6): the source moves itself out. Every other
+        // self-referential effect asks `permanent()`; this one asks `graveyard_card()`,
+        // and both are `None` for the source that is not that kind of object.
+        //
+        // The card is looked up **now**, on resolution, not when the ability was
+        // activated: an opponent who exiled the card in response leaves nothing to
+        // return, and the ability resolves and does nothing (CR 608.2 — it never had a
+        // target to fizzle on). The moves themselves go through the same seams a targeted
+        // return uses, so a card that comes back to the battlefield mints a fresh
+        // `PermanentId` and fires its entry replacements and triggers exactly as any
+        // other arrival does.
+        Effect::ReturnSelfFromGraveyard { destination } => {
+            let Some(card) = source.and_then(crate::stack::AbilitySource::graveyard_card) else {
+                return;
+            };
+            let Some((owner, card)) =
+                super::targeted::take_from_a_graveyard_with_owner(state, card.id)
+            else {
+                return;
+            };
+            match destination {
+                crate::ability::FoundDestination::Hand => {
+                    if let Some(player) = state.players.get_mut(owner.0) {
+                        player.hand.push(card);
+                    }
+                }
+                crate::ability::FoundDestination::Battlefield => {
+                    state.put_card_onto_battlefield(card, controller, false, None, db);
+                }
+                crate::ability::FoundDestination::BattlefieldTapped => {
+                    state.put_card_onto_battlefield(card, controller, true, None, db);
                 }
             }
         }

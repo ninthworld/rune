@@ -12,8 +12,8 @@ use crate::CardDatabase;
 use super::definition::Action;
 use super::targeting::legal_targets_for_spec;
 use super::utilities::{
-    cost_payable, equip_timing_allows, is_castable_spell, is_land, loyalty_timing_allows,
-    tap_cost_is_summoning_sick,
+    cost_payable, equip_timing_allows, graveyard_ability, graveyard_cost_payable,
+    is_castable_spell, is_land, loyalty_timing_allows, tap_cost_is_summoning_sick,
 };
 
 /// Enumerate the actions legal for the player who currently holds priority.
@@ -337,6 +337,13 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
     // Activate abilities of permanents the priority holder controls.
     offer_activations(state, db, priority, ManaOnly::No, &mut actions);
 
+    // Activate abilities of cards in the priority holder's **graveyard** that function
+    // from there (CR 113.6). Offered beside the battlefield activations and bound by
+    // exactly the same timing: a graveyard ability with no timing restriction of its own
+    // is activated whenever its controller has priority (CR 602.2 via CR 117.1a), which
+    // is what holding priority already means here.
+    offer_graveyard_activations(state, db, priority, &mut actions);
+
     offer_concede(&mut actions);
     actions
 }
@@ -451,6 +458,14 @@ fn offer_activations(
             if mana_only == ManaOnly::Yes && !is_mana_ability(ability) {
                 continue;
             }
+            // CR 113.6: an ability that functions from a graveyard functions *there* and
+            // nowhere else. Its source is on the battlefield here, so there is no card in
+            // a graveyard for it to act on — withheld rather than offered and then found
+            // to do nothing. The mirror of this gate is `offer_graveyard_activations`,
+            // which offers nothing else.
+            if crate::ability::is_graveyard_ability(ability) {
+                continue;
+            }
             if let Ability::Activated { cost, .. } = ability {
                 if tap_cost_is_summoning_sick(state, perm, cost, db) {
                     continue;
@@ -488,6 +503,52 @@ fn offer_activations(
                         targets: Vec::new(),
                     });
                 }
+            }
+        }
+    }
+}
+
+/// Append every activation of a card in `seat`'s **graveyard** whose ability functions
+/// from there (CR 113.6) and whose cost is payable right now.
+///
+/// The graveyard counterpart of [`offer_activations`], and separate from it because the
+/// object is: a card in a zone has no [`crate::Permanent`], so summoning sickness, tap
+/// costs, loyalty, and equip timing have nothing to say about it. What is left is the
+/// cost and the targets, checked exactly as they are for a battlefield activation
+/// ([`graveyard_cost_payable`], [`groups_are_fillable`]), so an ability is offered here
+/// precisely when [`crate::apply_action`] will accept it.
+///
+/// **Not offered while the card is anywhere else.** A card in hand, on the battlefield,
+/// in exile, or in a library is not in the graveyard this walks, so the ability is simply
+/// not among the offers — there is no separate rule saying so, which is the point of
+/// enumerating from the zone rather than from the card.
+fn offer_graveyard_activations(
+    state: &GameState,
+    db: &CardDatabase,
+    seat: crate::id::PlayerId,
+    actions: &mut Vec<Action>,
+) {
+    let Some(player) = state.players.get(seat.0) else {
+        return;
+    };
+    for &card in &player.graveyard {
+        for index in 0..crate::card::abilities_of(db, card.card).len() {
+            let Some(ability) = graveyard_ability(state, db, seat, card, index) else {
+                continue;
+            };
+            let Ability::Activated { cost, effects } = &ability else {
+                continue;
+            };
+            let groups: Vec<crate::ability::TargetGroup> =
+                effects.iter().filter_map(Effect::target_group).collect();
+            if graveyard_cost_payable(state, seat, cost)
+                && groups_are_fillable(&groups, state, seat, db)
+            {
+                actions.push(Action::ActivateAbilityFromGraveyard {
+                    card,
+                    index,
+                    targets: Vec::new(),
+                });
             }
         }
     }

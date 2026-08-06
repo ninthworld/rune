@@ -168,6 +168,17 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         Effect::PutCountersOnSelf { counter, count } => {
             format!("put {} on {source}", counters(*counter, *count))
         }
+        // The self-referential return: the source names itself, and the graveyard it comes
+        // out of is the one the ability functions in (CR 113.6) — so both halves of the
+        // sentence are facts about the source rather than anything an author chose.
+        Effect::ReturnSelfFromGraveyard { destination } => format!(
+            "return {source} from your graveyard to {}",
+            match destination {
+                FoundDestination::Hand => "your hand",
+                FoundDestination::Battlefield => "the battlefield",
+                FoundDestination::BattlefieldTapped => "the battlefield tapped",
+            }
+        ),
         Effect::ReturnToHand { target } => {
             format!("return {} to its owner's hand", target_noun(*target))
         }

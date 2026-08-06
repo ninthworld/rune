@@ -899,6 +899,32 @@ pub enum Effect {
         #[serde(default = "PlayerRef::controller")]
         player_ref: PlayerRef,
     },
+    /// Move **this ability's own card** out of the graveyard it is in
+    /// (`Return this card from your graveyard to the battlefield tapped.`).
+    ///
+    /// The self-referential counterpart of [`Effect::ReturnCardToBattlefield`] and
+    /// [`Effect::ReturnCardToHand`], which each target a card someone chose. Here the
+    /// subject is the ability's own source (CR 115.1 — a source is not a target), so this
+    /// fills no slot and can never fizzle, exactly as [`Effect::PumpSelf`] cannot.
+    ///
+    /// It is the effect that makes an ability **function from a graveyard** (CR 113.6):
+    /// nothing else in the IR acts on a source that is a card in a zone rather than a
+    /// permanent, so [`is_graveyard_ability`](crate::is_graveyard_ability) reads this
+    /// variant and the offer, the activation, and the apply-time re-check all follow from
+    /// it. Written on an ability of a permanent it does nothing — the source is on the
+    /// battlefield, not in a graveyard — which is why the catalog validator rejects that
+    /// authoring rather than letting the card quietly do nothing.
+    ///
+    /// The card leaves through the same graveyard→zone seams a *targeted* return uses, so
+    /// a card that comes back to the battlefield mints a fresh
+    /// [`PermanentId`](crate::PermanentId) and fires its enters-the-battlefield
+    /// replacements and triggers like any other arrival, and one that comes back to a hand
+    /// goes to its **owner's** (CR 400.7).
+    ReturnSelfFromGraveyard {
+        /// Where the card goes. The three destinations are the ones a printed card of
+        /// this shape names: a hand, the battlefield, or the battlefield tapped.
+        destination: FoundDestination,
+    },
 }
 
 impl Effect {
@@ -1014,6 +1040,11 @@ impl Effect {
             | Effect::PumpSelf { .. }
             | Effect::RestrictSelf { .. }
             | Effect::AlterAbilitiesSelf { .. }
+
+            // A card returning itself out of a graveyard names its own source, which is
+            // not a target either (CR 115.1) — the reason a graveyard activation needs no
+            // candidate set to be offered.
+            | Effect::ReturnSelfFromGraveyard { .. }
             | Effect::PutCountersOnSelf { .. } => None,
         }
     }

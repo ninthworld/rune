@@ -67,6 +67,13 @@ pub enum StackObjectKind {
 /// [`Self::permanent`] is the accessor every existing caller wants: it answers `None`
 /// for an emblem, which is the same answer a permanent that has left the battlefield
 /// effectively gave, so self-referential effects need no new case.
+///
+/// A **card in a graveyard** whose ability functions from there (CR 113.6) is the third
+/// answer, and it is a third answer rather than a `PermanentId` for the emblem's reason:
+/// there is no permanent, and there never was one for this activation. It carries the
+/// physical [`CardInstance`] because that — not a [`crate::CardId`] — is what identifies
+/// *which* copy in the graveyard the ability belongs to, and a self-referential effect
+/// that moves the source out of the graveyard has to name exactly that copy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AbilitySource {
     /// A permanent on the battlefield.
@@ -74,15 +81,33 @@ pub enum AbilitySource {
     /// An emblem (CR 114), by its object id
     /// ([`Emblem::id`](crate::Emblem::id)).
     Emblem(u64),
+    /// A card in a graveyard whose ability functions from that zone (CR 113.6) — the
+    /// source of an activation that never involved the battlefield.
+    GraveyardCard(CardInstance),
 }
 
 impl AbilitySource {
-    /// The permanent this ability came from, or `None` for an emblem.
+    /// The permanent this ability came from, or `None` for an emblem or a card in a
+    /// graveyard — neither of which is one.
     #[must_use]
     pub fn permanent(self) -> Option<PermanentId> {
         match self {
             Self::Permanent(id) => Some(id),
-            Self::Emblem(_) => None,
+            Self::Emblem(_) | Self::GraveyardCard(_) => None,
+        }
+    }
+
+    /// The graveyard card this ability came from, or `None` for every other source.
+    ///
+    /// The counterpart of [`Self::permanent`], and the accessor a self-referential
+    /// effect that moves its own card out of a graveyard reads. A permanent's ability
+    /// answers `None` here for the same reason a graveyard card's answers `None` there:
+    /// the object is simply not that kind of thing.
+    #[must_use]
+    pub fn graveyard_card(self) -> Option<CardInstance> {
+        match self {
+            Self::GraveyardCard(card) => Some(card),
+            Self::Permanent(_) | Self::Emblem(_) => None,
         }
     }
 }

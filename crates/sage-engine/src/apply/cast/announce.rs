@@ -161,7 +161,13 @@ pub(crate) fn apply_activate_ability(
                 Some(choices) => {
                     crate::choice::pose_choices(state, choices, db);
                 }
-                None => apply_effect(state, effect, controller, Some(permanent), db),
+                None => apply_effect(
+                    state,
+                    effect,
+                    controller,
+                    Some(crate::stack::AbilitySource::Permanent(permanent)),
+                    db,
+                ),
             }
         }
     } else {
@@ -186,6 +192,72 @@ pub(crate) fn apply_activate_ability(
         });
         state.consecutive_passes = 0;
     }
+}
+
+/// Activate ability `index` of the card `card` in the priority holder's **graveyard**,
+/// paying its cost (CR 113.6, issue #723).
+///
+/// The graveyard counterpart of [`apply_activate_ability`], and separate from it for the
+/// reason the action is: there is no permanent here. Nothing is tapped, nothing is
+/// sacrificed, and no counter is spent — the cost is mana and only mana
+/// ([`graveyard_cost_payable`](crate::actions) has already established that, and the
+/// catalog validator that the card could not author anything else) — and the card does
+/// **not** leave the graveyard on activation. It stays exactly where it is until the
+/// ability resolves, which is what makes an opponent's response to it meaningful: exiling
+/// the card in reply leaves the ability on the stack with nothing to return.
+///
+/// A graveyard ability is never a mana ability ([`is_mana_ability`] requires every effect
+/// to be a mana verb), so this always uses the stack: the object goes on with an
+/// [`AbilitySource::GraveyardCard`](crate::AbilitySource) naming the physical copy that
+/// was paid for, and the activator retains priority. Everything after that — the response
+/// window, the resolution, the CR 608.2b target re-check — is the ordinary path.
+///
+/// A stale card or index is a no-op; [`crate::apply_action`]'s gate has already re-derived
+/// both, so reaching either `return` would mean the gate was bypassed.
+pub(crate) fn apply_activate_ability_from_graveyard(
+    state: &mut GameState,
+    card: CardInstance,
+    index: usize,
+    targets: &[Target],
+    db: &CardDatabase,
+) {
+    let controller = state.priority;
+    let Some(Ability::Activated { cost, effects }) =
+        crate::actions::graveyard_ability(state, db, controller, card, index)
+    else {
+        return;
+    };
+
+    // CR 601.2h / 602.2b: the cost is paid all at once, and a payment that cannot be made
+    // leaves the state untouched. Mana is the whole of it here, so "all at once" is one
+    // settlement against the pool.
+    for due in cost.iter().filter_map(|c| match c {
+        Cost::Mana { mana } => Some(parse_mana_cost(mana)),
+        Cost::Tap | Cost::Loyalty { .. } | Cost::SacrificeThis | Cost::RemoveCounters { .. } => {
+            None
+        }
+    }) {
+        let Some(player) = state.players.get_mut(controller.0) else {
+            return;
+        };
+        let Some(paid) = player.mana_pool.pay(&due) else {
+            return;
+        };
+        player.mana_pool = paid;
+    }
+
+    let id = state.mint_id();
+    state.stack.push(StackObject {
+        id: StackId(id),
+        controller,
+        kind: StackObjectKind::Ability {
+            source: crate::stack::AbilitySource::GraveyardCard(card),
+            origin: AbilityOrigin::Activated,
+            effects: effects.clone(),
+        },
+        targets: targets.to_vec(),
+    });
+    state.consecutive_passes = 0;
 }
 
 /// Record the targets its controller chose for a triggered ability already on the

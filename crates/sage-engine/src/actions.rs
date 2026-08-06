@@ -29,4 +29,4 @@ pub use payment::{
 };
 pub(crate) use targeting::legal_targets_for_spec;
 pub use targeting::target_requirements;
-pub(crate) use utilities::potential_mana_pool;
+pub(crate) use utilities::{graveyard_ability, potential_mana_pool};

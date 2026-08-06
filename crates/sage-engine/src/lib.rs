@@ -42,13 +42,13 @@ mod triggers;
 mod zone;
 
 pub use ability::{
-    activation_taps, group_target_counts, is_emblem_ability, is_equip_ability, is_loyalty_ability,
-    is_mana_ability, maximum_targets, minimum_targets, target_counts, Ability, ActivatorScope,
-    CardFilter, Chooser, Condition, Cost, CountScope, DamageSubject, Effect, FoundDestination,
-    GraveyardCardClass, GraveyardScope, ManaRestriction, MassAffects, ObservedActivation,
-    ObservedPermanent, ObservedSpell, PermanentCount, PlayerModification, PlayerRef, StaticAffects,
-    StaticCondition, StaticModification, Target, TargetCount, TargetGroup, TargetSpec,
-    TriggerCondition, TriggerStep, TurnScope,
+    activation_taps, group_target_counts, is_emblem_ability, is_equip_ability,
+    is_graveyard_ability, is_loyalty_ability, is_mana_ability, maximum_targets, minimum_targets,
+    target_counts, Ability, ActivatorScope, CardFilter, Chooser, Condition, Cost, CountScope,
+    DamageSubject, Effect, FoundDestination, GraveyardCardClass, GraveyardScope, ManaRestriction,
+    MassAffects, ObservedActivation, ObservedPermanent, ObservedSpell, PermanentCount,
+    PlayerModification, PlayerRef, StaticAffects, StaticCondition, StaticModification, Target,
+    TargetCount, TargetGroup, TargetSpec, TriggerCondition, TriggerStep, TurnScope,
 };
 pub use actions::{
     auto_payment, discard_cost, is_plain_mana_source, mana_ability_pips, payment_pips,

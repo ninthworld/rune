@@ -380,6 +380,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "reassembling_skeleton",
+    "collector_number": "116",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "skeleton_archer",
     "collector_number": "118",
     "rarity": "common"

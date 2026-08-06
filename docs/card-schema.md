@@ -783,6 +783,37 @@ honoured in both by construction: a creature targeted while the permission is in
 legal target when the spell resolves, and a spell aimed on an earlier turn does not become legal
 because a permission was granted on a later one.
 
+### Abilities that function from a graveyard
+
+An activated ability that returns **its own card** from a graveyard functions there rather
+than on the battlefield (CR 113.6). Reassembling Skeleton:
+
+```json
+{ "type": "activated",
+  "cost": [{ "kind": "mana", "mana": "{1}{B}" }],
+  "effects": [{ "kind": "return_self_from_graveyard", "destination": "battlefield_tapped" }] }
+```
+
+`destination` is the `hand` / `battlefield` / `battlefield_tapped` set a `search_library`
+takes. There is no field saying *where* the ability works: it is derived from the effect,
+because an ability that moves its own card out of a graveyard could function nowhere else —
+on the battlefield its source is a permanent, and there is no card in a graveyard for it to
+move.
+
+Two consequences follow, and both are enforced:
+
+- **The offer follows the card.** While the card is in its controller's graveyard the
+  ability is offered beside their hand and battlefield activations, bound by the same
+  priority and timing rules a hand cast is, and re-checked at apply. While the card is
+  anywhere else — a hand, the battlefield, exile — it is not offered at all.
+- **The cost is mana and nothing else.** A card in a zone is not a permanent: it cannot be
+  tapped, sacrificed, or have counters removed. A definition that authors this effect
+  anywhere but directly on an activated ability, or beside a cost of any other kind, fails
+  the build (`GraveyardAbilityCannotFunction`).
+
+The card does not move when the ability is activated — only when it resolves — so removing
+it in response leaves an ability that resolves and does nothing.
+
 ### Effects on the ability's own source
 
 `pump_self`, `put_counters_on_self`, and `alter_abilities_self` act on the permanent
@@ -790,6 +821,8 @@ whose ability is resolving.
 The source is not a *target* (CR 115.1), so these choose nothing, fill no slot, and never
 fizzle; a source that has left the battlefield is simply not there to modify. They are
 meaningless on a spell, which has no source permanent.
+`return_self_from_graveyard` above is the same shape over a source that is a *card in a
+zone* rather than a permanent.
 
 ### Mass, non-targeting modifications
 
