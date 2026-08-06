@@ -47,11 +47,20 @@ pub(crate) fn deal_combat_damage(state: &mut GameState, db: &CardDatabase) {
 /// strikes in the first-strike step has dealt damage by the time the state-based actions
 /// between the two steps run — and any continuous ability conditioned on not having dealt
 /// damage is already off when they do.
+///
+/// **What was assigned is not what was dealt** (CR 615.1). The attribution names an
+/// assignment by its index, and the note is made only for the assignments that survived
+/// the prevention shields — so a creature whose whole strike was prevented has still not
+/// dealt damage *yet*, exactly as no life moved and nothing was marked. Every other
+/// record the shield erases is erased at [`GameState::deal_damage`]; this is the one that
+/// is about the **source**, so it is erased here, where the applier knows what landed.
 fn apply_step(state: &mut GameState, db: &CardDatabase, step: DamageStep, blocked: &[PermanentId]) {
     let (batch, dealers) = combat_damage_and_dealers(state, db, step, blocked);
-    apply_combat_batch(state, batch, db);
-    for dealer in dealers {
-        state.note_damage_dealt_by(dealer);
+    let landed = apply_combat_batch(state, batch, db);
+    for (dealer, assignment) in dealers {
+        if landed.get(assignment).copied().unwrap_or(0) > 0 {
+            state.note_damage_dealt_by(dealer);
+        }
     }
 }
 
@@ -67,13 +76,19 @@ fn apply_step(state: &mut GameState, db: &CardDatabase, step: DamageStep, blocke
 /// the assigned one, that flags a deathtouch recipient, feeds the CR 903.10a commander
 /// tally, and gains a lifelink source life: fully prevented damage does none of the
 /// three.
+///
+/// It is also what the caller returns: one amount per entry of `batch`, in the same
+/// order, so the fourth reader of "was this really dealt" — the note on the creature that
+/// dealt it ([`apply_step`]) — asks the same question off the same answer rather than
+/// re-deriving it from the assignment.
 pub(crate) fn apply_combat_batch(
     state: &mut GameState,
     batch: Vec<CombatDamage>,
     db: &CardDatabase,
-) {
+) -> Vec<u32> {
+    let mut landed = Vec::with_capacity(batch.len());
     for assignment in batch {
-        match assignment {
+        let dealt = match assignment {
             CombatDamage::ToPlayer {
                 player,
                 amount,
@@ -93,6 +108,7 @@ pub(crate) fn apply_combat_batch(
                     state.add_commander_damage(commander, player, dealt);
                 }
                 gain_lifelink(state, lifelink, dealt);
+                dealt
             }
             CombatDamage::ToPermanent {
                 permanent,
@@ -113,9 +129,12 @@ pub(crate) fn apply_combat_batch(
                     state.deathtouch_struck.push(permanent);
                 }
                 gain_lifelink(state, lifelink, dealt);
+                dealt
             }
-        }
+        };
+        landed.push(dealt);
     }
+    landed
 }
 
 /// Gain `dealt` life for a lifelink source's controller (CR 702.15e), if the source had

@@ -230,11 +230,19 @@ pub(crate) fn legal_targets_for_spec(
         TargetSpec::AnyTarget => players.into_iter().chain(permanents).collect(),
         // Only spells on the stack are candidates — abilities are not spells, and
         // mana abilities never use the stack (CR 605.3), so neither can be a
-        // "counter target spell" candidate.
+        // "counter target spell" candidate. A **copy** of a spell is a spell
+        // (CR 707.10) and joins the universe; the `target_is_legal` filter below is
+        // what keeps it out of the narrower `CreatureSpellOnStack` answer.
         TargetSpec::SpellOnStack | TargetSpec::CreatureSpellOnStack => state
             .stack
             .iter()
-            .filter(|o| matches!(o.kind, crate::stack::StackObjectKind::Spell { .. }))
+            .filter(|o| {
+                matches!(
+                    o.kind,
+                    crate::stack::StackObjectKind::Spell { .. }
+                        | crate::stack::StackObjectKind::SpellCopy { .. }
+                )
+            })
             .map(|o| Target::Spell(o.id))
             .collect(),
     };

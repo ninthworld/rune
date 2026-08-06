@@ -74,6 +74,10 @@ pub(crate) fn apply_targeted_effect(
                     .flatten()
                 {
                     let countered = state.stack.remove(pos);
+                    // A **copy** is a legal target and is removed like any other spell,
+                    // but it has no card to put anywhere and none to name in the log: it
+                    // simply ceases to exist (CR 707.10a), which removing it from the
+                    // stack already is.
                     if let StackObjectKind::Spell { card, .. } = countered.kind {
                         let owner = countered.controller;
                         if let Some(player) = state.players.get_mut(owner.0) {

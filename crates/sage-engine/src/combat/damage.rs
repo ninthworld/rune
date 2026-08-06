@@ -223,28 +223,31 @@ pub(crate) fn combat_damage(
     combat_damage_and_dealers(state, db, step, blocked).0
 }
 
-/// [`combat_damage`], paired with the creatures that actually **dealt** something in the
-/// step — the fact `Palladia-Mors, the Ruiner`'s "hasn't dealt damage yet" reads
+/// [`combat_damage`], paired with **who assigned each entry of it** — the attribution
+/// `Palladia-Mors, the Ruiner`'s "hasn't dealt damage yet" reads
 /// ([`Permanent::dealt_damage`](crate::Permanent)).
 ///
 /// A second return value rather than a `source` field on every [`CombatDamage`] because
 /// the assignment is about what one object *receives*: three creatures blocking one
 /// attacker take three separate assignments, and who dealt them is a fact about the batch,
-/// not about any one of its entries. A creature is listed here exactly when an assignment
-/// was pushed on its behalf, so a blocked non-trampler whose blockers all died — which
-/// assigns its damage nowhere — has dealt nothing and is not listed.
+/// not about any one of its entries. Each pair is a creature and the **index** of an
+/// assignment pushed on its behalf, so a blocked non-trampler whose blockers all died —
+/// which assigns its damage nowhere — appears not at all.
+///
+/// The index is what makes the answer survive CR 615.1: an assignment is not yet damage
+/// dealt, and only the applier knows which of them a prevention shield let through
+/// (`apply.rs :: apply_step`). Listing a creature here says it assigned something, never
+/// that it dealt it.
 pub(crate) fn combat_damage_and_dealers(
     state: &GameState,
     db: &CardDatabase,
     step: DamageStep,
     blocked: &[PermanentId],
-) -> (Vec<CombatDamage>, Vec<PermanentId>) {
+) -> (Vec<CombatDamage>, Vec<(PermanentId, usize)>) {
     let mut out = Vec::new();
-    let mut dealers: Vec<PermanentId> = Vec::new();
-    let note = |dealers: &mut Vec<PermanentId>, id: PermanentId| {
-        if !dealers.contains(&id) {
-            dealers.push(id);
-        }
+    let mut dealers: Vec<(PermanentId, usize)> = Vec::new();
+    let note = |dealers: &mut Vec<(PermanentId, usize)>, id: PermanentId, assignment: usize| {
+        dealers.push((id, assignment));
     };
     for attacker in state.battlefield.iter().filter(|p| p.attacking.is_some()) {
         // What this attacker is attacking (CR 508.1a): its damage and any trample
@@ -282,10 +285,10 @@ pub(crate) fn combat_damage_and_dealers(
                             source_commander,
                         );
                         // A planeswalker that has already left takes nothing and no
-                        // assignment is pushed, so the attacker dealt no damage — which
+                        // assignment is pushed, so the attacker assigned nothing — which
                         // is exactly what the length says.
                         if out.len() > before {
-                            note(&mut dealers, attacker.id);
+                            note(&mut dealers, attacker.id, before);
                         }
                     }
                 }
@@ -300,7 +303,7 @@ pub(crate) fn combat_damage_and_dealers(
                     let assign = remaining.min(lethal_needed(state, *blocker, db, deathtouch));
                     if assign > 0 {
                         push_permanent_damage(&mut out, *blocker, assign, deathtouch, lifelink);
-                        note(&mut dealers, attacker.id);
+                        note(&mut dealers, attacker.id, out.len() - 1);
                         remaining -= assign;
                     }
                 }
@@ -322,7 +325,7 @@ pub(crate) fn combat_damage_and_dealers(
                             source_commander,
                         );
                         if out.len() > before {
-                            note(&mut dealers, attacker.id);
+                            note(&mut dealers, attacker.id, before);
                         }
                     }
                 }
@@ -371,7 +374,7 @@ pub(crate) fn combat_damage_and_dealers(
             };
             if assign > 0 {
                 push_permanent_damage(&mut out, *attacker, assign, deathtouch, lifelink);
-                note(&mut dealers, blocker.id);
+                note(&mut dealers, blocker.id, out.len() - 1);
                 remaining -= assign;
             }
         }

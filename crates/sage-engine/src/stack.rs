@@ -289,12 +289,20 @@ impl StackObject {
     /// whose threshold the announced value does not reach — which is the whole of
     /// "if X is 5 or more", asked in one place so the counter check and the damage seam
     /// can never disagree about the same spell.
+    ///
+    /// A **copy** answers exactly as the original does (CR 707.10): the trait is rules
+    /// text, which a copy has (CR 707.2a), and the threshold is measured against the X
+    /// the original announced, which the copy carries. Reading it off the copied card is
+    /// the same read the copy's effects go through — a copy that answered `false` here
+    /// would be a Banefire that stops being uncounterable for having been copied.
     #[must_use]
     pub fn has_trait(&self, db: &crate::CardDatabase, trait_kind: SpellTraitKind) -> bool {
-        let StackObjectKind::Spell { card, x, .. } = self.kind else {
-            return false;
+        let (card, x) = match self.kind {
+            StackObjectKind::Spell { card, x, .. } => (card.card, x),
+            StackObjectKind::SpellCopy { card, x, .. } => (card, x),
+            StackObjectKind::Ability { .. } => return false,
         };
-        db.card(card.card).is_some_and(|data| {
+        db.card(card).is_some_and(|data| {
             data.spell_traits
                 .iter()
                 .filter(|declared| trait_kind.names(**declared))

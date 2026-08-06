@@ -347,11 +347,16 @@ pub(crate) fn target_is_legal(
         // A spell target is legal while that exact spell is still on the stack
         // (CR 701.5): once it has resolved (or been countered) it is gone, so a
         // counterspell aimed at it fizzles (CR 608.2b). An ability on the stack is
-        // not a spell and is never a legal "counter target spell" target.
-        (TargetSpec::SpellOnStack, Target::Spell(id)) => state
-            .stack
-            .iter()
-            .any(|o| o.id == id && matches!(o.kind, StackObjectKind::Spell { .. })),
+        // not a spell and is never a legal "counter target spell" target — a **copy**
+        // of a spell is one (CR 707.10), so it is, and whether countering it then
+        // achieves anything is the separate question `has_trait` answers.
+        (TargetSpec::SpellOnStack, Target::Spell(id)) => state.stack.iter().any(|o| {
+            o.id == id
+                && matches!(
+                    o.kind,
+                    StackObjectKind::Spell { .. } | StackObjectKind::SpellCopy { .. }
+                )
+        }),
         // A *creature* spell is one whose card has the creature type while it is
         // still on the stack — read off the card, since no permanent exists yet.
         (TargetSpec::CreatureSpellOnStack, Target::Spell(id)) => state.stack.iter().any(|o| {
