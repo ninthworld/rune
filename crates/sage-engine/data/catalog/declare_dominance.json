@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "functional_id": "declare_dominance",
+  "name": "Declare Dominance",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{3}{G}{G}",
+  "colors": [
+    "green"
+  ],
+  "spell_effects": [
+    {
+      "kind": "pump",
+      "target": "any_creature",
+      "power": 3,
+      "toughness": 3,
+      "restrictions": [
+        "must_be_blocked_by_all_able"
+      ]
+    }
+  ]
+}

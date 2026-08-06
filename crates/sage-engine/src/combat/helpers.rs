@@ -200,7 +200,13 @@ pub fn blocker_can_block_attacker(
             | CombatRestriction::CantBeBlockedByMoreThanOne
             // A permission about the *blocker's* own assignments, not about being
             // blocked; the declare-blockers gate reads it ([`blocks_allowed`]).
-            | CombatRestriction::CanBlockAdditional(_) => {}
+            | CombatRestriction::CanBlockAdditional(_)
+            // A requirement, and the one member of the vocabulary this gate must not
+            // read: CR 509.1c is judged *after* legality, over declarations this
+            // predicate has already called legal. Answering it here would make a
+            // creature that is required to block one it may not (a restriction beats a
+            // requirement) — and would do it per pair, which is not what the rule asks.
+            | CombatRestriction::MustBeBlockedByAllAble => {}
         }
     }
     true

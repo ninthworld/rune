@@ -649,6 +649,15 @@ fn issue_606_evasion_and_restriction_cards_generate_their_rules_text() {
         "Trample\nGhastbark Twins can block an additional creature each combat."
     );
 
+    // The one *requirement* in the vocabulary (CR 509.1c, issue #739), riding in the
+    // same clause as the count-derived pump because it is granted to the same creature —
+    // and reading as neither a "can" nor a "can't".
+    assert_eq!(
+        text_of(&db, "declare_dominance"),
+        "Target creature gets +3/+3 and must be blocked by every creature able to do so \
+         until end of turn."
+    );
+
     // The opponents-wide mass scope, on the card that introduced it.
     assert_eq!(
         text_of(&db, "plague_mare"),

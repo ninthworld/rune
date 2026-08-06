@@ -8,8 +8,8 @@
     "blocker": "the draw trigger condition observes only its own controller's draws"
   },
   {
-    "name": "Attack and block requirements",
-    "blocker": "a declaration can be restricted but never required, and CR 509.1c makes validating one a search rather than a per-pair check"
+    "name": "Attack requirements",
+    "blocker": "a block requirement is maximised over the whole declaration (CR 509.1c), but nothing can force a creature into the attacker declaration (CR 508.1d) — and the one requirement modeled is that every creature able to block an attacker does so, never that one particular creature blocks"
   },
   {
     "name": "Auras that enchant a player or land, or move between hosts",

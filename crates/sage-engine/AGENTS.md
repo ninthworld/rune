@@ -81,8 +81,14 @@ submit that silently does nothing. One member of the vocabulary is a *permission
 than a restriction — `CanBlockAdditional`, which lifts the CR 509.1a default that a blocker
 blocks one attacker — so `Permanent.blocking` is an ordered list, and its order is the
 blocker's CR 509.3 damage assignment order, carried by the declaration that named them.
-Attack and block *requirements* ("attacks each combat if able") are still unmodeled: CR
-509.1c makes validating a submitted declaration a search rather than a per-pair check.
+One member is a **requirement** rather than either — `MustBeBlockedByAllAble` — and it is
+the only rule in the engine that refuses a declaration for what it *omits*: CR 509.1c asks
+for the maximum number of requirements obeyable without violating a restriction, which is a
+fact about the declarations that were not submitted. That is why it is a search
+(`combat::requirements`) run last, over declarations every other gate has already called
+legal — so a restriction beats a requirement, and a requirement no legal declaration can
+meet is simply not met, with no clause anywhere saying so. **Attack** requirements
+("attacks each combat if able", CR 508.1d) remain unmodeled.
 
 **Not every permanent is a card** (ADR 0015). `Permanent.printed` is a `Printed` — a
 catalog `CardId`, or the `TokenData` an effect gave a token (CR 111) — and every read of a

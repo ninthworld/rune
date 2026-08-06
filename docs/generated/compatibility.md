@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (210)
+## Supported cards (211)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -50,6 +50,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `daggerback_basilisk` | Daggerback Basilisk | functional definition |
 | `daybreak_chaplain` | Daybreak Chaplain | functional definition |
 | `death_baron` | Death Baron | functional definition |
+| `declare_dominance` | Declare Dominance | functional definition |
 | `demon_of_catastrophes` | Demon of Catastrophes | functional definition |
 | `detection_tower` | Detection Tower | functional definition |
 | `diamond_mare` | Diamond Mare | functional definition |
@@ -233,7 +234,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Abilities that trigger on a mana ability being activated | the activation condition watches the objects a transition put on the stack, which a mana ability never reaches (CR 605.3a) |
 | Abilities that trigger on someone else drawing a card | the draw trigger condition observes only its own controller's draws |
 | Activation costs paid by sacrificing another permanent, or by discarding | a cast carries its chosen sacrifices and discards on the action, but an activation names only its source, its ability, and its targets |
-| Attack and block requirements | a declaration can be restricted but never required, and CR 509.1c makes validating one a search rather than a per-pair check |
+| Attack requirements | a block requirement is maximised over the whole declaration (CR 509.1c), but nothing can force a creature into the attacker declaration (CR 508.1d) — and the one requirement modeled is that every creature able to block an attacker does so, never that one particular creature blocks |
 | Auras that enchant a player or land, or move between hosts | only enchant-creature Auras granting P/T, keywords, or combat restrictions are modeled |
 | Combat damage assigned by a value other than power | every attacker and blocker assigns damage equal to its current power |
 | Conditions other than a permanent count, a mill, a discard, or life gained this turn | a permanent count cannot require distinct names, and no condition asks what one permanent has done — on the intervening-if side or the continuous one |

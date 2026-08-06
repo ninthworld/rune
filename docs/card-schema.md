@@ -116,6 +116,15 @@ keywords are read (combat legality, evasion, damage, view projection, generated 
   slots and let a player pump one creature while a different one gained flying. Author
   the two-effect form only when the card really names two targets.
 
+  A `restrictions` list rides beside `keywords` on the same effect, for the same reason
+  and with the same until-end-of-turn duration — including the one *requirement* in that
+  vocabulary:
+
+  ```json
+  {"kind": "pump", "target": "any_creature", "power": 3, "toughness": 3,
+   "restrictions": ["must_be_blocked_by_all_able"]}
+  ```
+
 ### Losing keywords and losing all abilities (continuous, CR 613.1f)
 
 Layer 6 **subtracts** as well as adds. `alter_abilities_self` is the one verb that says
@@ -216,6 +225,7 @@ parameter. A unit restriction is its bare name and a parameterized one wraps its
 | `cant_be_blocked_by_power_or_less` | no creature of at most the named power may block it | the pairwise block check |
 | `cant_be_blocked_except_by` | **only** a creature of the named subtype may block it | the pairwise block check |
 | `can_block_additional` | it may block that many creatures beyond the first | the whole-selection block check |
+| `must_be_blocked_by_all_able` | every creature able to block it does so | the whole-selection block check |
 
 One of them is a *permission* rather than a restriction. `can_block_additional` names a
 count — `{"can_block_additional": 1}` is "can block an additional creature each
@@ -230,15 +240,16 @@ read through the computed characteristics at CR 613 layer 6, exactly as keywords
 restriction an Aura or a spell imposes binds identically to a printed one and ends with the
 effect that imposed it.
 
-Three of these are facts about the **whole** declaration rather than about one
-attacker/blocker pair — `cant_be_blocked_by_more_than_one`, menace, and
-`can_block_additional` — so the engine can only judge them once the declaration is
-assembled. The first two bound how many creatures may block one attacker and are stated in
-that attacker's blocker slot `prompt` (`docs/protocol.md`) rather than left to a submit
+Four of these are facts about the **whole** declaration rather than about one
+attacker/blocker pair — `cant_be_blocked_by_more_than_one`, menace, `can_block_additional`,
+and `must_be_blocked_by_all_able` — so the engine can only judge them once the declaration
+is assembled. The first two bound how many creatures may block one attacker and are stated
+in that attacker's blocker slot `prompt` (`docs/protocol.md`) rather than left to a submit
 that silently does nothing. The third is the same question from the blocker's side, and it
 needs no prompt of its own: it is printed on the creature that carries it, where its
 generated rules text says so, and unlike menace it depends on nothing else in the
-declaration.
+declaration. The fourth is a *requirement* rather than a restriction, and is its own
+section below.
 
 The colour test reads the blocker's **printed** colours: CR 613 layer 5 (colour-changing
 effects) is not implemented, so printed colour is current colour, the same way printed
@@ -264,11 +275,35 @@ the colour one. CR 613 layer 4 (type-changing effects) is not implemented, so to
 are the printed subtypes — but the read path is already the one that becomes correct on
 its own the day that layer lands, with no call site left to remember.
 
-Attack and block *requirements* ("attacks each combat if able") are not modeled: a
-declaration can be restricted but never required. CR 509.1c is what makes them a separate
-piece of work — a declaration must meet the maximum possible number of requirements
-without violating a restriction, which turns validating a submitted block into a search
-rather than the per-pair and per-count checks above.
+### The one requirement (CR 509.1c)
+
+`must_be_blocked_by_all_able` is the only member of this vocabulary that *requires* part
+of a declaration rather than permitting or forbidding one, and it is a different kind of
+rule rather than a restriction turned around. Everything above rejects a declaration
+because of something it **contains**; CR 509.1c rejects one because of what it **omits** —
+the declaration chosen must obey the maximum possible number of requirements without
+violating any restriction. "The maximum possible" is a fact about the declarations that
+were *not* submitted, so validating one is a **search** rather than a per-pair or
+per-count check, and that search is the engine's own (`max_block_requirements_met`).
+
+Two consequences follow from the rule itself, and both are why an approximation would be
+wrong rather than merely imprecise:
+
+- **A restriction always wins.** A requirement is met only by a declaration that is legal
+  to begin with, so a creature that may not legally block the attacker — it lacks flying
+  or reach, it can't block, a menace floor puts the whole block out of reach — is not
+  required to. Nothing here makes an illegal declaration legal.
+- **A requirement that cannot be met is not met.** Two attackers that each demand the
+  defender's only creature demand it once between them: the maximum is one, and either
+  answer is legal.
+
+"Able" is judged per candidate blocker and per pair, exactly as a blocker slot's candidate
+list is, so a tapped creature is never required to block. The requirement is a
+whole-declaration fact, so the blocker slot's `prompt` states it (`docs/protocol.md`)
+rather than leaving a short declaration to be silently refused on submit.
+
+**Attack** requirements ("attacks each combat if able", CR 508.1d) are still not modeled:
+nothing can force a creature into the attacker declaration.
 
 ### Imposing restrictions (continuous, CR 613.1f)
 

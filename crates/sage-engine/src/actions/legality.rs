@@ -7,7 +7,7 @@ use crate::combat::{
     blocker_can_block_attacker, blocker_candidates_for, declared_attackers, defender_candidates,
     pending_blocker_declarer,
 };
-use crate::id::PermanentId;
+use crate::id::{PermanentId, PlayerId};
 use crate::resolve::target_is_legal;
 use crate::state::GameState;
 use crate::CardDatabase;
@@ -342,7 +342,10 @@ pub(crate) fn attackers_selection_is_legal(
 /// declared twice, no creature is assigned to more attackers than it may block
 /// ([`blocks_allowed`]), and each blocker can legally block the attacker it is assigned
 /// to given the pairwise evasion rules (CR 702.9c, 702.17b, CR 509.1b, via
-/// [`blocker_can_block_attacker`]). An empty selection is legal (declaring no blockers).
+/// [`blocker_can_block_attacker`]). An empty selection is legal (declaring no blockers) —
+/// unless a *requirement* makes it not, which is the one thing here that is judged
+/// against the declarations that were **not** submitted (CR 509.1c,
+/// [`block_requirements_are_maximized`]).
 ///
 /// Scoping to the current declarer is what makes the multi-defender flow (issue
 /// #344) safe: each attacked player's declaration is validated against exactly
@@ -383,6 +386,45 @@ fn blocks_selection_is_legal(state: &GameState, db: &CardDatabase, blocks: &[Blo
         // And the same question from the blocker's side: how many attackers one
         // creature was assigned to.
         && blocker_loads_are_legal(state, blocks, db)
+        // Last, and only over declarations everything above has already called legal:
+        // whether this one leaves a requirement unmet that some other legal declaration
+        // would have met (CR 509.1c).
+        && block_requirements_are_maximized(state, declarer, blocks, db)
+}
+
+/// Whether `blocks` meets as many block requirements as any legal declaration could
+/// (CR 509.1c): *the declaration must obey the maximum possible number of requirements
+/// without violating any restrictions*.
+///
+/// The one gate here that judges a declaration by what it **omits**, and the reason it is
+/// applied last: "the maximum possible" ranges over the declarations that are legal, so
+/// every other check has to have had its say before this one is meaningful. The maximum
+/// itself is the engine's own search ([`max_block_requirements_met`]); all this does is
+/// count how many of the required pairs this declaration actually contains and compare.
+///
+/// Restrictions therefore win without a clause saying so. A requirement no legal
+/// declaration can meet contributes nothing to the maximum, so the player is never asked
+/// for a declaration the gates above would refuse — and a declaration meeting the maximum
+/// always exists, which is what keeps this from being a way to stall combat.
+///
+/// The comparison is `>=` rather than `==` so that the *only* way this rejects is a
+/// declaration that fell short. A submitted declaration cannot contain a required pair
+/// twice (the uniqueness check above), so exceeding the maximum is not reachable.
+fn block_requirements_are_maximized(
+    state: &GameState,
+    declarer: PlayerId,
+    blocks: &[Block],
+    db: &CardDatabase,
+) -> bool {
+    let required = crate::combat::block_requirements(state, declarer, db);
+    if required.is_empty() {
+        return true;
+    }
+    let met = blocks
+        .iter()
+        .filter(|block| required.contains(&(block.blocker, block.attacker)))
+        .count();
+    met >= crate::combat::max_block_requirements_met(state, declarer, db)
 }
 
 /// Whether every creature named in `blocks` is assigned to a legal *number* of

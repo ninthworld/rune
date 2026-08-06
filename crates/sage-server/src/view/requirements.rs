@@ -206,6 +206,12 @@ pub(crate) fn blocker_requirements(state: &GameState, db: &CardDatabase) -> Vec<
                 // is how a declarer says so — the same statement the attackers slot makes,
                 // for the same reason: the resolve path binds an empty declaration
                 // directly, and a client can only know that if the wire says it.
+                //
+                // A block requirement does not flip this, for the same reason menace does
+                // not: whether *this* slot may be left empty is a fact about the whole
+                // declaration — with two required attackers and one creature, either slot
+                // may be — so answering it per slot would be a second search producing a
+                // worse answer than the prompt does. The engine judges the submission.
                 optional: true,
                 prompt: blocker_prompt(state, attacker, db),
                 candidates,
@@ -220,8 +226,8 @@ pub(crate) fn blocker_requirements(state: &GameState, db: &CardDatabase) -> Vec<
         .collect()
 }
 
-/// The prompt for one attacker's blocker slot, naming any restriction on *how many*
-/// blockers the declaration may assign to it.
+/// The prompt for one attacker's blocker slot, naming every rule about the *whole*
+/// declaration that this attacker brings to it.
 ///
 /// The block-count restrictions — menace's floor of two (CR 702.110b) and the "no more
 /// than one creature" ceiling (CR 509.1b) — are constraints on the whole selection
@@ -233,13 +239,22 @@ pub(crate) fn blocker_requirements(state: &GameState, db: &CardDatabase) -> Vec<
 /// puts the answer in words, and the client still computes no legality of its own
 /// (`AGENTS.md`, zero game logic in the client).
 ///
+/// A block **requirement** (CR 509.1c, [`sage_engine::must_be_blocked_by_all_able`]) is
+/// the same problem from the other direction, and it needs the words more than the
+/// counts do: what it rejects is a declaration that *left something out*, so without them
+/// the silently-ignored submit is the empty declaration a player is most likely to make.
+/// It is stated as what a player has to do rather than as the maximisation the engine
+/// performs — the exact set is still the engine's answer on submit, and "as many as you
+/// can" is the honest summary of it when a restriction stops the player blocking with
+/// them all.
+///
 /// The pairwise restrictions need no words here: they are already visible as the slot's
 /// candidate list.
 fn blocker_prompt(state: &GameState, attacker: PermanentId, db: &CardDatabase) -> String {
     let name = permanent_card_name(state, attacker, db);
     // Both bounds at once is possible in principle and unsatisfiable in practice, so it
     // is stated as what it is rather than as two rules a player has to combine.
-    let note = match (
+    let count_note = match (
         sage_engine::permanent_has_menace(state, attacker, db),
         sage_engine::blocked_by_at_most_one(state, attacker, db),
     ) {
@@ -250,9 +265,13 @@ fn blocker_prompt(state: &GameState, attacker: PermanentId, db: &CardDatabase) -
         (false, true) => Some("no more than one blocker"),
         (false, false) => None,
     };
-    match note {
-        Some(note) => format!("Choose blockers for {name} ({note})"),
-        None => format!("Choose blockers for {name}"),
+    let requirement_note = sage_engine::must_be_blocked_by_all_able(state, attacker, db)
+        .then_some("every creature able to block it must, as far as the rest allows");
+    let notes: Vec<&str> = count_note.into_iter().chain(requirement_note).collect();
+    if notes.is_empty() {
+        format!("Choose blockers for {name}")
+    } else {
+        format!("Choose blockers for {name} ({})", notes.join("; "))
     }
 }
 

@@ -117,9 +117,38 @@ pub enum CombatRestriction {
     /// blocker-count ceiling, and never in the pairwise check.
     ///
     /// It is a **permission, not a requirement**: nothing about it forces a creature to
-    /// block at all, or to use the extra assignment when it does. Block requirements
-    /// ("blocks each combat if able") remain unmodeled.
+    /// block at all, or to use the extra assignment when it does.
     CanBlockAdditional(u32),
+
+    /// **Every creature able to block this creature does so** (CR 509.1c) — the one
+    /// member of this vocabulary that *requires* part of a declaration rather than
+    /// permitting or forbidding it.
+    ///
+    /// A requirement is not a restriction turned around, and the difference is the whole
+    /// reason this variant is enforced where it is. A restriction says a declaration is
+    /// illegal because of something it *contains*, which the pairwise gate and the
+    /// per-count gates beside it can each answer by looking at what was submitted.
+    /// CR 509.1c says a declaration is illegal because of something it **omits**: the
+    /// declaration chosen must obey the maximum possible number of requirements without
+    /// violating any restriction, so judging one means knowing what *other* declarations
+    /// could have achieved. That is a search over the whole declaration
+    /// ([`max_block_requirements_met`](crate::max_block_requirements_met)), and it is
+    /// enforced in exactly one place — the declare-blockers legality gate, beside menace
+    /// and the block-count bounds.
+    ///
+    /// **Restrictions win** (CR 509.1c). A requirement is met only by a declaration that
+    /// is legal in the first place, so a creature this restriction cannot legally be
+    /// blocked by — because it has flying and the blocker does not, because the blocker
+    /// can't block, because a menace floor is unreachable — is simply not required to
+    /// block it, and a requirement that cannot be met is not met. Nothing here can make
+    /// an illegal declaration legal.
+    ///
+    /// "Able" is judged per candidate blocker and per pair, exactly as the blocker slot's
+    /// candidate list is: a tapped creature is not able, nor is one that can't block, nor
+    /// one the attacker's evasion excludes. The requirement names no blocker of its own —
+    /// it names an attacker, and the set of creatures it binds is whatever the board
+    /// makes able at the moment the declaration is judged.
+    MustBeBlockedByAllAble,
 }
 
 impl CombatRestriction {
@@ -137,7 +166,8 @@ impl CombatRestriction {
             | CombatRestriction::CantBeBlockedByMoreThanOne
             | CombatRestriction::CantBeBlockedByPowerOrLess(_)
             | CombatRestriction::CantBeBlockedExceptBy(_)
-            | CombatRestriction::CanBlockAdditional(_) => None,
+            | CombatRestriction::CanBlockAdditional(_)
+            | CombatRestriction::MustBeBlockedByAllAble => None,
         }
     }
 
@@ -155,7 +185,8 @@ impl CombatRestriction {
             | CombatRestriction::CantBeBlockedBy(_)
             | CombatRestriction::CantBeBlockedByMoreThanOne
             | CombatRestriction::CantBeBlockedExceptBy(_)
-            | CombatRestriction::CanBlockAdditional(_) => None,
+            | CombatRestriction::CanBlockAdditional(_)
+            | CombatRestriction::MustBeBlockedByAllAble => None,
         }
     }
 
@@ -175,7 +206,8 @@ impl CombatRestriction {
             | CombatRestriction::CantBeBlocked
             | CombatRestriction::CantBeBlockedBy(_)
             | CombatRestriction::CantBeBlockedByMoreThanOne
-            | CombatRestriction::CantBeBlockedByPowerOrLess(_) => None,
+            | CombatRestriction::CantBeBlockedByPowerOrLess(_)
+            | CombatRestriction::MustBeBlockedByAllAble => None,
         }
     }
 
@@ -198,7 +230,8 @@ impl CombatRestriction {
             | CombatRestriction::CantBeBlockedBy(_)
             | CombatRestriction::CantBeBlockedByMoreThanOne
             | CombatRestriction::CantBeBlockedByPowerOrLess(_)
-            | CombatRestriction::CantBeBlockedExceptBy(_) => None,
+            | CombatRestriction::CantBeBlockedExceptBy(_)
+            | CombatRestriction::MustBeBlockedByAllAble => None,
         }
     }
 }
@@ -312,5 +345,31 @@ mod tests {
             CombatRestriction::CanBlockAdditional(1).forbidden_blocker_power(),
             None
         );
+    }
+
+    #[test]
+    fn issue_739_the_block_requirement_parses_as_a_bare_name_and_answers_nothing_else() {
+        // The requirement is a unit variant, so it is authored exactly as the unit
+        // restrictions beside it — and, like them, it answers none of the payload
+        // questions the parameterized members answer. What it *does* answer is asked of
+        // the whole declaration, not of this enum.
+        let json = r#"[{"schema_version":1,"functional_id":"must_be_blocked",
+            "name":"Must Be Blocked","types":["creature"],"mana_cost":"","power":1,"toughness":1,
+            "restrictions":["must_be_blocked_by_all_able","cant_be_blocked_by_more_than_one"]}]"#;
+        let db = crate::card::CardDatabase::from_json(json).unwrap();
+        let card = crate::card::tests::card_named(&db, "must_be_blocked");
+        assert_eq!(
+            card.restrictions,
+            vec![
+                CombatRestriction::MustBeBlockedByAllAble,
+                CombatRestriction::CantBeBlockedByMoreThanOne,
+            ]
+        );
+
+        let requirement = CombatRestriction::MustBeBlockedByAllAble;
+        assert_eq!(requirement.forbidden_blocker_color(), None);
+        assert_eq!(requirement.forbidden_blocker_power(), None);
+        assert_eq!(requirement.required_blocker_subtype(), None);
+        assert_eq!(requirement.additional_blocks(), None);
     }
 }

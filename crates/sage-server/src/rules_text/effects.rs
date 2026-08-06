@@ -83,14 +83,19 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             power,
             toughness,
             keywords,
+            restrictions,
         } => {
-            let numbers = format!("gets {power:+}/{toughness:+}");
-            let verbs = if keywords.is_empty() {
-                numbers
-            } else {
+            // One subject, one duration, and as many clauses as the card prints between
+            // them: the numbers, then any keywords gained, then any combat restriction
+            // imposed. Each is a predicate the target noun and "until end of turn" wrap,
+            // which is why they join as a list rather than as separate sentences.
+            let mut clauses = vec![format!("gets {power:+}/{toughness:+}")];
+            if !keywords.is_empty() {
                 let words: Vec<&str> = keywords.iter().map(|&kw| keyword_word(kw)).collect();
-                format!("{numbers} and gains {}", list_words(&words))
-            };
+                clauses.push(format!("gains {}", list_words(&words)));
+            }
+            clauses.extend(restrictions.iter().map(restriction_predicate));
+            let verbs = list_words(&clauses.iter().map(String::as_str).collect::<Vec<_>>());
             format!("{} {verbs} until end of turn", target_noun(*target))
         }
         Effect::GrantKeyword { target, keyword } => format!(

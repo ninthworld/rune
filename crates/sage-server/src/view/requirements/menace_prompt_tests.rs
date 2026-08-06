@@ -175,6 +175,38 @@ fn issue_606_pairwise_evasion_is_projected_as_candidates_not_as_prose() {
     );
 }
 
+/// A block **requirement** needs the words more than either count does, because what it
+/// rejects is a declaration that left something out — and the declaration a player who
+/// has not read the attacker is most likely to send is the empty one (CR 509.1c,
+/// issue #739).
+#[test]
+fn issue_739_a_block_requirement_is_named_in_the_slot_prompt() {
+    let db = CardDatabase::bundled().unwrap();
+    let (mut state, _) = combat_with_blockers(&db, "centaur_courser", &["sun_sentinel"]);
+    let required = sage_engine::declared_attackers(&state)[0];
+    let source = state.mint_id();
+    state.static_effects.push(sage_engine::StaticEffect {
+        source,
+        affects: sage_engine::EffectAffects::SpecificPermanent(required),
+        modification: sage_engine::Modification::GrantRestriction(
+            sage_engine::CombatRestriction::MustBeBlockedByAllAble,
+        ),
+        duration: sage_engine::Duration::UntilEndOfTurn,
+    });
+
+    let prompts: Vec<String> = blocker_requirements(&state, &db)
+        .into_iter()
+        .map(|r| r.prompt)
+        .collect();
+    assert!(
+        prompts
+            .iter()
+            .any(|p| p.contains("Centaur Courser")
+                && p.contains("every creature able to block it must")),
+        "the requirement reaches the player before the submit does: {prompts:?}"
+    );
+}
+
 /// A two-player combat parked at declare-blockers: `attacker` attacks alone and the
 /// defender controls one creature of each named card. Returns the state and the
 /// defender's permanents in the order they were named.
