@@ -440,6 +440,21 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         Effect::ExileGraveyard { player_ref } => {
             format!("exile {}'s graveyard", possessive_subject(*player_ref))
         }
+        Effect::ExileLibraryExceptBottom { target } => format!(
+            "exile all but the bottom card of {}'s library",
+            possessive_subject(*target)
+        ),
+        // CR 701.28a. The permanent turns over and is the same object, so the sentence is
+        // about the source and nothing else — there is no zone to name and nothing to
+        // say about what survives, because everything does.
+        Effect::TransformSelf => format!("transform {source}"),
+        // Two zone changes rather than a turn-over, and the sentence says so: a player
+        // reading it needs to know that what comes back is a new object, which is the
+        // difference between keeping a +1/+1 counter and losing it.
+        Effect::ExileSelfAndReturnTransformed => format!(
+            "exile {source}, then return it to the battlefield transformed under its \
+             owner's control"
+        ),
         Effect::PutOnTopOfLibrary { target } => {
             format!("put {} on top of its owner's library", target_noun(*target))
         }

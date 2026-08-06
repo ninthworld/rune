@@ -190,18 +190,19 @@ pub(crate) fn loyalty_timing_allows(state: &GameState, permanent: &Permanent) ->
 }
 
 /// Whether `permanent`'s controller could cast a sorcery right now — the timing an
-/// **equip** ability is bound by (CR 702.6b), and the half of CR 606.3
+/// **equip** ability is bound by (CR 702.6b), the timing an ability that prints
+/// `Activate only as a sorcery.` declares (CR 602.5d), and the half of CR 606.3
 /// [`loyalty_timing_allows`] shares.
 ///
-/// One expression of "sorcery speed, measured from the permanent's controller", so an
-/// equip and a loyalty activation cannot disagree about when that is. Measured from the
-/// *controller* rather than from whoever holds priority for the reason the loyalty gate
-/// is: an opponent holding priority in a main phase must not be able to equip through a
-/// window that is not theirs.
+/// One expression of "sorcery speed, measured from the permanent's controller", so the
+/// three cannot disagree about when that is. Measured from the *controller* rather than
+/// from whoever holds priority for the reason the loyalty gate is: an opponent holding
+/// priority in a main phase must not be able to act through a window that is not theirs.
 ///
-/// Unlike a loyalty ability there is no per-turn limit: an Equipment may be moved as
-/// many times in a main phase as its controller can pay for.
-pub(crate) fn equip_timing_allows(state: &GameState, permanent: &Permanent) -> bool {
+/// Unlike a loyalty ability there is no per-turn limit: an Equipment may be moved, and a
+/// sorcery-speed ability activated, as many times in a main phase as its controller can
+/// pay for.
+pub(crate) fn sorcery_timing_allows(state: &GameState, permanent: &Permanent) -> bool {
     sorcery_speed_for(state, permanent)
 }
 

@@ -155,9 +155,13 @@ legal — so a restriction beats a requirement, and a requirement no legal decla
 meet is simply not met, with no clause anywhere saying so. **Attack** requirements
 ("attacks each combat if able", CR 508.1d) remain unmodeled.
 
-**Not every permanent is a card** (ADR 0015). `Permanent.printed` is a `Printed` — a
-catalog `CardId`, or the `TokenData` an effect gave a token (CR 111) — and every read of a
-permanent's printed face goes through `Printed::face(db)`, which answers both. The one
+**Not every permanent is a card, and a card need not have one face** (ADR 0015, CR 712).
+`Permanent.printed` is a `Printed` — a catalog `CardId` *and which of its faces is up*, or
+the `TokenData` an effect gave a token (CR 111) — and every read of a
+permanent's printed face goes through `Printed::face(db)`, which answers all three. A
+`FunctionalId` names the **card**, never a face, so a two-faced card is one identity, one
+printing, and one row in the report; transforming changes that one field and nothing else,
+which is the whole of CR 712.a. The one
 accessor that crosses back to card identity, `Printed::card()`, returns `None` for a token,
 and that `None` is where CR 111.7 lives: a token leaving the battlefield has no
 `CardInstance` to put in the destination zone, so it is put nowhere and ceases to exist.

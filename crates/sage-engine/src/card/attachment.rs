@@ -314,6 +314,7 @@ mod tests {
                     same_color: true,
                     restriction: None,
                 }],
+                timing: crate::ability::ActivationTiming::AnyTime,
             }]
         );
         assert!(

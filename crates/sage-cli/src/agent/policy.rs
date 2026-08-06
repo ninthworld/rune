@@ -307,6 +307,7 @@ mod tests {
             keywords: vec![],
             card_types: Vec::new(),
             color_identity: Vec::new(),
+            other_face: None,
         }
     }
 
@@ -331,6 +332,7 @@ mod tests {
                 keywords: vec![],
                 card_types: Vec::new(),
                 color_identity: Vec::new(),
+                other_face: None,
             },
             tapped: false,
             attacking: false,

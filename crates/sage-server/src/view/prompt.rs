@@ -185,6 +185,9 @@ pub(crate) fn target_spec_prompt(spec: TargetSpec) -> String {
         TargetSpec::AnyEnchantment => "Choose target enchantment".to_string(),
         TargetSpec::AnyArtifactOrEnchantment => "Choose target artifact or enchantment".to_string(),
         TargetSpec::AnyLand => "Choose target land".to_string(),
+        TargetSpec::AnyCreatureOrPlaneswalker => {
+            "Choose target creature or planeswalker".to_string()
+        }
         TargetSpec::SpellOnStack => "Choose target spell".to_string(),
         TargetSpec::CreatureSpellOnStack => "Choose target creature spell".to_string(),
         TargetSpec::AnyTarget => "Choose any target".to_string(),

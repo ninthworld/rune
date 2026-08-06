@@ -92,8 +92,8 @@
     "blocker": "a spell chooses exactly one of between two and four printed modes as it is announced, and the chosen mode alone decides which effects resolve and which targets are asked for; no ability is modal, nothing chooses two modes or repeats one, and a mode carries no cost of its own"
   },
   {
-    "name": "Multi-face cards (transform, modal double-faced)",
-    "blocker": "the card model has a single face"
+    "name": "Modal double-faced cards, and melding",
+    "blocker": "a card has an ordered list of faces and a permanent turns over between them (CR 712), but the second face is only ever reached by transforming: it carries no mana cost, the catalog validator refuses one, and no announcement offers a card as anything but its front face — so a card whose two faces are two things you may cast is unwritable, and nothing combines two cards into one"
   },
   {
     "name": "Reflexive triggers, and conditional branches that choose a target",

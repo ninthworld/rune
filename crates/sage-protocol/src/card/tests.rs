@@ -50,6 +50,7 @@ fn permanent_combat_state_round_trips_and_elides_when_absent() {
             keywords: vec![],
             card_types: Vec::new(),
             color_identity: Vec::new(),
+            other_face: None,
         },
         tapped: false,
         attacking: false,
@@ -167,6 +168,7 @@ fn permanent_attachment_round_trips_and_elides_when_absent() {
             keywords: vec![],
             card_types: Vec::new(),
             color_identity: Vec::new(),
+            other_face: None,
         },
         tapped: false,
         attacking: false,
@@ -223,6 +225,7 @@ fn issue_153_card_keywords_round_trip_and_elide_when_absent() {
         keywords: vec!["flying".into()],
         card_types: Vec::new(),
         color_identity: Vec::new(),
+        other_face: None,
     };
     let json = serde_json::to_value(&base).unwrap();
     assert_eq!(json.get("keywords"), Some(&serde_json::json!(["flying"])));
@@ -330,6 +333,7 @@ fn issue_650_the_physical_card_round_trips_and_elides_on_both_projections() {
         keywords: vec![],
         card_types: Vec::new(),
         color_identity: Vec::new(),
+        other_face: None,
     };
     let permanent = Permanent {
         id: "perm_9".into(),
@@ -456,6 +460,7 @@ fn issue_650_two_copies_of_one_card_are_told_apart_by_the_physical_card_alone() 
             keywords: vec![],
             card_types: vec![CardType::Land],
             color_identity: Vec::new(),
+            other_face: None,
         },
         physical_card: Some(card.into()),
         tapped: false,
@@ -552,6 +557,7 @@ fn issue_550_a_multi_target_spell_entry_round_trips_in_order() {
             keywords: vec![],
             card_types: Vec::new(),
             color_identity: Vec::new(),
+            other_face: None,
         }),
     };
     let json = serde_json::to_string(&item).unwrap();
@@ -566,4 +572,85 @@ fn issue_550_a_multi_target_spell_entry_round_trips_in_order() {
     );
     assert_eq!(back.kind, Some(StackItemKind::Spell));
     assert_eq!(back.card.map(|c| c.name).as_deref(), Some("Twin Bolt"));
+}
+
+#[test]
+fn issue_747_the_other_face_round_trips_and_elides_when_absent() {
+    // `other_face` (CR 712) carries two facts: that there *is* another side, and what is
+    // on it. Both have to survive the wire, and neither may appear on a single-faced
+    // card — every existing view is byte-unchanged.
+    let single = CardView {
+        id: "card_1".into(),
+        name: "Onakke Ogre".into(),
+        type_line: "Creature — Ogre Warrior".into(),
+        mana_cost: Some("{2}{R}".into()),
+        rules_text: String::new(),
+        functional_id: "onakke_ogre".into(),
+        token: false,
+        power: Some("4".into()),
+        toughness: Some("2".into()),
+        loyalty: None,
+        keywords: vec![],
+        card_types: vec![CardType::Creature],
+        color_identity: Vec::new(),
+        other_face: None,
+    };
+    let wire = serde_json::to_string(&single).unwrap();
+    assert!(
+        !wire.contains("other_face"),
+        "a single-faced card says nothing about faces: {wire}"
+    );
+    assert_eq!(
+        serde_json::from_str::<CardView>(&wire).unwrap(),
+        single,
+        "and it round-trips unchanged"
+    );
+
+    // A two-faced card carries the side that is not up, and nothing that belongs to the
+    // card rather than to a face is restated on it.
+    let two_faced = CardView {
+        id: "card_2".into(),
+        name: "Nicol Bolas, the Ravager".into(),
+        type_line: "Legendary Creature — Elder Dragon".into(),
+        mana_cost: Some("{1}{U}{B}{R}".into()),
+        rules_text: "Flying".into(),
+        functional_id: "nicol_bolas_the_ravager".into(),
+        token: false,
+        power: Some("4".into()),
+        toughness: Some("4".into()),
+        loyalty: None,
+        keywords: vec!["flying".into()],
+        card_types: vec![CardType::Creature],
+        color_identity: vec![Color::Blue, Color::Black, Color::Red],
+        other_face: Some(Box::new(CardFace {
+            name: "Nicol Bolas, the Arisen".into(),
+            type_line: "Legendary Planeswalker — Bolas".into(),
+            // CR 712.4a: a back face has no mana cost, so the slot rides the wire absent.
+            mana_cost: None,
+            rules_text: "+2: Draw two cards.".into(),
+            power: None,
+            toughness: None,
+            loyalty: Some("7".into()),
+            keywords: vec![],
+            card_types: vec![CardType::Planeswalker],
+        })),
+    };
+    let wire = serde_json::to_string(&two_faced).unwrap();
+    assert!(wire.contains("other_face"));
+    assert!(
+        !wire.contains(r#""mana_cost":null"#),
+        "an absent cost is omitted, not sent as null: {wire}"
+    );
+    assert_eq!(
+        serde_json::from_str::<CardView>(&wire).unwrap(),
+        two_faced,
+        "both faces survive the wire"
+    );
+
+    // A payload from a server predating the field still deserializes, as no faces.
+    let older: CardView = serde_json::from_str(
+        r#"{"id":"card_3","name":"Forest","type_line":"Basic Land — Forest"}"#,
+    )
+    .unwrap();
+    assert_eq!(older.other_face, None);
 }

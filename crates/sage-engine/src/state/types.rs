@@ -68,7 +68,7 @@ impl LoggedPermanent {
         Self {
             permanent: perm.id,
             identity: match &perm.printed {
-                crate::token::Printed::Card(card) => LoggedIdentity::Card(*card),
+                crate::token::Printed::Card { card, .. } => LoggedIdentity::Card(*card),
                 crate::token::Printed::Token(token) => LoggedIdentity::Token(token.name.clone()),
             },
         }

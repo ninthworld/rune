@@ -12,7 +12,7 @@
 
 use sage_engine::{
     abilities_of, apply_action, valid_actions, Action, CardDatabase, CardId, CardInstance, Color,
-    FunctionalId, GameState, Permanent, PermanentId, PlayerId, Printed, Step,
+    FunctionalId, GameState, Permanent, PermanentId, PlayerId, Step,
 };
 
 // ----- fixtures -------------------------------------------------------------
@@ -53,7 +53,7 @@ fn to_battlefield(
     state.battlefield.push(Permanent {
         id,
         instance: instance.id,
-        printed: Printed::Card(instance.card),
+        printed: instance.card.into(),
         controller: seat,
         entered_turn: 0,
         ..Default::default()

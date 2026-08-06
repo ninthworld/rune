@@ -22,14 +22,15 @@
 //! Legal Considerations).
 
 use sage_engine::{
-    equip_ability, Ability, ActivatorScope, AdditionalCost, Attachment, AttachmentKind, CardData,
-    CardFilter, CardType, Chooser, Color, CombatRestriction, Condition, Cost, CostModification,
-    CountScope, CounterKind, DamageCharacteristic, DamageSubject, DerivedAmount, DestroyAffects,
-    Effect, EnteringFilter, FoundDestination, GraveyardCardClass, GraveyardScope, Keyword,
-    ManaRestriction, MassAffects, NamedCardClass, ObservedPermanent, ObservedSpell, PermanentCount,
-    PlayerModification, PlayerRef, ReplacementEffect, SacrificeCount, SpellMode, SpellTrait,
-    StaticAffects, StaticCondition, StaticModification, TargetCount, TargetSpec, TokenData,
-    TriggerCondition, TriggerStep, TurnScope,
+    equip_ability, Ability, ActivationTiming, ActivatorScope, AdditionalCost, Attachment,
+    AttachmentKind, BackFace, CardData, CardFilter, CardType, Chooser, Color, CombatRestriction,
+    Condition, Cost, CostModification, CountScope, CounterKind, DamageCharacteristic,
+    DamageSubject, DerivedAmount, DestroyAffects, Effect, EnteringFilter, FoundDestination,
+    GraveyardCardClass, GraveyardScope, Keyword, ManaRestriction, MassAffects, NamedCardClass,
+    ObservedPermanent, ObservedSpell, PermanentCount, PlayerModification, PlayerRef,
+    ReplacementEffect, SacrificeCount, SpellMode, SpellTrait, StaticAffects, StaticCondition,
+    StaticModification, TargetCount, TargetSpec, TokenData, TriggerCondition, TriggerStep,
+    TurnScope,
 };
 
 mod effects;
@@ -54,22 +55,9 @@ pub(crate) use words::*;
 #[must_use]
 pub(crate) fn rules_text(data: &CardData, scripted: Option<&str>) -> String {
     let source = data.name.as_str();
-    let mut lines: Vec<String> = Vec::new();
-
-    if !data.keywords.is_empty() {
-        let words: Vec<&str> = data.keywords.iter().map(|&kw| keyword_word(kw)).collect();
-        lines.push(sentence_case(&words.join(", ")));
-    }
-
-    // A printed combat restriction is not a keyword, so it gets its own sentence about
-    // the card rather than a word in the keyword line: "Bristling Boar can't be blocked
-    // by more than one creature."
-    for restriction in &data.restrictions {
-        lines.push(finish(&format!(
-            "{source} {}",
-            restriction_predicate(restriction)
-        )));
-    }
+    // The keyword line and the printed restriction sentences come first, exactly as they
+    // do for a token and for a back face — one builder, so the three cannot drift.
+    let mut lines: Vec<String> = face_lines(source, &data.keywords, &data.restrictions, &[]);
 
     // An additional cast cost is stated *before* what the spell does, because that is
     // the order it happens in: it is paid while the spell is cast (CR 601.2b), and a
@@ -164,6 +152,54 @@ fn spell_trait_text(source: &str, declared: SpellTrait) -> String {
     }
 }
 
+/// Generate the rules text of a card's **back face** (CR 712.2), from the same clause
+/// builders and in the same clause order its front face's text is composed with.
+///
+/// Shorter than [`rules_text`] for structural reasons rather than by choice, exactly as
+/// [`token_rules_text`] is: a back face is never cast, so it has no additional cast cost
+/// and no spell ability to describe; it carries no attachment block; and the scripted
+/// tier is keyed to the card rather than to a face, so a scripted card states its text
+/// once, on the front.
+#[must_use]
+pub(crate) fn back_face_rules_text(face: &BackFace) -> String {
+    face_lines(
+        &face.name,
+        &face.keywords,
+        &face.restrictions,
+        &face.abilities,
+    )
+    .join("\n")
+}
+
+/// The three clauses every face has — the keyword line, one sentence per printed combat
+/// restriction, and one per ability — in the order a card prints them.
+///
+/// Written once because three callers need exactly it: a card's front face, its back
+/// face, and a token. Each of those then adds whatever else it has, and none of them can
+/// disagree with the others about how a keyword line or an ability sentence is built.
+fn face_lines(
+    source: &str,
+    keywords: &[Keyword],
+    restrictions: &[CombatRestriction],
+    abilities: &[Ability],
+) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    if !keywords.is_empty() {
+        let words: Vec<&str> = keywords.iter().map(|&kw| keyword_word(kw)).collect();
+        lines.push(sentence_case(&words.join(", ")));
+    }
+    for restriction in restrictions {
+        lines.push(finish(&format!(
+            "{source} {}",
+            restriction_predicate(restriction)
+        )));
+    }
+    for ability in abilities {
+        lines.push(ability_text(source, ability));
+    }
+    lines
+}
+
 /// Generate the rules text of a **token** (CR 111.3), from the characteristics the
 /// effect that created it gave it.
 ///
@@ -175,24 +211,13 @@ fn spell_trait_text(source: &str, declared: SpellTrait) -> String {
 /// abilities remain.
 #[must_use]
 pub(crate) fn token_rules_text(token: &TokenData) -> String {
-    let source = token.name.as_str();
-    let mut lines: Vec<String> = Vec::new();
-
-    if !token.keywords.is_empty() {
-        let words: Vec<&str> = token.keywords.iter().map(|&kw| keyword_word(kw)).collect();
-        lines.push(sentence_case(&words.join(", ")));
-    }
-    for restriction in &token.restrictions {
-        lines.push(finish(&format!(
-            "{source} {}",
-            restriction_predicate(restriction)
-        )));
-    }
-    for ability in &token.abilities {
-        lines.push(ability_text(source, ability));
-    }
-
-    lines.join("\n")
+    face_lines(
+        &token.name,
+        &token.keywords,
+        &token.restrictions,
+        &token.abilities,
+    )
+    .join("\n")
 }
 
 /// One ability as a sentence. `source` is the name of the object the ability is on —
@@ -201,10 +226,21 @@ pub(crate) fn token_rules_text(token: &TokenData) -> String {
 /// button and the printed text can never disagree.
 pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
     match ability {
-        Ability::Activated { cost, effects } => {
+        Ability::Activated {
+            cost,
+            effects,
+            timing,
+        } => {
             let costs: Vec<String> = cost.iter().map(cost_symbol).collect();
+            // CR 602.5d: the timing restriction is a second sentence on the same line,
+            // exactly as a printed card sets it — the cost and effect first, then the
+            // window it may be used in.
+            let restriction = match timing {
+                ActivationTiming::AnyTime => "",
+                ActivationTiming::SorcerySpeed => " Activate only as a sorcery.",
+            };
             format!(
-                "{}: {}",
+                "{}: {}{restriction}",
                 costs.join(", "),
                 finish(&clauses(source, effects))
             )

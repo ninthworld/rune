@@ -27,15 +27,17 @@ use sage_engine::{
 };
 
 use crate::rules_text::{
-    ability_text, effects_description, optional_effect_question, rules_text, token_rules_text,
+    ability_text, back_face_rules_text, effects_description, optional_effect_question, rules_text,
+    token_rules_text,
 };
 use sage_protocol::{
-    ActionDestination, CardType, CardView, ChooseAction, CommanderDamage as CommanderDamageView,
-    CommanderIdentity as CommanderIdentityView, CommanderTax as CommanderTaxView, Counter,
-    Emblem as EmblemView, GameLogEntry, GameLogEvent, GameOverReason, GameResult as GameResultView,
-    GameView, LogBlock, LogDamageTarget, LogEntity, ManaOption, MaximumHandSize, NumberValue,
-    OpponentView, Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, SpectatorView,
-    StackItem, StackItemKind, StackTarget, TargetChoice, TargetRequirement, ValidAction, ZonePile,
+    ActionDestination, CardFace, CardType, CardView, ChooseAction,
+    CommanderDamage as CommanderDamageView, CommanderIdentity as CommanderIdentityView,
+    CommanderTax as CommanderTaxView, Counter, Emblem as EmblemView, GameLogEntry, GameLogEvent,
+    GameOverReason, GameResult as GameResultView, GameView, LogBlock, LogDamageTarget, LogEntity,
+    ManaOption, MaximumHandSize, NumberValue, OpponentView, Permanent as PermanentView, Phase,
+    Prompt, PromptOption, SelfView, SpectatorView, StackItem, StackItemKind, StackTarget,
+    TargetChoice, TargetRequirement, ValidAction, ZonePile,
 };
 
 mod actions;

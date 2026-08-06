@@ -273,6 +273,7 @@ fn game_view_round_trips_through_json() {
             keywords: vec![],
             card_types: Vec::new(),
             color_identity: Vec::new(),
+            other_face: None,
         }],
         me: SelfView {
             life: 18,
@@ -312,6 +313,7 @@ fn game_view_round_trips_through_json() {
                 keywords: vec!["flying".into()],
                 card_types: Vec::new(),
                 color_identity: Vec::new(),
+                other_face: None,
             },
             tapped: true,
             attacking: false,
@@ -472,6 +474,7 @@ fn issue_372_command_zone_pile_round_trips_with_its_commander() {
             keywords: vec![],
             card_types: Vec::new(),
             color_identity: Vec::new(),
+            other_face: None,
         }],
     }];
     let json = serde_json::to_value(&view).unwrap();
@@ -1320,6 +1323,7 @@ fn issue_604_revealed_cards_ride_the_view_only_while_something_is_showing_them()
         keywords: Vec::new(),
         card_types: Vec::new(),
         color_identity: Vec::new(),
+        other_face: None,
     }];
     let json = serde_json::to_value(&view).unwrap();
     assert_eq!(json["revealed"][0]["id"], serde_json::json!("card_9"));

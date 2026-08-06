@@ -192,6 +192,7 @@ mod tests {
                     keywords: vec![],
                     card_types: Vec::new(),
                     color_identity: Vec::new(),
+                    other_face: None,
                 }),
             }],
             graveyards: vec![],

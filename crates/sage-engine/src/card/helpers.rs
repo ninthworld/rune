@@ -2,6 +2,7 @@
 
 use super::attachment::AttachmentKind;
 use super::database::CardDatabase;
+use super::face::Face;
 use crate::ability::{Ability, Cost, Effect};
 use crate::id::CardId;
 use crate::scripted::scripted_abilities;
@@ -18,12 +19,33 @@ use crate::state::Permanent;
 /// and labelled by exactly the code an authored `{2}: …` goes through.
 #[must_use]
 pub fn abilities_of(db: &CardDatabase, card: CardId) -> Vec<crate::ability::Ability> {
+    abilities_of_face(db, card, Face::Front)
+}
+
+/// All abilities of **one face** of a card (CR 712.4b) — the face-aware form of
+/// [`abilities_of`], and the one a battlefield object reads.
+///
+/// A permanent has only the abilities printed on the face that is up: a transforming
+/// creature that has turned over loses its front face's activation and gains its back
+/// face's loyalty abilities, because those are two different faces' printed text and
+/// nothing about the object carries the other one.
+///
+/// The two tiers that are *not* face-scoped stay unioned in either case, and both are
+/// keyed to the card rather than to a face: the equip ability derived from an
+/// `attachment` block (which only a front face can author) and the code tier
+/// [`crate::scripted`] keys on the card's authored identity.
+#[must_use]
+pub fn abilities_of_face(
+    db: &CardDatabase,
+    card: CardId,
+    face: Face,
+) -> Vec<crate::ability::Ability> {
     let Some(data) = db.card(card) else {
         // An unknown handle has no data tier, and the code tier is keyed on the authored
         // identity this handle would have resolved to — so there is nothing to union.
         return Vec::new();
     };
-    let mut abilities = data.abilities.clone();
+    let mut abilities = data.face_abilities(face).to_vec();
     abilities.extend(equip_ability(data));
     abilities.extend(scripted_abilities(&data.functional_id));
     abilities
@@ -56,6 +78,9 @@ pub fn equip_ability(data: &super::CardData) -> Option<Ability> {
         effects: vec![Effect::Attach {
             target: attachment.attach_to,
         }],
+        // CR 702.6b's sorcery timing is derived from the ability *being* an equip
+        // ability, not authored — so the printed-text field stays at its default here.
+        timing: crate::ability::ActivationTiming::AnyTime,
     })
 }
 
@@ -119,7 +144,9 @@ pub(crate) fn stored_abilities_of_permanent(
 /// token wrote down (ADR 0015).
 fn printed_abilities_of(db: &CardDatabase, perm: &Permanent) -> Vec<crate::ability::Ability> {
     match &perm.printed {
-        crate::token::Printed::Card(card) => abilities_of(db, *card),
+        // CR 712.4b: only the face that is up is read, so a permanent that has
+        // transformed offers exactly its back face's abilities and none of its front's.
+        crate::token::Printed::Card { card, face } => abilities_of_face(db, *card, *face),
         crate::token::Printed::Token(token) => token.abilities.clone(),
     }
 }
@@ -481,6 +508,7 @@ mod tests {
                     color: Color::Green,
                     amount: 1,
                 }],
+                timing: crate::ability::ActivationTiming::AnyTime,
             }]
         );
         assert!(crate::ability::is_mana_ability(&elves.abilities[0]));
@@ -499,6 +527,7 @@ mod tests {
             vec![Ability::Activated {
                 cost: vec![Cost::Tap],
                 effects: vec![Effect::AddColorlessMana { amount: 1 }],
+                timing: crate::ability::ActivationTiming::AnyTime,
             }]
         );
         assert!(crate::ability::is_mana_ability(&lodestone.abilities[0]));

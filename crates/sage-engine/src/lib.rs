@@ -46,13 +46,14 @@ mod zone;
 
 pub use ability::{
     activation_taps, group_target_counts, is_emblem_ability, is_equip_ability,
-    is_graveyard_ability, is_loyalty_ability, is_mana_ability, maximum_targets, minimum_targets,
-    target_counts, Ability, ActivatorScope, CardFilter, Chooser, Condition, Cost, CostModification,
-    CountScope, DamageSubject, DerivedAmount, DestroyAffects, Effect, FoundDestination,
-    GraveyardCardClass, GraveyardScope, ManaRestriction, MassAffects, ObservedActivation,
-    ObservedPermanent, ObservedSpell, PermanentCount, PlayerModification, PlayerRef,
-    SacrificeCount, StaticAffects, StaticCondition, StaticModification, Target, TargetCount,
-    TargetGroup, TargetSpec, TriggerCondition, TriggerStep, TurnScope,
+    is_graveyard_ability, is_loyalty_ability, is_mana_ability, is_sorcery_speed_ability,
+    maximum_targets, minimum_targets, target_counts, Ability, ActivationTiming, ActivatorScope,
+    CardFilter, Chooser, Condition, Cost, CostModification, CountScope, DamageSubject,
+    DerivedAmount, DestroyAffects, Effect, FoundDestination, GraveyardCardClass, GraveyardScope,
+    ManaRestriction, MassAffects, ObservedActivation, ObservedPermanent, ObservedSpell,
+    PermanentCount, PlayerModification, PlayerRef, SacrificeCount, StaticAffects, StaticCondition,
+    StaticModification, Target, TargetCount, TargetGroup, TargetSpec, TriggerCondition,
+    TriggerStep, TurnScope,
 };
 pub use actions::{
     activation_discard_cost, activation_exile_cost, activation_sacrifice_cost,
@@ -65,10 +66,10 @@ pub use actions::{
 pub use apply::apply_action;
 pub use automation::{forced_declaration_without_choice, priority_has_no_meaningful_action};
 pub use card::{
-    abilities_of, abilities_of_permanent, equip_ability, AdditionalCost, Attachment,
-    AttachmentKind, CardData, CardDatabase, CatalogError, CombatRestriction, DamageCharacteristic,
-    Keyword, Printing, PrintingDatabase, Rarity, RuleModification, SpellMode, SpellTrait,
-    SCHEMA_VERSION,
+    abilities_of, abilities_of_face, abilities_of_permanent, equip_ability, AdditionalCost,
+    Attachment, AttachmentKind, BackFace, CardData, CardDatabase, CatalogError, CombatRestriction,
+    DamageCharacteristic, Face, Keyword, Printing, PrintingDatabase, Rarity, RuleModification,
+    SpellMode, SpellTrait, SCHEMA_VERSION,
 };
 pub use card_type::{CardType, Supertype};
 pub use catalog::{Violation, MAX_MODES};

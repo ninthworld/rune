@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (235)
+## Supported cards (236)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -153,6 +153,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `murder` | Murder | functional definition |
 | `mystic_archaeologist` | Mystic Archaeologist | functional definition |
 | `naturalize` | Naturalize | functional definition |
+| `nicol_bolas_the_ravager` | Nicol Bolas, the Ravager | functional definition |
 | `nightmare_s_thirst` | Nightmare's Thirst | functional definition |
 | `novice_knight` | Novice Knight | functional definition |
 | `oakenform` | Oakenform | functional definition |
@@ -275,8 +276,8 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Kicker and other optional additional costs | no optional cost declared on announcement |
 | Losing abilities on a targeted permanent | a printed static ability may take all abilities from a class of permanents, and an until-end-of-turn removal names its own source and may lose named keywords; nothing takes abilities from a permanent an effect *targeted*, and no removal reaching another permanent has a duration shorter than its source's presence |
 | Mana filtering | mana is produced and spent, never converted; nothing changes the colour of mana already in a pool |
+| Modal double-faced cards, and melding | a card has an ordered list of faces and a permanent turns over between them (CR 712), but the second face is only ever reached by transforming: it carries no mana cost, the catalog validator refuses one, and no announcement offers a card as anything but its front face — so a card whose two faces are two things you may cast is unwritable, and nothing combines two cards into one |
 | Modes beyond one chosen from a spell's printed list | a spell chooses exactly one of between two and four printed modes as it is announced, and the chosen mode alone decides which effects resolve and which targets are asked for; no ability is modal, nothing chooses two modes or repeats one, and a mode carries no cost of its own |
-| Multi-face cards (transform, modal double-faced) | the card model has a single face |
 | Optional costs paid with anything but mana | an optional effect's cost is a mana payment; sacrificing, discarding, or exiling to pay is unwritable |
 | Playing a card from a zone other than the hand, the command zone, or a permitted graveyard | a graveyard is reached three ways — a one-turn permission to cast from it, a continuous permission to play lands from it, and an activated or triggered ability that returns its own card out of it — but no other zone is reached at all: no per-turn exile permission, nothing played off the top of a library, no way to cast without paying a mana cost, and no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure) |
 | Protection | there is no protection layer: nothing stops a spell, a block, an aura, or damage by a quality the way CR 702.16 does |

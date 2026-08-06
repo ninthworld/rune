@@ -261,6 +261,7 @@ mod tests {
                     color: crate::mana::Color::White,
                     amount: 1,
                 }],
+                timing: crate::ability::ActivationTiming::AnyTime,
             }],
         );
     }

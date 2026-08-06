@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { ZodType } from 'zod'
 
-import { CatalogView, GameView, LobbyView, SpectatorView } from './protocol'
+import { CardView, CatalogView, GameView, LobbyView, SpectatorView } from './protocol'
 
 const FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -101,6 +101,43 @@ describe('wire conventions the client depends on', () => {
     for (const target of targets) {
       expect(['player', 'permanent', 'card', 'stack']).toContain(target.kind)
     }
+  })
+
+  it("carries a two-faced card's other face, and nothing for a single-faced one", () => {
+    // CR 712: the fields on `CardView` describe the face that is **up**; `other_face`
+    // describes the one that is not. Its presence is the statement that there is another
+    // side (the board's state mark), and its contents are what the preview turns over to
+    // show — neither is something the client could work out.
+    const twoFaced = CardView.parse({
+      id: 'card_1',
+      name: 'Nicol Bolas, the Ravager',
+      type_line: 'Legendary Creature — Elder Dragon',
+      mana_cost: '{1}{U}{B}{R}',
+      functional_id: 'nicol_bolas_the_ravager',
+      power: '4',
+      toughness: '4',
+      card_types: ['creature'],
+      other_face: {
+        name: 'Nicol Bolas, the Arisen',
+        type_line: 'Legendary Planeswalker — Bolas',
+        rules_text: '+2: Draw two cards.',
+        loyalty: '7',
+        card_types: ['planeswalker'],
+      },
+    })
+    expect(twoFaced.other_face?.name).toBe('Nicol Bolas, the Arisen')
+    // A back face has no mana cost (CR 712.4a), so the title band's trailing slot is
+    // simply empty — the mirror reports the absence rather than inventing a value.
+    expect(twoFaced.other_face?.mana_cost).toBeUndefined()
+    expect(twoFaced.other_face?.loyalty).toBe('7')
+
+    // A single-faced card says nothing about faces, which is every card but one.
+    const single = CardView.parse({
+      id: 'card_2',
+      name: 'Onakke Ogre',
+      type_line: 'Creature — Ogre Warrior',
+    })
+    expect(single.other_face).toBeUndefined()
   })
 
   it('tolerates a field a newer server added', () => {

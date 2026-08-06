@@ -492,6 +492,42 @@ pub(crate) fn apply_effect(
                 }
             }
         }
+        // The library counterpart, and the one place a hidden zone is emptied wholesale.
+        // The bottom card is the first element (the top is the last, as everywhere else),
+        // so what is exiled is everything after it — in library order, so the exile pile
+        // reads bottom-upward exactly as the library did.
+        Effect::ExileLibraryExceptBottom { target } => {
+            for seat in non_targeting_subjects(state, *target, controller) {
+                if let Some(player) = state.players.get_mut(seat.0) {
+                    if player.library.len() > 1 {
+                        let cards: Vec<_> = player.library.drain(1..).collect();
+                        player.exile.extend(cards);
+                    }
+                }
+            }
+        }
+        // CR 701.28a: the permanent turns over. Nothing else about it changes, which is
+        // CR 712.a in one line — the object keeps its id, its counters, its damage, its
+        // attachments, and its combat state, because none of them is where the face is.
+        Effect::TransformSelf => {
+            if let Some(id) = permanent_source {
+                if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
+                    perm.printed.transform(db);
+                }
+            }
+        }
+        // Exile the source and bring it back on its other face. Two zone changes, so the
+        // permanent that arrives is a new object (CR 400.7) with a fresh id and its back
+        // face's starting loyalty — the exile is what makes it *return* rather than turn
+        // over, and both halves use the seams every other exile and arrival use.
+        //
+        // The source is looked up now, on resolution: a permanent that has already left
+        // leaves nothing to exile, and the ability resolves and does nothing (CR 608.2).
+        Effect::ExileSelfAndReturnTransformed => {
+            if let Some(id) = permanent_source {
+                state.exile_and_return_transformed(id, db);
+            }
+        }
     }
 }
 

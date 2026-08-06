@@ -474,10 +474,25 @@ pub(crate) fn apply_targeted_effect(
         // A card returning itself out of a graveyard names its own source, never a
         // chosen one (CR 115.1), so it too is applied by [`apply_effect`].
         | Effect::ReturnSelfFromGraveyard { .. }
+        // Turning a permanent over names its own source too, by either road.
+        | Effect::TransformSelf
+        | Effect::ExileSelfAndReturnTransformed
         | Effect::PutCountersOnSelf { .. } => {}
         // "Target player's graveyard": the targeting form of the same verb, routed here
         // for the reason a targeted mill is — the reference chose a seat, and this is
         // where a chosen seat arrives.
+        // "Target player's library": the same shape one line down, and the same reason.
+        // The bottom card is the first element, so everything after it is exiled.
+        Effect::ExileLibraryExceptBottom { .. } => {
+            if let Target::Player(seat) = target {
+                if let Some(player) = state.players.get_mut(seat.0) {
+                    if player.library.len() > 1 {
+                        let cards: Vec<_> = player.library.drain(1..).collect();
+                        player.exile.extend(cards);
+                    }
+                }
+            }
+        }
         Effect::ExileGraveyard { .. } => {
             if let Target::Player(seat) = target {
                 if let Some(player) = state.players.get_mut(seat.0) {

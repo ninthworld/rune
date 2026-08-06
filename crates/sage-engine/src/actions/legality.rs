@@ -16,8 +16,8 @@ use super::definition::{Action, Attack, Block, DamageOrder};
 use super::generation::valid_actions;
 use super::targeting::action_target_groups;
 use super::utilities::{
-    all_unique, equip_timing_allows, graveyard_ability, graveyard_cost_payable,
-    loyalty_cost_is_payable, loyalty_timing_allows, tap_cost_is_summoning_sick,
+    all_unique, graveyard_ability, graveyard_cost_payable, loyalty_cost_is_payable,
+    loyalty_timing_allows, sorcery_timing_allows, tap_cost_is_summoning_sick,
 };
 
 /// Whether `action` — including any targets it carries — is legal against the
@@ -135,11 +135,12 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         if !loyalty_activation_is_legal(state, db, *permanent, *index) {
             return false;
         }
-        // 1e-bis. Hardening (CR 702.6b, issue #728): equip is a sorcery-speed activation.
-        //     Check 1 already withholds the offer; this re-derives the timing from
-        //     current state so a stale or forged action id can never move an Equipment
+        // 1e-bis. Hardening (CR 702.6b, CR 602.5d): equip is a sorcery-speed activation,
+        //     and so is any ability whose printed text says so. Check 1 already withholds
+        //     the offer; this re-derives the timing from current state so a stale or
+        //     forged action id can never move an Equipment or turn a permanent over
         //     during combat, on an opponent's turn, or in response to a spell.
-        if !equip_activation_is_legal(state, db, *permanent, *index) {
+        if !sorcery_speed_activation_is_legal(state, db, *permanent, *index) {
             return false;
         }
     }
@@ -311,15 +312,17 @@ fn loyalty_activation_is_legal(
         })
 }
 
-/// Whether activating ability `index` of `permanent` satisfies CR 702.6b, the one timing
-/// rule an **equip** ability has and no other activated ability does: it is activated only
-/// when its controller could cast a sorcery ([`equip_timing_allows`]).
+/// Whether activating ability `index` of `permanent` satisfies the **sorcery-speed**
+/// restriction it is under: CR 702.6b for an equip ability, which implies it, and
+/// CR 602.5d for an ability whose printed text declares it
+/// ([`ActivationTiming::SorcerySpeed`](crate::ActivationTiming)). Both are
+/// [`sorcery_timing_allows`].
 ///
-/// `false` for a permanent that is not on the battlefield — a stale id names no Equipment
-/// to move. `true` for an index that is not an equip ability: there is nothing to attach,
-/// so this gate has nothing to say about it. The exact shape
+/// `false` for a permanent that is not on the battlefield — a stale id names no source to
+/// act with. `true` for an index under neither rule: there is no window to restrict, so
+/// this gate has nothing to say about it. The exact shape
 /// [`loyalty_activation_is_legal`] uses.
-fn equip_activation_is_legal(
+fn sorcery_speed_activation_is_legal(
     state: &GameState,
     db: &CardDatabase,
     permanent: PermanentId,
@@ -329,8 +332,14 @@ fn equip_activation_is_legal(
         return false;
     };
     match abilities_of_permanent(state, db, perm).get(index) {
-        Some(ability) if crate::ability::is_equip_ability(ability) => {
-            equip_timing_allows(state, perm)
+        // The authored `Activate only as a sorcery.` rides the same gate: it is the same
+        // question about the same window, so an ability that says it and an equip
+        // ability that implies it are answered by one expression (CR 602.5d, CR 702.6b).
+        Some(ability)
+            if crate::ability::is_equip_ability(ability)
+                || crate::ability::is_sorcery_speed_ability(ability) =>
+        {
+            sorcery_timing_allows(state, perm)
         }
         _ => true,
     }
@@ -342,7 +351,7 @@ fn equip_activation_is_legal(
 /// of their pool ([`graveyard_cost_payable`]).
 ///
 /// The exact shape [`activation_clears_summoning_sickness`] and
-/// [`equip_activation_is_legal`] use, over a card in a zone rather than a permanent —
+/// [`sorcery_speed_activation_is_legal`] use, over a card in a zone rather than a permanent —
 /// which is the whole reason it exists separately. `false` for a card that is not in the
 /// graveyard: a stale id names nothing to activate, and asking the battlefield about it
 /// would find nothing either, silently.

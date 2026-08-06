@@ -1050,3 +1050,70 @@ fn issue_729_a_control_change_files_the_permanent_under_its_new_seat() {
         "and the board is the same board from either seat"
     );
 }
+
+/// A card with **two faces** (CR 712) projects the face that is **up**, plus enough to
+/// render the other one (issue #747, `docs/client-design.md` §6.7).
+///
+/// The two directions are the point: a card in a zone shows its front and carries its
+/// back, and a permanent that has transformed shows its back and carries its *front*.
+/// A client draws whichever it is told is up without knowing which is which.
+#[test]
+fn issue_747_a_two_faced_card_projects_the_up_face_and_carries_the_other() {
+    let db = CardDatabase::bundled().unwrap();
+    let bolas = fixture("nicol_bolas_the_ravager");
+
+    // In a zone: the front face is up.
+    let front = card_view("card_1".to_string(), bolas, &db);
+    assert_eq!(front.name, "Nicol Bolas, the Ravager");
+    assert_eq!(front.mana_cost.as_deref(), Some("{1}{U}{B}{R}"));
+    assert_eq!(front.card_types, vec![sage_protocol::CardType::Creature]);
+    let back = front
+        .other_face
+        .as_deref()
+        .expect("the other face is carried");
+    assert_eq!(back.name, "Nicol Bolas, the Arisen");
+    assert_eq!(
+        back.mana_cost, None,
+        "a back face has no mana cost, so the title band's trailing slot is empty"
+    );
+    assert_eq!(back.loyalty.as_deref(), Some("7"));
+    assert_eq!(back.card_types, vec![sage_protocol::CardType::Planeswalker]);
+    assert!(back.rules_text.contains("Draw two cards"));
+
+    // On the battlefield, transformed: the back face is up and the front is carried.
+    let mut state = GameState::new_two_player();
+    let id = put_permanent(&mut state, bolas, PlayerId(0), false, false);
+    let perm = state.battlefield.iter_mut().find(|p| p.id == id).unwrap();
+    perm.printed = sage_engine::Printed::Card {
+        card: bolas,
+        face: sage_engine::Face::Back,
+    };
+    perm.counters.insert(sage_engine::CounterKind::Loyalty, 7);
+    let perm = state.battlefield.iter().find(|p| p.id == id).unwrap();
+
+    let view = permanent_card_view(&state, perm, &db);
+    assert_eq!(view.name, "Nicol Bolas, the Arisen");
+    assert_eq!(view.mana_cost, None);
+    assert_eq!(view.card_types, vec![sage_protocol::CardType::Planeswalker]);
+    assert_eq!(
+        view.functional_id, "nicol_bolas_the_ravager",
+        "identity names the card, not a face"
+    );
+    assert!(!view.token);
+    let other = view
+        .other_face
+        .as_deref()
+        .expect("the front face is carried");
+    assert_eq!(other.name, "Nicol Bolas, the Ravager");
+    assert_eq!(other.mana_cost.as_deref(), Some("{1}{U}{B}{R}"));
+    assert_eq!(other.power.as_deref(), Some("4"));
+
+    // Colour identity is a fact about the whole card, so both projections agree.
+    assert_eq!(front.color_identity, view.color_identity);
+    assert!(!view.color_identity.is_empty());
+
+    // A single-faced card carries nothing, so every existing view is unchanged.
+    assert!(card_view("card_2".to_string(), fixture("onakke_ogre"), &db)
+        .other_face
+        .is_none());
+}

@@ -3,12 +3,14 @@
 use serde::Deserialize;
 
 use super::attachment::{Attachment, AttachmentKind};
+use super::face::{BackFace, Face};
 use super::keyword::Keyword;
 use super::restriction::CombatRestriction;
 use crate::ability::{Ability, Effect, TargetSpec};
 use crate::card_type::{CardType, Supertype};
 use crate::id::FunctionalId;
 use crate::mana::Color;
+use crate::token::PrintedFace;
 
 /// One functional definition: the static, printing-independent rules object for a
 /// card (ADR 0008 §2).
@@ -17,6 +19,13 @@ use crate::mana::Color;
 /// battlefield identity, and no per-game state — those live on
 /// [`crate::GameState`]. Current characteristics (after continuous effects) are
 /// computed by the layer system, never stored here.
+///
+/// **It is also the card's front face** (CR 712.2). A card has an ordered list of faces
+/// — [`Self::faces`] — and for almost every card that list has one entry, which is this
+/// object. A transforming double-faced card authors its second face under
+/// [`Self::back_face`], and the identity above stays the *card's*: one
+/// [`FunctionalId`], one printing, one row in the compatibility report, exactly as a
+/// real set prints one card.
 ///
 /// `deny_unknown_fields` is what keeps the schema *functional*: an upstream
 /// presentation asset — `flavor_text`, `image_uris`, `artist`, a frame or watermark
@@ -161,6 +170,20 @@ pub struct CardData {
     /// combat-declaration gates read.
     #[serde(default)]
     pub restrictions: Vec<CombatRestriction>,
+    /// The card's **back face**, for a transforming double-faced card (CR 712.2);
+    /// `None` for every single-faced card, which is nearly all of them.
+    ///
+    /// Its presence is the whole of what makes a card two-faced: [`Self::faces`] lists
+    /// two positions instead of one, a permanent of this card may be turned over
+    /// ([`Effect::TransformSelf`](crate::Effect)), and the projection carries the other
+    /// side so a client can show it. Absent, nothing anywhere behaves differently — a
+    /// single-faced card is not a special case of a two-faced one, it is the same code
+    /// with [`Face::Front`] the only position there is.
+    ///
+    /// Boxed because it is `None` on 99% of the catalog and [`CardData`] is held by
+    /// value in the interned card list; a rare face should not widen every card.
+    #[serde(default)]
+    pub back_face: Option<Box<BackFace>>,
     /// Whether this card's behavior is (also) defined in code rather than data
     /// (ADR 0008 §2; the escape hatch of ADR 0003).
     ///
@@ -180,6 +203,59 @@ impl CardData {
     #[must_use]
     pub fn type_line(&self) -> String {
         crate::card_type::render_type_line(&self.supertypes, &self.types, &self.subtypes)
+    }
+
+    /// This card's faces in printed order (CR 712.2): `[Front]` for a single-faced
+    /// card, `[Front, Back]` for a transforming double-faced one.
+    ///
+    /// The ordered list the rest of the engine indexes into. It is derived from
+    /// [`Self::back_face`] rather than stored, so "how many faces has this card" and
+    /// "is there a back face to turn over" can never disagree.
+    #[must_use]
+    pub fn faces(&self) -> Vec<Face> {
+        match self.back_face {
+            Some(_) => vec![Face::Front, Face::Back],
+            None => vec![Face::Front],
+        }
+    }
+
+    /// Whether this card has a **back face** (CR 712.2) — whether it can be
+    /// transformed at all.
+    #[must_use]
+    pub fn has_back_face(&self) -> bool {
+        self.back_face.is_some()
+    }
+
+    /// The characteristics of one of this card's faces, or `None` when the card has no
+    /// such face — which is [`Face::Back`] on every single-faced card.
+    ///
+    /// The single reader: a permanent's face
+    /// ([`Printed::face`](crate::Printed::face)), the projection of a card in a zone,
+    /// and the rules-text formatter all go through here, so no path can read the front
+    /// face of a permanent that has turned over.
+    #[must_use]
+    pub fn face(&self, face: Face) -> Option<PrintedFace<'_>> {
+        match face {
+            Face::Front => Some(PrintedFace::Card(self)),
+            Face::Back => self
+                .back_face
+                .as_deref()
+                .map(|face| PrintedFace::CardBack { card: self, face }),
+        }
+    }
+
+    /// The abilities printed on one of this card's faces (CR 712.4b) — the data tier
+    /// only.
+    ///
+    /// The face-aware half of [`abilities_of`](super::abilities_of), which unions this
+    /// with the derived equip ability and the code tier. Empty for a face the card has
+    /// not got.
+    #[must_use]
+    pub fn face_abilities(&self, face: Face) -> &[Ability] {
+        match face {
+            Face::Front => &self.abilities,
+            Face::Back => self.back_face.as_deref().map_or(&[][..], |b| &b.abilities),
+        }
     }
 
     /// Whether the card has printed card type `card_type`.

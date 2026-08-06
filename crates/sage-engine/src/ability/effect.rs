@@ -1173,6 +1173,48 @@ pub enum Effect {
     /// never reaches the library; the library is still shuffled, because the instruction
     /// was to shuffle.
     ShuffleSelfIntoLibrary,
+    /// **Transform** this ability's own source (CR 701.28a): the permanent turns over,
+    /// and the face that was down is now up.
+    ///
+    /// The primitive CR 712.a is about, and the whole of it is that *nothing else
+    /// happens*. The permanent is the same object: its counters, its marked damage, the
+    /// Auras and Equipment attached to it, whether it is attacking or blocking, and the
+    /// turn it came under its controller's control all survive, because turning it over
+    /// changes one field ([`Printed::Card`](crate::Printed)'s face) and touches no other.
+    /// It is not a zone change, so no [`PermanentId`](crate::PermanentId) is minted, no
+    /// enters-the-battlefield trigger fires, and CR 400.7 never applies.
+    ///
+    /// A source that has no other face — a single-faced card, a token — is simply not
+    /// turned over (CR 701.28d). Authored as `{"kind":"transform_self"}`.
+    TransformSelf,
+    /// Exile this ability's own source and return it to the battlefield **transformed**,
+    /// under its owner's control — `Exile this, then return it transformed.`
+    ///
+    /// Deliberately **not** [`Self::TransformSelf`] with extra steps, and the difference
+    /// is the one thing a player has to know: this is two zone changes, so what comes
+    /// back is a *new object* (CR 400.7). It has a fresh
+    /// [`PermanentId`](crate::PermanentId), no counters but the ones it enters with, no
+    /// damage, nothing attached, no combat state, and summoning sickness. A planeswalker
+    /// back face therefore arrives with its printed starting loyalty (CR 306.5b), which
+    /// is exactly what makes the printed card work.
+    ///
+    /// The two halves go through the seams every other exile and every other arrival go
+    /// through, so the entry runs the CR 614 replacement layer and is seen by the trigger
+    /// diff like any other. Authored as `{"kind":"exile_self_and_return_transformed"}`.
+    ExileSelfAndReturnTransformed,
+    /// Exile every card in the targeted player's library **except the bottom one** —
+    /// `Exile all but the bottom card of target player's library.`
+    ///
+    /// A library is hidden, so this is the one effect that moves a large number of unseen
+    /// cards to a public zone at once. The bottom card is the library's first element,
+    /// matching every other read of a library in the engine (the top is the last), and it
+    /// stays where it is: a player left with one card draws once more before CR 704.5c
+    /// takes the game.
+    ExileLibraryExceptBottom {
+        /// Whose library. Always a player reference that targets, since the printed card
+        /// says `target player`.
+        target: PlayerRef,
+    },
 }
 
 impl Effect {
@@ -1281,6 +1323,8 @@ impl Effect {
             | Effect::Discard { player_ref, .. }
             | Effect::GainLifeByCount { player_ref, .. }
             | Effect::ExileGraveyard { player_ref }
+            // Emptying a library names its owner the same way a graveyard's does.
+            | Effect::ExileLibraryExceptBottom { target: player_ref }
             // And a mass tap names whose creatures the same way: "tap all creatures
             // target player controls" fills a slot, and a class relative to the
             // controller would not.
@@ -1350,6 +1394,9 @@ impl Effect {
             // Nor is a permanent shuffling itself away: the source names itself, so there
             // is no slot to fill and nothing to fizzle on.
             | Effect::ShuffleSelfIntoLibrary
+            // Turning a permanent over names its own source, whichever road it takes.
+            | Effect::TransformSelf
+            | Effect::ExileSelfAndReturnTransformed
             | Effect::PutCountersOnSelf { .. } => Vec::new(),
         }
     }

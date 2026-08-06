@@ -103,7 +103,7 @@ fn to_battlefield(state: &mut GameState, db: &CardDatabase, slug: &str, seat: Pl
     state.battlefield.push(sage_engine::Permanent {
         id: permanent,
         instance: instance.id,
-        printed: sage_engine::Printed::Card(instance.card),
+        printed: instance.card.into(),
         controller: seat,
         entered_turn: 0,
         ..Default::default()

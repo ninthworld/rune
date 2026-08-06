@@ -1,6 +1,9 @@
 //! Action generation — enumeration of legal actions from game state.
 
-use crate::ability::{is_equip_ability, is_loyalty_ability, is_mana_ability, Ability, Effect};
+use crate::ability::{
+    is_equip_ability, is_loyalty_ability, is_mana_ability, is_sorcery_speed_ability, Ability,
+    Effect,
+};
 use crate::choice::ChoiceQuestion;
 use crate::phase::Step;
 use crate::state::GameState;
@@ -9,8 +12,8 @@ use crate::CardDatabase;
 use super::definition::Action;
 use super::targeting::legal_targets_for_spec;
 use super::utilities::{
-    cast_cost, castable_at_instant_speed, cost_payable, equip_timing_allows, graveyard_ability,
-    graveyard_cost_payable, is_castable_spell, is_land, loyalty_timing_allows,
+    cast_cost, castable_at_instant_speed, cost_payable, graveyard_ability, graveyard_cost_payable,
+    is_castable_spell, is_land, loyalty_timing_allows, sorcery_timing_allows,
     tap_cost_is_summoning_sick,
 };
 
@@ -553,7 +556,14 @@ fn offer_activations(
                 // sorcery. Gated here beside the loyalty rule and for the same reason —
                 // it is a timing fact about *this* activation rather than about its
                 // cost — and re-derived independently in `apply_action`.
-                if is_equip_ability(ability) && !equip_timing_allows(state, perm) {
+                if is_equip_ability(ability) && !sorcery_timing_allows(state, perm) {
+                    continue;
+                }
+                // CR 602.5d: an ability that prints `Activate only as a sorcery.` says so
+                // itself. The third timing gate in the same place, measured by the same
+                // expression of "sorcery speed" the other two use, and re-derived in
+                // `apply_action` exactly as they are.
+                if is_sorcery_speed_ability(ability) && !sorcery_timing_allows(state, perm) {
                     continue;
                 }
                 // CR 601.2c via CR 602.2b: an ability whose required target slots have
@@ -610,7 +620,7 @@ fn offer_graveyard_activations(
             let Some(ability) = graveyard_ability(state, db, seat, card, index) else {
                 continue;
             };
-            let Ability::Activated { cost, effects } = &ability else {
+            let Ability::Activated { cost, effects, .. } = &ability else {
                 continue;
             };
             let groups: Vec<crate::ability::TargetGroup> =

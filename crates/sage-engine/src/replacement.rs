@@ -90,6 +90,7 @@
 use serde::Deserialize;
 
 use crate::ability::Ability;
+use crate::card::Face;
 use crate::card_type::CardType;
 use crate::combat::AttackTarget;
 use crate::id::{CardInstance, PermanentId, PlayerId};
@@ -135,21 +136,25 @@ impl EnteringObject {
         matches!(self, Self::Token(_))
     }
 
-    /// The printed characteristics of whatever is entering, borrowed from whichever
-    /// source has them. `None` only for a card handle the database does not know.
+    /// The printed characteristics of whatever is entering, on the face it is entering
+    /// with. `None` for a card handle the database does not know, and for a face the
+    /// card has not got.
     #[must_use]
-    pub fn face<'a>(&'a self, db: &'a CardDatabase) -> Option<PrintedFace<'a>> {
+    pub fn face<'a>(&'a self, db: &'a CardDatabase, face: Face) -> Option<PrintedFace<'a>> {
         match self {
-            Self::Card(card) => db.card(card.card).map(PrintedFace::Card),
+            Self::Card(card) => db.card(card.card).and_then(|data| data.face(face)),
             Self::Token(token) => Some(PrintedFace::Token(token)),
         }
     }
 
-    /// What the permanent's [`Printed`] will be once it arrives.
+    /// What the permanent's [`Printed`] will be once it arrives, with `face` up.
     #[must_use]
-    pub fn printed(&self) -> Printed {
+    pub fn printed(&self, face: Face) -> Printed {
         match self {
-            Self::Card(card) => Printed::Card(card.card),
+            Self::Card(card) => Printed::Card {
+                card: card.card,
+                face,
+            },
             Self::Token(token) => Printed::Token(token.clone()),
         }
     }
@@ -171,6 +176,18 @@ impl EnteringObject {
 pub struct PendingEntry {
     /// What is entering.
     pub object: EnteringObject,
+    /// **Which face it arrives with** (CR 712.4a). [`Face::Front`] for every ordinary
+    /// arrival — a card put onto the battlefield by any road is front-face up, because a
+    /// card outside the battlefield has only its front face's characteristics.
+    ///
+    /// The one road that says otherwise is an effect that returns a card to the
+    /// battlefield *transformed*
+    /// ([`Effect::ExileSelfAndReturnTransformed`](crate::Effect)): the permanent that
+    /// arrives is a new object (CR 400.7), and this is where it is told which side is up
+    /// before anything — a replacement, an entry trigger, a state-based action — has
+    /// looked at it. A planeswalker back face therefore enters with its own starting
+    /// loyalty rather than the front face's absent one.
+    pub face: Face,
     /// The player it enters under — and, being the affected object's controller, the
     /// one who orders the applicable replacements (CR 616.1).
     pub controller: PlayerId,
@@ -328,7 +345,7 @@ impl EnteringFilter {
             // not on the battlefield has no computed characteristics to read anyway.
             Some(wanted) => entry
                 .object
-                .face(db)
+                .face(db, entry.face)
                 .is_some_and(|face| face.has_type(wanted)),
             None => true,
         }
@@ -364,9 +381,9 @@ fn is_entry_self_replacement(ability: &Ability) -> bool {
 /// **not** take the state: the object is not on the battlefield and carries no id yet,
 /// so no continuous effect can be keyed to it and the CR 613 layer-6 gate that accessor
 /// applies is inert here by construction.
-fn entering_abilities(db: &CardDatabase, object: &EnteringObject) -> Vec<Ability> {
+fn entering_abilities(db: &CardDatabase, object: &EnteringObject, face: Face) -> Vec<Ability> {
     match object {
-        EnteringObject::Card(card) => crate::card::abilities_of(db, card.card),
+        EnteringObject::Card(card) => crate::card::abilities_of_face(db, card.card, face),
         EnteringObject::Token(token) => token.abilities.clone(),
     }
 }
@@ -391,7 +408,10 @@ pub(crate) fn applicable_to_entry(
     entry: &PendingEntry,
 ) -> Vec<ReplacementOption> {
     let mut options = Vec::new();
-    for (index, ability) in entering_abilities(db, &entry.object).iter().enumerate() {
+    for (index, ability) in entering_abilities(db, &entry.object, entry.face)
+        .iter()
+        .enumerate()
+    {
         let option = ReplacementOption::SelfReplacement(index);
         if is_entry_self_replacement(ability) && !entry.applied.contains(&option) {
             options.push(option);
@@ -426,7 +446,7 @@ pub fn pending_replacement_options(
     else {
         return Vec::new();
     };
-    let abilities = entering_abilities(db, &request.entry.object);
+    let abilities = entering_abilities(db, &request.entry.object, request.entry.face);
     applicable_to_entry(state, db, &request.entry)
         .into_iter()
         .filter_map(|option| match option {
@@ -470,7 +490,9 @@ pub(crate) fn apply_to_entry(
     entry.applied.push(option);
     match option {
         ReplacementOption::SelfReplacement(index) => {
-            let ability = entering_abilities(db, &entry.object).into_iter().nth(index);
+            let ability = entering_abilities(db, &entry.object, entry.face)
+                .into_iter()
+                .nth(index);
             match ability {
                 Some(Ability::EntersTapped) => entry.tapped = true,
                 Some(Ability::EntersWithCounters { counter, count }) => {

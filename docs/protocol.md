@@ -348,6 +348,7 @@ ephemeral presentation only (an auto-dismissing toast) — never load-bearing st
 | `card_types` | `CardType[]?` | The card's types (CR 300), as the structured set `type_line` is rendered from; omitted when the server states none |
 | `color_identity` | `Color[]?` | The card's **colour identity** (CR 903.4), in WUBRG order; omitted when empty |
 | `token` | `boolean?` | The object is a **token** (CR 111) rather than a card; omitted (and `false`) for every card |
+| `other_face` | `CardFace?` | The card's **other face**, for a card that has two (CR 712); omitted for every single-faced card |
 
 `id` identifies one physical game object and is used by actions. `functional_id` identifies
 the underlying card definition and is not a legal-action handle. Clients treat both as
@@ -382,6 +383,41 @@ server stated no types — a defensive placeholder for an object it could not re
 never "this card has no types"; a client renders such an object normally rather than
 concluding anything from the absence. `CatalogCard` carries the same field, so a card being
 browsed and the same card in a hand present identically.
+
+A card with **two faces** (CR 712) states the face that is **up** in every field above,
+and the other one in `other_face`:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `name` | `string` | The face's display name — different from the up face's on every printed two-faced card |
+| `type_line` | `string` | The face's type line |
+| `mana_cost` | `string?` | Absent for a back face (CR 712.4a); present when this is the front face of a permanent that has transformed |
+| `rules_text` | `string?` | The face's generated rules text; omitted when empty |
+| `power`, `toughness` | `string?` | Printed values, when that face is a creature |
+| `loyalty` | `string?` | Printed starting loyalty, when that face is a planeswalker |
+| `keywords` | `string[]?` | The face's printed keywords |
+| `card_types` | `CardType[]?` | The face's types, as the set behind its `type_line` |
+
+`other_face` carries two facts in one field, and both are things a client cannot work out.
+Its **presence** is the statement that there is another side — that is what the board's
+state mark is drawn from — and its **contents** are what the pinned preview turns over to
+show (`docs/client-design.md` §6.7). A client cannot tell a transforming card from an
+ordinary one, and it certainly cannot reconstruct a face nobody sent it.
+
+It is **not a second object**. There is one physical card and one `id`; the two faces are
+two sets of characteristics of it, which is why `CardFace` restates none of the fields that
+belong to the *card* rather than to a face — no `id`, no `functional_id` (identity names
+the card, ADR 0008 §3), no `token`, and no `color_identity` (CR 903.4 is computed across
+both faces at once, so the value on the `CardView` is already right for either). A card in
+a hand carries its back face here; a permanent that has transformed carries its **front**
+face here, and a client draws whichever it is told is up without ever knowing which is
+which. A **token** never has one: it has exactly one face, the effect that created it.
+
+Which face is up is decided entirely by the server. A card outside the battlefield always
+projects its front face (CR 712.4a), and a permanent projects the face it is currently
+showing — transforming does not change the object, so the permanent's `id`, counters,
+damage, and combat state are unchanged across it (CR 712.a). Additive: omitted by a server
+predating the field, and a client that ignores it renders exactly as it did.
 
 `loyalty` is what a planeswalker card *enters the battlefield with* — the number printed
 in its corner — and never changes. It is **not** how much loyalty a planeswalker on the

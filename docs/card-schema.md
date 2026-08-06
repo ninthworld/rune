@@ -67,6 +67,7 @@ no Oracle text, flavor, art, or branding.
 | `spell_traits` | no | What is true of the card **as a spell on the stack** — can't be countered, damage can't be prevented |
 | `additional_cost` | no | An additional cost to **cast** the card (CR 601.2b); never on a land |
 | `attachment` | no | Aura or Equipment: what it may be attached to, its equip cost, and its static power/toughness, keyword, ability, and/or combat-restriction grant |
+| `back_face` | no | The card's **second face**, for a transforming double-faced card (CR 712) |
 | `scripted` | no | Declares behavior implemented in `src/scripted.rs`; defaults to `false` |
 
 Current keyword values are `flying`, `reach`, `vigilance`, `haste`, `defender`, `menace`,
@@ -775,6 +776,22 @@ that fold into no characteristic and no state-based action — `charge`, `gold`,
 they are kept distinct from one another rather than aliased, because two cards on one
 battlefield may name different counters and one card's ability must not spend the other's.
 
+### Activation timing (CR 602.5d)
+
+An activated ability may carry a `timing`, which is `any_time` unless it says otherwise:
+
+```json
+{"type": "activated", "timing": "sorcery_speed",
+ "cost": [{"kind": "mana", "mana": "{2}"}], "effects": [{"kind": "draw_card", "count": 1}]}
+```
+
+`sorcery_speed` is the printed `Activate only as a sorcery.` — its controller's turn, a
+main phase, an empty stack. It is *authored* rather than derived, unlike the sorcery timing
+a loyalty ability (CR 606.3) and an equip ability (CR 702.6b) are under: those are rules
+about a kind of ability, while this is a line of text on one particular ability that
+nothing about its cost or its effect implies. All three are measured by the same predicate,
+gated in the offer and re-derived in `apply_action`.
+
 ### Planeswalkers and loyalty (CR 306, CR 606)
 
 A planeswalker authors `loyalty` — its printed starting loyalty, the number in its corner:
@@ -819,6 +836,78 @@ block, and the toughness-based state-based actions never touch it. It *can* be a
 (CR 508.1a): an attack names a player or a planeswalker, the planeswalker's controller
 declares blockers for attackers attacking it, and combat damage that gets through removes
 loyalty.
+
+### A card with two faces (CR 712)
+
+A card has an **ordered list of faces**. For almost every card that list has one entry —
+the definition above *is* the front face — and nothing in the schema changes. A
+transforming double-faced card authors its second face under `back_face`:
+
+```json
+{
+  "schema_version": 1,
+  "functional_id": "nicol_bolas_the_ravager",
+  "name": "Nicol Bolas, the Ravager",
+  "types": ["creature"],
+  "mana_cost": "{1}{U}{B}{R}",
+  "power": 4,
+  "toughness": 4,
+  "abilities": [
+    {
+      "type": "activated",
+      "timing": "sorcery_speed",
+      "cost": [{ "kind": "mana", "mana": "{4}{U}{B}{R}" }],
+      "effects": [{ "kind": "exile_self_and_return_transformed" }]
+    }
+  ],
+  "back_face": {
+    "name": "Nicol Bolas, the Arisen",
+    "types": ["planeswalker"],
+    "subtypes": ["Bolas"],
+    "colors": ["blue", "black", "red"],
+    "loyalty": 7,
+    "abilities": [
+      {
+        "type": "activated",
+        "cost": [{ "kind": "loyalty", "amount": 2 }],
+        "effects": [{ "kind": "draw_card", "count": 2 }]
+      }
+    ]
+  }
+}
+```
+
+**`functional_id` names the card, not a face** (ADR 0008 §3). A two-faced card is one
+identity, one printing record, and one row in the compatibility report, exactly as a real
+set prints one card — so `data/sets/` is untouched by this and a decklist names the card by
+the front face's slug.
+
+A `back_face` carries only the fields a *permanent* has: `name`, `supertypes`, `types`,
+`subtypes`, `mana_cost` (which must be empty — see below), `colors`, `power`/`toughness`,
+`loyalty`, `abilities`, `keywords`, and `restrictions`. It has no `spell_effects`, no
+`additional_cost`, and no `attachment`, because a back face is never cast (CR 712.4a) and
+nothing attaches by turning over; those fields do not exist on it, so writing one is a
+parse error rather than a rule to remember. Its `colors` are authored rather than derived,
+which they have to be: the face has no cost whose pips could imply them.
+
+Every rule the schema applies to a face is applied to **both** faces — a back face that is
+a creature needs power and toughness, a back face that is a planeswalker needs `loyalty`,
+and a `restrictions` list on a non-creature back face is refused exactly as it is on the
+front.
+
+Turning a permanent over is one effect, `transform_self` (CR 701.28a), and it is *the same
+object*: counters, marked damage, attachments, and combat state all survive it (CR 712.a),
+because the face is a field on the permanent and none of those are. The compound form
+printed on Nicol Bolas, `exile_self_and_return_transformed`, is deliberately not that — it
+is two zone changes, so what returns is a **new** object (CR 400.7) with a fresh id and,
+for a planeswalker back face, its own starting loyalty.
+
+A back face's mana **value** is its front face's (CR 712.4d), not zero. A card outside the
+battlefield has only its front face's characteristics (CR 712.4a), so nothing but a
+permanent ever carries a face at all.
+
+Modal double-faced cards — a card whose second face is a thing you may *cast* — remain out
+of scope, and the empty-cost rule is what keeps that honest.
 
 ### Emblems (CR 114)
 
@@ -1995,6 +2084,10 @@ functional definition, and collector numbers must be unique within a set.
 | Printing | set code + collector number | Set file | Stable bibliography |
 | Game object | `CardInstanceId`, `PermanentId` | Engine | One game or battlefield stay |
 
+A **face** is not a layer of identity: a two-faced card has one `FunctionalId`, one
+printing, and one `CardId`, and which face is up is per-permanent state
+(`Printed::Card`'s `face`), not part of naming the card.
+
 Never persist or hand-author a `CardId`. Adding a definition can change sorted interning and
 renumber handles. Printings, decklists, tests, and scripted code use `FunctionalId` and
 resolve it through `CardDatabase::card_id` when a handle is needed.
@@ -2016,8 +2109,13 @@ The build and loader reject:
 - unknown fields or malformed JSON;
 - unsupported schema versions;
 - malformed, duplicate, or file-mismatched functional ids;
-- missing types or invalid creature power/toughness;
-- a planeswalker with no `loyalty`, or a `loyalty` on anything else;
+- missing types or invalid creature power/toughness (asked of **each** face);
+- a planeswalker with no `loyalty`, or a `loyalty` on anything else (asked of **each**
+  face);
+- a `back_face` that carries a mana cost — a back face has none and can never be cast
+  (CR 712.4a);
+- a `transform_self` or `exile_self_and_return_transformed` on a card with no `back_face`
+  to turn to (CR 701.28d);
 - an `attachment` whose `kind` names a subtype the card does not have;
 - an Equipment with no `equip` cost, or an `equip` cost on an Aura;
 - printed `restrictions` on a card that is not a creature;

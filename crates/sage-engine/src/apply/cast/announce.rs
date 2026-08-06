@@ -112,7 +112,7 @@ pub(crate) fn apply_activate_ability(
     let Some(ability) = abilities_of_permanent(state, db, perm).get(index).cloned() else {
         return;
     };
-    let Ability::Activated { cost, effects } = &ability else {
+    let Ability::Activated { cost, effects, .. } = &ability else {
         return;
     };
 
@@ -310,7 +310,7 @@ pub(crate) fn apply_activate_ability_from_graveyard(
     db: &CardDatabase,
 ) {
     let controller = state.priority;
-    let Some(Ability::Activated { cost, effects }) =
+    let Some(Ability::Activated { cost, effects, .. }) =
         crate::actions::graveyard_ability(state, db, controller, card, index)
     else {
         return;

@@ -110,6 +110,77 @@ pub struct CardView {
     /// the server could not resolve, so every existing view is unchanged on the wire.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub color_identity: Vec<crate::Color>,
+    /// The card's **other face**, for a card that has two (CR 712) — everything above
+    /// describes the face that is **up**, and this describes the one that is not.
+    ///
+    /// Two facts a client needs, in one field. Its *presence* is the statement that
+    /// there is another side, which is what the board's state mark is drawn from; its
+    /// *contents* are what the pinned preview turns over to show
+    /// (`docs/client-design.md` §6.7). Neither is inferable: a client cannot tell a
+    /// transforming card from an ordinary one, and it certainly cannot reconstruct a
+    /// face nobody sent it.
+    ///
+    /// **It is not a second object.** There is one card and one entity id; the two faces
+    /// are two sets of characteristics of the same physical card, which is why this is a
+    /// [`CardFace`] and not a nested [`CardView`] — there is no id, no `functional_id`,
+    /// and no `token` flag to state a second time. A card in a hand carries its back
+    /// face here; a permanent that has transformed carries its *front* face here, and
+    /// the client draws whichever one it is told is up without knowing which is which.
+    ///
+    /// Additive: omitted (and defaults to `None`) for every single-faced card, so every
+    /// existing view is unchanged on the wire and a client that ignores it renders
+    /// exactly as it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub other_face: Option<Box<CardFace>>,
+}
+
+/// One face of a two-faced card (CR 712), as [`CardView::other_face`] carries the side
+/// that is **not** up.
+///
+/// A [`CardView`] minus everything that belongs to the card rather than to a face: no
+/// entity id (one card, one id), no `functional_id` (identity names the card, ADR 0008
+/// §3), no `token` flag (a token has exactly one face), and no colour identity (CR 903.4
+/// is computed across the whole card). What is left is what a client draws.
+///
+/// The empty `mana_cost` is the interesting absence: a transforming card's back face has
+/// none (CR 712.4a), so the field is omitted and the card's title band has an empty
+/// trailing slot — which the existing name fitting handles with no special case.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CardFace {
+    /// The face's display name — different from the up face's, on every printed
+    /// two-faced card.
+    pub name: String,
+    /// The face's type line, e.g. `"Legendary Planeswalker — Bolas"`.
+    pub type_line: String,
+    /// The face's mana cost. Always absent for a back face (CR 712.4a); present when
+    /// this is the *front* face of a permanent that has transformed, since that face
+    /// does print one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mana_cost: Option<String>,
+    /// The face's rules text, generated from its own ability IR exactly as
+    /// [`CardView::rules_text`] is. Empty (and omitted) for a vanilla face.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub rules_text: String,
+    /// The face's power, as a string; present only when this face is a creature.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub power: Option<String>,
+    /// The face's toughness; see [`Self::power`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toughness: Option<String>,
+    /// The face's printed starting loyalty (CR 306.5b); present only when this face is
+    /// a planeswalker. Printed, not current — this face is not the one on the
+    /// battlefield, so it has no counters to report.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loyalty: Option<String>,
+    /// The face's keyword abilities as lowercase wire names, for the same badges
+    /// [`CardView::keywords`] draws. Printed only: a continuous effect applies to the
+    /// permanent, which is the *other* face.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keywords: Vec<String>,
+    /// The face's card types (CR 300) — the structured set [`Self::type_line`] is
+    /// rendered from, stated for the reason [`CardView::card_types`] is stated.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub card_types: Vec<CardType>,
 }
 
 /// What the receiving player is allowed to know about an opponent: hidden zones

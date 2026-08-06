@@ -56,6 +56,18 @@ pub enum Ability {
         /// Effects produced when the ability resolves (or immediately, for a
         /// mana ability — see [`is_mana_ability`]).
         effects: Vec<Effect>,
+        /// **When** it may be activated (CR 602.5d). Defaults to
+        /// [`ActivationTiming::AnyTime`], which is every ability in the catalog but the
+        /// one that prints `Activate only as a sorcery.`
+        ///
+        /// An authored field rather than a derived predicate, unlike the loyalty
+        /// (CR 606.3) and equip (CR 702.6b) timings beside it. Those two are rules
+        /// *about a kind of ability* — an ability that spends loyalty is a loyalty
+        /// ability whatever it does — so deriving them from the cost or the effect is
+        /// exact. This one is a line of printed text on one particular ability, and
+        /// nothing about that ability's cost or effect implies it.
+        #[serde(default)]
+        timing: ActivationTiming,
     },
     /// A triggered ability: when its condition is met, its effects go on the
     /// stack (e.g. `When this enters the battlefield, draw a card.`).
@@ -251,6 +263,43 @@ pub enum PlayerModification {
     ///
     /// Read by [`plays_lands_from_graveyard`](crate::plays_lands_from_graveyard).
     PlayLandsFromGraveyard,
+}
+
+/// When an activated ability may be activated (CR 602.5d).
+///
+/// A two-state type rather than a bool for the reason the rest of the IR prefers one: a
+/// field called `sorcery_speed` reads as a fact about the ability, while the question is
+/// *when*, and a third timing (`Activate only during combat`) would then be a second
+/// bool that could disagree with the first.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivationTiming {
+    /// Any time its controller has priority (CR 602.2a) — the default, and what every
+    /// activated ability says unless it says otherwise.
+    #[default]
+    AnyTime,
+    /// Only when its controller could cast a sorcery: their turn, a main phase, an empty
+    /// stack. The `Activate only as a sorcery.` of a printed card, enforced by the same
+    /// single expression of "sorcery speed" the loyalty and equip gates share, so the
+    /// three cannot disagree about when that is.
+    SorcerySpeed,
+}
+
+/// Whether an ability is restricted to **sorcery speed** by its printed text
+/// (CR 602.5d) — whether it declares [`ActivationTiming::SorcerySpeed`].
+///
+/// The counterpart of [`is_loyalty_ability`] and [`is_equip_ability`] for the timing
+/// that is *authored* rather than derived. It is a predicate all the same, so the offer
+/// and the apply-time re-derivation ask one question and cannot drift.
+#[must_use]
+pub fn is_sorcery_speed_ability(ability: &Ability) -> bool {
+    matches!(
+        ability,
+        Ability::Activated {
+            timing: ActivationTiming::SorcerySpeed,
+            ..
+        }
+    )
 }
 
 /// Whether an ability is a **loyalty ability** (CR 606.1): an activated ability whose

@@ -7,7 +7,7 @@ use crate::player::Player;
 use crate::replacement::{DamageRecipient, EnteringObject, PendingDamage, PendingEntry};
 use crate::rng::SplitMix64;
 use crate::token::TokenData;
-use crate::CardDatabase;
+use crate::{CardData, CardDatabase};
 
 use super::{CommanderDamage, DamageTarget, GameEvent, GameState, LoggedPermanent, Permanent};
 
@@ -229,9 +229,37 @@ impl GameState {
         attached_to: Option<PermanentId>,
         db: &CardDatabase,
     ) -> Option<PermanentId> {
+        self.put_card_onto_battlefield_with_face(
+            card,
+            controller,
+            tapped,
+            attached_to,
+            crate::card::Face::Front,
+            db,
+        )
+    }
+
+    /// [`Self::put_card_onto_battlefield`], for a card arriving on a face other than its
+    /// front (CR 712.4a) — `return it to the battlefield transformed`.
+    ///
+    /// The same single seam with the one fact that road adds. It is deliberately a
+    /// second entry point rather than a sixth parameter on the common one: every other
+    /// caller puts a card onto the battlefield front-face up, and a `Face::Front`
+    /// argument repeated at each of them would be a rule stated five times and
+    /// forgettable at the sixth.
+    pub(crate) fn put_card_onto_battlefield_with_face(
+        &mut self,
+        card: crate::id::CardInstance,
+        controller: PlayerId,
+        tapped: bool,
+        attached_to: Option<PermanentId>,
+        face: crate::card::Face,
+        db: &CardDatabase,
+    ) -> Option<PermanentId> {
         self.begin_battlefield_entry(
             PendingEntry {
                 object: EnteringObject::Card(card),
+                face,
                 controller,
                 tapped,
                 attacking: None,
@@ -264,6 +292,9 @@ impl GameState {
         self.begin_battlefield_entry(
             PendingEntry {
                 object: EnteringObject::Card(card),
+                // A spell is cast as its front face and resolves as one (CR 712.4a);
+                // nothing about casting can put a back face onto the battlefield.
+                face: crate::card::Face::Front,
                 controller,
                 tapped: false,
                 attacking: None,
@@ -276,6 +307,57 @@ impl GameState {
             },
             db,
         )
+    }
+
+    /// Exile the permanent `id` and return it to the battlefield **transformed**, under
+    /// its owner's control — the compound zone change
+    /// [`Effect::ExileSelfAndReturnTransformed`](crate::Effect) performs.
+    ///
+    /// Two real zone changes rather than a turn-over, and that is the whole difference
+    /// from [`Printed::transform`](crate::Printed): the permanent that comes back is a
+    /// **new object** (CR 400.7), with a fresh [`PermanentId`], no counters but the ones
+    /// it enters with, no damage, nothing attached, and summoning sickness. What makes
+    /// the printed card work is exactly that — a planeswalker back face arrives with its
+    /// own starting loyalty (CR 306.5b), applied where every entering permanent's is.
+    ///
+    /// Both halves use the shared seams: the exile is
+    /// [`Self::move_permanent_to_exile`], so a commander's CR 903.9a decision is raised
+    /// as it would be for any other exile, and the return is
+    /// [`Self::put_card_onto_battlefield_with_face`], so the arrival runs the CR 614
+    /// replacement layer and is seen by the trigger diff like any other. A token has no
+    /// card to return (CR 111.7) and simply stays exiled — which is to say, ceases to
+    /// exist.
+    ///
+    /// Returns the returned permanent's id, or `None` when there was no permanent, no
+    /// card behind it, or the entry did not complete.
+    pub(crate) fn exile_and_return_transformed(
+        &mut self,
+        id: PermanentId,
+        db: &CardDatabase,
+    ) -> Option<PermanentId> {
+        let perm = self.battlefield.iter().find(|p| p.id == id)?;
+        // CR 701.28d: a permanent with only one face is not turned over, so it comes back
+        // exactly as it left. Asked here rather than trusted, because a face the card has
+        // not got would be a permanent nothing could read a characteristic off.
+        let has_other_face = perm
+            .printed
+            .card()
+            .and_then(|card| db.card(card))
+            .is_some_and(CardData::has_back_face);
+        let face = if has_other_face {
+            perm.printed.face_up().other()
+        } else {
+            perm.printed.face_up()
+        };
+        let departed = self.move_permanent_to_exile(id)?;
+        let card = card_leaving(&departed)?;
+        let owner = departed.controller;
+        if let Some(player) = self.players.get_mut(owner.0) {
+            if let Some(position) = player.exile.iter().position(|c| c.id == card.id) {
+                player.exile.remove(position);
+            }
+        }
+        self.put_card_onto_battlefield_with_face(card, owner, false, None, face, db)
     }
 
     /// Run `entry` through the **replacement layer** (CR 614) and, if anything is left
@@ -403,7 +485,7 @@ impl GameState {
         for (counter, count) in &entry.counters {
             *counters.entry(*counter).or_insert(0) += count;
         }
-        let printed = entry.object.printed();
+        let printed = entry.object.printed(entry.face);
         if let Some(loyalty) = printed.face(db).and_then(|face| face.loyalty()) {
             *counters.entry(super::CounterKind::Loyalty).or_insert(0) += loyalty;
         }
@@ -464,6 +546,8 @@ impl GameState {
         self.begin_battlefield_entry(
             PendingEntry {
                 object: EnteringObject::Token(Box::new(token)),
+                // A token has exactly one face: the effect that created it (CR 111.3).
+                face: crate::card::Face::Front,
                 controller,
                 tapped,
                 attacking,

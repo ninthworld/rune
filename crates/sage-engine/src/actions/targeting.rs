@@ -189,6 +189,7 @@ pub(crate) fn legal_targets_for_spec(
         | TargetSpec::AnyEnchantment
         | TargetSpec::AnyArtifactOrEnchantment
         | TargetSpec::AnyArtifactEnchantmentOrCreatureWithFlying
+        | TargetSpec::AnyCreatureOrPlaneswalker
         | TargetSpec::AnyLand => permanents,
         // A graveyard is public, so its cards are enumerable exactly as the battlefield
         // is — the universe is the choosing player's own graveyard, and the

@@ -281,6 +281,15 @@ pub(crate) fn target_is_legal(
         (TargetSpec::AnyLand, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| has_type(p, CardType::Land, db))
         }
+        // One slot that accepts either type (CR 601.2c). The two classes are disjoint on
+        // every card the schema can express, so this is a plain either-or — but a
+        // permanent that has *transformed* from one into the other is read on the face
+        // that is up, which is what `has_type` already does.
+        (TargetSpec::AnyCreatureOrPlaneswalker, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| {
+                has_type(p, CardType::Creature, db) || has_type(p, CardType::Planeswalker, db)
+            })
+        }
         // One slot accepting any of three classes (CR 601.2c), not three slots: Vivien
         // Reid's `-3` names a single target that may be an artifact, an enchantment, or
         // a creature with flying. Flying is read through the computed keywords

@@ -120,6 +120,32 @@ export const CardType = z.enum([
 ])
 export type CardType = z.infer<typeof CardType>
 
+/**
+ * One face of a two-faced card (CR 712) — the side that is **not** up, carried by
+ * `CardView.other_face`.
+ *
+ * A `CardView` minus everything that belongs to the card rather than to a face: no
+ * entity id (one card, one id), no `functional_id` (identity names the card), no
+ * `token` flag, and no colour identity (computed across the whole card). What is left
+ * is what the preview draws when it turns the card over.
+ *
+ * A back face has no mana cost (CR 712.4a), so `mana_cost` is absent and the title
+ * band's trailing slot is simply empty — the existing name fitting handles it with no
+ * special case.
+ */
+export const CardFace = z.object({
+  name: z.string(),
+  type_line: z.string(),
+  mana_cost: z.string().optional(),
+  rules_text: z.string().optional(),
+  power: z.string().optional(),
+  toughness: z.string().optional(),
+  loyalty: z.string().optional(),
+  keywords: z.array(z.string()).optional(),
+  card_types: z.array(CardType).optional(),
+})
+export type CardFace = z.infer<typeof CardFace>
+
 export const CardView = z.object({
   id: EntityId,
   name: z.string(),
@@ -164,6 +190,21 @@ export const CardView = z.object({
    * colour (CR 105), and never rendered as one. In WUBRG order.
    */
   color_identity: z.array(Color).optional(),
+  /**
+   * The card's **other face**, for a card that has two (CR 712). Everything above
+   * describes the face that is **up**; this describes the one that is not.
+   *
+   * Two facts in one field: its *presence* says there is another side (the board's
+   * state mark), and its *contents* are what the pinned preview turns over to show
+   * (`docs/client-design.md` §6.7). Neither is inferable — a client cannot tell a
+   * transforming card from an ordinary one, and it cannot reconstruct a face nobody
+   * sent it.
+   *
+   * Not a second object: one card, one entity id. A card in a hand carries its back
+   * face here; a permanent that has transformed carries its *front* face here, and the
+   * client draws whichever it is told is up without knowing which is which.
+   */
+  other_face: CardFace.optional(),
 })
 export type CardView = z.infer<typeof CardView>
 

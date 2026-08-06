@@ -1652,3 +1652,44 @@ fn a_named_card_and_a_static_that_reaches_an_opponents_lands() {
          any color.\""
     );
 }
+
+/// A card with **two faces** (CR 712) generates a sentence per face, from that face's
+/// own ability IR. The front's transform line carries the authored timing restriction
+/// (CR 602.5d), and the back's four loyalty abilities come off a face that has no
+/// keywords, no spell ability, and no cost of its own.
+#[test]
+fn issue_747_both_faces_of_a_transforming_card_generate_their_own_text() {
+    let db = bundled();
+    let front = text_of(&db, "nicol_bolas_the_ravager");
+    assert!(front.starts_with("Flying\n"), "{front}");
+    assert!(front.contains("each opponent discards a card."), "{front}");
+    assert!(
+        front.ends_with("Activate only as a sorcery."),
+        "the authored timing restriction is stated: {front}"
+    );
+
+    let data = db
+        .card(
+            db.card_id(&FunctionalId::try_from("nicol_bolas_the_ravager".to_string()).unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+    let back = back_face_rules_text(data.back_face.as_deref().unwrap());
+    assert_eq!(
+        back.lines().count(),
+        4,
+        "one line per loyalty ability: {back}"
+    );
+    assert!(back.starts_with("+2: Draw two cards."), "{back}");
+    assert!(
+        back.contains("target creature or planeswalker"),
+        "the new target spec has words: {back}"
+    );
+    assert!(
+        back.contains("bottom card of target player's library"),
+        "{back}"
+    );
+    // The back face's sentences name *it*, not the card's front face.
+    assert!(back.contains("Nicol Bolas, the Arisen"), "{back}");
+    assert!(!back.contains("the Ravager"), "{back}");
+}

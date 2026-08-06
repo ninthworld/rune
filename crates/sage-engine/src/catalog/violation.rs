@@ -168,6 +168,33 @@ pub enum Violation {
         /// The definition at fault.
         functional_id: String,
     },
+    /// A **back face** carries a mana cost (CR 712.4a).
+    ///
+    /// The back face of a transforming double-faced card has no mana cost and can never
+    /// be cast: it is only ever reached by turning a permanent over, and nothing in the
+    /// game offers it as a spell. A cost written there would be a number nobody could
+    /// pay and no gate would read — so it is refused at authoring time, naming the card,
+    /// rather than sitting in the catalog looking castable.
+    ///
+    /// It is a validation rule rather than an absent field because the rule is worth
+    /// *stating*: the field exists on [`BackFace`](crate::BackFace) and is always empty,
+    /// which is what makes "a transformed permanent has mana value 0" a fact the read
+    /// path can simply read.
+    BackFaceHasManaCost {
+        /// The definition at fault.
+        functional_id: String,
+    },
+    /// A definition turns itself over — `transform_self` or
+    /// `exile_self_and_return_transformed` — without having a second face to turn to
+    /// (CR 701.28d).
+    ///
+    /// Caught here for [`Self::ChosenColorIsNeverNamed`]'s reason: the engine's honest
+    /// answer is to leave the permanent exactly as it was, which is silence, and a card
+    /// that silently does nothing is the hardest kind of wrong to notice.
+    TransformWithoutABackFace {
+        /// The definition at fault.
+        functional_id: String,
+    },
     /// A printed `restrictions` list appears on a card that is not a creature. Every
     /// combat restriction is about attacking or blocking (CR 506.3, CR 509.1b), so on
     /// a non-creature it could only ever be inert — which makes it an authoring
@@ -343,6 +370,16 @@ impl fmt::Display for Violation {
                 f,
                 "{file_stem}.json declares functional_id `{functional_id}`; \
                  a definition's file name must match its identity"
+            ),
+            Self::TransformWithoutABackFace { functional_id } => write!(
+                f,
+                "{functional_id} transforms itself but has no `back_face` to turn to \
+                 (CR 701.28d)"
+            ),
+            Self::BackFaceHasManaCost { functional_id } => write!(
+                f,
+                "{functional_id}: a back face has no mana cost and can never be cast \
+                 (CR 712.4a)"
             ),
             Self::PowerToughnessMismatch {
                 functional_id,

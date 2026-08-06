@@ -16,6 +16,7 @@ fn activated_mana_ability_round_trips() {
                 color: Color::Green,
                 amount: 1
             }],
+            timing: crate::ability::ActivationTiming::AnyTime,
         }
     );
     assert!(is_mana_ability(&ability));
@@ -32,6 +33,7 @@ fn issue_256_activated_colorless_mana_ability_round_trips() {
         Ability::Activated {
             cost: vec![Cost::Tap],
             effects: vec![Effect::AddColorlessMana { amount: 1 }],
+            timing: crate::ability::ActivationTiming::AnyTime,
         }
     );
     assert!(is_mana_ability(&ability));
@@ -238,6 +240,7 @@ fn issue_738_an_entry_card_name_and_the_selector_that_reads_it_round_trip() {
             same_color: false,
             restriction: None,
         }],
+        timing: crate::ability::ActivationTiming::AnyTime,
     };
     assert_eq!(
         ability,
@@ -281,6 +284,7 @@ fn activated_non_mana_ability_is_not_a_mana_ability() {
     let ability = Ability::Activated {
         cost: vec![Cost::Tap],
         effects: vec![Effect::DrawCard { count: 1 }],
+        timing: crate::ability::ActivationTiming::AnyTime,
     };
     assert!(!is_mana_ability(&ability));
 }
@@ -357,6 +361,7 @@ fn a_tap_effect_is_not_a_mana_ability() {
         effects: vec![Effect::Tap {
             target: TargetSpec::AnyCreature,
         }],
+        timing: crate::ability::ActivationTiming::AnyTime,
     };
     assert!(!is_mana_ability(&ability));
 }
@@ -560,6 +565,7 @@ fn a_mana_activation_cost_round_trips_as_the_string_it_was_written_in() {
                 Cost::Tap
             ],
             effects: vec![Effect::DrawCard { count: 1 }],
+            timing: crate::ability::ActivationTiming::AnyTime,
         }
     );
     // CR 605.1a is about the *effects*, not the cost: a mana cost does not stop an
@@ -893,6 +899,7 @@ fn issue_723_a_graveyard_ability_is_derived_from_the_effect_that_moves_its_own_c
             effects: vec![Effect::ReturnSelfFromGraveyard {
                 destination: FoundDestination::BattlefieldTapped,
             }],
+            timing: crate::ability::ActivationTiming::AnyTime,
         }
     );
     assert!(is_graveyard_ability(&ability));
@@ -983,6 +990,7 @@ fn issue_740_two_mana_of_any_one_color_is_one_choice_rather_than_two() {
     assert!(is_mana_ability(&Ability::Activated {
         cost: vec![Cost::Tap],
         effects: vec![effect],
+        timing: crate::ability::ActivationTiming::AnyTime,
     }));
 }
 

@@ -252,6 +252,16 @@ pub enum TargetSpec {
     AnyArtifactOrEnchantment,
     /// Any land on the battlefield. Never a planeswalker: the types are disjoint.
     AnyLand,
+    /// Any **creature or planeswalker** on the battlefield — the single slot of a
+    /// removal spell that names both classes in one breath.
+    ///
+    /// One spec rather than two groups, for the reason
+    /// [`Self::AnyArtifactOrEnchantment`] is one: the printed sentence names one target
+    /// of either type, and two groups would advertise two slots and let a player aim at
+    /// a creature *and* a planeswalker. It is the one spec whose candidates span the two
+    /// classes damage treats differently (CR 120.3c — marked on a creature, taken off a
+    /// planeswalker's loyalty), which is decided where the damage is dealt and not here.
+    AnyCreatureOrPlaneswalker,
     /// Any spell on the stack — a [`crate::StackObjectKind::Spell`] object (CR
     /// 701.5, "counter target spell"). Abilities on the stack are not spells and
     /// are never candidates; a mana ability never uses the stack at all (CR
@@ -341,6 +351,9 @@ pub enum GraveyardCardClass {
     Any,
     /// A creature card.
     Creature,
+    /// A creature **or planeswalker** card — the single class of a reanimation that
+    /// names both, rather than two classes one target could not be in at once.
+    CreatureOrPlaneswalker,
     /// An instant **or** sorcery card — one class as a card writes it, not two types.
     InstantOrSorcery,
     /// An artifact card.
@@ -356,6 +369,9 @@ impl GraveyardCardClass {
         match self {
             GraveyardCardClass::Any => true,
             GraveyardCardClass::Creature => data.has_type(CardType::Creature),
+            GraveyardCardClass::CreatureOrPlaneswalker => {
+                data.has_type(CardType::Creature) || data.has_type(CardType::Planeswalker)
+            }
             GraveyardCardClass::InstantOrSorcery => {
                 data.has_type(CardType::Instant) || data.has_type(CardType::Sorcery)
             }

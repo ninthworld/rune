@@ -109,6 +109,7 @@ fn graveyard_class_noun(class: GraveyardCardClass) -> Option<&'static str> {
     match class {
         GraveyardCardClass::Any => None,
         GraveyardCardClass::Creature => Some("creature"),
+        GraveyardCardClass::CreatureOrPlaneswalker => Some("creature or planeswalker"),
         GraveyardCardClass::InstantOrSorcery => Some("instant or sorcery"),
         GraveyardCardClass::Artifact => Some("artifact"),
         GraveyardCardClass::Land => Some("land"),
@@ -198,6 +199,7 @@ pub(super) fn target_noun(spec: TargetSpec) -> String {
         TargetSpec::AnyEnchantment => "target enchantment".to_string(),
         TargetSpec::AnyArtifactOrEnchantment => "target artifact or enchantment".to_string(),
         TargetSpec::AnyLand => "target land".to_string(),
+        TargetSpec::AnyCreatureOrPlaneswalker => "target creature or planeswalker".to_string(),
         TargetSpec::SpellOnStack => "target spell".to_string(),
         TargetSpec::CreatureSpellOnStack => "target creature spell".to_string(),
         // CR 115.4: "any target" is the phrase itself, not a class of object.
@@ -232,6 +234,7 @@ fn graveyard_noun(spec: TargetSpec, targeted: bool) -> &'static str {
     let kind = match class {
         GraveyardCardClass::Any => "card",
         GraveyardCardClass::Creature => "creature card",
+        GraveyardCardClass::CreatureOrPlaneswalker => "creature or planeswalker card",
         GraveyardCardClass::InstantOrSorcery => "instant or sorcery card",
         GraveyardCardClass::Artifact => "artifact card",
         GraveyardCardClass::Land => "land card",
@@ -248,6 +251,9 @@ fn graveyard_noun(spec: TargetSpec, targeted: bool) -> &'static str {
         (true, "your graveyard", "land card", None) => "target land card in your graveyard",
         (true, "your graveyard", "card", None) => "target card in your graveyard",
         (true, "a graveyard", "creature card", None) => "target creature card in a graveyard",
+        (true, "a graveyard", "creature or planeswalker card", None) => {
+            "target creature or planeswalker card in a graveyard"
+        }
         (true, "a graveyard", _, _) => "target card in a graveyard",
         (true, _, _, _) => "target card of a limited mana value in your graveyard",
         (false, "a graveyard", _, _) => "card in a graveyard",
@@ -282,6 +288,7 @@ pub(super) fn object_noun(spec: TargetSpec) -> String {
         TargetSpec::AnyEnchantment => "enchantment".to_string(),
         TargetSpec::AnyArtifactOrEnchantment => "artifact or enchantment".to_string(),
         TargetSpec::AnyLand => "land".to_string(),
+        TargetSpec::AnyCreatureOrPlaneswalker => "creature or planeswalker".to_string(),
         TargetSpec::SpellOnStack => "spell".to_string(),
         TargetSpec::CreatureSpellOnStack => "creature spell".to_string(),
         TargetSpec::AnyTarget => "any target".to_string(),
@@ -317,6 +324,7 @@ pub(super) fn granted_subject(spec: TargetSpec) -> &'static str {
         TargetSpec::AnyLand => "this land",
         TargetSpec::AnyArtifact => "this artifact",
         TargetSpec::AnyEnchantment => "this enchantment",
+        TargetSpec::AnyCreatureOrPlaneswalker => "this permanent",
         TargetSpec::AnyPermanent
         | TargetSpec::AnyPermanentWithManaValue { .. }
         | TargetSpec::AnyNonlandPermanent
