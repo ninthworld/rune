@@ -289,7 +289,7 @@ pub(crate) fn ability_requirements(
         .enumerate()
         .map(|(index, req)| TargetRequirement {
             slot: format!("t{index}"),
-            prompt: target_spec_prompt(req.spec).to_string(),
+            prompt: target_spec_prompt(req.spec),
             // The slots past a group's minimum may be left empty ("up to two target
             // creatures"). The engine decides which; the projection only carries it.
             optional: req.optional,

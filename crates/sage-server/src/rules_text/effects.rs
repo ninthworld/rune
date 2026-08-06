@@ -136,13 +136,17 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             keyword_word(*keyword)
         ),
         // A restriction is already a predicate ("can't be blocked"), so it needs no
-        // verb of its own — only the subject and the duration around it.
+        // verb of its own — only the subject and the duration around it. The subject is
+        // where a variable-arity restriction differs from a variable-arity counter: the
+        // targets are what the sentence is *about*, so they read as "up to two target
+        // creatures" rather than as the "each of …" an object position takes.
         Effect::Restrict {
             target,
+            targets,
             restriction,
         } => format!(
             "{} {} this turn",
-            target_noun(*target),
+            target_subject(*target, *targets),
             restriction_predicate(restriction)
         ),
         Effect::RestrictAll {
@@ -526,7 +530,7 @@ fn entering_noun(filter: &EnteringFilter) -> String {
 /// fewer than it allows.
 fn target_phrase(spec: TargetSpec, count: TargetCount) -> String {
     match count {
-        TargetCount::Exactly(1) => target_noun(spec).to_string(),
+        TargetCount::Exactly(1) => target_noun(spec),
         TargetCount::Exactly(n) => format!(
             "each of {} {}",
             number(u32::from(n)),
@@ -537,6 +541,29 @@ fn target_phrase(spec: TargetSpec, count: TargetCount) -> String {
             number(u32::from(n)),
             plural_target_noun(spec)
         ),
+    }
+}
+
+/// The same target group in **subject** position: `target creature`, `up to two target
+/// creatures`.
+///
+/// A separate function from [`target_phrase`] for the reason [`count_noun`] is separate
+/// from [`count_subject`] — English puts the group after "each of" when the effect acts
+/// *on* it and bare at the head of the sentence when the group is what the sentence is
+/// about. One function per position keeps both exhaustive over the count.
+fn target_subject(spec: TargetSpec, count: TargetCount) -> String {
+    match count {
+        TargetCount::Exactly(1) => target_noun(spec),
+        TargetCount::Exactly(n) => {
+            format!("{} {}", number(u32::from(n)), plural_target_noun(spec))
+        }
+        TargetCount::UpTo(n) => {
+            format!(
+                "up to {} {}",
+                number(u32::from(n)),
+                plural_target_noun(spec)
+            )
+        }
     }
 }
 

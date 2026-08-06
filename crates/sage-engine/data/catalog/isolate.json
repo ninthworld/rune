@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "functional_id": "isolate",
+  "name": "Isolate",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{W}",
+  "colors": [
+    "white"
+  ],
+  "spell_effects": [
+    {
+      "kind": "exile",
+      "target": {
+        "any_permanent_with_mana_value": {
+          "mana_value": 1
+        }
+      }
+    }
+  ]
+}

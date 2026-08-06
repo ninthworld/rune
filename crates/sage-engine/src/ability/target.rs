@@ -152,9 +152,10 @@ impl PlayerRef {
 /// them. So each variant states its position in its own doc comment below, and the
 /// three groups are:
 ///
-/// - **Includes them by construction**: [`Self::AnyPermanent`] and
-///   [`Self::AnyNonlandPermanent`] name permanents, and a planeswalker is one — both
-///   already accepted one before this issue and still do.
+/// - **Includes them by construction**: [`Self::AnyPermanent`],
+///   [`Self::AnyNonlandPermanent`], and [`Self::AnyPermanentWithManaValue`] name
+///   permanents, and a planeswalker is one — the first two already accepted one before
+///   this issue and still do.
 /// - **Includes them by rule**: [`Self::AnyTarget`], which is CR 115.4's "any target"
 ///   and therefore *means* creature, player, or planeswalker; and
 ///   [`Self::AnyPlayerOrPlaneswalker`], which names them outright.
@@ -196,6 +197,25 @@ pub enum TargetSpec {
     /// permanent and it is not a land. The controller's own permanents are never
     /// candidates, which is the whole difference between this spec and that one.
     AnyNonlandPermanentAnOpponentControls,
+    /// Any permanent whose mana value (CR 202.3) is **exactly** `mana_value` — "target
+    /// permanent with mana value 1".
+    ///
+    /// The first spec that filters by a *number off the printed face* rather than by a
+    /// type, a controller, or a keyword. It is an equality rather than the
+    /// [`Self::CardInGraveyard`] cap for the reason the printed cards differ: a cap
+    /// admits everything cheaper, and a card that names one value means that value.
+    /// The two therefore stay separate fields on separate specs rather than one shared
+    /// bound that would have to say which comparison it meant.
+    ///
+    /// The value is read through [`PrintedFace::mana_value`](crate::PrintedFace), so a
+    /// **token** answers `0` (CR 111.4 — no mana cost) rather than being skipped: a
+    /// token is a permanent, and a spell that names mana value 1 misses it because of
+    /// what it is worth, not because it has no card. **Includes a planeswalker**, for
+    /// [`Self::AnyPermanent`]'s reason.
+    AnyPermanentWithManaValue {
+        /// The mana value a candidate must have.
+        mana_value: u32,
+    },
     /// Any creature on the battlefield (a permanent whose printed types include
     /// [`crate::CardType::Creature`]). Never a planeswalker: the two types are
     /// disjoint on every card the schema can express, and a spell that wants both says

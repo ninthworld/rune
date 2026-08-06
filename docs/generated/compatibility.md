@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (216)
+## Supported cards (219)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -87,6 +87,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `gearsmith_prodigy` | Gearsmith Prodigy | functional definition |
 | `ghastbark_twins` | Ghastbark Twins | functional definition |
 | `ghirapur_guide` | Ghirapur Guide | functional definition |
+| `ghostform` | Ghostform | functional definition |
 | `giant_spider` | Giant Spider | functional definition |
 | `gigantosaurus` | Gigantosaurus | functional definition |
 | `goblin_instigator` | Goblin Instigator | functional definition |
@@ -102,12 +103,14 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `heroic_reinforcements` | Heroic Reinforcements | functional definition |
 | `highland_game` | Highland Game | functional definition |
 | `highland_lake` | Highland Lake | functional definition |
+| `hired_blade` | Hired Blade | functional definition |
 | `horizon_scholar` | Horizon Scholar | functional definition |
 | `hostile_minotaur` | Hostile Minotaur | functional definition |
 | `infectious_horror` | Infectious Horror | functional definition |
 | `inspired_charge` | Inspired Charge | functional definition |
 | `invoke_the_divine` | Invoke the Divine | functional definition |
 | `island` | Island | functional definition |
+| `isolate` | Isolate | functional definition |
 | `kargan_dragonrider` | Kargan Dragonrider | functional definition |
 | `knight_of_the_tusk` | Knight of the Tusk | functional definition |
 | `knight_s_pledge` | Knight's Pledge | functional definition |

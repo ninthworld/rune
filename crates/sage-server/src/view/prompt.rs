@@ -145,33 +145,45 @@ pub(crate) fn target_entity_id(target: Target) -> String {
 
 /// The human-readable prompt for an ability-target slot's [`TargetSpec`]. Kept
 /// exhaustive so a new spec forces a matching wire prompt here.
-pub(crate) fn target_spec_prompt(spec: TargetSpec) -> &'static str {
+///
+/// Owned rather than borrowed since one spec names a **number** the player has to be
+/// told: "choose target permanent" and "choose target permanent with mana value 1" offer
+/// differently-sized candidate sets, and a prompt that dropped the filter would read as
+/// though the rest of the board had been withheld by mistake.
+pub(crate) fn target_spec_prompt(spec: TargetSpec) -> String {
     match spec {
-        TargetSpec::AnyPlayer => "Choose target player",
-        TargetSpec::AnyPlayerOrPlaneswalker => "Choose target player or planeswalker",
-        TargetSpec::AnyOpponent => "Choose target opponent",
-        TargetSpec::AnyPermanent => "Choose target permanent",
-        TargetSpec::AnyNonlandPermanent => "Choose target nonland permanent",
+        TargetSpec::AnyPlayer => "Choose target player".to_string(),
+        TargetSpec::AnyPlayerOrPlaneswalker => "Choose target player or planeswalker".to_string(),
+        TargetSpec::AnyOpponent => "Choose target opponent".to_string(),
+        TargetSpec::AnyPermanent => "Choose target permanent".to_string(),
+        TargetSpec::AnyNonlandPermanent => "Choose target nonland permanent".to_string(),
         TargetSpec::AnyNonlandPermanentAnOpponentControls => {
-            "Choose target nonland permanent an opponent controls"
+            "Choose target nonland permanent an opponent controls".to_string()
         }
-        TargetSpec::AnyArtifactCreatureYouControl => "Choose target artifact creature you control",
-        TargetSpec::AnyCreature => "Choose target creature",
-        TargetSpec::AnyCreatureYouControl => "Choose target creature you control",
-        TargetSpec::AnyCreatureAnOpponentControls => "Choose target creature an opponent controls",
-        TargetSpec::AnyCreatureWithFlying => "Choose target creature with flying",
-        TargetSpec::AnyTappedCreature => "Choose target tapped creature",
-        TargetSpec::AnyArtifact => "Choose target artifact",
-        TargetSpec::AnyEnchantment => "Choose target enchantment",
-        TargetSpec::AnyArtifactOrEnchantment => "Choose target artifact or enchantment",
-        TargetSpec::AnyLand => "Choose target land",
-        TargetSpec::SpellOnStack => "Choose target spell",
-        TargetSpec::CreatureSpellOnStack => "Choose target creature spell",
-        TargetSpec::AnyTarget => "Choose any target",
+        TargetSpec::AnyPermanentWithManaValue { mana_value } => {
+            format!("Choose target permanent with mana value {mana_value}")
+        }
+        TargetSpec::AnyArtifactCreatureYouControl => {
+            "Choose target artifact creature you control".to_string()
+        }
+        TargetSpec::AnyCreature => "Choose target creature".to_string(),
+        TargetSpec::AnyCreatureYouControl => "Choose target creature you control".to_string(),
+        TargetSpec::AnyCreatureAnOpponentControls => {
+            "Choose target creature an opponent controls".to_string()
+        }
+        TargetSpec::AnyCreatureWithFlying => "Choose target creature with flying".to_string(),
+        TargetSpec::AnyTappedCreature => "Choose target tapped creature".to_string(),
+        TargetSpec::AnyArtifact => "Choose target artifact".to_string(),
+        TargetSpec::AnyEnchantment => "Choose target enchantment".to_string(),
+        TargetSpec::AnyArtifactOrEnchantment => "Choose target artifact or enchantment".to_string(),
+        TargetSpec::AnyLand => "Choose target land".to_string(),
+        TargetSpec::SpellOnStack => "Choose target spell".to_string(),
+        TargetSpec::CreatureSpellOnStack => "Choose target creature spell".to_string(),
+        TargetSpec::AnyTarget => "Choose any target".to_string(),
         TargetSpec::AnyArtifactEnchantmentOrCreatureWithFlying => {
-            "Choose target artifact, enchantment, or creature with flying"
+            "Choose target artifact, enchantment, or creature with flying".to_string()
         }
-        TargetSpec::CardInGraveyard { .. } => "Choose target card in a graveyard",
+        TargetSpec::CardInGraveyard { .. } => "Choose target card in a graveyard".to_string(),
     }
 }
 

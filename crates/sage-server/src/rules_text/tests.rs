@@ -1438,3 +1438,29 @@ fn issue_731_a_created_replacement_reads_as_the_next_time_this_turn() {
          battlefield this turn without being cast, exile it instead."
     );
 }
+
+/// The three M19 mechanics of issue #748, each stated in the words its card prints.
+///
+/// A keyword line on its own is the whole of a vanilla creature with flash; a
+/// variable-arity restriction reads its group in **subject** position rather than after
+/// the "each of" an object position takes; and a mana-value filter names the number,
+/// because a spec that carries one cannot be described by a fixed class name.
+#[test]
+fn issue_748_flash_variable_arity_and_a_mana_value_filter_read_as_their_cards() {
+    let db = bundled();
+    assert_eq!(text_of(&db, "hired_blade"), "Flash");
+    assert_eq!(
+        text_of(&db, "ghostform"),
+        "Up to two target creatures can't be blocked this turn."
+    );
+    assert_eq!(
+        text_of(&db, "isolate"),
+        "Exile target permanent with mana value 1."
+    );
+    // The same effect at its default count still reads as one creature, so the field
+    // that made the sentence plural changed no card that leaves it out.
+    assert_eq!(
+        text_of(&db, "suspicious_bookcase"),
+        "Defender\n{3}, {T}: Target creature can't be blocked this turn."
+    );
+}

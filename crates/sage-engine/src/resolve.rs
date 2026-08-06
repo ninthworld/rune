@@ -144,6 +144,18 @@ pub(crate) fn target_is_legal(
                     && !has_type(p, CardType::Land, db)
             })
         }
+        // A mana value read off the permanent's printed face (CR 202.3), through the
+        // same accessor a card and a token both answer — so a token is a candidate at
+        // mana value 0 (CR 111.4) rather than being quietly absent from the universe.
+        // Nothing in the engine modifies a permanent's mana value, so the printed face
+        // is the whole answer; when something does, this is the one place that changes.
+        (TargetSpec::AnyPermanentWithManaValue { mana_value }, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| {
+                p.printed
+                    .face(db)
+                    .is_some_and(|face| face.mana_value() == mana_value)
+            })
+        }
         // A creature target additionally requires the permanent's printed types
         // to include Creature (the layer system's type-changing effects are
         // future work, so printed types are authoritative here).

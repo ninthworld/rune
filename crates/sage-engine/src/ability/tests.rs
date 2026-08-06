@@ -617,6 +617,55 @@ fn the_new_target_specs_deserialize_from_their_bare_string_tags() {
 }
 
 #[test]
+fn issue_748_a_mana_value_spec_is_authored_in_the_tagged_form() {
+    // The second spec with fields, so the second written as a map rather than a bare
+    // string. The value is an equality, which is what a printed "with mana value 1"
+    // means and what makes it a different field from the graveyard spec's cap.
+    let json = r#"{"kind":"exile","target":{"any_permanent_with_mana_value":{"mana_value":1}}}"#;
+    let effect: Effect = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        effect,
+        Effect::Exile {
+            target: TargetSpec::AnyPermanentWithManaValue { mana_value: 1 },
+        }
+    );
+    assert_eq!(
+        effect.target_spec(),
+        Some(TargetSpec::AnyPermanentWithManaValue { mana_value: 1 })
+    );
+}
+
+#[test]
+fn issue_748_restrict_carries_a_target_count_and_defaults_it_to_one() {
+    use crate::ability::TargetCount;
+
+    // Omitted, the count is one and the group is the fixed slot every card authored
+    // before this field existed declares.
+    let single = r#"{"kind":"restrict","target":"any_creature","restriction":"cant_be_blocked"}"#;
+    let single: Effect = serde_json::from_str(single).unwrap();
+    assert_eq!(
+        single,
+        Effect::Restrict {
+            target: TargetSpec::AnyCreature,
+            targets: TargetCount::Exactly(1),
+            restriction: CombatRestriction::CantBeBlocked,
+        }
+    );
+    let groups = single.target_groups();
+    assert_eq!((groups[0].min, groups[0].max), (1, 1));
+
+    // Present, it is the same "up to N" group `put_counters` declares — one group,
+    // zero required, N allowed.
+    let variable = r#"{"kind":"restrict","target":"any_creature","targets":{"up_to":2},
+                       "restriction":"cant_be_blocked"}"#;
+    let variable: Effect = serde_json::from_str(variable).unwrap();
+    let groups = variable.target_groups();
+    assert_eq!(groups.len(), 1, "one group, however many slots");
+    assert_eq!((groups[0].min, groups[0].max), (0, 2));
+    assert_eq!(groups[0].spec, TargetSpec::AnyCreature);
+}
+
+#[test]
 fn the_attacks_trigger_authors_its_condition_as_a_bare_tag() {
     let json = r#"{"type":"triggered","event":"self_attacks","effects":[{"kind":"gain_life","player_ref":"controller","amount":2}]}"#;
     let ability: Ability = serde_json::from_str(json).unwrap();

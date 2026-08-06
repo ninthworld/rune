@@ -65,6 +65,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "isolate",
+    "collector_number": "17",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "knight_of_the_tusk",
     "collector_number": "18",
     "rarity": "common"
@@ -215,6 +220,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "ghostform",
+    "collector_number": "58",
+    "rarity": "common"
+  },
+  {
     "functional_id": "horizon_scholar",
     "collector_number": "59",
     "rarity": "uncommon"
@@ -353,6 +363,11 @@
     "functional_id": "gravedigger",
     "collector_number": "98",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "hired_blade",
+    "collector_number": "100",
+    "rarity": "common"
   },
   {
     "functional_id": "infectious_horror",

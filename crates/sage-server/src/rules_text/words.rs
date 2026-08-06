@@ -112,34 +112,46 @@ pub(crate) fn counters(kind: CounterKind, count: u32) -> String {
 }
 
 /// What an effect may target, as a noun phrase (CR 115.1).
-pub(super) fn target_noun(spec: TargetSpec) -> &'static str {
+///
+/// Returns an owned `String` because one spec carries a **number**: a mana-value filter
+/// names the value the card prints, and no fixed table of borrowed phrasings can hold an
+/// arbitrary one. Every other arm is still a constant and merely pays for the copy.
+pub(super) fn target_noun(spec: TargetSpec) -> String {
     match spec {
-        TargetSpec::AnyPlayer => "target player",
-        TargetSpec::AnyPlayerOrPlaneswalker => "target player or planeswalker",
-        TargetSpec::AnyOpponent => "target opponent",
-        TargetSpec::AnyPermanent => "target permanent",
-        TargetSpec::AnyNonlandPermanent => "target nonland permanent",
+        TargetSpec::AnyPlayer => "target player".to_string(),
+        TargetSpec::AnyPlayerOrPlaneswalker => "target player or planeswalker".to_string(),
+        TargetSpec::AnyOpponent => "target opponent".to_string(),
+        TargetSpec::AnyPermanent => "target permanent".to_string(),
+        TargetSpec::AnyNonlandPermanent => "target nonland permanent".to_string(),
         TargetSpec::AnyNonlandPermanentAnOpponentControls => {
-            "target nonland permanent an opponent controls"
+            "target nonland permanent an opponent controls".to_string()
         }
-        TargetSpec::AnyArtifactCreatureYouControl => "target artifact creature you control",
-        TargetSpec::AnyCreature => "target creature",
-        TargetSpec::AnyCreatureYouControl => "target creature you control",
-        TargetSpec::AnyCreatureAnOpponentControls => "target creature an opponent controls",
-        TargetSpec::AnyCreatureWithFlying => "target creature with flying",
-        TargetSpec::AnyTappedCreature => "target tapped creature",
-        TargetSpec::AnyArtifact => "target artifact",
-        TargetSpec::AnyEnchantment => "target enchantment",
-        TargetSpec::AnyArtifactOrEnchantment => "target artifact or enchantment",
-        TargetSpec::AnyLand => "target land",
-        TargetSpec::SpellOnStack => "target spell",
-        TargetSpec::CreatureSpellOnStack => "target creature spell",
+        // CR 202.3, as the card prints it: the value itself, not a bound around it.
+        TargetSpec::AnyPermanentWithManaValue { mana_value } => {
+            format!("target permanent with mana value {mana_value}")
+        }
+        TargetSpec::AnyArtifactCreatureYouControl => {
+            "target artifact creature you control".to_string()
+        }
+        TargetSpec::AnyCreature => "target creature".to_string(),
+        TargetSpec::AnyCreatureYouControl => "target creature you control".to_string(),
+        TargetSpec::AnyCreatureAnOpponentControls => {
+            "target creature an opponent controls".to_string()
+        }
+        TargetSpec::AnyCreatureWithFlying => "target creature with flying".to_string(),
+        TargetSpec::AnyTappedCreature => "target tapped creature".to_string(),
+        TargetSpec::AnyArtifact => "target artifact".to_string(),
+        TargetSpec::AnyEnchantment => "target enchantment".to_string(),
+        TargetSpec::AnyArtifactOrEnchantment => "target artifact or enchantment".to_string(),
+        TargetSpec::AnyLand => "target land".to_string(),
+        TargetSpec::SpellOnStack => "target spell".to_string(),
+        TargetSpec::CreatureSpellOnStack => "target creature spell".to_string(),
         // CR 115.4: "any target" is the phrase itself, not a class of object.
-        TargetSpec::AnyTarget => "any target",
+        TargetSpec::AnyTarget => "any target".to_string(),
         TargetSpec::AnyArtifactEnchantmentOrCreatureWithFlying => {
-            "target artifact, enchantment, or creature with flying"
+            "target artifact, enchantment, or creature with flying".to_string()
         }
-        TargetSpec::CardInGraveyard { .. } => graveyard_noun(spec, true),
+        TargetSpec::CardInGraveyard { .. } => graveyard_noun(spec, true).to_string(),
     }
 }
 
@@ -191,33 +203,38 @@ fn graveyard_noun(spec: TargetSpec, targeted: bool) -> &'static str {
 
 /// The class of object a target spec names, without the word "target" — what an Aura
 /// enchants (CR 303.4a).
-pub(super) fn object_noun(spec: TargetSpec) -> &'static str {
+///
+/// Owned for [`target_noun`]'s reason, and for the same one arm.
+pub(super) fn object_noun(spec: TargetSpec) -> String {
     match spec {
-        TargetSpec::AnyPlayer => "player",
-        TargetSpec::AnyPlayerOrPlaneswalker => "player or planeswalker",
-        TargetSpec::AnyOpponent => "opponent",
-        TargetSpec::AnyPermanent => "permanent",
-        TargetSpec::AnyNonlandPermanent => "nonland permanent",
+        TargetSpec::AnyPlayer => "player".to_string(),
+        TargetSpec::AnyPlayerOrPlaneswalker => "player or planeswalker".to_string(),
+        TargetSpec::AnyOpponent => "opponent".to_string(),
+        TargetSpec::AnyPermanent => "permanent".to_string(),
+        TargetSpec::AnyNonlandPermanent => "nonland permanent".to_string(),
         TargetSpec::AnyNonlandPermanentAnOpponentControls => {
-            "nonland permanent an opponent controls"
+            "nonland permanent an opponent controls".to_string()
         }
-        TargetSpec::AnyArtifactCreatureYouControl => "artifact creature you control",
-        TargetSpec::AnyCreature => "creature",
-        TargetSpec::AnyCreatureYouControl => "creature you control",
-        TargetSpec::AnyCreatureAnOpponentControls => "creature an opponent controls",
-        TargetSpec::AnyCreatureWithFlying => "creature with flying",
-        TargetSpec::AnyTappedCreature => "tapped creature",
-        TargetSpec::AnyArtifact => "artifact",
-        TargetSpec::AnyEnchantment => "enchantment",
-        TargetSpec::AnyArtifactOrEnchantment => "artifact or enchantment",
-        TargetSpec::AnyLand => "land",
-        TargetSpec::SpellOnStack => "spell",
-        TargetSpec::CreatureSpellOnStack => "creature spell",
-        TargetSpec::AnyTarget => "any target",
+        TargetSpec::AnyPermanentWithManaValue { mana_value } => {
+            format!("permanent with mana value {mana_value}")
+        }
+        TargetSpec::AnyArtifactCreatureYouControl => "artifact creature you control".to_string(),
+        TargetSpec::AnyCreature => "creature".to_string(),
+        TargetSpec::AnyCreatureYouControl => "creature you control".to_string(),
+        TargetSpec::AnyCreatureAnOpponentControls => "creature an opponent controls".to_string(),
+        TargetSpec::AnyCreatureWithFlying => "creature with flying".to_string(),
+        TargetSpec::AnyTappedCreature => "tapped creature".to_string(),
+        TargetSpec::AnyArtifact => "artifact".to_string(),
+        TargetSpec::AnyEnchantment => "enchantment".to_string(),
+        TargetSpec::AnyArtifactOrEnchantment => "artifact or enchantment".to_string(),
+        TargetSpec::AnyLand => "land".to_string(),
+        TargetSpec::SpellOnStack => "spell".to_string(),
+        TargetSpec::CreatureSpellOnStack => "creature spell".to_string(),
+        TargetSpec::AnyTarget => "any target".to_string(),
         TargetSpec::AnyArtifactEnchantmentOrCreatureWithFlying => {
-            "artifact, enchantment, or creature with flying"
+            "artifact, enchantment, or creature with flying".to_string()
         }
-        TargetSpec::CardInGraveyard { .. } => graveyard_noun(spec, false),
+        TargetSpec::CardInGraveyard { .. } => graveyard_noun(spec, false).to_string(),
     }
 }
 

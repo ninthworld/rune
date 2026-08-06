@@ -317,7 +317,10 @@ The three restriction verbs mirror the keyword-granting ones exactly, and all im
 **until end of turn**:
 
 - `{"kind": "restrict", "target": "any_creature", "restriction": "cant_block"}` — one
-  chosen target;
+  chosen target, or **up to N** of them with the same `targets` count `put_counters`
+  takes: `{"kind": "restrict", "target": "any_creature", "targets": {"up_to": 2},
+  "restriction": "cant_be_blocked"}` is "up to two target creatures can't be blocked this
+  turn", imposed once per target still legal on resolution (CR 608.2c);
 - `{"kind": "restrict_self", "restriction": "cant_be_blocked"}` — the ability's own
   source, which is not a target and never fizzles;
 - `{"kind": "restrict_all", "affects": {"scope": "creatures_without_flying"}, "restriction": "cant_block"}`
@@ -396,13 +399,27 @@ resolution (CR 608.2b). The classes are `any_player`, `any_player_or_planeswalke
 `any_creature_you_control`, `any_creature_an_opponent_controls`,
 `any_creature_with_flying`, `any_tapped_creature`, `any_artifact`, `any_enchantment`,
 `any_artifact_or_enchantment`, `any_artifact_enchantment_or_creature_with_flying`,
-`any_land`, `spell_on_stack`, `creature_spell_on_stack`, `any_target`, and
-`card_in_graveyard`.
+`any_land`, `spell_on_stack`, `creature_spell_on_stack`, `any_target`,
+`any_permanent_with_mana_value`, and `card_in_graveyard`.
 
 `any_player_or_planeswalker` is the burn class that names both halves and no creature —
 `Lava Axe deals 5 damage to target player or planeswalker`. It is neither `any_player`
 (which would drop the planeswalker half) nor `any_target` (which would add creatures the
 card cannot hit).
+
+`any_permanent_with_mana_value` narrows the permanent universe by the number printed on the
+face (CR 202.3) — `Exile target permanent with mana value 1`. It is written in the enum's
+tagged form because it carries a field:
+
+```json
+{ "kind": "exile", "target": { "any_permanent_with_mana_value": { "mana_value": 1 } } }
+```
+
+The comparison is an **equality**, not the cap `card_in_graveyard` takes: a card that names
+one value means that value, and a cap would silently admit everything cheaper. The value is
+read through the same printed face a token answers with, so a token is a candidate at mana
+value 0 (CR 111.4 — no mana cost) rather than being absent from the universe, and so is a
+land.
 
 `card_in_graveyard` is the one class that names a **card in a zone** rather than an object
 on the battlefield or the stack, so it is the only one a chosen card target satisfies. It is
@@ -432,9 +449,8 @@ independent things a printed card says about such a target:
 
 A graveyard is public, so its candidates are enumerable exactly as a battlefield's are.
 `return_card_to_hand` sends its target to that card's **owner's** hand (CR 400.7), and is
-the second effect after `put_counters` that may name more than one target — "return up to
-two target creature cards from your graveyard to your hand" is one effect with a two-slot
-group.
+one of the three effects that may name more than one target — "return up to two target
+creature cards from your graveyard to your hand" is one effect with a two-slot group.
 
 Every class is evaluated **relative to the choosing object's controller**, which is what
 lets one authored card mean "you" from either seat. Classes read through the computed
@@ -453,13 +469,19 @@ of *groups* counts both: an announcement fills both slots or is illegal, a `may`
 wrap such an effect (one wrapper cannot forward two slots), and a conditional branch may
 not contain one.
 
-**Up to N targets.** One effect — `put_counters` — may name more than one, with a `targets`
-count:
+**Up to N targets.** Three effects — `put_counters`, `return_card_to_hand`, and
+`restrict` — may name more than one, with a `targets` count:
 
 ```json
 { "kind": "put_counters", "target": "any_creature", "targets": { "up_to": 2 },
   "counter": "plus_one_plus_one", "count": 1 }
+{ "kind": "restrict", "target": "any_creature", "targets": { "up_to": 2 },
+  "restriction": "cant_be_blocked" }
 ```
+
+The arity is one field read in one place, so a fourth effect that needs it inherits the
+whole pipeline — the slots, the offer, the pairing, the per-target re-check — by declaring
+the field rather than by joining anything.
 
 `{"exactly": n}` demands exactly `n` distinct targets; `{"up_to": n}` lets the player choose
 between none and `n`. Omitting the field is `{"exactly": 1}`, which is what every other

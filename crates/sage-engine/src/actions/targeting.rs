@@ -164,6 +164,10 @@ pub(crate) fn legal_targets_for_spec(
         TargetSpec::AnyPermanent
         | TargetSpec::AnyNonlandPermanent
         | TargetSpec::AnyNonlandPermanentAnOpponentControls
+        // A mana-value filter narrows the battlefield rather than naming a different
+        // zone, so the universe is the same one every permanent spec draws from and the
+        // `target_is_legal` filter below is what reads the number.
+        | TargetSpec::AnyPermanentWithManaValue { .. }
         | TargetSpec::AnyCreature
         | TargetSpec::AnyCreatureYouControl
         | TargetSpec::AnyCreatureAnOpponentControls

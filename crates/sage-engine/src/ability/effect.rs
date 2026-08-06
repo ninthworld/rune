@@ -399,9 +399,19 @@ pub enum Effect {
     /// (CR 601.2c) and re-checked on resolution (CR 608.2b). The restriction folds into
     /// the target's computed restrictions on demand and binds exactly as a printed one
     /// does; a duplicate imposition is redundant, not additive.
+    ///
+    /// The third effect that may name **more than one** target, beside
+    /// [`Effect::PutCounters`] and [`Effect::ReturnCardToHand`]: `up to two target
+    /// creatures can't be blocked this turn` is one effect with a two-slot group,
+    /// imposed once per target still legal on resolution (CR 608.2c). Omitting the
+    /// field leaves it at one target, which is what every other card using this effect
+    /// says.
     Restrict {
-        /// What this effect is allowed to target (a creature).
+        /// What each of this effect's slots is allowed to target (a creature).
         target: TargetSpec,
+        /// How many targets are chosen. Defaults to exactly one.
+        #[serde(default)]
+        targets: TargetCount,
         /// The restriction imposed until end of turn.
         restriction: CombatRestriction,
     },
@@ -1090,10 +1100,16 @@ impl Effect {
     #[must_use]
     pub fn target_groups(&self) -> Vec<TargetGroup> {
         match self {
-            // The one variable-arity effect: `put a +1/+1 counter on each of up to two
+            // The variable-arity effects: `put a +1/+1 counter on each of up to two
             // target creatures` chooses between zero and two, and every other authoring
-            // of the same effect leaves the count at its default of one.
+            // of the same effects leaves the count at its default of one. They differ
+            // only in the verb — the arity is one field, read here in one arm, so a
+            // fourth effect that needs it inherits the whole pipeline by joining this
+            // pattern.
             Effect::PutCounters {
+                target, targets, ..
+            }
+            | Effect::Restrict {
                 target, targets, ..
             }
             | Effect::ReturnCardToHand { target, targets } => {
@@ -1124,7 +1140,6 @@ impl Effect {
             | Effect::PumpByCount { target, .. }
             | Effect::PumpByAmount { target, .. }
             | Effect::GrantKeyword { target, .. }
-            | Effect::Restrict { target, .. }
             | Effect::GainControl { target, .. }
             | Effect::ReturnCardToBattlefield { target, .. }
             | Effect::PutOnTopOfLibrary { target }
