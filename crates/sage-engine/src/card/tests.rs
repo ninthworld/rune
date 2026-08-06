@@ -7,8 +7,15 @@ use super::card_data::CardData;
 use super::database::CardDatabase;
 use crate::id::{CardId, FunctionalId};
 
-/// The number of functional definitions in `data/catalog/`.
-pub(crate) const CATALOG_SIZE: usize = 198;
+/// The number of functional definitions in `data/catalog/`, read off the manifest
+/// `build.rs` generates from the directory itself (ADR 0008 §3).
+///
+/// **Derived rather than written down**, for the same reason a `CardId` never is: a
+/// literal here is a line every card-authoring branch edits, so two such branches merge
+/// to a number that is right for neither — and because both sides changed the same line
+/// to the same value, git resolves it silently, with no conflict to notice. The failure
+/// then surfaces as three unrelated-looking assertion failures in CI.
+pub(crate) const CATALOG_SIZE: usize = super::catalog::CATALOG.len();
 
 /// Every handle the bundled catalog interned: `CardId(0..n)` (ADR 0008 §3).
 pub(crate) fn every_id() -> impl Iterator<Item = CardId> {

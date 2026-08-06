@@ -183,8 +183,23 @@ mod tests {
 
     use super::*;
 
-    /// The number of printing records across `data/sets/`.
-    const PRINTING_COUNT: usize = 213;
+    /// The number of printing records across `data/sets/`, counted from the embedded set
+    /// files themselves rather than written down — see [`crate::card::tests::CATALOG_SIZE`]
+    /// for why a literal here is a merge hazard.
+    ///
+    /// Counted through `serde_json::Value`, which is a genuinely different path from the
+    /// typed loader under test: a loader that silently dropped a record would still be
+    /// caught, where comparing the loader to itself would not.
+    fn printing_count() -> usize {
+        crate::card::catalog::SET_MANIFEST
+            .iter()
+            .map(|set| {
+                serde_json::from_str::<Vec<serde_json::Value>>(set.json)
+                    .unwrap_or_else(|err| panic!("set {} is not a JSON array: {err}", set.code))
+                    .len()
+            })
+            .sum()
+    }
 
     #[test]
     fn bundled_printings_load_from_the_set_manifest() {
@@ -194,7 +209,7 @@ mod tests {
         // the base set (1–280, with the basic lands printed four times each) and PM19
         // is the planeswalker decks (281–314). Every definition in the catalog is
         // printed in one of the two.
-        assert_eq!(printings.len(), PRINTING_COUNT);
+        assert_eq!(printings.len(), printing_count());
         assert!(!printings.is_empty());
         let ogre = printings.printing("M19", "153").unwrap();
         // The record names onakke_ogre; the loader resolved that to its handle.
