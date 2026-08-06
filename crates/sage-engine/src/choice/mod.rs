@@ -1,5 +1,5 @@
 //! Mid-resolution player choices: "choose N cards from this set", "do you want this to
-//! happen?", and "which color of mana?".
+//! happen?", "which color of mana?", and "name a card".
 //!
 //! Every effect before this one resolved without asking anyone anything. A discard, a
 //! scry, a look-at-the-top, a library search, and an optional `you may …` all stop in
@@ -12,7 +12,8 @@
 //!   choice is *currently owed* is [`pending_player_choice`], a pure read of the queue
 //!   head. Nothing sets a "waiting" bit that could get out of step with the queue.
 //! - **The candidates are derived too.** [`choice_candidates`] recomputes the pickable
-//!   cards from current state on every call, so an answer is validated against the set
+//!   cards from current state on every call, and [`named_card_candidates`] recomputes
+//!   the nameable cards from the catalog, so an answer is validated against the set
 //!   that exists *now*, never against a list snapshotted when the choice was posed. It
 //!   can afford to: while a choice is owed nothing else in the game is legal, so the
 //!   zone it reads cannot move underneath it.
@@ -34,8 +35,17 @@
 //! revealed hand may be shown to) and on the log, which records counts and never card
 //! identities. See `docs/decisions/0013-mid-resolution-player-choices.md`.
 
+mod outcome;
+mod posing;
+
+pub(crate) use outcome::{
+    apply_card_name_outcome, apply_choice_outcome, apply_color_outcome, discard_to_cost,
+    take_confirmed_effects,
+};
+pub(crate) use posing::{attach_resume, choices_for_effect, pose_choices};
+
 use crate::ability::{CardFilter, Effect, FoundDestination, Target};
-use crate::card_type::CardType;
+use crate::card_type::{CardType, Supertype};
 use crate::id::{CardId, CardInstance, CardInstanceId, PlayerId};
 use crate::mana::Color;
 use crate::rng::SplitMix64;
@@ -101,6 +111,18 @@ pub enum ChoiceQuestion {
     /// it is the same as the other three — one queue, one chooser, one [`Resume`] — which
     /// is the rule this enum is built on.
     Replacement(ReplacementRequest),
+    /// **Name a card** — the CR 614.12 choice a permanent's controller makes as it
+    /// enters ([`CardNameRequest`]). Answered with
+    /// [`Action::AnswerCardName`](crate::Action).
+    ///
+    /// The fifth shape because the answer is a fifth thing: a **card identity**, which is
+    /// neither a card in a zone (nothing is being moved, and the named card need not be
+    /// anywhere in the game) nor a position in a derived list of effects. It is the one
+    /// question whose answer set is drawn from the *catalog* rather than from the board
+    /// ([`named_card_candidates`]), and that is the whole of the project's legal posture
+    /// on naming: the answer is a [`CardId`] chosen from the cards SAGE has defined, so
+    /// no prose and no name the catalog does not contain can ever be recorded.
+    CardName(CardNameRequest),
 }
 
 impl ChoiceQuestion {
@@ -113,6 +135,7 @@ impl ChoiceQuestion {
             ChoiceQuestion::Cards(request) => Some(request),
             ChoiceQuestion::Confirm(_)
             | ChoiceQuestion::Color(_)
+            | ChoiceQuestion::CardName(_)
             | ChoiceQuestion::Replacement(_) => None,
         }
     }
@@ -124,6 +147,7 @@ impl ChoiceQuestion {
             ChoiceQuestion::Confirm(request) => Some(request),
             ChoiceQuestion::Cards(_)
             | ChoiceQuestion::Color(_)
+            | ChoiceQuestion::CardName(_)
             | ChoiceQuestion::Replacement(_) => None,
         }
     }
@@ -135,6 +159,19 @@ impl ChoiceQuestion {
             ChoiceQuestion::Color(request) => Some(request),
             ChoiceQuestion::Cards(_)
             | ChoiceQuestion::Confirm(_)
+            | ChoiceQuestion::CardName(_)
+            | ChoiceQuestion::Replacement(_) => None,
+        }
+    }
+
+    /// The card-naming request this question asks, or `None` when it is not one.
+    #[must_use]
+    pub fn card_name(&self) -> Option<&CardNameRequest> {
+        match self {
+            ChoiceQuestion::CardName(request) => Some(request),
+            ChoiceQuestion::Cards(_)
+            | ChoiceQuestion::Confirm(_)
+            | ChoiceQuestion::Color(_)
             | ChoiceQuestion::Replacement(_) => None,
         }
     }
@@ -144,9 +181,10 @@ impl ChoiceQuestion {
     pub fn replacement(&self) -> Option<&ReplacementRequest> {
         match self {
             ChoiceQuestion::Replacement(request) => Some(request),
-            ChoiceQuestion::Cards(_) | ChoiceQuestion::Confirm(_) | ChoiceQuestion::Color(_) => {
-                None
-            }
+            ChoiceQuestion::Cards(_)
+            | ChoiceQuestion::Confirm(_)
+            | ChoiceQuestion::Color(_)
+            | ChoiceQuestion::CardName(_) => None,
         }
     }
 }
@@ -208,16 +246,86 @@ pub enum ColorOutcome {
         restriction: Option<crate::ability::ManaRestriction>,
     },
     /// Record the chosen colour on a permanent that is **entering the battlefield**
-    /// (CR 614.12), and complete that entry.
+    /// (CR 614.12), and hand the entry back to the seam that asked.
     ///
     /// While this is owed the card is on the battlefield's doorstep and in no zone at
     /// all — the same place a spell's card is while its resolution is suspended
     /// ([`SuspendedSpell`]). That is what makes "the permanent is never briefly on the
     /// battlefield without its colour" true by construction rather than by ordering: it
-    /// is not there yet. Answering puts it there with the colour already on it, so the
-    /// state-based-action loop, the trigger diff, and every projection see one arrival,
-    /// complete.
+    /// is not there yet. Answering writes the colour onto the event and re-enters
+    /// [`begin_battlefield_entry`](crate::GameState), which puts the permanent there with
+    /// the colour already on it, so the state-based-action loop, the trigger diff, and
+    /// every projection see one arrival, complete.
     RecordOnEntry(crate::replacement::PendingEntry),
+}
+
+/// A card-naming question ([`ChoiceQuestion::CardName`]): *name a card*, as a permanent
+/// enters the battlefield (CR 614.12).
+///
+/// It carries the **class** of card that may be named and the **event** that is waiting,
+/// and no candidate list: [`named_card_candidates`] derives the nameable cards from the
+/// catalog on every read, in the same relationship [`ChoiceRequest`] has to
+/// [`choice_candidates`]. Like a [`ReplacementRequest`] it needs no [`Resume`] — the
+/// entry is the last step of a resolution rather than one of its effects.
+///
+/// One outcome today, so there is no outcome enum: a second use adds one, exactly as
+/// [`ColorOutcome`] appeared when the colour question grew its second.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CardNameRequest {
+    /// Which cards may be named — the "nonbasic land card" of a card that narrows it.
+    pub class: NamedCardClass,
+    /// The battlefield entry waiting on the answer, in no zone at all until it comes.
+    pub entry: crate::replacement::PendingEntry,
+}
+
+/// The class of card a [`CardNameRequest`] may name — the words a card puts between
+/// "name a" and "card".
+///
+/// A deliberately small closed set that grows by adding a variant when a card needs one,
+/// like every other authored selector. It is **not** a [`CardFilter`]: that vocabulary
+/// classifies a card sitting in a zone, and this one classifies an entry in the catalog,
+/// which is a different question about a different kind of thing — nothing being named
+/// here need be in the game at all.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NamedCardClass {
+    /// A **nonbasic land** card — a land without the basic supertype (CR 205.4a).
+    NonbasicLand,
+}
+
+impl NamedCardClass {
+    /// Whether the printed card `card` belongs to this class.
+    ///
+    /// Reads printed characteristics, which is the only reading available and the right
+    /// one: a card name is named in the abstract, off no object on any battlefield.
+    #[must_use]
+    fn admits(self, data: &crate::CardData) -> bool {
+        match self {
+            NamedCardClass::NonbasicLand => {
+                data.has_type(CardType::Land) && !data.supertypes.contains(&Supertype::Basic)
+            }
+        }
+    }
+}
+
+/// The cards `class` currently admits, in ascending [`CardId`] order — the complete,
+/// always-legal answer set of a card-naming question.
+///
+/// **Derived from the catalog on every read**, exactly as [`choice_candidates`] is
+/// derived from a zone. Nothing snapshots it, so an answer is checked against the set
+/// that exists now.
+///
+/// It is also the whole of the project's legal posture on naming a card: a player names
+/// one of the cards SAGE has *defined*, never a string they typed, so the answer that
+/// reaches [`Permanent::named_card`](crate::Permanent) is a functional identity and the
+/// engine can never come to hold a card name it did not already ship.
+#[must_use]
+pub fn named_card_candidates(db: &CardDatabase, class: NamedCardClass) -> Vec<CardId> {
+    db.all()
+        .into_iter()
+        .filter(|(_, data)| class.admits(data))
+        .map(|(id, _)| id)
+        .collect()
 }
 
 /// The question an optional effect asks: *do you want this, and will you pay for it?*
@@ -459,6 +567,22 @@ pub(crate) fn answer_is_legal(
             .all(|id| candidates.iter().any(|inst| inst.id == *id))
 }
 
+/// Whether `named` is a legal answer to the card-naming question currently owed: a
+/// card-name question *is* owed, and the card is in its freshly derived candidate set
+/// ([`named_card_candidates`]).
+///
+/// The same regenerate-and-check discipline [`answer_is_legal`] applies, and the enforced
+/// half of the legal posture: an answer naming a card the catalog does not contain — or
+/// one outside the class the card narrowed the choice to — is refused rather than
+/// recorded, so nothing a client sends can put an undefined name into the game state.
+#[must_use]
+pub(crate) fn named_card_is_legal(state: &GameState, named: CardId, db: &CardDatabase) -> bool {
+    let Some(request) = pending_player_choice(state).and_then(|p| p.question.card_name()) else {
+        return false;
+    };
+    named_card_candidates(db, request.class).contains(&named)
+}
+
 /// Whether the pending yes-or-no can currently be answered **yes**: it is a
 /// [`ChoiceQuestion::Confirm`], and its cost (if it has one) is payable from the
 /// chooser's mana pool as it stands right now.
@@ -492,30 +616,6 @@ fn cost_is_payable_from_pool(state: &GameState, player: PlayerId, cost: Option<&
         .players
         .get(player.0)
         .is_some_and(|p| p.mana_pool.can_pay(&crate::mana::parse_mana_cost(cost)))
-}
-
-/// Whether `player` could pay `cost` if they tapped everything they have — their pool
-/// plus every point of mana their untapped sources could still add.
-///
-/// This, not the current pool, is what decides whether an optional cost is *posed*: a
-/// player with an empty pool and two untapped Forests can pay `{1}`, and auto-declining
-/// them would take away a decision the rules give them. The estimate is the same
-/// deliberate over-estimate [`crate::priority_has_no_meaningful_action`] makes — every
-/// mana ability of every untapped source, as though one permanent could be tapped for
-/// all of them — and errs in the same safe direction: it can only ever *offer* a choice
-/// that turns out unpayable, which the chooser simply declines, never withhold one they
-/// could have taken.
-fn cost_could_be_paid(
-    state: &GameState,
-    player: PlayerId,
-    cost: Option<&str>,
-    db: &CardDatabase,
-) -> bool {
-    let Some(cost) = cost else {
-        return true;
-    };
-    crate::actions::potential_mana_pool(state, player, db)
-        .can_pay(&crate::mana::parse_mana_cost(cost))
 }
 
 /// Whether the printed card `card` satisfies `filter`.
@@ -569,501 +669,4 @@ pub(crate) fn card_matches_filter(
         }
         CardFilter::Artifact => data.has_type(CardType::Artifact),
     }
-}
-
-/// Pose `choices`, or settle the ones that have no legal answer outright.
-///
-/// Returns whether anything was actually queued — i.e. whether the caller must suspend.
-/// A question that is not a decision is answered here instead of being asked, which is
-/// the whole of the "a choice with no legal answer resolves without stalling" guarantee,
-/// in one place rather than per effect:
-///
-/// - a card selection whose clamped maximum is zero is applied with an empty selection
-///   (which still shuffles a searched library and still bottoms a looked-at pile);
-/// - an optional cost no amount of tapping could pay is declined, and *recorded* as
-///   declined, so the log never quietly omits a decision the player was entitled to.
-pub(crate) fn pose_choices(
-    state: &mut GameState,
-    choices: Vec<(PlayerId, ChoiceQuestion)>,
-    db: &CardDatabase,
-) -> bool {
-    let mut queued = false;
-    for (chooser, question) in choices {
-        match &question {
-            ChoiceQuestion::Cards(request) => {
-                let (_, max) = choice_bounds(state, request, db);
-                if max == 0 {
-                    apply_choice_outcome(state, request, &[], db);
-                    continue;
-                }
-            }
-            ChoiceQuestion::Confirm(request) => {
-                if !cost_could_be_paid(state, chooser, request.cost.as_deref(), db) {
-                    state.record_event(GameEvent::OptionalDeclined { player: chooser });
-                    continue;
-                }
-            }
-            // A color question always has five legal answers, so it is always posed —
-            // the one shape with no "nothing to ask" case at all.
-            //
-            // A replacement-ordering question is never posed from here: it is not asked
-            // by an effect resolving, but by the battlefield-entry seam, which queues it
-            // directly ([`GameState::begin_battlefield_entry`](crate::GameState)) and
-            // only ever when two or more replacements really do apply.
-            ChoiceQuestion::Color(_) | ChoiceQuestion::Replacement(_) => {}
-        }
-        state.pending_choices.push(PendingChoice {
-            chooser,
-            question,
-            resume: None,
-        });
-        queued = true;
-    }
-    queued
-}
-
-/// Attach `resume` to the most recently queued choice, so the rest of the suspended
-/// object's resolution happens once, after the *last* choice its effect posed.
-///
-/// Called only when [`pose_choices`] queued something, so the queue is non-empty.
-pub(crate) fn attach_resume(state: &mut GameState, resume: Resume) {
-    if let Some(last) = state.pending_choices.last_mut() {
-        last.resume = Some(resume);
-    }
-}
-
-/// Carry out `request` for the chosen cards (and, where the outcome says so, for the
-/// ones passed over).
-///
-/// The caller has already established that `chosen` is a legal answer; this moves cards
-/// and records the log event, and decides nothing.
-pub(crate) fn apply_choice_outcome(
-    state: &mut GameState,
-    request: &ChoiceRequest,
-    chosen: &[CardInstanceId],
-    db: &CardDatabase,
-) {
-    match request.outcome {
-        ChoiceOutcome::Discard => discard_chosen(state, request.subject, chosen),
-        ChoiceOutcome::BottomChosen => bottom_chosen(state, request.subject, chosen),
-        ChoiceOutcome::TakeAndBottomRest(destination) => {
-            take_and_bottom_rest(state, request, chosen, destination, db);
-        }
-        ChoiceOutcome::TakeAndShuffle(destination) => {
-            take_and_shuffle(state, request, chosen, destination, db);
-        }
-    }
-}
-
-/// Discard cards to pay an additional cast cost (CR 601.2b).
-///
-/// The same move as any other discard, deliberately: a card discarded to a cost is
-/// discarded (CR 701.8), and routing it here rather than writing a second hand-to-
-/// graveyard move is what keeps that true as discards grow triggers and replacements.
-/// It exists only because the cost path has already *chosen* the cards — they arrive in
-/// the payment — so it needs the second half of a choice without the first.
-pub(crate) fn discard_to_cost(state: &mut GameState, subject: PlayerId, chosen: &[CardInstanceId]) {
-    discard_chosen(state, subject, chosen);
-}
-
-/// Move the chosen cards from the subject's hand to their graveyard (CR 701.8) and log
-/// how many moved — never which, since a hand is hidden and a count is all the other
-/// seats are entitled to. (The graveyard itself is public, so the cards become visible
-/// there on their own.)
-fn discard_chosen(state: &mut GameState, subject: PlayerId, chosen: &[CardInstanceId]) {
-    let mut discarded = 0u32;
-    for id in chosen {
-        let Some(player) = state.players.get_mut(subject.0) else {
-            break;
-        };
-        let Some(pos) = player.hand.iter().position(|card| card.id == *id) else {
-            continue;
-        };
-        let card = player.hand.remove(pos);
-        player.graveyard.push(card);
-        discarded += 1;
-    }
-    if discarded > 0 {
-        state.record_event(GameEvent::CardsDiscarded {
-            player: subject,
-            count: discarded,
-        });
-    }
-}
-
-/// Put the chosen cards on the bottom of the subject's library in the order they were
-/// chosen — scry's half that moves anything (CR 701.17). The looked-at cards left
-/// unchosen are already on top in their existing order, so they need no work.
-fn bottom_chosen(state: &mut GameState, subject: PlayerId, chosen: &[CardInstanceId]) {
-    let Some(player) = state.players.get_mut(subject.0) else {
-        return;
-    };
-    let mut moved = Vec::with_capacity(chosen.len());
-    for id in chosen {
-        if let Some(pos) = player.library.iter().position(|card| card.id == *id) {
-            moved.push(player.library.remove(pos));
-        }
-    }
-    // The bottom of the library is index 0, and the first card chosen ends up deepest.
-    moved.reverse();
-    for card in moved {
-        player.library.insert(0, card);
-    }
-}
-
-/// Take the chosen cards to `destination` and bottom every *other* card this choice
-/// looked at, in a random order drawn from the seeded RNG.
-///
-/// The looked-at set is the request's own window onto the library
-/// ([`ChoiceZone::LibraryTop`]) rather than the filtered candidate list: a look at the
-/// top four bottoms all four, not only the ones that could have been taken.
-fn take_and_bottom_rest(
-    state: &mut GameState,
-    request: &ChoiceRequest,
-    chosen: &[CardInstanceId],
-    destination: FoundDestination,
-    db: &CardDatabase,
-) {
-    let ChoiceZone::LibraryTop(count) = request.zone else {
-        return;
-    };
-    let looked_at: Vec<CardInstance> = state
-        .players
-        .get(request.subject.0)
-        .map(|player| {
-            player
-                .library
-                .iter()
-                .rev()
-                .take(count as usize)
-                .copied()
-                .collect()
-        })
-        .unwrap_or_default();
-    // Every looked-at card leaves the library first, so nothing below can find a card
-    // in two places at once; each is then put where the answer says.
-    if let Some(player) = state.players.get_mut(request.subject.0) {
-        player
-            .library
-            .retain(|card| !looked_at.iter().any(|seen| seen.id == card.id));
-    }
-    let (taken, mut rest): (Vec<CardInstance>, Vec<CardInstance>) = looked_at
-        .into_iter()
-        .partition(|card| chosen.contains(&card.id));
-    for card in taken {
-        place_card(state, request.subject, card, destination, db);
-    }
-    // "in a random order" — the seeded stream, so the same seed replays the same
-    // bottom order and the chooser learns nothing about their future draws.
-    let mut rng = SplitMix64::new(state.rng_seed);
-    rng.shuffle(&mut rest);
-    state.rng_seed = rng.state();
-    if let Some(player) = state.players.get_mut(request.subject.0) {
-        for card in rest.into_iter().rev() {
-            player.library.insert(0, card);
-        }
-    }
-}
-
-/// Take the chosen cards to `destination` and shuffle the searched library
-/// (CR 701.19c) — including when nothing was found, since the shuffle is what stops a
-/// failed search from being a free look at the deck.
-fn take_and_shuffle(
-    state: &mut GameState,
-    request: &ChoiceRequest,
-    chosen: &[CardInstanceId],
-    destination: FoundDestination,
-    db: &CardDatabase,
-) {
-    for id in chosen {
-        let Some(player) = state.players.get_mut(request.subject.0) else {
-            break;
-        };
-        let Some(pos) = player.library.iter().position(|card| card.id == *id) else {
-            continue;
-        };
-        let card = player.library.remove(pos);
-        place_card(state, request.subject, card, destination, db);
-    }
-    let mut library = state
-        .players
-        .get(request.subject.0)
-        .map(|player| player.library.clone())
-        .unwrap_or_default();
-    let mut rng = SplitMix64::new(state.rng_seed);
-    rng.shuffle(&mut library);
-    state.rng_seed = rng.state();
-    if let Some(player) = state.players.get_mut(request.subject.0) {
-        player.library = library;
-    }
-    state.record_event(GameEvent::LibrarySearched {
-        player: request.subject,
-    });
-}
-
-/// Put one card that has already been removed from its zone into `destination`.
-///
-/// A card headed for the battlefield goes through the one battlefield-entry seam
-/// ([`GameState::put_card_onto_battlefield`]), so it mints a fresh
-/// [`PermanentId`](crate::PermanentId), applies its own CR 614 enters-the-battlefield
-/// replacements, and is picked up by the trigger diff exactly as a resolving permanent
-/// spell is.
-fn place_card(
-    state: &mut GameState,
-    subject: PlayerId,
-    card: CardInstance,
-    destination: FoundDestination,
-    db: &CardDatabase,
-) {
-    match destination {
-        FoundDestination::Hand => {
-            if let Some(player) = state.players.get_mut(subject.0) {
-                player.hand.push(card);
-            }
-        }
-        // Both battlefield arms discard the seam's answer: a found card that names a
-        // colour as it enters has its entry deferred onto the choice queue, and nothing
-        // here needs the id of a permanent that does not exist yet.
-        FoundDestination::Battlefield => {
-            state.put_card_onto_battlefield(card, subject, false, None, db);
-        }
-        FoundDestination::BattlefieldTapped => {
-            state.put_card_onto_battlefield(card, subject, true, None, db);
-        }
-    }
-}
-
-/// The choices `effect` poses, if it poses any: `(chooser, request)` pairs in the order
-/// they must be answered. `None` for every effect that resolves without asking.
-///
-/// `targets` are the targets the announcement chose for this effect's group, in slot
-/// order, so a "target player discards" reaches the seat the caster aimed at rather
-/// than a seat derived here — and an optional effect's chosen target is carried into
-/// the question it poses.
-///
-/// `resolution` is the frame the question is asked in, and one question reads it: a search
-/// whose size is a [`DerivedAmount`](crate::DerivedAmount) takes that number here
-/// (CR 608.2), before the choice is posed, because the *bounds* of the question are what
-/// the amount decides.
-pub(crate) fn choices_for_effect(
-    state: &GameState,
-    effect: &Effect,
-    controller: PlayerId,
-    source_card: Option<CardId>,
-    targets: &[Target],
-    resolution: crate::resolve::Resolution,
-    db: &crate::card::CardDatabase,
-) -> Option<Vec<(PlayerId, ChoiceQuestion)>> {
-    let target = targets.first().copied();
-    match effect {
-        Effect::Discard {
-            player_ref,
-            count,
-            chosen_by,
-            filter,
-        } => {
-            let subjects = match target {
-                // A targeting reference names the one seat that was aimed at.
-                Some(Target::Player(seat)) => vec![seat],
-                _ => crate::apply::non_targeting_subjects(state, *player_ref, controller),
-            };
-            Some(
-                subjects
-                    .into_iter()
-                    .map(|subject| {
-                        let chooser = match chosen_by {
-                            crate::ability::Chooser::Owner => subject,
-                            crate::ability::Chooser::Controller => controller,
-                        };
-                        (
-                            chooser,
-                            ChoiceQuestion::Cards(ChoiceRequest {
-                                subject,
-                                zone: ChoiceZone::Hand,
-                                filter: filter.clone(),
-                                source_card,
-                                min: u32::from(*count),
-                                max: u32::from(*count),
-                                outcome: ChoiceOutcome::Discard,
-                            }),
-                        )
-                    })
-                    .collect(),
-            )
-        }
-        Effect::Scry { count } => Some(vec![(
-            controller,
-            ChoiceQuestion::Cards(ChoiceRequest {
-                subject: controller,
-                zone: ChoiceZone::LibraryTop(*count),
-                filter: CardFilter::Any,
-                source_card,
-                // Any number, including none (CR 701.17).
-                min: 0,
-                max: u32::from(*count),
-                outcome: ChoiceOutcome::BottomChosen,
-            }),
-        )]),
-        Effect::LookAtTop {
-            count,
-            take,
-            filter,
-            destination,
-        } => Some(vec![(
-            controller,
-            ChoiceQuestion::Cards(ChoiceRequest {
-                subject: controller,
-                zone: ChoiceZone::LibraryTop(*count),
-                filter: filter.clone(),
-                source_card,
-                // Taking is optional ("you may reveal…"), so nothing forces a pick.
-                min: 0,
-                max: u32::from(*take),
-                outcome: ChoiceOutcome::TakeAndBottomRest(*destination),
-            }),
-        )]),
-        Effect::SearchLibrary {
-            take,
-            take_amount,
-            filter,
-            destination,
-        } => Some(vec![(
-            controller,
-            ChoiceQuestion::Cards(ChoiceRequest {
-                subject: controller,
-                zone: ChoiceZone::Library,
-                filter: filter.clone(),
-                source_card,
-                // A player may always fail to find (CR 701.19c).
-                min: 0,
-                // The printed number, or the one the card takes off the game — read once,
-                // here, because it is the size of the question rather than something the
-                // answer could still change (CR 608.2).
-                max: match take_amount {
-                    Some(amount) => {
-                        crate::condition::derived_amount(state, amount, controller, resolution, db)
-                    }
-                    None => u32::from(*take),
-                },
-                outcome: ChoiceOutcome::TakeAndShuffle(*destination),
-            }),
-        )]),
-        // One question per point of mana, so a player producing two in any combination
-        // really is asked twice and may answer differently each time. They are separate
-        // queue entries rather than one multi-answer question because that is what makes
-        // the second question askable *after* seeing the first answered, and because the
-        // resume machinery already attaches the rest of the resolution to the last of
-        // them. `Add two mana of any one color` is the same queue with the arithmetic the
-        // other way round: one question, paying out the whole amount — which is what
-        // stops a single-colour clause from being answerable twice.
-        Effect::AddManaAnyColor {
-            amount,
-            same_color,
-            restriction,
-        } => {
-            let (questions, each) = if *same_color {
-                (1, *amount)
-            } else {
-                (*amount, 1)
-            };
-            Some(
-                (0..questions)
-                    .map(|_| {
-                        (
-                            controller,
-                            ChoiceQuestion::Color(ColorRequest {
-                                outcome: ColorOutcome::AddMana {
-                                    amount: each,
-                                    restriction: restriction.clone(),
-                                },
-                            }),
-                        )
-                    })
-                    .collect(),
-            )
-        }
-        // The one question the *controller* always answers, whoever else the ability
-        // names: an optional effect is theirs to take or leave (CR 608.2).
-        Effect::May { cost, effects } => Some(vec![(
-            controller,
-            ChoiceQuestion::Confirm(ConfirmRequest {
-                cost: cost.clone(),
-                effects: effects.clone(),
-                targets: targets.to_vec(),
-            }),
-        )]),
-        _ => None,
-    }
-}
-
-/// Carry out `request` for the colour just named — the colour counterpart of
-/// [`apply_choice_outcome`], and the only place a colour answer has a consequence.
-///
-/// The queue entry is popped by the caller, exactly as a card selection's is, and the
-/// rest of a suspended resolution rides on the [`Resume`] attached to the last question
-/// of the effect.
-pub(crate) fn apply_color_outcome(
-    state: &mut GameState,
-    chooser: PlayerId,
-    request: &ColorRequest,
-    color: Color,
-    db: &CardDatabase,
-) {
-    match &request.outcome {
-        ColorOutcome::AddMana {
-            amount,
-            restriction,
-        } => {
-            let Some(player) = state.players.get_mut(chooser.0) else {
-                return;
-            };
-            match restriction {
-                Some(restriction) => {
-                    player
-                        .mana_pool
-                        .add_restricted(color, *amount, restriction.clone());
-                }
-                None => player.mana_pool.add(color, *amount),
-            }
-        }
-        // The deferred half of a battlefield entry (CR 614.12): the permanent arrives
-        // now, with the colour already on it.
-        ColorOutcome::RecordOnEntry(entry) => {
-            state.complete_battlefield_entry(entry, Some(color), db);
-        }
-    }
-}
-
-/// Answer the pending yes-or-no: hand the accepted effects back to be spliced onto the
-/// front of the suspended remainder, or `None` for a decline.
-///
-/// Charging for the acceptance happens here too, because the charge and the answer are
-/// one act — a `yes` that could not pay would be a `no` that had already moved cards.
-/// The caller has established payability ([`confirm_is_payable`]); an unpayable cost
-/// reaching here is treated as a decline rather than granting a free effect.
-pub(crate) fn take_confirmed_effects(
-    state: &mut GameState,
-    chooser: PlayerId,
-    request: &ConfirmRequest,
-    accept: bool,
-) -> Option<Vec<Effect>> {
-    if !accept {
-        state.record_event(GameEvent::OptionalDeclined { player: chooser });
-        return None;
-    }
-    if let Some(cost) = &request.cost {
-        let paid = state
-            .players
-            .get(chooser.0)
-            .and_then(|player| player.mana_pool.pay(&crate::mana::parse_mana_cost(cost)));
-        match (paid, state.players.get_mut(chooser.0)) {
-            (Some(pool), Some(player)) => player.mana_pool = pool,
-            _ => {
-                state.record_event(GameEvent::OptionalDeclined { player: chooser });
-                return None;
-            }
-        }
-    }
-    state.record_event(GameEvent::OptionalApplied { player: chooser });
-    Some(request.effects.clone())
 }

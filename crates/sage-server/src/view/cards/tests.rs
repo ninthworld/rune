@@ -195,6 +195,7 @@ fn issue_152_aura_boosted_host_projects_current_pt() {
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
     let aura = PermanentId(state.mint_id());
     state.battlefield.push(sage_engine::Permanent {
@@ -211,6 +212,7 @@ fn issue_152_aura_boosted_host_projects_current_pt() {
         counters: std::collections::BTreeMap::new(),
         attached_to: Some(host),
         chosen_color: None,
+        named_card: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -260,6 +262,7 @@ fn issue_68_permanent_counters_project_into_the_view() {
         .collect(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
     let without_counters = PermanentId(state.mint_id());
     state.battlefield.push(sage_engine::Permanent {
@@ -276,6 +279,7 @@ fn issue_68_permanent_counters_project_into_the_view() {
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -348,6 +352,7 @@ fn issue_117_attack_and_block_state_project_into_the_view() {
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
     let blocker = PermanentId(state.mint_id());
     state.battlefield.push(sage_engine::Permanent {
@@ -364,6 +369,7 @@ fn issue_117_attack_and_block_state_project_into_the_view() {
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -409,6 +415,7 @@ fn issue_739_a_blocker_on_two_attackers_projects_both_in_order() {
             counters: std::collections::BTreeMap::new(),
             attached_to: None,
             chosen_color: None,
+            named_card: None,
         });
         id
     };
@@ -430,6 +437,7 @@ fn issue_739_a_blocker_on_two_attackers_projects_both_in_order() {
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -468,6 +476,7 @@ fn issue_118_marked_damage_projects_into_the_view() {
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -522,6 +531,7 @@ fn issue_333_aura_attachment_projects_into_the_view() {
         counters: BTreeMap::new(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
 
     // The Aura spell resolves off the stack attached to the host (CR 303.4d),
@@ -591,6 +601,7 @@ fn issue_153_keywords_project_onto_the_card_view() {
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
     let vanilla = PermanentId(state.mint_id());
     state.battlefield.push(sage_engine::Permanent {
@@ -607,6 +618,7 @@ fn issue_153_keywords_project_onto_the_card_view() {
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));
@@ -662,6 +674,7 @@ fn issue_374_granted_keyword_projects_onto_the_card_view() {
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
     let bystander = PermanentId(state.mint_id());
     state.battlefield.push(sage_engine::Permanent {
@@ -678,6 +691,7 @@ fn issue_374_granted_keyword_projects_onto_the_card_view() {
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
     // A keyword-only Aura granting flying, attached to the host. M19 prints no
     // such Aura (Prodigious Growth grants trample alongside +7/+7), so the shape
@@ -697,6 +711,7 @@ fn issue_374_granted_keyword_projects_onto_the_card_view() {
         counters: std::collections::BTreeMap::new(),
         attached_to: Some(host),
         chosen_color: None,
+        named_card: None,
     });
 
     let view = personalized_view(&state, &db, PlayerId(0));

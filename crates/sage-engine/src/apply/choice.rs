@@ -78,6 +78,35 @@ pub(crate) fn apply_answer_color(
     }
 }
 
+/// Answer the pending **CR 614.12 card-naming choice** with `named`: record it on the
+/// entry that was waiting and let the permanent arrive.
+///
+/// The same three steps [`apply_answer_choice`] takes, and — like the colour answer's
+/// entry arm — what is suspended is an *event* rather than a resolution, so there is no
+/// [`Resume`](crate::Resume) and the continuation is
+/// [`GameState::begin_battlefield_entry`]. Routing back through that one function is what
+/// lets a card that also names a colour be asked both without either question knowing
+/// about the other.
+///
+/// Legality — that a card-naming choice is owed at all, and that `named` is in its freshly
+/// derived candidate list — has already been established by [`crate::apply_action`]'s
+/// gate. An answer with no card-naming choice pending is a no-op.
+pub(crate) fn apply_answer_card_name(
+    state: &mut GameState,
+    named: crate::id::CardId,
+    db: &CardDatabase,
+) {
+    let Some(ChoiceQuestion::CardName(_)) = pending_player_choice(state).map(|p| &p.question)
+    else {
+        return;
+    };
+    let answered = state.pending_choices.remove(0);
+    let ChoiceQuestion::CardName(request) = &answered.question else {
+        return;
+    };
+    crate::choice::apply_card_name_outcome(state, request, named, db);
+}
+
 /// Answer the pending **CR 616.1 ordering choice**: apply the named replacement to the
 /// suspended battlefield entry, then hand the entry back to the layer.
 ///

@@ -753,6 +753,44 @@ fn issue_738_the_chosen_color_must_be_chosen_somewhere_on_the_card() {
 }
 
 #[test]
+fn issue_738_the_chosen_name_must_be_named_somewhere_on_the_card() {
+    // The selector counterpart of the colour rule above, and wrong for the same reason:
+    // "permanents with the chosen name" refers to the rest of its own card, and without
+    // an `enters_naming_card` the class could never contain one permanent all game.
+    let unnamed = r#", "abilities": [{"type": "static",
+        "affects": {"scope": "permanents_your_opponents_control", "card_type": "land",
+                    "with_the_named_card": true},
+        "modification": {"kind": "lose_all_abilities"}}]"#;
+    assert_eq!(
+        validate_definition(None, &definition(unnamed)),
+        Err(Violation::ChosenNameIsNeverNamed {
+            functional_id: "test_card".to_string(),
+        }),
+    );
+
+    // With the naming declared, the same selector is exactly what Alpine Moon authors.
+    let named = r#", "abilities": [
+        {"type": "enters_naming_card", "class": "nonbasic_land"},
+        {"type": "static",
+         "affects": {"scope": "permanents_your_opponents_control", "card_type": "land",
+                     "with_the_named_card": true},
+         "modification": {"kind": "lose_all_abilities"}}]"#;
+    assert!(validate_definition(None, &definition(named)).is_ok());
+
+    // Naming a card and never reading it back is not an error, for the reason choosing a
+    // colour and never reading it back is not: only the dangling reference is wrong.
+    let choice_only = r#", "abilities": [
+        {"type": "enters_naming_card", "class": "nonbasic_land"}]"#;
+    assert!(validate_definition(None, &definition(choice_only)).is_ok());
+
+    // The same class without the name filter refers to nothing outside itself.
+    let unfiltered = r#", "abilities": [{"type": "static",
+        "affects": {"scope": "permanents_your_opponents_control", "card_type": "land"},
+        "modification": {"kind": "lose_all_abilities"}}]"#;
+    assert!(validate_definition(None, &definition(unfiltered)).is_ok());
+}
+
+#[test]
 fn issue_737_a_two_slot_effect_counts_as_two_target_groups() {
     // A fight names two slots in two fields, so every rule stated in *groups* sees two
     // of them. A `may` forwards the groups of the one effect it wraps, and two is one

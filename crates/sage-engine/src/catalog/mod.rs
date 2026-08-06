@@ -346,6 +346,13 @@ pub(crate) fn validate_definition(
         return Err(Violation::ChosenColorIsNeverNamed { functional_id });
     }
 
+    // The same pairing for the other half of CR 614.12: "permanents with the chosen name"
+    // is a selector whose referent is the card's own naming ability, and a card that
+    // selects on it without one has written a class nothing can ever join.
+    if selects_the_named_card(object) && !object_names_a_card(object) {
+        return Err(Violation::ChosenNameIsNeverNamed { functional_id });
+    }
+
     // An `attachment` block is the Aura ability (CR 303.4) or the Equipment's equip
     // ability (CR 301.5), so the card must actually bear the subtype it claims — and, for
     // an Equipment, must name the cost its derived equip ability charges (CR 702.6a).

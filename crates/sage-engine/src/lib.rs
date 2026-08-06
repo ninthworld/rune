@@ -77,9 +77,10 @@ pub use characteristics::{
     controller_of_id, Characteristics,
 };
 pub use choice::{
-    choice_bounds, choice_candidates, confirm_is_payable, pending_player_choice, ChoiceOutcome,
-    ChoiceQuestion, ChoiceRequest, ChoiceZone, ColorOutcome, ColorRequest, ConfirmRequest,
-    PendingChoice, ReplacementRequest, Resume, SuspendedSpell,
+    choice_bounds, choice_candidates, confirm_is_payable, named_card_candidates,
+    pending_player_choice, CardNameRequest, ChoiceOutcome, ChoiceQuestion, ChoiceRequest,
+    ChoiceZone, ColorOutcome, ColorRequest, ConfirmRequest, NamedCardClass, PendingChoice,
+    ReplacementRequest, Resume, SuspendedSpell,
 };
 pub use combat::{
     attack_target_of, attacked_players, attacker_candidates, attackers_needing_damage_order,

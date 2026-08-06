@@ -107,6 +107,30 @@ pub enum Ability {
     /// [`Self::EntersTapped`] is a declaration about the entry event rather than a record
     /// of one. Deserialized as `{"type":"enters_choosing_color"}`.
     EntersChoosingColor,
+    /// A choice made **as this permanent enters** (CR 614.12): its controller names a
+    /// *card*, and the answer is kept on the permanent for as long as it is on the
+    /// battlefield — the "chosen name" its other abilities read.
+    ///
+    /// [`Self::EntersChoosingColor`]'s sibling, riding the same seam for the same reason:
+    /// the card waits off the battlefield while the question is owed, so there is no
+    /// instant at which the permanent is there without an answer and no window in which
+    /// a player could respond to one.
+    ///
+    /// What differs is the answer set, and it is the whole of the project's legal
+    /// posture on naming a card. A colour is one of five and needs nothing derived; a
+    /// card name is chosen from the **catalog** ([`named_card_candidates`](crate::named_card_candidates)),
+    /// so what is recorded is a [`CardId`](crate::CardId) — a handle to a card SAGE has
+    /// defined — and never a string a player typed. SAGE ships no card name it has not
+    /// already written down, and this variant is why that stays true of a game in
+    /// progress as well as of the repository.
+    ///
+    /// The answer lives on [`Permanent::named_card`](crate::Permanent), not here.
+    /// Deserialized as `{"type":"enters_naming_card","class":"nonbasic_land"}`.
+    EntersNamingCard {
+        /// Which cards may be named — the "nonbasic land" a card puts between "name a"
+        /// and "card".
+        class: crate::choice::NamedCardClass,
+    },
     /// A **static ability** (CR 604.3): a continuous effect that applies for as long
     /// as this permanent is on the battlefield, with nothing ever put on the stack —
     /// an anthem (`Creatures you control get +1/+1.`) or a lord (`Other Elves you

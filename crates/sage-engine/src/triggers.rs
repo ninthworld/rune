@@ -798,6 +798,7 @@ mod tests {
             counters: Default::default(),
             attached_to: None,
             chosen_color: None,
+            named_card: None,
         });
         let triggers = collect_triggers(&before, &after, &db);
         assert_eq!(triggers.len(), 1);
@@ -826,6 +827,7 @@ mod tests {
             counters: Default::default(),
             attached_to: None,
             chosen_color: None,
+            named_card: None,
         });
         (before, id, instance)
     }
@@ -940,6 +942,7 @@ mod tests {
             counters: Default::default(),
             attached_to: None,
             chosen_color: None,
+            named_card: None,
         });
         let mut after = before.clone();
         after.turn = turn;
@@ -1088,6 +1091,7 @@ mod tests {
                 counters: Default::default(),
                 attached_to: None,
                 chosen_color: None,
+                named_card: None,
             });
         }
         let mut after = before.clone();

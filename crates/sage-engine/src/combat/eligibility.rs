@@ -281,6 +281,7 @@ mod tests {
             counters: Default::default(),
             attached_to: None,
             chosen_color: None,
+            named_card: None,
         });
         id
     }

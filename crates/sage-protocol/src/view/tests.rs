@@ -186,6 +186,7 @@ fn issue_345_multiplayer_combat_and_elimination_fields_round_trip_and_elide() {
         damage: 0,
         attached_to: None,
         chosen_color: None,
+        named_card: None,
         is_commander: false,
         counters: vec![],
         summoning_sick: false,
@@ -320,6 +321,7 @@ fn game_view_round_trips_through_json() {
             damage: 0,
             attached_to: None,
             chosen_color: None,
+            named_card: None,
             is_commander: false,
             counters: vec![Counter {
                 kind: "+1/+1".into(),

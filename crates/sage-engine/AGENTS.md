@@ -99,19 +99,24 @@ so when a paragraph here and an entry there disagree, believe the entry and fix 
 paragraph.
 
 **Layer 6 subtracts as well as adds**, and is therefore ordered by timestamp (CR 613.1f):
-a grant after a removal grants, a removal after a grant removes. `alter_abilities_self` is
-the one verb that subtracts — it names its own source, loses named keywords or *all*
-abilities until end of turn, and reaches no target and no class. What layer 6 adds is a
-keyword *or a whole written-out ability* — an attachment's `abilities`, a `pump`'s — folded
-in by `characteristics::current_abilities`, so a granted activation is offered by
+a grant after a removal grants, a removal after a grant removes. Two verbs subtract:
+`alter_abilities_self`, which names its own source, loses named keywords or *all*
+abilities until end of turn, and reaches no target and no class; and a printed static
+ability's `lose_all_abilities`, which names a *class* and lasts as long as its source is on
+the battlefield. What is added is a keyword *or a whole written-out ability* — an
+attachment's `abilities`, a `pump`'s, a static's `grant_ability` — folded in by
+`characteristics::current_abilities`, so a granted activation is offered by
 `valid_actions`, a granted mana ability still uses no stack (CR 605.1a), and a granted
 trigger is collected, each by the code a printed ability goes through. Grant and loses-all
 are both read through `abilities_of_permanent`, which is why that accessor takes
 `&GameState` and is the only path a collector uses: no printed-abilities reader to pick by
 mistake, and no boolean standing in for the ordered answer — losing all abilities is one
-more contribution to that fold rather than a predicate beside it. The fold sees stored
-effects and attachments only, never a
-printed static ability, which is what stops it recursing into the computation it is part of.
+more contribution to that fold rather than a predicate beside it. **The walk is cut in
+exactly one place, `stored_abilities_of_permanent`** — the smaller answer folding stored
+effects and attachments only, which `static_ability_effects` gates each *source* with, so
+collecting printed statics goes one level deep and terminates. Its cost is that a permanent
+silenced by another *printed static* still contributes its own: CR 613.8 dependency is
+unmodeled.
 
 **A rule modification is in no layer, and that is the point** (`Modification::ModifyRule`,
 `RuleModification`). CR 613 orders effects that change *characteristics*; these change
@@ -184,13 +189,17 @@ an effect with more than one group acts on all of its slots or on none (CR 701.1
 than doing as much as it can. It is also the one damage whose **source is a permanent**, so
 it is the one place outside combat where deathtouch and lifelink apply.
 
-`Ability::Static` exists and covers anthems and lords ("creatures you control", optionally
-filtered to a printed subtype or a printed keyword, optionally excluding the source), and
-its `as long as …` asks one of three questions — a permanent count, whether the source is
-attacking, and whether anything is attached to it. It is **derived, never stored**:
-`characteristics` reads it off the battlefield on every call, so the effect begins and ends
-with its source's presence and nothing enters `GameState::static_effects`. Extend
-`StaticAffects` when a card needs a scope it cannot name.
+`Ability::Static` covers anthems and lords ("creatures you control", optionally filtered to
+a printed subtype or a printed keyword, optionally excluding the source), the class of one,
+and one class its controller does **not** control: permanents an opponent controls, filtered
+by card type and by the card name the source was given as it entered. Its `as long as …`
+asks one of three questions — a permanent count, whether the source is attacking, and
+whether anything is attached to it. It is **derived, never stored** — `characteristics`
+reads it off the battlefield on every call, so the effect begins and ends with its source's
+presence, a permanent arriving later joins the class the moment it does, and nothing enters
+`GameState::static_effects`. That re-derivation is the whole distinction from a
+`MassAffects`, which is locked in on resolution. Extend `StaticAffects` when a card needs a
+scope it cannot name.
 
 **A continuous ability is one of three kinds, and its subject decides which**: a `Static`
 modifies permanents at a CR 613 layer, a `PlayerStatic` states something about a person, and
@@ -215,15 +224,18 @@ never-stall guarantee. Priority goes to the chooser and returns via the one
 join that check rather than add a second slot.
 
 **A choice a permanent makes as it enters is the same queue, and the permanent waits off the
-battlefield for it** (ADR 0013 §8). `Ability::EntersChoosingColor` is a card's declaration
-that its controller names a colour as it arrives (CR 614.12); `put_card_onto_battlefield`
-reads it, and when it is there the entry is *deferred* — the card is put on the choice queue
-as a `ColorOutcome::RecordOnEntry(PendingEntry)` and returns no `PermanentId`, so nothing is
-on the battlefield to be caught mid-decision. Answering completes the entry through
-`complete_battlefield_entry`, the one function both roads take, and the answer lives on
-`Permanent::chosen_color` — stored, written once, and read back by
-`ObservedSpell::ChosenColor`. Naming a **type** or a **card** is still unwritable, and nothing
-records a choice on a spell.
+battlefield for it** (ADR 0013 §8–§9). `EntersChoosingColor` and `EntersNamingCard` declare
+that a card's controller answers something as it arrives (CR 614.12), and each answer is an
+**unfilled slot on the `PendingEntry`** rather than a branch: `begin_battlefield_entry`
+refuses to finish while one is empty, queues the question, and returns no `PermanentId`;
+answering writes the slot and re-enters that same function, as a CR 616.1 ordering answer
+does. So nothing is on the battlefield to be caught mid-decision, a card asking twice needs no
+code saying which comes first, and the loop terminates because a filled slot is never emptied.
+The answers are stored once on `Permanent::chosen_color` and `Permanent::named_card`.
+**A named card is a `FunctionalId`, never prose**: `named_card_candidates` derives the answer
+set from the *catalog*, the action carries a `CardId`, and the gate re-checks it, so no card
+name SAGE has not defined can reach a game state. Naming a **type** is still unwritable, only
+a nonbasic land may be named, and nothing records a choice on a spell.
 
 **A replaceable event is a value, and there is exactly one road onto the battlefield**
 (ADR 0019). `PendingEntry` describes an arrival *before it happens* — the object, its
@@ -236,8 +248,8 @@ created for the turn), the affected object's **controller** orders them when mor
 applies (CR 616.1, through the same choice queue), and `PendingEntry::applied` is what stops
 any of them applying twice (CR 614.5) — which is also what makes the loop terminate.
 Applying either modifies the event or replaces it outright, and answering an ordering
-question re-enters the same function. `EntersChoosingColor` is not collected here — it is a
-question, not a modification to order.
+question re-enters the same function. `EntersChoosingColor` and `EntersNamingCard` are not
+collected here — they are questions, not modifications to order.
 
 **Damage is the second replaceable event** (CR 615). `PendingDamage` is the value — the
 recipient, the amount, whether it is *combat* damage — and `GameState::deal_damage` is the
@@ -250,8 +262,8 @@ leaving the battlefield, a draw, and life gained route nowhere near this, and th
 seams run inside the SBA loop where there is nothing to suspend a question onto.
 
 A choice asks one shape of **question** (`ChoiceQuestion`, ADR 0014): pick cards, answer a
-`you may` yes-or-no, name a colour, or order applicable replacements by position in a
-derived list. Everything around them is single — one queue, one chooser, one
+`you may` yes-or-no, name a colour, name a card, or order applicable replacements by
+position in a derived list. Everything around them is single — one queue, one chooser, one
 `Resume` — and only the answer branches, so a new question shape is a variant plus its own
 `Action`, never a second queue. An accepted optional effect is *spliced onto the front of
 the remainder*, not applied on the spot; declining is the same path with nothing spliced,

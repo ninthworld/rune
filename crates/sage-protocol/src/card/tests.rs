@@ -59,6 +59,7 @@ fn permanent_combat_state_round_trips_and_elides_when_absent() {
         damage: 0,
         attached_to: None,
         chosen_color: None,
+        named_card: None,
         is_commander: false,
         counters: vec![],
         summoning_sick: false,
@@ -71,6 +72,32 @@ fn permanent_combat_state_round_trips_and_elides_when_absent() {
     assert!(json.get("attacking").is_none());
     assert!(json.get("blocking").is_none());
     assert!(json.get("damage").is_none());
+
+    // The two answers a permanent can carry from its own entry (CR 614.12, issue #738)
+    // are additive in exactly the same way: absent for almost every permanent, and a
+    // plain value when present. The named card travels as a **name** — the catalog's own
+    // name for the card the engine recorded an identity for — so a client neither parses
+    // an identity nor is ever shown one the catalog does not contain.
+    assert!(json.get("chosen_color").is_none());
+    assert!(json.get("named_card").is_none());
+    let named = Permanent {
+        chosen_color: Some(crate::Color::Red),
+        named_card: Some("Highland Lake".into()),
+        ..base.clone()
+    };
+    let named_json = serde_json::to_value(&named).unwrap();
+    assert_eq!(
+        named_json.get("chosen_color"),
+        Some(&serde_json::json!("R"))
+    );
+    assert_eq!(
+        named_json.get("named_card"),
+        Some(&serde_json::json!("Highland Lake"))
+    );
+    assert_eq!(
+        serde_json::from_value::<Permanent>(named_json).unwrap(),
+        named
+    );
 
     // An attacker and its blocker both round-trip with their state present.
     let attacker = Permanent {
@@ -149,6 +176,7 @@ fn permanent_attachment_round_trips_and_elides_when_absent() {
         damage: 0,
         attached_to: None,
         chosen_color: None,
+        named_card: None,
         is_commander: false,
         counters: vec![],
         summoning_sick: false,
@@ -317,6 +345,7 @@ fn issue_650_the_physical_card_round_trips_and_elides_on_both_projections() {
         damage: 0,
         attached_to: None,
         chosen_color: None,
+        named_card: None,
         is_commander: false,
         counters: vec![],
         summoning_sick: false,
@@ -437,6 +466,7 @@ fn issue_650_two_copies_of_one_card_are_told_apart_by_the_physical_card_alone() 
         damage: 0,
         attached_to: None,
         chosen_color: None,
+        named_card: None,
         is_commander: false,
         counters: vec![],
         summoning_sick: false,

@@ -625,6 +625,27 @@ pub(super) fn object_chooses_a_color(object: &serde_json::Map<String, serde_json
     })
 }
 
+/// Whether any static ability of `object` selects permanents "with the chosen name" —
+/// `{"affects": {"with_the_named_card": true}}`, the selector whose meaning comes from
+/// elsewhere on the same card (CR 614.12).
+pub(super) fn selects_the_named_card(object: &serde_json::Map<String, serde_json::Value>) -> bool {
+    abilities_of(object).iter().any(|ability| {
+        ability
+            .get("affects")
+            .and_then(|affects| affects.get("with_the_named_card"))
+            .and_then(serde_json::Value::as_bool)
+            == Some(true)
+    })
+}
+
+/// Whether `object` declares the `enters_naming_card` ability — whether it names a card
+/// as it enters (CR 614.12), and so whether "the chosen name" refers to anything.
+pub(super) fn object_names_a_card(object: &serde_json::Map<String, serde_json::Value>) -> bool {
+    abilities_of(object).iter().any(|ability| {
+        ability.get("type").and_then(serde_json::Value::as_str) == Some("enters_naming_card")
+    })
+}
+
 /// A definition's authored `abilities` array, or an empty slice when it has none.
 fn abilities_of(object: &serde_json::Map<String, serde_json::Value>) -> &[serde_json::Value] {
     object

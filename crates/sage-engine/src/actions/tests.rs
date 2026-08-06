@@ -51,6 +51,7 @@ fn put_on_battlefield(state: &mut GameState, card: CardId) -> PermanentId {
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
     PermanentId(id)
 }

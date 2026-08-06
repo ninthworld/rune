@@ -191,6 +191,75 @@ fn issue_738_an_entry_colour_choice_round_trips_and_reads_back_by_name() {
 }
 
 #[test]
+fn issue_738_an_entry_card_name_and_the_selector_that_reads_it_round_trip() {
+    // Naming a card as a permanent enters carries the *class* that may be named and no
+    // answer, for the reason the colour choice carries none: the answer belongs to the
+    // permanent, and it is a card the catalog defines rather than a string.
+    let json = r#"{"type":"enters_naming_card","class":"nonbasic_land"}"#;
+    let ability: Ability = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        ability,
+        Ability::EntersNamingCard {
+            class: crate::choice::NamedCardClass::NonbasicLand,
+        }
+    );
+    assert!(!is_mana_ability(&ability));
+
+    // The static ability that reads it back names the class it reaches — the first that
+    // reaches past its own controller — and takes abilities away at layer 6.
+    let json = r#"{"type":"static",
+        "affects":{"scope":"permanents_your_opponents_control","card_type":"land",
+                   "with_the_named_card":true},
+        "modification":{"kind":"lose_all_abilities"}}"#;
+    let ability: Ability = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        ability,
+        Ability::Static {
+            affects: crate::ability::StaticAffects::PermanentsYourOpponentsControl {
+                card_type: Some(crate::card_type::CardType::Land),
+                with_the_named_card: true,
+            },
+            modification: crate::ability::StaticModification::LoseAllAbilities,
+            condition: None,
+        }
+    );
+
+    // And hands one back, as the whole written-out ability an attachment's grant is.
+    let json = r#"{"type":"static",
+        "affects":{"scope":"permanents_your_opponents_control","card_type":"land"},
+        "modification":{"kind":"grant_ability",
+            "ability":{"type":"activated","cost":[{"kind":"tap"}],
+                       "effects":[{"kind":"add_mana_any_color","amount":1}]}}}"#;
+    let ability: Ability = serde_json::from_str(json).unwrap();
+    let granted = Ability::Activated {
+        cost: vec![Cost::Tap],
+        effects: vec![Effect::AddManaAnyColor {
+            amount: 1,
+            same_color: false,
+            restriction: None,
+        }],
+    };
+    assert_eq!(
+        ability,
+        Ability::Static {
+            affects: crate::ability::StaticAffects::PermanentsYourOpponentsControl {
+                card_type: Some(crate::card_type::CardType::Land),
+                // Absent defaults to false: a class that names no chosen name reads none.
+                with_the_named_card: false,
+            },
+            modification: crate::ability::StaticModification::GrantAbility {
+                ability: Box::new(granted.clone()),
+            },
+            condition: None,
+        }
+    );
+    assert!(
+        is_mana_ability(&granted),
+        "what it grants is a mana ability, and stays one once granted (CR 605.1a)"
+    );
+}
+
+#[test]
 fn issue_155_enters_with_counters_replacement_round_trips() {
     // The "enters with N counters" self-replacement (CR 614.12) authors its
     // counter kind under `counter` (the enum reserves `type` for its tag) and

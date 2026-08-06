@@ -308,6 +308,21 @@ export const Permanent = z.object({
    * Render it; never derive it, and never let it stand in for a colour of the card.
    */
   chosen_color: Color.optional(),
+  /**
+   * The card this permanent's controller **named as it entered** the battlefield
+   * (CR 614.12) — the "chosen name" its own rules text refers to. Absent for every
+   * permanent that named none, which is almost all of them.
+   *
+   * `chosen_color`'s sibling, and stated for the same reason: it is a decision a player
+   * made, recorded on this one object, and nothing on the board implies it. Two copies of
+   * one card side by side may have named different things.
+   *
+   * It arrives as the **catalog's own name for that card** — the server resolves the
+   * identity the engine recorded — so there is no id to look up and no name here the
+   * catalog does not already hold. Render it; never derive it, and never read it as the
+   * name of *this* permanent.
+   */
+  named_card: z.string().optional(),
 })
 export type Permanent = z.infer<typeof Permanent>
 

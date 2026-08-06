@@ -26,7 +26,7 @@ use sage_engine::{
     CardFilter, CardType, Chooser, Color, CombatRestriction, Condition, Cost, CostModification,
     CountScope, CounterKind, DamageCharacteristic, DamageSubject, DerivedAmount, DestroyAffects,
     Effect, EnteringFilter, FoundDestination, GraveyardCardClass, GraveyardScope, Keyword,
-    ManaRestriction, MassAffects, ObservedPermanent, ObservedSpell, PermanentCount,
+    ManaRestriction, MassAffects, NamedCardClass, ObservedPermanent, ObservedSpell, PermanentCount,
     PlayerModification, PlayerRef, ReplacementEffect, SacrificeCount, SpellMode, SpellTrait,
     StaticAffects, StaticCondition, StaticModification, TargetCount, TargetSpec, TokenData,
     TriggerCondition, TriggerStep, TurnScope,
@@ -265,6 +265,13 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
         Ability::EntersChoosingColor => {
             format!("As {source} enters the battlefield, choose a color.")
         }
+        // The card-naming counterpart, worded the same way and for the same reason: the
+        // abilities that read the answer call it "the chosen name", and this sentence is
+        // what gives that phrase its referent.
+        Ability::EntersNamingCard { class } => format!(
+            "As {source} enters the battlefield, choose a {} card name.",
+            named_card_class_noun(*class)
+        ),
         // A player-subject static says what is true of *you*, so the sentence has no
         // object at all — the shortest ability the formatter composes, and the only one
         // whose subject is a person.
@@ -307,11 +314,11 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
             );
             // The `as long as …` clause trails the statement, where a card prints it.
             match condition {
-                None => sentence_case(&format!("{statement}.")),
-                Some(condition) => sentence_case(&format!(
-                    "{statement} as long as {}.",
+                None => sentence_case(&stop(&statement)),
+                Some(condition) => sentence_case(&stop(&format!(
+                    "{statement} as long as {}",
                     static_condition_clause(condition)
-                )),
+                ))),
             }
         }
     }
@@ -488,6 +495,59 @@ fn static_subject(affects: &StaticAffects, source: &str) -> String {
                 Some(keyword) => format!("{class} with {}", keyword_word(*keyword)),
             }
         }
+        // "Lands your opponents control with the chosen name" — composed from the same
+        // selector the engine evaluates on every read, so the sentence and the class it
+        // describes cannot come apart.
+        StaticAffects::PermanentsYourOpponentsControl {
+            card_type,
+            with_the_named_card,
+        } => {
+            let noun = plural(permanent_noun(*card_type));
+            let named = if *with_the_named_card {
+                " with the chosen name"
+            } else {
+                ""
+            };
+            format!("{noun} your opponents control{named}")
+        }
+    }
+}
+
+/// `statement` with a full stop, unless it already ends in one — which it does when the
+/// statement ends in a **quoted ability**, whose own full stop sits inside the closing
+/// quote where a printed card puts it. Writing `…any color.".` is the only thing this
+/// exists to prevent.
+fn stop(statement: &str) -> String {
+    if statement.ends_with(".\"") {
+        statement.to_string()
+    } else {
+        format!("{statement}.")
+    }
+}
+
+/// The noun a card type reads as in a class of permanents — "land", "creature", or the
+/// catch-all "permanent" for a class that names no type at all.
+///
+/// Shared with [`counted_permanents`] so a `land` in a static ability's selector and a
+/// `land` in an intervening if are the same word.
+fn permanent_noun(card_type: Option<CardType>) -> &'static str {
+    match card_type {
+        Some(CardType::Creature) => "creature",
+        Some(CardType::Artifact) => "artifact",
+        Some(CardType::Enchantment) => "enchantment",
+        Some(CardType::Land) => "land",
+        Some(CardType::Planeswalker) => "planeswalker",
+        Some(CardType::Instant) | Some(CardType::Sorcery) | Some(CardType::Battle) | None => {
+            "permanent"
+        }
+    }
+}
+
+/// The words that go between "name a" and "card" for a [`NamedCardClass`] — the class of
+/// card a permanent's controller may name as it enters (CR 614.12).
+fn named_card_class_noun(class: NamedCardClass) -> &'static str {
+    match class {
+        NamedCardClass::NonbasicLand => "nonbasic land",
     }
 }
 
@@ -501,7 +561,8 @@ fn static_subject(affects: &StaticAffects, source: &str) -> String {
 fn subject_is_plural(affects: &StaticAffects) -> bool {
     match affects {
         StaticAffects::Source => false,
-        StaticAffects::CreaturesYouControl { .. } => true,
+        StaticAffects::CreaturesYouControl { .. }
+        | StaticAffects::PermanentsYourOpponentsControl { .. } => true,
     }
 }
 
@@ -536,16 +597,7 @@ pub(super) fn counted_permanents(permanents: &PermanentCount, count: u32) -> Str
         noun.push_str(subtype);
         noun.push(' ');
     }
-    noun.push_str(match permanents.card_type {
-        Some(CardType::Creature) => "creature",
-        Some(CardType::Artifact) => "artifact",
-        Some(CardType::Enchantment) => "enchantment",
-        Some(CardType::Land) => "land",
-        Some(CardType::Planeswalker) => "planeswalker",
-        Some(CardType::Instant) | Some(CardType::Sorcery) | Some(CardType::Battle) | None => {
-            "permanent"
-        }
-    });
+    noun.push_str(permanent_noun(permanents.card_type));
     let phrase = match count {
         1 => format!("{} {noun}", indefinite_article(&noun)),
         n => format!("{} or more {}", number(n), plural(&noun)),
@@ -646,6 +698,15 @@ fn static_verb(modification: &StaticModification, plural: bool) -> String {
         StaticModification::AttacksAsThoughNoDefender => {
             let pronoun = if plural { "they didn't" } else { "it didn't" };
             format!("can attack as though {pronoun} have defender")
+        }
+        StaticModification::LoseAllAbilities => "lose all abilities".to_string(),
+        // The granted ability is quoted, which is how a printed card writes one — and the
+        // words inside the quotes come from the same composer that writes it when the
+        // permanent has it, so the promise and the ability read identically. It speaks of
+        // itself as "this permanent": the sentence is about a class, so there is no one
+        // card name it could use.
+        StaticModification::GrantAbility { ability } => {
+            format!("have \"{}\"", ability_text("this permanent", ability))
         }
     }
 }

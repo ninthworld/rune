@@ -59,6 +59,7 @@ pub(crate) fn put_permanent(
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
     id
 }

@@ -373,6 +373,8 @@ pub(crate) fn zone_piles(
 }
 
 #[cfg(test)]
+mod entry_choice_tests;
+#[cfg(test)]
 mod rule_modification_tests;
 #[cfg(test)]
 mod tests;

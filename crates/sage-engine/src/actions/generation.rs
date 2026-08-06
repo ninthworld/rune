@@ -72,6 +72,13 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 // above; the answer names a position in the freshly derived option list
                 // ([`crate::pending_replacement_options`]).
                 ChoiceQuestion::Replacement(_) => vec![Action::AnswerReplacement { index: 0 }],
+                // CR 614.12: the entering permanent's controller names a card.
+                // Advertised as the bare question like the three above; the answer
+                // names a card in the freshly derived candidate list
+                // ([`crate::named_card_candidates`]).
+                ChoiceQuestion::CardName(_) => vec![Action::AnswerCardName {
+                    card: crate::id::CardId(0),
+                }],
             };
             // CR 605.3a: a player asked to pay a cost while something resolves may
             // activate mana abilities to pay it — the one thing the freeze lets
@@ -673,6 +680,7 @@ mod tests {
             counters: Default::default(),
             attached_to: None,
             chosen_color: None,
+            named_card: None,
         });
         id
     }

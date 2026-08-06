@@ -101,6 +101,26 @@ follows from that.
    last step of a resolution rather than one of its effects — which is why the resume slot
    is simply `None` there rather than special-cased.
 
+9. **An entry question is an unfilled slot on the event, not a branch in the seam** (issue
+   #738, second half). Naming a *card* is the second question a permanent can be asked as it
+   enters, and adding it made the shape of §8 clearer than one question could: the answers
+   live on the `PendingEntry` itself, `begin_battlefield_entry` refuses to finish while a
+   card that asks has an empty slot, and answering writes the slot and re-enters that same
+   function. It is the loop the CR 616.1 ordering answer already used, generalised — so a
+   card asking two questions needs no code deciding which comes first, and it terminates for
+   the reason CR 614.5 makes the replacement loop terminate: a filled slot is never emptied.
+
+   **A named card is a `FunctionalId`, and that is a legal rule rather than an
+   implementation choice.** The project ships no card name it has not itself defined, and a
+   free-text answer would be the one way a game in progress could come to hold one. So the
+   answer set is derived from the **catalog** — `named_card_candidates`, filtered by the
+   class the card declared — the action carries a `CardId` handle, the legality gate re-checks
+   it against that freshly derived list, and the wire offers the cards' authored identities
+   with the catalog's own names as labels. The client composes nothing and sends no string;
+   the projection resolves the recorded identity back to a name for display and nothing else.
+   This is the same regenerate-and-check discipline every other answer follows, doing double
+   duty as the enforcement point for a posture the repository otherwise only states.
+
 ## Consequences
 
 Four exclusions collapse to one mechanism, and the next choice-shaped effect — a modal

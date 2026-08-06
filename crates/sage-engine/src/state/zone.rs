@@ -195,6 +195,8 @@ impl GameState {
                 counters: Vec::new(),
                 cast: false,
                 applied: Vec::new(),
+                chosen_color: None,
+                named_card: None,
             },
             db,
         )
@@ -225,6 +227,8 @@ impl GameState {
                 counters: Vec::new(),
                 cast: true,
                 applied: Vec::new(),
+                chosen_color: None,
+                named_card: None,
             },
             db,
         )
@@ -244,8 +248,15 @@ impl GameState {
     ///    waits in no zone at all until the answer comes back, which is what makes "the
     ///    permanent is never briefly on the battlefield mid-decision" true by
     ///    construction.
-    /// 4. **None** — the CR 614.12 colour question, if the card asks one, defers the
-    ///    entry the same way; otherwise the permanent arrives.
+    /// 4. **None** — the CR 614.12 questions, if the card asks any, defer the entry the
+    ///    same way, one at a time; otherwise the permanent arrives.
+    ///
+    /// Step 4 is a loop over *unfilled answer slots on the event*, not a branch per
+    /// question: an answer writes itself onto the [`PendingEntry`] and re-enters this
+    /// function, which asks whatever is still owed and then finishes. That is why a card
+    /// asking two questions needs no code saying which comes first, and why the whole
+    /// thing terminates — a filled slot is never emptied, exactly as an applied
+    /// replacement is never unapplied (CR 614.5).
     ///
     /// Returns the new permanent's id, or **`None` when nothing entered** — because the
     /// event was replaced, or because the entry is deferred on a question. It is
@@ -283,12 +294,13 @@ impl GameState {
                 }
             }
         }
+        // CR 614.12: each choice is made *as* the permanent enters, so the card waits
+        // here — in no zone, exactly as a spell's card waits while its resolution is
+        // suspended — rather than entering and being amended afterwards. A question
+        // whose slot on the event is already filled is not asked again, which is what
+        // lets an answer route straight back into this function.
         if let EnteringObject::Card(card) = entry.object {
-            if crate::card::chooses_color_on_entry(db, card.card) {
-                // CR 614.12: the choice is made *as* the permanent enters, so the card
-                // waits here — in no zone, exactly as a spell's card waits while its
-                // resolution is suspended — rather than entering and being amended
-                // afterwards.
+            if entry.chosen_color.is_none() && crate::card::chooses_color_on_entry(db, card.card) {
                 self.pending_choices.push(crate::choice::PendingChoice {
                     chooser: entry.controller,
                     question: crate::choice::ChoiceQuestion::Color(crate::choice::ColorRequest {
@@ -298,18 +310,30 @@ impl GameState {
                 });
                 return None;
             }
+            if entry.named_card.is_none() {
+                if let Some(class) = crate::card::names_a_card_on_entry(db, card.card) {
+                    self.pending_choices.push(crate::choice::PendingChoice {
+                        chooser: entry.controller,
+                        question: crate::choice::ChoiceQuestion::CardName(
+                            crate::choice::CardNameRequest { class, entry },
+                        ),
+                        resume: None,
+                    });
+                    return None;
+                }
+            }
         }
-        Some(self.complete_battlefield_entry(&entry, None, db))
+        Some(self.complete_battlefield_entry(&entry, db))
     }
 
-    /// Build the permanent `entry` describes, give it `chosen_color`, and put it on the
-    /// battlefield — the half of [`Self::begin_battlefield_entry`] that actually arrives.
+    /// Build the permanent `entry` describes — answers and all — and put it on the
+    /// battlefield: the half of [`Self::begin_battlefield_entry`] that actually arrives.
     ///
-    /// Split out because it happens at two different moments: immediately, for the
-    /// objects that ask nothing, and one action later for a card whose colour had to be
-    /// named first. Everything else about the entry is identical between them — the same
-    /// fresh [`PermanentId`], the same already-applied replacements baked into the entry
-    /// — which is the whole reason it is one function.
+    /// Split out because it is the one place that mints a permanent, and because it is
+    /// reached only once everything the event was waiting on is settled. The answers a
+    /// card's controller gave ride on the event itself rather than on this signature, so
+    /// adding a question adds a field there and nothing here — and so a permanent built
+    /// from an entry can never disagree with the entry it was built from.
     ///
     /// The one thing applied *here* rather than by the replacement layer is a
     /// planeswalker's starting loyalty (CR 306.5b). It is not a replacement effect: every
@@ -320,7 +344,6 @@ impl GameState {
     pub(crate) fn complete_battlefield_entry(
         &mut self,
         entry: &PendingEntry,
-        chosen_color: Option<crate::mana::Color>,
         db: &CardDatabase,
     ) -> PermanentId {
         let id = PermanentId(self.mint_id());
@@ -353,7 +376,8 @@ impl GameState {
             damage: 0,
             counters,
             attached_to: entry.attached_to,
-            chosen_color,
+            chosen_color: entry.chosen_color,
+            named_card: entry.named_card,
         };
         self.battlefield.push(permanent);
         id
@@ -402,6 +426,8 @@ impl GameState {
                 counters: Vec::new(),
                 cast: false,
                 applied: Vec::new(),
+                chosen_color: None,
+                named_card: None,
             },
             db,
         )

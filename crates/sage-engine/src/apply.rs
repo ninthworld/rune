@@ -98,6 +98,7 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         Action::AnswerConfirm { accept } => apply_answer_confirm(&mut next, *accept, db),
         Action::AnswerColor { color } => apply_answer_color(&mut next, *color, db),
         Action::AnswerReplacement { index } => apply_answer_replacement(&mut next, *index, db),
+        Action::AnswerCardName { card } => apply_answer_card_name(&mut next, *card, db),
         Action::Discard { card } => apply_discard(&mut next, *card, db),
         Action::Mulligan => apply_mulligan(&mut next),
         Action::Keep { bottom } => apply_keep(&mut next, bottom),

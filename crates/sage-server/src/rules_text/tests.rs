@@ -1607,3 +1607,19 @@ fn issue_740_a_granted_ability_is_quoted_on_the_card_that_grants_it() {
     // are different sentences: Manalith asks once per point, the Aura above asks once.
     assert_eq!(text_of(&db, "manalith"), "{T}: Add one mana of any color.");
 }
+
+/// Alpine Moon (issue #738/#743): the naming clause gives "the chosen name" its referent,
+/// and both halves of the continuous effect are composed from the same selector the
+/// engine evaluates — including the quoted ability it hands out, written by the same
+/// composer that writes it once the land has it.
+#[test]
+fn a_named_card_and_a_static_that_reaches_an_opponents_lands() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "alpine_moon"),
+        "As Alpine Moon enters the battlefield, choose a nonbasic land card name.\n\
+         Lands your opponents control with the chosen name lose all abilities.\n\
+         Lands your opponents control with the chosen name have \"{T}: Add one mana of \
+         any color.\""
+    );
+}

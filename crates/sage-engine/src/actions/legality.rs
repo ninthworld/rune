@@ -67,6 +67,16 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         return usize::from(*index) < crate::pending_replacement_options(state, db).len();
     }
 
+    // 1a-quater. A CR 614.12 card-naming answer names a card in the **catalog**, so it is
+    //     validated against the candidate list derived from the catalog and the class the
+    //     entering card declared ([`crate::named_card_candidates`]) rather than against
+    //     anything on the battlefield. This is where the legal posture is enforced: a
+    //     handle outside that list — including one the client invented — is refused, so
+    //     no card name SAGE has not defined can ever be recorded on a permanent.
+    if let Action::AnswerCardName { card } = action {
+        return crate::choice::named_card_is_legal(state, *card, db);
+    }
+
     // 1b. A mulligan keep validates its bottoming selection (CR 103.5) rather than
     //     the target-slot machinery: exactly one distinct hand card per mulligan
     //     taken (see [`crate::mulligan::keep_bottom_is_legal`]).
@@ -592,6 +602,7 @@ mod tests {
             counters: Default::default(),
             attached_to: None,
             chosen_color: None,
+            named_card: None,
         });
         let action = Action::ActivateAbility {
             permanent: id,
@@ -630,6 +641,7 @@ mod tests {
                 counters: Default::default(),
                 attached_to: None,
                 chosen_color: None,
+                named_card: None,
             });
             id
         };

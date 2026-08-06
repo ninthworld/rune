@@ -120,6 +120,7 @@ fn creature_on_battlefield(state: &mut GameState) -> PermanentId {
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
     PermanentId(id)
 }
@@ -360,6 +361,7 @@ fn issue_149_any_target_is_legal_for_creatures_and_in_game_players() {
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
     assert!(!target_is_legal(
         TargetSpec::AnyTarget,
@@ -584,6 +586,7 @@ fn place(state: &mut GameState, slug: &str) -> PermanentId {
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
     id
 }
@@ -623,6 +626,7 @@ fn aura_host(state: &mut GameState, db: &CardDatabase) -> PermanentId {
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
     id
 }

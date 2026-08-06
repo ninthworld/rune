@@ -27,6 +27,7 @@ fn place(state: &mut GameState, card: CardId) -> PermanentId {
         counters: BTreeMap::new(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
     id
 }

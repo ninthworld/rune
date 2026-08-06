@@ -448,6 +448,7 @@ fn creature(
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
 }
 
@@ -717,6 +718,7 @@ async fn issue_537_a_seat_that_tapped_mana_and_cast_nothing_still_auto_passes() 
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
     let second = sage_engine::PermanentId(state.mint_id());
     let second_land = state.new_instance(fixture("plains"));
@@ -734,6 +736,7 @@ async fn issue_537_a_seat_that_tapped_mana_and_cast_nothing_still_auto_passes() 
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
     let heal = state.new_instance(fixture("revitalize"));
     let spare_land = state.new_instance(fixture("plains"));

@@ -47,6 +47,36 @@ pub enum StaticAffects {
     /// permanent and so has no source to affect; a `source` static on one applies to
     /// nothing, which is the honest answer rather than a panic.
     Source,
+    /// Permanents controlled by an **opponent** of the source's controller — the first
+    /// class a static ability names that its own controller does not control.
+    ///
+    /// The mirror of [`Self::CreaturesYouControl`], and relative to the source's
+    /// controller for the same reason: one authored card must mean "your opponents" from
+    /// either side of the table. It is not restricted to creatures — that restriction was
+    /// the whole of the old selector's reach — so `card_type` is how a card says which
+    /// permanents it means.
+    ///
+    /// Like every other selector it is **re-derived on every read**, which is the entire
+    /// distinction between a static ability and the resolution-time
+    /// [`MassAffects`](crate::MassAffects) class a sweeper names: a land that arrives
+    /// under an opponent after the source did is affected the instant it arrives, one
+    /// that changes hands leaves the class at CR 613 layer 2, and everything stops the
+    /// instant the source leaves the battlefield.
+    PermanentsYourOpponentsControl {
+        /// Restrict to permanents with this printed card type — the `land` of "lands
+        /// your opponents control". Absent means every permanent they control.
+        #[serde(default)]
+        card_type: Option<CardType>,
+        /// Restrict to permanents whose printed card is the one the **source named as it
+        /// entered** (CR 614.12) — the "with the chosen name" of a card that asks its
+        /// controller to name one.
+        ///
+        /// A source that named nothing matches nothing, which is the honest reading:
+        /// there is no chosen name, so no permanent has it. A token has no card at all
+        /// (CR 111) and so can never carry a name that was named.
+        #[serde(default)]
+        with_the_named_card: bool,
+    },
 }
 
 /// What has to be true for a printed [`Ability::Static`] to be **in force** — the
@@ -109,7 +139,10 @@ fn one_permanent() -> u32 {
 /// This is the *authored* shape and is deliberately separate from the runtime enum,
 /// the same seam [`TargetSpec`] keeps from [`Target`]: the JSON a card is written in
 /// must not shift because an internal representation changed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+///
+/// `Clone` rather than `Copy`, following its [`Modification`](crate::Modification): a
+/// grant of a whole written-out ability carries that ability's entire tree.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum StaticModification {
     /// CR 613 **layer 7c**: add the given signed amounts to power and toughness.
@@ -144,6 +177,33 @@ pub enum StaticModification {
     /// keeps defender for every other purpose, including the `keyword` filter of the very
     /// selector that reached it. See [`RuleModification::AttacksAsThoughNoDefender`].
     AttacksAsThoughNoDefender,
+    /// CR 613 **layer 6** (CR 613.1f): the affected permanents **lose all abilities** —
+    /// every keyword, every combat restriction, and every printed static, triggered, and
+    /// activated ability.
+    ///
+    /// The subtracting member of this vocabulary, and the reason a printed static ability
+    /// now reaches the ability fold at all: until one could remove abilities, the only
+    /// removals were the until-end-of-turn kind an effect stored, and the fold could
+    /// safely ignore this source list. Ordered by timestamp like everything else in the
+    /// layer, so a grant with a later timestamp — an Aura hung on the silenced permanent
+    /// afterwards — still grants.
+    LoseAllAbilities,
+    /// CR 613 **layer 6** (CR 613.1f): grant a **written-out ability** to the affected
+    /// permanents — the `have "{T}: Add one mana of any color."` of a card that takes a
+    /// land's own abilities away and leaves it able to tap for something.
+    ///
+    /// The same grant an attachment makes, reached from a printed static ability instead
+    /// of from an Aura, and folded in by the same
+    /// [`current_abilities`](crate::characteristics::current_abilities) — so the granted
+    /// ability is offered by [`valid_actions`](crate::valid_actions), a granted mana
+    /// ability still uses no stack (CR 605.1a), and a granted trigger is collected, each
+    /// by the code a printed ability goes through.
+    GrantAbility {
+        /// The ability granted for as long as the source is on the battlefield. Boxed
+        /// for the reason [`Modification::GrantAbility`](crate::Modification) is: an
+        /// [`Ability`] can contain one of these, and an unboxed cycle has no size.
+        ability: Box<Ability>,
+    },
 }
 
 /// What a printed [`Ability::CostModifier`] does to the cost of casting a spell
@@ -178,17 +238,24 @@ pub enum CostModification {
 impl StaticModification {
     /// The runtime [`Modification`](crate::Modification) this authored shape denotes.
     #[must_use]
-    pub fn to_modification(self) -> crate::Modification {
+    pub fn to_modification(&self) -> crate::Modification {
         match self {
             StaticModification::PowerToughness { power, toughness } => {
-                crate::Modification::PowerToughness { power, toughness }
+                crate::Modification::PowerToughness {
+                    power: *power,
+                    toughness: *toughness,
+                }
             }
             StaticModification::GrantKeyword { keyword } => {
-                crate::Modification::GrantKeyword(keyword)
+                crate::Modification::GrantKeyword(*keyword)
+            }
+            StaticModification::LoseAllAbilities => crate::Modification::LoseAllAbilities,
+            StaticModification::GrantAbility { ability } => {
+                crate::Modification::GrantAbility(ability.clone())
             }
             StaticModification::AssignsCombatDamageBy { characteristic } => {
                 crate::Modification::ModifyRule(RuleModification::AssignsCombatDamageBy {
-                    characteristic,
+                    characteristic: *characteristic,
                 })
             }
             StaticModification::AttacksAsThoughNoDefender => {

@@ -66,9 +66,11 @@ pub(super) fn static_ability_effects(
             },
             // CR 613 layer 6 gates the *source*: a lord that has lost all its abilities
             // has no static ability to contribute, so it stops pumping. The gate reads
-            // stored effects only, which is why asking it from inside this computation
-            // cannot recurse — the same property that lets `controller_of` be read here.
-            abilities_of_permanent(state, db, source),
+            // stored effects and attachments only — never another permanent's printed
+            // static ability — which is why asking it from inside this computation
+            // cannot recurse, and is the one place the layer-6 walk is cut short. It is
+            // the same property that lets `controller_of` be read here.
+            stored_abilities_of_permanent(state, db, source),
         );
     }
     // CR 114.1: an emblem's abilities function from nowhere — it is in no zone, so the
@@ -168,6 +170,40 @@ fn static_affects_match(
         // A class of one. An emblem has no source permanent, so a `source` static on one
         // applies to nothing — which is what `None == Some(perm.id)` says.
         StaticAffects::Source => source.permanent == Some(perm.id),
+        // The first class a static ability names that reaches past its own controller.
+        // Everything about it is re-asked here, on this read: who controls `perm` right
+        // now (layer 2, applied before this one), what it is, and what the source named
+        // as it entered. Nothing was decided when the source arrived, which is the whole
+        // difference between this and a `pump_all`.
+        StaticAffects::PermanentsYourOpponentsControl {
+            card_type,
+            with_the_named_card,
+        } => {
+            if controller_of(state, perm) == source.controller {
+                return false;
+            }
+            if let Some(wanted) = card_type {
+                let matches = perm
+                    .printed
+                    .face(db)
+                    .is_some_and(|face| face.has_type(*wanted));
+                if !matches {
+                    return false;
+                }
+            }
+            if !*with_the_named_card {
+                return true;
+            }
+            // "With the chosen name" compares **card identity**, not a string: two
+            // printings of one functional card share a `CardId` and nothing else does,
+            // and a token has no card at all (CR 111), so it can never bear a name
+            // anyone named. A source that named nothing matches nothing.
+            let named = source
+                .permanent
+                .and_then(|id| state.battlefield.iter().find(|p| p.id == id))
+                .and_then(|source| source.named_card);
+            named.is_some() && named == perm.printed.card()
+        }
     }
 }
 

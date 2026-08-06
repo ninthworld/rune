@@ -39,13 +39,15 @@ mod rules_modifying;
 
 use continuous::*;
 use layer_seven::*;
-pub(crate) use layer_six::current_abilities;
 use layer_six::*;
+pub(crate) use layer_six::{current_abilities, stored_abilities};
 pub use layer_two::{controller_of, controller_of_id};
 pub use rules_modifying::{assigns_combat_damage_by, attacks_as_though_no_defender};
 
 use crate::ability::{Ability, StaticAffects, StaticCondition};
-use crate::card::{abilities_of_permanent, CardDatabase, CombatRestriction, Keyword};
+use crate::card::{
+    abilities_of_permanent, stored_abilities_of_permanent, CardDatabase, CombatRestriction, Keyword,
+};
 use crate::card_type::{CardType, Supertype};
 use crate::id::{PermanentId, PlayerId};
 use crate::state::{

@@ -505,6 +505,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "alpine_moon",
+    "collector_number": "128",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "banefire",
     "collector_number": "130",
     "rarity": "rare"

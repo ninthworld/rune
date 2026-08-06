@@ -427,6 +427,7 @@ async fn issue_455_a_resolved_removal_spell_and_its_death_reach_the_skipped_seat
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
     // Seat 1's Shock, already cast and aimed, with seat 0 holding priority over it.
     let shock = state.new_instance(fixture("shock"));

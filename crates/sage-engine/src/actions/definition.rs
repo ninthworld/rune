@@ -1,7 +1,7 @@
 //! Action types and core methods: the closed set of legal player choices.
 
 use crate::ability::Target;
-use crate::id::{CardInstance, CardInstanceId, PermanentId};
+use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId};
 
 /// One mana ability a payment activates: a permanent under the payer's control and an
 /// index into [`crate::abilities_of_permanent`], addressed exactly as
@@ -305,6 +305,24 @@ pub enum Action {
         /// was snapshotted when the question was posed.
         index: u8,
     },
+    /// Answer the **CR 614.12 card-naming choice** the game is currently waiting on: a
+    /// permanent is entering the battlefield and its controller names a card (see
+    /// [`crate::named_card_candidates`]).
+    ///
+    /// The fifth answer shape beside the four above, routed identically — offered to the
+    /// choice's chooser and to no other seat, and nothing else happens until it arrives.
+    ///
+    /// The answer is a **[`CardId`]: a handle to a card the catalog defines**, validated
+    /// against the freshly derived candidate list, and never a name a player typed. That
+    /// is not a convenience — it is the legal posture. SAGE ships no card name it has not
+    /// itself written down, and an action that carried a string would be the one way a
+    /// game in progress could come to hold one.
+    AnswerCardName {
+        /// The card named, which must be in [`crate::named_card_candidates`] for the
+        /// class the entering card's ability declared. Recorded on the permanent that
+        /// then enters ([`Permanent::named_card`](crate::Permanent)).
+        card: CardId,
+    },
     /// Cast a spell from hand, paying its mana cost from the caster's pool.
     CastSpell {
         /// The specific card in the caster's hand to cast. Names the physical
@@ -535,6 +553,7 @@ impl Action {
             | Action::AnswerConfirm { .. }
             | Action::AnswerColor { .. }
             | Action::AnswerReplacement { .. }
+            | Action::AnswerCardName { .. }
             | Action::PlayLand { .. }
             | Action::Discard { .. }
             | Action::Mulligan
@@ -614,6 +633,12 @@ impl Action {
             // answer names a position in the submitted action. Zero is the requirement
             // form's stand-in, never a default anyone is held to.
             Action::AnswerReplacement { .. } => Action::AnswerReplacement { index: 0 },
+            // And a card-naming answer the same way: one bare question, whose answer
+            // names a card in the submitted action. `CardId(0)` is the requirement
+            // form's stand-in — the same role White plays for a colour — and never a
+            // card anyone is held to having named; the legality gate checks the
+            // submitted handle against the freshly derived candidates.
+            Action::AnswerCardName { .. } => Action::AnswerCardName { card: CardId(0) },
             // The requirement form of a combat declaration is the empty selection —
             // exactly what `valid_actions` advertises during the declare window.
             Action::DeclareAttackers { .. } => Action::DeclareAttackers {

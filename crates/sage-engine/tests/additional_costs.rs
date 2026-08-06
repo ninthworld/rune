@@ -235,6 +235,7 @@ fn a_discard_is_refused_on_a_card_that_owes_no_additional_cost() {
         counters: Default::default(),
         attached_to: None,
         chosen_color: None,
+        named_card: None,
     });
     let victim = state.battlefield[0].id;
 

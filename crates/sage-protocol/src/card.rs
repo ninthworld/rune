@@ -464,6 +464,27 @@ pub struct Permanent {
     /// on the wire and a client that ignores it renders exactly as it did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chosen_color: Option<crate::Color>,
+    /// The card name this permanent's controller **named as it entered** the battlefield
+    /// (CR 614.12) — the "chosen name" its own rules text refers to. `None`/omitted for
+    /// every permanent that named none, which is almost all of them.
+    ///
+    /// [`Self::chosen_color`]'s sibling, stated for the same reason and with the same
+    /// rule attached: it is a decision a player made, recorded on this one object, and
+    /// nothing on the board or in [`CardView`] implies it. Two copies of one card side by
+    /// side may have named different things.
+    ///
+    /// It is a **name the catalog itself holds** — the server resolves the identity the
+    /// engine recorded to that card's own [`CardView::name`] — never a string a player
+    /// typed and never a functional identity a client would have to look up. Render it;
+    /// derive nothing from it, and never read it as the name of *this* permanent.
+    ///
+    /// **Public information.** Every seat and every spectator sees it, because it was
+    /// announced as the permanent entered.
+    ///
+    /// Additive: omitted (and defaults to `None`), so every existing view is unchanged
+    /// on the wire and a client that ignores it renders exactly as it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub named_card: Option<String>,
 }
 
 /// An **emblem** in the game (CR 114, issue #620): a marker one player has, whose only

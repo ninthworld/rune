@@ -480,7 +480,14 @@ A `Permanent` contains:
   one object. It is *not* the permanent's colour — a colourless artifact may have named red —
   it is nowhere in `card.color_identity`, and it does not follow from the printed cost, since
   two copies of one card side by side may have chosen differently. Public: it was announced as
-  the permanent entered, so every seat and every spectator receives it.
+  the permanent entered, so every seat and every spectator receives it; and
+- optional `named_card` (issue #738), the card this permanent's controller **named as it
+  entered** the battlefield (CR 614.12) — the "chosen name" its own rules text refers to.
+  `chosen_color`'s sibling in every respect, public the same way, and omitted for every
+  permanent that named none. It is **the catalog's own name for that card**: the engine
+  records a functional identity and the server resolves it here, so a client never handles a
+  card handle and the only names that can appear are names SAGE has itself defined. Render
+  it; never read it as the name of *this* permanent.
 
 These fields describe server-computed state. They do not authorize interaction.
 
@@ -985,6 +992,14 @@ Two things ask it, and the prompt's own sentence is what tells them apart:
   mid-resolution choice suspends it, so a client that renders the board it is sent is never
   showing a permanent whose colour has not been named. Answering makes it appear, with
   `chosen_color` already set on it.
+
+The same `option` prompt carries **which card a permanent names as it enters** (CR 614.12,
+issue #738) — *"Choose a card name as Alpine Moon enters the battlefield"* — under the same
+freeze and with the permanent likewise not yet on the battlefield. Its options are the cards
+the **server** says may be named: each option's `label` is the card's name and its `id` is
+that card's authored `functional_id`, the same stable identity `card.functional_id` carries
+everywhere else. The client picks one and echoes the id; it composes no list, sends no typed
+name, and an id the offer did not list is refused rather than guessed at.
 
 Combat declarations also use requirements. The `attackers` slot lists creatures eligible to
 attack; blocker slots list eligible blockers for each attacker. When there is more than one

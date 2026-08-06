@@ -107,17 +107,47 @@ pub(super) fn current_restrictions(
 /// `{T}: Add {G}` are two activations, and a granted copy of an ability the host prints
 /// is a second copy (CR 613.1f adds, it does not merge).
 ///
-/// Reads [`ordered_ability_effects`], which walks stored effects and attachments only —
-/// the same property that makes it safe to call from *inside* the computation of a
-/// permanent's characteristics.
+/// It folds all **three** sources, printed static abilities included, because a printed
+/// static ability can now take abilities away and hand others out — that is the whole of
+/// Alpine Moon. The recursion that would imply is cut in exactly one place:
+/// [`static_ability_effects`] gates each *source* with [`stored_abilities`] rather than
+/// with this function, so the walk goes one level deep and stops.
 pub(crate) fn current_abilities(
     state: &GameState,
     perm: &Permanent,
     printed: Vec<Ability>,
     db: &CardDatabase,
 ) -> Vec<Ability> {
+    fold_abilities(printed, ordered_ability_effects(state, perm, db))
+}
+
+/// [`current_abilities`] over the **stored** sources only — until-end-of-turn effects and
+/// the attachments on `perm` — with no printed static ability consulted.
+///
+/// The non-recursive answer, and the one the static-ability collector uses to ask whether
+/// a source still has the ability it is about to contribute. It is a strictly smaller
+/// answer than [`current_abilities`], deliberately: see
+/// [`stored_abilities_of_permanent`](crate::stored_abilities_of_permanent) for what that
+/// costs and why the cost is the right one.
+pub(crate) fn stored_abilities(
+    state: &GameState,
+    perm: &Permanent,
+    printed: Vec<Ability>,
+    db: &CardDatabase,
+) -> Vec<Ability> {
+    let is_creature = printed_is_creature(perm, db);
+    fold_abilities(
+        printed,
+        ordered_layer_six_sources(state, perm, is_creature, db),
+    )
+}
+
+/// Fold `effects` — already in ascending timestamp order — over `printed`, keeping only
+/// the two modifications that are about written-out abilities. Shared by the two answers
+/// above so they can never fold the same list differently.
+fn fold_abilities(printed: Vec<Ability>, effects: Vec<StaticEffect>) -> Vec<Ability> {
     let mut abilities = printed;
-    for effect in ordered_ability_effects(state, perm, db) {
+    for effect in effects {
         match effect.modification {
             Modification::GrantAbility(granted) => abilities.push(*granted),
             // CR 613.1f: everything that applied *before* this timestamp goes, printed
@@ -136,17 +166,25 @@ pub(crate) fn current_abilities(
     abilities
 }
 
-/// The CR 613 layer-6 effects on `perm` that come from the two sources readable
-/// **without recursion** — [`GameState::static_effects`] and the attachments on
-/// `perm` — sorted by ascending timestamp (CR 613.7).
+/// Whether `perm` is currently a creature, read from its **printed** face.
 ///
-/// The subset [`current_abilities`] folds, and the reason there is a subset at all: the
+/// The reading every selector in this module makes — the type-changing layers are not
+/// implemented, so printed types are current types — and the only non-recursive one
+/// available to a caller that is itself computing `perm`'s characteristics.
+fn printed_is_creature(perm: &Permanent, db: &CardDatabase) -> bool {
+    perm.printed
+        .face(db)
+        .is_some_and(|face| face.has_type(CardType::Creature))
+}
+
+/// The CR 613 layer-6 effects on `perm` that come from the two **stored** sources —
+/// [`GameState::static_effects`] and the attachments on `perm` — sorted by ascending
+/// timestamp (CR 613.7).
+///
+/// The subset [`stored_abilities`] folds, and the reason there is a subset at all: the
 /// third source, a printed static ability ([`static_ability_effects`]), is collected by
-/// reading each source permanent's *abilities*, so asking it from inside the ability
-/// accessor would not terminate. That is exact rather than a compromise — no
-/// [`StaticModification`](crate::ability::StaticModification) grants or removes a
-/// written-out ability, so the two sources here are every source there is for the
-/// question this answers.
+/// reading each source permanent's *abilities*, so a walk that asked for those in full
+/// would not terminate. This list is where that walk bottoms out.
 ///
 /// `is_creature` gates the anthem-style selector on a stored effect; ability-shaped
 /// modifications are always keyed to one permanent, so it only ever matters to the
@@ -204,25 +242,21 @@ fn ordered_layer_six_sources(
     effects
 }
 
-/// [`ordered_layer_six_sources`] for the ability question, with `is_creature` answered
+/// [`ordered_layer_six_effects`] for the ability question, with `is_creature` answered
 /// from the **printed** face.
 ///
 /// The one caller is [`current_abilities`], reached from
 /// [`abilities_of_permanent`](crate::abilities_of_permanent), which has no computed
 /// characteristics to consult and must not ask for any. Reading the printed type is what
 /// [`characteristics`](crate::characteristics::characteristics) does too — the
-/// type-changing layers are not implemented — and here it decides nothing anyway: the
-/// only selector it gates is the anthem's, which no ability-shaped modification uses.
+/// type-changing layers are not implemented — and it is what gates the one selector on
+/// this path that cares, `creatures you control`.
 fn ordered_ability_effects(
     state: &GameState,
     perm: &Permanent,
     db: &CardDatabase,
 ) -> Vec<StaticEffect> {
-    let is_creature = perm
-        .printed
-        .face(db)
-        .is_some_and(|face| face.has_type(CardType::Creature));
-    ordered_layer_six_sources(state, perm, is_creature, db)
+    ordered_layer_six_effects(state, perm, printed_is_creature(perm, db), db)
 }
 
 /// Every CR 613 **layer 6** effect currently applying to `perm` — the ability-adding

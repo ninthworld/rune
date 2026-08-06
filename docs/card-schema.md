@@ -1119,8 +1119,40 @@ card that never names a colour is a validation error (`ChosenColorIsNeverNamed`)
 engine's honest answer to a permanent with no colour recorded is to notice nothing, and a card
 that silently does nothing is the hardest kind of wrong to spot.
 
-Naming a **card** or a **type** is not authorable: only a colour is recorded, and nothing on a
-spell records a choice at all.
+Naming a **type** is not authorable, and nothing on a spell records a choice at all.
+
+### A card named as a permanent enters (CR 614.12)
+
+`enters_naming_card` is the same seam for a *card name*. It declares that the permanent's
+controller names a card as it enters, and that the answer stays on the permanent:
+
+```json
+{ "abilities": [
+    { "type": "enters_naming_card", "class": "nonbasic_land" },
+    { "type": "static",
+      "affects": { "scope": "permanents_your_opponents_control", "card_type": "land",
+                   "with_the_named_card": true },
+      "modification": { "kind": "lose_all_abilities" } } ] }
+```
+
+`class` is what a card puts between "name a" and "card"; the only value is `nonbasic_land`,
+and it grows by adding one when a card needs it. The choice happens exactly where the colour
+choice does — the card waits off the battlefield until it is answered — and everything said
+about that above applies here unchanged.
+
+**What is recorded is a functional identity, never prose, and this is a legal rule rather
+than a style one.** The answer set is derived from the **catalog** on every read, so a player
+names one of the cards SAGE has itself defined: the choice offers those cards, the answer
+carries the card's authored identity, and the engine refuses anything outside the freshly
+derived list. There is no path by which a name the repository does not already contain can
+reach a game state, and a client composes no list and sends no string.
+
+A static ability reads the answer back with `{"with_the_named_card": true}` on a
+`permanents_your_opponents_control` selector — "with the chosen name". Writing that on a card
+that declares no `enters_naming_card` is a validation error (`ChosenNameIsNeverNamed`), for
+the reason watching the chosen colour without choosing one is: the phrase would have no
+referent and the class could never contain a permanent. Naming a card and never reading it
+back is fine.
 
 ### Restricted mana (CR 106.6)
 
@@ -1229,9 +1261,12 @@ collected alongside whatever an ability created, so when more than one applies t
 entry the affected permanent's **controller** — not the effects' controller — chooses which
 applies first (CR 616.1), through the mid-resolution choice queue every other player decision
 rides. Each applies at most once to one event (CR 614.5), which is what makes the loop
-terminate. `enters_choosing_color` is deliberately not one of them: it is a question, not a
-modification anyone could order it against, and the entry is already deferred until it is
-answered.
+terminate. `enters_choosing_color` and `enters_naming_card` are deliberately not among them:
+they are questions, not modifications anyone could order them against. Each is instead an
+**answer slot on the entry event** the seam refuses to finish while it is empty, so an answer
+fills its slot and hands the same event straight back — which is what lets a card ask more
+than one without any code saying which comes first, and what makes the whole loop terminate
+for the same reason CR 614.5 does.
 
 ### Preventing damage
 
@@ -1469,7 +1504,14 @@ battlefield, with nothing ever put on the stack — an anthem or a lord:
   selector's `keyword` (see [Trigger conditions](#trigger-conditions)) runs outside the
   layer system and does read the computed set; the asymmetry is that recursion and nothing
   else.
-- `modification` is one of four, and the last two are not in a layer at all:
+
+  `permanents_your_opponents_control` is the one class that reaches past the source's own
+  controller: it takes a `card_type` ("**lands** your opponents control") and
+  `with_the_named_card`, which narrows it to permanents whose card is the one the source
+  named as it entered. Every part of it is re-asked on each read, which is the whole
+  difference between it and a `pump_all` — a land that arrives afterwards is in the class
+  the moment it arrives, and one that changes hands leaves it at CR 613 layer 2.
+- `modification` is one of six, and two of them are not in a layer at all:
   - `power_toughness` — layer 7c, folded after counters in timestamp order.
   - `grant_keyword` — layer 6, idempotent.
   - `assigns_combat_damage_by` — **no layer**. The affected creatures assign combat damage
@@ -1497,6 +1539,20 @@ battlefield, with nothing ever put on the stack — an anthem or a lord:
     `loses_keyword` would take the creature out of the class that granted it. It also
     permits exactly one thing: a tapped creature, a summoning-sick one, and one under a
     `cant_attack` restriction all still cannot attack.
+  - `lose_all_abilities` and `grant_ability` — layer 6, the same addition and subtraction an
+    attachment makes, reached from a printed static ability instead:
+
+    ```json
+    {"kind": "grant_ability",
+     "ability": {"type": "activated", "cost": [{"kind": "tap"}],
+                 "effects": [{"kind": "add_mana_any_color", "amount": 1}]}}
+    ```
+
+    A granted ability is folded into the affected permanent's set by the one accessor every
+    collector reads, so it is offered, paid for, and fired by the code a printed ability goes
+    through. Two static abilities on one card share their source's timestamp and apply in the
+    order the card lists them, which is how "lose all abilities **and** have …" is written as
+    two entries and still means one thing.
 - `condition` is the optional `as long as …` clause. Absent is unconditional, which is
   what every anthem and lord says:
 

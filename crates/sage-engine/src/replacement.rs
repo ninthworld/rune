@@ -200,6 +200,22 @@ pub struct PendingEntry {
     /// twice. This is what terminates the loop: a modification that leaves the entry
     /// still matching the effect that made it would otherwise be applied forever.
     pub applied: Vec<ReplacementOption>,
+    /// The colour the entering permanent's controller named, for a card that asks
+    /// (CR 614.12, [`Ability::EntersChoosingColor`](crate::Ability)) — `None` until they
+    /// have.
+    ///
+    /// An **answer slot on the event**, not a modification to it: the entry seam refuses
+    /// to finish while a card that asks has an empty one, so the permanent is never on
+    /// the battlefield without its colour, and answering fills the slot and hands the
+    /// same event back. That is what makes the two questions a card could ask compose
+    /// with each other and with the replacement loop, with no branch anywhere saying
+    /// which came first — and what makes the whole thing terminate, because a filled slot
+    /// is never emptied.
+    pub chosen_color: Option<crate::mana::Color>,
+    /// The card the entering permanent's controller named, for a card that asks
+    /// (CR 614.12, [`Ability::EntersNamingCard`](crate::Ability)) — `None` until they
+    /// have. [`Self::chosen_color`]'s sibling in every respect, including why it is here.
+    pub named_card: Option<crate::id::CardId>,
 }
 
 /// One replacement effect that could apply to an event, named by where it comes from.

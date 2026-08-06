@@ -593,6 +593,21 @@ pub struct Permanent {
     /// entry, a card that leaves and returns is a new object that chooses again, with no
     /// memory of the colour the last one named (CR 400.7).
     pub chosen_color: Option<crate::mana::Color>,
+    /// The card this permanent's controller named **as it entered** (CR 614.12), for a
+    /// card that declares [`Ability::EntersNamingCard`](crate::Ability) — the "chosen
+    /// name" its other abilities read. `None` for every permanent that named none.
+    ///
+    /// [`Self::chosen_color`]'s sibling, written at the same seam, once, and never again,
+    /// and absent for the same reason it can never be missing when it should be present:
+    /// a card that asks does not reach the battlefield until the question is answered.
+    ///
+    /// It is a [`CardId`] — a **functional identity**, a handle to a card the catalog
+    /// defines — and never a string. A player names one of
+    /// [`named_card_candidates`](crate::named_card_candidates), so this field can only
+    /// ever hold a card SAGE already ships, which is what keeps "the project ships no
+    /// card name it has not defined" true of a game in progress and not merely of the
+    /// repository.
+    pub named_card: Option<crate::id::CardId>,
 }
 
 impl Permanent {

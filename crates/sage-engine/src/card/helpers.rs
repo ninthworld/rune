@@ -77,19 +77,51 @@ pub fn equip_ability(data: &super::CardData) -> Option<Ability> {
 /// the one accessor answer it is what makes those impossible to get wrong individually —
 /// there is no printed-abilities reader left to reach for by mistake.
 ///
-/// The fold reads stored effects and attachments only, never a computed characteristic,
-/// so this is safe to call from inside the characteristics computation itself.
+/// The fold reads no computed characteristic of `perm`, so this is safe to call from
+/// inside the characteristics computation itself — but it *does* read the printed static
+/// abilities of every other permanent, which is why the one thing it may not be used for
+/// is deciding whether one of those sources still has its abilities. That question has
+/// its own accessor, [`stored_abilities_of_permanent`].
 #[must_use]
 pub fn abilities_of_permanent(
     state: &crate::GameState,
     db: &CardDatabase,
     perm: &Permanent,
 ) -> Vec<crate::ability::Ability> {
-    let printed = match &perm.printed {
+    crate::characteristics::current_abilities(state, perm, printed_abilities_of(db, perm), db)
+}
+
+/// The abilities `perm` has after folding in only what is **stored** — until-end-of-turn
+/// effects and the attachments on it — and *not* what a printed static ability elsewhere
+/// grants or takes away.
+///
+/// A deliberately smaller answer than [`abilities_of_permanent`], and it exists for
+/// exactly one caller: the gate that asks whether a *source* still has the static ability
+/// it is about to contribute (CR 613 layer 6 applies to a lord before the lord pumps
+/// anything). Asking the full accessor there would be asking a permanent's abilities from
+/// inside the computation of a permanent's abilities, which does not terminate.
+///
+/// What that costs is nameable and small: a permanent silenced by an Aura or by a spell
+/// stops contributing its static ability, and one silenced by *another printed static
+/// ability* does not. The engine models CR 613.7 timestamps but not the CR 613.8
+/// dependency rules, and this is where that shows.
+#[must_use]
+pub(crate) fn stored_abilities_of_permanent(
+    state: &crate::GameState,
+    db: &CardDatabase,
+    perm: &Permanent,
+) -> Vec<crate::ability::Ability> {
+    crate::characteristics::stored_abilities(state, perm, printed_abilities_of(db, perm), db)
+}
+
+/// The abilities printed on `perm`'s face, before any layer applies: a card's two
+/// authoring tiers unioned by [`abilities_of`], or the list the effect that created a
+/// token wrote down (ADR 0015).
+fn printed_abilities_of(db: &CardDatabase, perm: &Permanent) -> Vec<crate::ability::Ability> {
+    match &perm.printed {
         crate::token::Printed::Card(card) => abilities_of(db, *card),
         crate::token::Printed::Token(token) => token.abilities.clone(),
-    };
-    crate::characteristics::current_abilities(state, perm, printed, db)
+    }
 }
 
 /// The effects a spell of printed card `card` produces on resolution
@@ -186,6 +218,28 @@ pub(crate) fn spell_matches_class(
         // watcher of any one of them and a colourless spell satisfies none.
         ObservedSpell::ChosenColor => chosen.is_some_and(|color| data.colors.contains(&color)),
     }
+}
+
+/// The class of card `card` names **as it enters** the battlefield (CR 614.12), or `None`
+/// for a card that names none — whether it declares [`Ability::EntersNamingCard`], and
+/// what it may name.
+///
+/// [`chooses_color_on_entry`]'s sibling, read at the same seam for the same reason, and
+/// returning the class rather than a bare `bool` because the question the seam has to
+/// pose needs it: the answer set is derived from the class
+/// ([`named_card_candidates`](crate::named_card_candidates)), so "does it ask?" and "what
+/// may it name?" are one lookup rather than two that could disagree.
+#[must_use]
+pub(crate) fn names_a_card_on_entry(
+    db: &CardDatabase,
+    card: CardId,
+) -> Option<crate::choice::NamedCardClass> {
+    abilities_of(db, card)
+        .iter()
+        .find_map(|ability| match ability {
+            Ability::EntersNamingCard { class } => Some(*class),
+            _ => None,
+        })
 }
 
 #[cfg(test)]
