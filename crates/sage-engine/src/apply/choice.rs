@@ -101,6 +101,12 @@ pub(crate) fn apply_answer_order(
 /// [`crate::apply_action`]'s gate
 /// ([`crate::choice::answer_permanents_is_legal`](crate::choice)), so this writes rather
 /// than re-deciding, and an answer with no permanent choice pending is a no-op.
+///
+/// **How many were named is written onto the resumed resolution**
+/// ([`Resolution::sacrificed`](crate::Resolution)), which is the only moment it could be:
+/// the size of an open sacrifice is the player's decision, so it does not exist until here,
+/// and a sacrificed land leaves no event behind for a later effect to count (CR 700.4 —
+/// only a creature dies). It is what the `up to that many` of a search that follows reads.
 pub(crate) fn apply_answer_permanents(
     state: &mut GameState,
     chosen: &[PermanentId],
@@ -115,7 +121,11 @@ pub(crate) fn apply_answer_permanents(
         return;
     };
     apply_permanent_choice(state, request, chosen, db);
-    if let Some(resume) = answered.resume {
+    if let Some(mut resume) = answered.resume {
+        resume.resolution.sacrificed = resume
+            .resolution
+            .sacrificed
+            .saturating_add(u32::try_from(chosen.len()).unwrap_or(u32::MAX));
         resume_after_choice(state, resume, db);
     }
 }

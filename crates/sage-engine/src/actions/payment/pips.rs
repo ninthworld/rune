@@ -69,13 +69,12 @@ pub struct DiscardCost {
 /// because it is the same question about the same zone.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SacrificeCost {
-    /// How many permanents it takes — a fixed number, or **any number** the payer picks
-    /// (CR 601.2b). The open form is the one a caller must pose with a minimum of zero.
+    /// How many permanents it takes — always a fixed number (CR 601.2b), because a size
+    /// the payer picks is a decision and a decision belongs to a resolution.
     pub count: crate::ability::SacrificeCount,
     /// The permanents the payer controls that could pay it. May be empty in a state the
     /// action was never offered from; the offer gate refuses such an action, so nothing
-    /// downstream has to treat an empty list as payable — except for an open count, where
-    /// an empty list really is a legal payment of none.
+    /// downstream has to treat an empty list as payable.
     pub candidates: Vec<crate::id::PermanentId>,
 }
 

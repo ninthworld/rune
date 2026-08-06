@@ -9,17 +9,17 @@
   "colors": [
     "green"
   ],
-  "additional_cost": {
-    "kind": "sacrifice",
-    "card_type": "land",
-    "count": "any"
-  },
   "spell_effects": [
+    {
+      "kind": "sacrifice",
+      "player_ref": "controller",
+      "card_type": "land"
+    },
     {
       "kind": "search_library",
       "take": 0,
       "take_amount": {
-        "source": "sacrificed_to_cost"
+        "source": "sacrificed_this_way"
       },
       "filter": {
         "kind": "land"

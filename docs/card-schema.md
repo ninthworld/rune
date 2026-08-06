@@ -238,18 +238,22 @@ The kinds today are `discard` and `sacrifice`:
 A sacrifice takes permanents of the named type. **Whose permanent stays a rule
 rather than a field** — CR 701.17b lets a player sacrifice only what they control, so
 there is no scope to author and none to get wrong. How *many* is a field, because a printed
-card varies it in both directions:
+card varies it:
 
 ```json
-"additional_cost": { "kind": "sacrifice", "card_type": "land", "count": "any" }
+"additional_cost": { "kind": "sacrifice", "card_type": "artifact", "count": { "exactly": 2 } }
 ```
 
-`count` is `{"exactly": n}` or `"any"`, and defaults to exactly one. **`"any"` is the one
-cost whose size is a decision**: a payment of none is legal, so such a cost never withholds
-the offer and never makes a cast unplayable — and the number the player settles on is
-recorded as the cost is paid, for an amount that reads it back (see *Amounts derived from
-something else*). A fixed count is exact in both directions: two artifacts is paid by two
-and refused by one, because over-paying a cost is not something a player may choose to do.
+`count` is `{"exactly": n}` and defaults to exactly one. It is exact in both directions: two
+artifacts is paid by two and refused by one, because over-paying a cost is not something a
+player may choose to do.
+
+**A cost is never a number the payer picks.** `Sacrifice any number of lands` is a
+*decision*, and a decision needs a resolution to be asked during — so it is authored as an
+effect (`{"kind": "sacrifice"}` with no `amount`, see *Amounts derived from something
+else*) and not as a cost. The difference is visible from the table: a cost is paid as the spell goes on the
+stack (CR 601.2h), so countering the spell would not give the lands back, while Scapeshift's
+lands stay put if it never resolves.
 
 Both kinds carry their choice on the **action**, in its `payment` list, beside the mana
 sources. A cost paid at announcement has no resolution to ask during, and once the spell
@@ -754,7 +758,7 @@ with nothing to feed it is simply not activatable rather than activatable and th
   because the subtype is read off the printed face. `another` excludes the source — the
   *another* of `Sacrifice another creature` — and without it an ability may eat its own
   source, which is legal and still resolves (CR 113.7a). `count` is the same
-  `{"exactly": n}` / `"any"` field a cast's additional cost takes and defaults to exactly
+  `{"exactly": n}` field a cast's additional cost takes and defaults to exactly
   one, so `{"kind":"sacrifice","card_type":"artifact","count":{"exactly":2}}` is
   `Sacrifice two artifacts` — one cost taking a pair, refused by one, rather than two costs
   a player could half-pay. Paying it is a real death down the
@@ -1096,8 +1100,8 @@ one out of another. A card that needs a new phrase adds a source.
 | `life_gained_this_turn` | how much life **you** have gained this turn (CR 118.3) | `where X is the amount of life you gained this turn` |
 | `milled_this_way` | how many cards **this resolution** milled matching `filter` | `for each land card put into their graveyard this way` |
 | `greatest_mana_value` | the greatest mana value among the permanents `among` names (CR 202.3) | `equal to the greatest mana value among artifacts you control` |
-| `sacrificed_to_cost` | how many permanents **this object's own cost** sacrificed | `Sacrifice any number of lands. Search your library for up to that many land cards` |
-| `sacrificed_creature_power` | the power the creature that cost sacrificed **had** (CR 608.2h) | `deals damage equal to the sacrificed creature's power` |
+| `sacrificed_this_way` | how many permanents **this resolution** has sacrificed | `Sacrifice any number of lands. Search your library for up to that many land cards` |
+| `sacrificed_creature_power` | the power the creature a cost sacrificed **had** (CR 608.2h) | `deals damage equal to the sacrificed creature's power` |
 
 `announced_x` is the odd one out and worth stating plainly: it reads neither the board
 nor the event log, because there is nothing to read. X was **chosen**, at announcement,
@@ -1141,7 +1145,7 @@ Eight effects read a source:
   "amount": { "source": "sacrificed_creature_power" } }
 { "kind": "search_library", "take": 0, "filter": { "kind": "land" },
   "destination": "battlefield_tapped",
-  "take_amount": { "source": "sacrificed_to_cost" } }
+  "take_amount": { "source": "sacrificed_this_way" } }
 { "kind": "lose_life_by_amount", "player_ref": "each_player",
   "amount": { "source": "half_rounded_up", "of": "life_total" } }
 { "kind": "discard_by_amount", "player_ref": "each_player",
@@ -1150,14 +1154,22 @@ Eight effects read a source:
   "amount": { "source": "half_rounded_up", "of": "creatures_controlled" } }
 ```
 
-**The last two read the payment, not the game, and that is the whole reason they are
-stored.** A cost is paid as the object goes on the stack (CR 601.2h), so by the time it
-resolves the permanents it ate are in a graveyard with no identity of their own — or, for a
-token, nowhere at all. Both numbers are therefore captured *as the cost is paid* and carried
-on the stack object beside its targets; reading them at resolution reads what was written
-down, which is exactly CR 608.2h's last-known information. A card that names one but whose
-own cost sacrifices nothing fails the catalog validator
-(`Violation::PaymentAmountIsNeverPaid`), because the honest answer would be a silent zero.
+**Two of them read a sacrifice back rather than the game, and they read different
+moments.** `sacrificed_creature_power` reads a **cost** payment: a cost is paid as the
+object goes on the stack (CR 601.2h), so by the time it resolves the creature it ate is in a
+graveyard with no identity of its own — or, for a token, nowhere at all. The number is
+therefore captured *as the cost is paid* and carried on the stack object beside its targets;
+reading it at resolution reads what was written down, which is exactly CR 608.2h's
+last-known information. `sacrificed_this_way` reads the **resolution's own** sacrifice, one
+the same card performed a clause earlier, because its size is a decision that does not exist
+until a player makes it — and because a sacrificed land leaves no trace to count afterwards
+(only a creature's departure is an event, CR 700.4).
+
+A card that names either without the half that produces it fails the catalog validator
+(`Violation::AmountIsNeverSacrificed`), because the honest answer would be a silent zero.
+The producers are not interchangeable: a cost that eats a creature does not make
+`sacrificed_this_way` mean anything, and a sacrifice effect does not make
+`sacrificed_creature_power` mean anything.
 
 `deal_damage_by_amount` is `deal_damage`'s and `deal_damage_by_count`'s sibling in the same
 way, and its subject decides whether a target is chosen exactly as every other damage verb's
@@ -1193,7 +1205,7 @@ second way to say the same thing and a second way to get it wrong.
 `lose_life_by_amount` is `lose_life`'s sibling and reaches the same seam, so the loss still
 drives the zero-life state-based action (CR 704.5a). `discard_by_amount` and `sacrifice`
 both **suspend** and ask their player, one question per named seat, and both fix their
-number as the question is *posed* — from the hand and the board as they stand then
+bounds as the question is *posed* — from the hand and the board as they stand then
 (CR 608.2), clamped to what is actually there. A player told to discard two who holds one
 discards the one; a player told to sacrifice two who controls one sacrifices the one; a
 player with neither is never asked.
@@ -1202,13 +1214,33 @@ player with neither is never asked.
 discarding them and any card in the hand may be picked. A coercive or filtered discard of a
 derived number is a card nobody has printed, and the fields it would need arrive with it.
 
-`sacrifice` is the first sacrifice that is an *effect* rather than a cost, and it is the one
+`sacrifice` is the sacrifice that is an *effect* rather than a cost, and it is the one
 choice in the IR whose candidates are **permanents** — which is what lets a token be picked
 (a card selection names a `CardInstance`, and a token has none, CR 111). Whose permanents is
 not a field: CR 701.17b lets a player sacrifice only what they control, so the class is
 always the named player's own, with `card_type` narrowing it to one printed type.
 `card_type` restates the class the amount's own phrase already names ("half the creatures
 they control") because a number cannot say which permanents may be picked.
+
+**Leaving `amount` out is `any number`** — Scapeshift's `Sacrifice any number of lands`:
+
+```json
+{ "kind": "sacrifice", "player_ref": "controller", "card_type": "land" }
+{ "kind": "search_library", "take": 0, "filter": { "kind": "land" },
+  "destination": "battlefield_tapped",
+  "take_amount": { "source": "sacrificed_this_way" } }
+```
+
+It is the same question with different bounds rather than a second verb: a floor of none and
+a ceiling of everything the class holds, clamped to what is on the board. Answering it with
+none is an answer and not a refusal, and a player with nothing of the class is never asked
+at all — so the number the next clause reads is zero and the search finds nothing, which is
+what the printed card means on an empty board. Here `card_type` is the *only* place the
+class is named, since there is no amount phrase to carry it.
+
+That is also why this is not a cost. A cost is paid at announcement (CR 601.2h), so a
+countered Scapeshift would have already eaten the lands; as an effect it sacrifices nothing
+unless it resolves, which is what Gatherer says the card does.
 
 ### A chosen permanent's power (`gain life equal to its power`)
 

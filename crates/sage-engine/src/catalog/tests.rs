@@ -278,10 +278,10 @@ fn an_additional_cost_that_could_never_be_paid_is_rejected() {
     assert!(validate_definition(None, &card).is_ok());
 }
 
-/// An amount read off a cost payment needs a cost that pays it. The engine's honest
-/// answer to "how many did the payment sacrifice" when nothing was sacrificed is zero, so
-/// a card that reads as throwing a creature and always deals zero damage is caught here
-/// rather than shipped (issue #721).
+/// An amount that reads a sacrifice back needs the sacrifice that produces it. The
+/// engine's honest answer to "how many were sacrificed" when none were is zero, so a card
+/// that reads as throwing a creature and always deals zero damage is caught here rather
+/// than shipped (issue #721).
 #[test]
 fn an_amount_read_off_a_payment_no_cost_makes_is_rejected() {
     let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
@@ -291,7 +291,7 @@ fn an_amount_read_off_a_payment_no_cost_makes_is_rejected() {
     let card = serde_json::from_str(json).unwrap();
     assert_eq!(
         validate_definition(None, &card).unwrap_err(),
-        Violation::PaymentAmountIsNeverPaid {
+        Violation::AmountIsNeverSacrificed {
             functional_id: "test_card".to_string()
         }
     );
@@ -305,15 +305,61 @@ fn an_amount_read_off_a_payment_no_cost_makes_is_rejected() {
     let card = serde_json::from_str(json).unwrap();
     assert!(validate_definition(None, &card).is_ok());
 
-    // An activation cost pays it too, and the amount may sit anywhere in the tree — a
-    // search's size is the other place it is read.
+    // An activation cost pays it too, and the amount may sit anywhere in the tree.
     let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
                    "types": ["creature"], "mana_cost": "{G}", "power": 1, "toughness": 1,
                    "abilities": [{"type": "activated",
-                     "cost": [{"kind": "sacrifice", "card_type": "land", "count": "any"}],
-                     "effects": [{"kind": "search_library", "take": 0,
-                                  "take_amount": {"source": "sacrificed_to_cost"}}]}]}"#;
+                     "cost": [{"kind": "sacrifice", "card_type": "creature"}],
+                     "effects": [{"kind": "deal_damage_by_amount", "target": "any_target",
+                                  "take_amount": {"source": "sacrificed_creature_power"},
+                                  "amount": {"source": "sacrificed_creature_power"}}]}]}"#;
     let card = serde_json::from_str(json).unwrap();
+    assert!(validate_definition(None, &card).is_ok());
+}
+
+/// The other half of the same pair rule, and the half a cost could never satisfy: `that
+/// many` counts what **this resolution** sacrificed, so it needs a sacrifice *effect* and
+/// a cost that eats a creature does not stand in for one (issue #721).
+#[test]
+fn issue_721_that_many_without_a_sacrifice_effect_is_rejected() {
+    let searches = |before: &str| {
+        format!(
+            r#"{{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                 "types": ["sorcery"], "mana_cost": "{{G}}",
+                 "spell_effects": [{before}
+                   {{"kind": "search_library", "take": 0, "filter": {{"kind": "land"}},
+                    "destination": "battlefield_tapped",
+                    "take_amount": {{"source": "sacrificed_this_way"}}}}]}}"#
+        )
+    };
+    let card = serde_json::from_str(&searches("")).unwrap();
+    assert_eq!(
+        validate_definition(None, &card).unwrap_err(),
+        Violation::AmountIsNeverSacrificed {
+            functional_id: "test_card".to_string()
+        }
+    );
+
+    // A cost that sacrifices is the wrong producer: it is paid at announcement, and the
+    // resolution still sacrifices nothing.
+    let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                   "types": ["sorcery"], "mana_cost": "{G}",
+                   "additional_cost": {"kind": "sacrifice", "card_type": "land"},
+                   "spell_effects": [{"kind": "search_library", "take": 0,
+                                      "take_amount": {"source": "sacrificed_this_way"}}]}"#;
+    let card = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        validate_definition(None, &card).unwrap_err(),
+        Violation::AmountIsNeverSacrificed {
+            functional_id: "test_card".to_string()
+        }
+    );
+
+    // With the sacrifice in front of it, the same card is exactly what Scapeshift authors.
+    let card = serde_json::from_str(&searches(
+        r#"{"kind": "sacrifice", "player_ref": "controller", "card_type": "land"},"#,
+    ))
+    .unwrap();
     assert!(validate_definition(None, &card).is_ok());
 }
 

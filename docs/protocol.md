@@ -833,13 +833,11 @@ whole point of `zone` being free-form. The slot's
 permanent. Nothing about any of them is action-kind-specific on the wire, and a client that
 already answers them on a cast answers them here without learning anything new.
 
-**A cost the player *sizes* is bounds, not a new shape.** `Sacrifice two artifacts` is
-`cost_sacrifice` with `count: 2` and no `min` — exact, like every cost slot before it — and
-`Sacrifice any number of lands` is the same slot with `min: 0` and a `count` of every
-candidate the board holds. So "how many" reaches the client as the range it already knows
-from a scry, and no client computes what a legal number is. The number the player settles on
-is recorded by the engine as the cost is paid, which is what an effect reading `that many`
-later reads back.
+**Every cost slot is an exact selection.** `Sacrifice two artifacts` is `cost_sacrifice`
+with `count: 2` and no `min`, which is the shape every cost slot has: a cost is paid for
+what it asks and not for less. A sacrifice whose *size* the player picks — `Sacrifice any
+number of lands` — is not a cost at all but a resolution's question, so it reaches the
+client as a `player_choice` prompt over the battlefield rather than as a slot on the cast.
 
 An activation poses **no `pay_mana` slots**: an activated ability's mana comes from its
 controller's pool (CR 602.2b), floated by activating mana abilities as actions in their own

@@ -79,15 +79,16 @@ pub(crate) fn cost_symbol(cost: &Cost) -> String {
 }
 
 /// A sacrifice cost as the imperative clause a card prints: `"Sacrifice a creature"`,
-/// `"Sacrifice another creature"`, `"Sacrifice two artifacts"`, `"Sacrifice any number of
-/// lands"`.
+/// `"Sacrifice another creature"`, `"Sacrifice two artifacts"`.
 ///
 /// Shared by an activation's cost line ([`cost_symbol`]) and a cast's additional cost
 /// ([`additional_cost_text`]), because a card writes the clause the same way in both
 /// places and two renderings of one cost would be two things to keep in step.
+///
+/// `Sacrifice any number of …` is deliberately not here: it is not a cost at all, it is a
+/// resolution's own sentence ([`Effect::Sacrifice`]).
 pub(super) fn sacrifice_clause(noun: &str, count: SacrificeCount, another: bool) -> String {
     match count {
-        SacrificeCount::Any => format!("Sacrifice any number of {}", plural(noun)),
         SacrificeCount::Exactly(1) => {
             let article = if another {
                 "another"
@@ -161,6 +162,14 @@ pub(crate) fn sacrifice_noun(card_type: Option<CardType>, subtype: Option<&str>)
         (None, Some(card_type)) => card_type_word(card_type).to_string(),
         (None, None) => "permanent".to_string(),
     }
+}
+
+/// The same class in the plural — the `lands` of `Sacrifice any number of lands`.
+///
+/// One spelling of the class for both numbers, so the sentence a resolution's open
+/// sacrifice prints and the prompt it is answered on cannot drift apart.
+pub(crate) fn plural_sacrifice_noun(card_type: Option<CardType>, subtype: Option<&str>) -> String {
+    plural(&sacrifice_noun(card_type, subtype))
 }
 
 /// `amount` mana pips of `color`, e.g. `{G}{G}` — repeated symbols, as a cost is
@@ -529,7 +538,7 @@ pub(super) fn additional_cost_text(cost: AdditionalCost) -> String {
 }
 
 /// An additional cast cost as the bare imperative clause, for the slot a player answers
-/// it on — `"Discard a card"`, `"Sacrifice any number of lands"`.
+/// it on — `"Discard a card"`, `"Sacrifice a creature"`.
 ///
 /// The prompt half of [`additional_cost_text`], which wraps the same clause in its
 /// sentence: what a player is asked and what the card says are one string, exactly as they

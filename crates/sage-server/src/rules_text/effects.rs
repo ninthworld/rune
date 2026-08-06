@@ -70,7 +70,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             DerivedAmount::LifeGainedThisTurn
             | DerivedAmount::MilledThisWay { .. }
             | DerivedAmount::GreatestManaValue { .. }
-            | DerivedAmount::SacrificedToCost
+            | DerivedAmount::SacrificedThisWay
             | DerivedAmount::SacrificedCreaturePower
             | DerivedAmount::HalfRoundedUp { .. } => format!(
                 "{source} deals damage equal to {} to {}",
@@ -476,16 +476,31 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             conjugate(*player_ref, "discard"),
             amount_noun(amount, *player_ref)
         ),
-        // The class the choice offers (`card_type`) is deliberately not restated here:
-        // the amount's own phrase already names it — "half the creatures they control" —
-        // and printing the class twice would be two ways to say one printed clause.
+        // With a counted amount the class (`card_type`) is deliberately not restated: the
+        // amount's own phrase already names it — "half the creatures they control" — and
+        // printing the class twice would be two ways to say one printed clause. The **open**
+        // form has no such phrase, because "any number" is not a number read of anything,
+        // so that one names the class itself and prints as the imperative a card writes
+        // — `Sacrifice any number of lands` — exactly as the draw beside it does.
         Effect::Sacrifice {
-            player_ref, amount, ..
-        } => format!(
-            "{} {}",
-            conjugate(*player_ref, "sacrifice"),
-            amount_noun(amount, *player_ref)
-        ),
+            player_ref,
+            amount,
+            card_type,
+        } => match amount {
+            Some(amount) => format!(
+                "{} {}",
+                conjugate(*player_ref, "sacrifice"),
+                amount_noun(amount, *player_ref)
+            ),
+            None => {
+                let clause = format!(
+                    "{} any number of {}",
+                    conjugate(*player_ref, "sacrifice"),
+                    plural_sacrifice_noun(*card_type, None)
+                );
+                without_you(&clause).to_string()
+            }
+        },
         Effect::ExileGraveyard { player_ref } => {
             format!("exile {}'s graveyard", possessive_subject(*player_ref))
         }
@@ -767,10 +782,10 @@ fn amount_noun(amount: &DerivedAmount, subject: PlayerRef) -> String {
         // the player supplies the value as they cast it (CR 601.2b). Reaching this
         // position would mean a card said "where X is X", so it says the plain letter.
         DerivedAmount::AnnouncedX => "X".to_string(),
-        // The two amounts read off the object's own cost payment. A card writes the first
-        // as the "that many" of a sentence whose previous clause was the cost, and the
-        // second as a possessive naming the creature that paid.
-        DerivedAmount::SacrificedToCost => "that many".to_string(),
+        // The two amounts a sacrifice leaves behind. A card writes the first as the "that
+        // many" of a sentence whose previous clause did the sacrificing, and the second as
+        // a possessive naming the creature the cost ate.
+        DerivedAmount::SacrificedThisWay => "that many".to_string(),
         DerivedAmount::SacrificedCreaturePower => "the sacrificed creature's power".to_string(),
         // The one source whose phrase is about the *named player* rather than about the
         // controller, so it is the one that takes the subject: "each player loses half

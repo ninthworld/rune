@@ -237,10 +237,11 @@ pub(crate) fn validate_definition(
         return Err(Violation::SpellTraitNeedsX { functional_id });
     }
 
-    // An amount read off a cost payment needs a cost that pays it, or the card reads as
-    // doing something and always does nothing.
-    if reads_an_unpaid_amount(object) {
-        return Err(Violation::PaymentAmountIsNeverPaid { functional_id });
+    // An amount that reads a sacrifice back needs the sacrifice that produces it — a cost
+    // for the power one ate, an effect for how many this resolution took — or the card
+    // reads as doing something and always does nothing.
+    if reads_an_unsacrificed_amount(object) {
+        return Err(Violation::AmountIsNeverSacrificed { functional_id });
     }
 
     // The same pairing for the other half of CR 614.12: "permanents with the chosen name"

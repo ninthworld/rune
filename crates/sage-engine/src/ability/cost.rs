@@ -11,9 +11,14 @@ use super::*;
 /// [`AdditionalCost::Sacrifice`](crate::AdditionalCost) — because "how many" is the same
 /// question of both and a second spelling would be a second thing to get wrong.
 ///
-/// Authored the way [`ObservedSpell`] is, externally tagged: `{"exactly": 2}` for a fixed
-/// number and `"any"` for the open one. Absent defaults to exactly one, which is what
-/// every card written before this existed says.
+/// Authored the way [`ObservedSpell`] is, externally tagged: `{"exactly": 2}`. Absent
+/// defaults to exactly one, which is what every card written before this existed says.
+///
+/// **A cost is never a number the payer picks.** An open count — `sacrifice any number of
+/// lands` — is a *decision*, and a decision belongs to a resolution the player can be asked
+/// during ([`Effect::Sacrifice`](crate::Effect)), not to a payment made as the object goes
+/// on the stack. Scapeshift was the only card that ever asked for one here, and it does not:
+/// its sacrifice is part of its resolution, so countering it costs no lands at all.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SacrificeCount {
@@ -21,15 +26,6 @@ pub enum SacrificeCount {
     /// activation that eats a pair. Over-paying a cost is not something a player may
     /// choose to do, so this is exact in both directions.
     Exactly(u8),
-    /// **Any number the payer chooses, including none** — the `Sacrifice any number of
-    /// lands` of a spell that trades a board for a search.
-    ///
-    /// Zero is a legal payment, which is what makes such a cost never a reason to
-    /// withhold the offer: there is always something to pay it with, even on an empty
-    /// board. It is also the only cost in the IR whose *size* is a decision, which is why
-    /// the number it settled on has to be recorded as it is paid
-    /// ([`PaidCost`](crate::PaidCost)) rather than counted again later.
-    Any,
 }
 
 impl Default for SacrificeCount {
@@ -39,27 +35,25 @@ impl Default for SacrificeCount {
 }
 
 impl SacrificeCount {
-    /// The fewest permanents this count accepts.
+    /// The fewest permanents this count accepts — which is also the most, since every
+    /// count a cost may name is exact.
     #[must_use]
     pub fn min(self) -> u8 {
         match self {
             Self::Exactly(count) => count,
-            Self::Any => 0,
         }
     }
 
-    /// Whether `paid` permanents is exactly what this count asks for, given that
-    /// `available` could have been sacrificed.
+    /// Whether `paid` permanents is exactly what this count asks for.
     ///
-    /// The one place the two shapes differ, so no caller has to match the enum itself: a
-    /// fixed count is met by that many, and an open one by anything up to what the board
-    /// held. An open count can never be over-paid either — there is nothing left to name
-    /// once every candidate has been named.
+    /// A named predicate rather than a comparison at each caller, so the offer gate, the
+    /// payment check, and the server's slot all read the count one way: met by that many,
+    /// refused by fewer, and refused by more — over-paying a cost is not something a
+    /// player may choose to do.
     #[must_use]
-    pub fn is_paid_by(self, paid: usize, available: usize) -> bool {
+    pub fn is_paid_by(self, paid: usize) -> bool {
         match self {
             Self::Exactly(count) => paid == usize::from(count),
-            Self::Any => paid <= available,
         }
     }
 }
@@ -322,8 +316,8 @@ impl OptionalCost {
                 card_type: *card_type,
                 subtype: subtype.clone(),
                 another: *another,
-                // An optional cost takes exactly one permanent: the open form is a
-                // decision about *how many*, and a `you may` already asks one decision.
+                // An optional cost takes exactly one permanent, which is every count a
+                // cost may name: how many is not a question a payment asks.
                 count: SacrificeCount::Exactly(1),
             },
             OptionalCost::Discard { count } => Cost::Discard { count: *count },

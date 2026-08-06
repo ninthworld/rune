@@ -47,8 +47,9 @@ pub enum AdditionalCost {
     ///
     /// **You may only sacrifice a permanent you control** (CR 701.17b), so whose
     /// permanent it is stays a rule rather than a field — there is no authoring of it to
-    /// get wrong. How *many* is a field, because a printed card varies it in both
-    /// directions: one creature, or *any number* of lands.
+    /// get wrong. How *many* is a field, because a printed card varies it — `sacrifice two
+    /// artifacts` — but always to a fixed number: a cost whose size the player picks is a
+    /// decision, and a decision belongs to a resolution.
     Sacrifice {
         /// The card type each sacrificed permanent must have — the "creature" of
         /// `As an additional cost to cast this spell, sacrifice a creature.`
@@ -119,10 +120,8 @@ impl GameState {
             }
             // A permanent on the battlefield is never the card being cast — that one is
             // in hand, on its way to the stack — so unlike the discard above there is
-            // nothing to exclude here.
-            //
-            // A cost taking *any number* is payable on an empty board (CR 601.2b: zero is
-            // a number), so it never withholds an offer. A fixed one needs that many.
+            // nothing to exclude here. The board needs that many for the cast to be
+            // offered at all (CR 601.2b).
             AdditionalCost::Sacrifice { card_type, count } => {
                 self.sacrifice_candidates_for_cast(player, card_type, db)
                     .len()

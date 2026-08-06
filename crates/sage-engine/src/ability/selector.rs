@@ -170,15 +170,26 @@ pub enum DerivedAmount {
     /// the honest one: such an effect has no X, and an effect that reads one it never
     /// had should do nothing rather than guess.
     AnnouncedX,
-    /// How many permanents were **sacrificed to this object's own cost** (CR 601.2h) —
-    /// the `that many` of `Sacrifice any number of lands. Search your library for up to
-    /// that many land cards`.
+    /// How many permanents **this resolution has sacrificed** (CR 701.17) — the `that
+    /// many` of `Sacrifice any number of lands. Search your library for up to that many
+    /// land cards`.
     ///
-    /// One of the two amounts here that read neither the board nor the event log but the
-    /// object's own [`PaidCost`](crate::PaidCost). It has to: the number is a decision the
-    /// player made while paying, and by the time the spell resolves the lands are in a
-    /// graveyard among every other land that ever went there.
-    SacrificedToCost,
+    /// The counting form of an [`Effect::Sacrifice`](crate::Effect) that came earlier in
+    /// the same resolution, and it reads the resolution's own record
+    /// ([`Resolution`](crate::Resolution)) rather than the board or the log. It has to
+    /// read *something* rather than count again: the lands are in a graveyard among every
+    /// other land that ever went there, and only a creature's departure is recorded as an
+    /// event at all (CR 700.4).
+    ///
+    /// Zero for a resolution that sacrificed nothing — including one whose sacrifice was
+    /// answered with none, and one that never posed the question because the board held
+    /// nothing of the class. Both are what `Sacrifice any number of lands` means on an
+    /// empty board: a legal, blank spell.
+    ///
+    /// NOTE: a sacrifice posed to *several* players records only the answer the resolution
+    /// resumed on. No printed card reads a count back across seats, and the one that reads
+    /// it back at all names a single player twice.
+    SacrificedThisWay,
     /// The **power the creature sacrificed to this object's cost had** as it left
     /// (CR 608.2h) — the `equal to the sacrificed creature's power` of a spell that throws
     /// it at something.

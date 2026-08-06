@@ -24,14 +24,13 @@ pub struct StackId(pub u64);
 ///
 /// Default is the empty payment, which is what every object whose cost took nothing the
 /// player picked carries — almost all of them.
+///
+/// **How many a cost sacrificed is deliberately not here.** Every count a cost may name is
+/// exact ([`SacrificeCount`](crate::SacrificeCount)), so the number is on the card and
+/// needs no recording; the one card that read a sacrifice back — Scapeshift — sacrifices on
+/// resolution instead, where the count is a live answer rather than last-known information.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PaidCost {
-    /// How many permanents were sacrificed paying this object's cost.
-    ///
-    /// The `that many` of `Sacrifice any number of lands. Search your library for up to
-    /// that many land cards` — a number the *player* settled on while paying, which is why
-    /// nothing later in the game could recover it.
-    pub sacrificed: u32,
     /// The power the sacrificed creature had as it left (CR 608.2h), or `None` when the
     /// cost sacrificed no creature.
     ///

@@ -147,12 +147,8 @@ fn discards_pay_the_additional_cost(
 ///
 /// The permanent counterpart of [`discards_pay_the_additional_cost`], exact in the same
 /// two directions: a card with no sacrifice cost accepts no sacrifices at all, and one
-/// with a fixed sacrifice cost is paid by exactly that many permanents — never fewer, and
+/// with a sacrifice cost is paid by exactly that many permanents — never fewer, and
 /// never more, since over-paying a cost is not something a player may choose to do.
-///
-/// A cost taking **any number** is the one that bends, and only in the direction the card
-/// prints: anything from none up to every candidate the board holds is a legal payment,
-/// and there is nothing above that to over-pay with.
 ///
 /// Each named permanent must be **on the battlefield, controlled by the caster**
 /// (CR 701.17b), of the type the cost names, and named only once. Unlike the discard
@@ -172,7 +168,7 @@ fn sacrifices_pay_the_additional_cost(
         return sacrifices.is_empty();
     };
     let candidates = state.sacrifice_candidates_for_cast(state.priority, card_type, db);
-    count.is_paid_by(sacrifices.len(), candidates.len())
+    count.is_paid_by(sacrifices.len())
         && sacrifices
             .iter()
             .enumerate()

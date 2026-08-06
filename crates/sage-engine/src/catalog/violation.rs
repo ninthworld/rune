@@ -156,15 +156,19 @@ pub enum Violation {
         /// The definition at fault.
         functional_id: String,
     },
-    /// An effect reads an amount off **this object's own cost payment** —
-    /// `sacrificed_to_cost`, `sacrificed_creature_power` — on a card whose cost
-    /// sacrifices nothing.
+    /// An effect reads a **sacrifice** back that nothing on the card ever performs:
+    /// `sacrificed_creature_power` with no cost that sacrifices, or `sacrificed_this_way`
+    /// with no sacrifice effect.
     ///
     /// Caught here for the reason [`Self::ChosenColorIsNeverNamed`] is: the engine's
-    /// honest answer to "how many did the payment sacrifice" when nothing was paid is
-    /// zero, and a card that reads as throwing a creature and always deals zero damage is
-    /// the hardest kind of wrong to notice.
-    PaymentAmountIsNeverPaid {
+    /// honest answer to "how many were sacrificed" when none were is zero, and a card that
+    /// reads as throwing a creature and always deals zero damage is the hardest kind of
+    /// wrong to notice.
+    ///
+    /// The two sources are checked against **different** producers, because they read
+    /// different moments — a cost paid at announcement (CR 601.2h) and a sacrifice this
+    /// resolution performed (CR 701.17).
+    AmountIsNeverSacrificed {
         /// The definition at fault.
         functional_id: String,
     },
@@ -459,10 +463,10 @@ impl fmt::Display for Violation {
                 "{functional_id} declares a spell trait conditional on X, but its mana \
                  cost prints no `{{X}}` to announce"
             ),
-            Self::PaymentAmountIsNeverPaid { functional_id } => write!(
+            Self::AmountIsNeverSacrificed { functional_id } => write!(
                 f,
-                "{functional_id} reads an amount off a cost payment but no cost of it \
-                 sacrifices anything; the amount could only ever be zero"
+                "{functional_id} reads a sacrifice back but nothing on it sacrifices \
+                 anything; the amount could only ever be zero"
             ),
             Self::RestrictionsOnNonCreature { functional_id } => write!(
                 f,

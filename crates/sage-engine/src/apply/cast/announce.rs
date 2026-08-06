@@ -9,7 +9,7 @@ mod tests;
 /// What `payment` records about itself, read **before** any of it is charged
 /// (CR 601.2h).
 ///
-/// The one moment these numbers exist. A cost is paid as the object goes on the stack, so
+/// The one moment this number exists. A cost is paid as the object goes on the stack, so
 /// by the time it resolves the permanents the payment named are in a graveyard with no
 /// [`PermanentId`] — or, for a token, nowhere at all (CR 111.7). Asking then would be
 /// asking about objects that have gone; asking here is CR 608.2h's last-known
@@ -22,12 +22,10 @@ pub(crate) fn paid_cost(
     db: &CardDatabase,
     payment: &[crate::CostPayment],
 ) -> crate::PaidCost {
-    let sacrificed = crate::actions::sacrifices_of(payment);
     crate::PaidCost {
-        sacrificed: u32::try_from(sacrificed.len()).unwrap_or(u32::MAX),
         // The first creature the payment named — see [`PaidCost::sacrificed_power`] for
         // why "the sacrificed creature" is a phrase only a one-creature cost prints.
-        sacrificed_power: sacrificed
+        sacrificed_power: crate::actions::sacrifices_of(payment)
             .iter()
             .find_map(|id| crate::characteristics::characteristics(state, *id, db).power),
     }

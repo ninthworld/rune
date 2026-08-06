@@ -267,10 +267,9 @@ pub fn auto_payment(
 /// (ADR 0010 — the engine says what a legal payment is, the server decides whether to pay
 /// for the player). A seat that cares which of its creatures dies answers the slot.
 ///
-/// A cost taking **any number** is answered with **none**, and that is the only honest
-/// default: how many to sacrifice is the whole decision such a card poses, so a server
-/// picking a number would be playing the card rather than paying for it. Zero is always
-/// legal (CR 601.2b), so the fallback never makes an offered cast unplayable.
+/// **How many is never a decision here.** Every count a cost may name is exact, so the
+/// fallback pays it in full or fails; a sacrifice whose *size* the player picks is a
+/// resolution's question ([`Effect::Sacrifice`](crate::Effect)), never a payment's.
 fn auto_sacrifices(
     state: &GameState,
     db: &CardDatabase,
@@ -282,10 +281,7 @@ fn auto_sacrifices(
     let Some(card_type) = cost.sacrifice_type() else {
         return Some(Vec::new());
     };
-    let wanted = match cost.sacrifice_count().unwrap_or_default() {
-        crate::ability::SacrificeCount::Exactly(count) => usize::from(count),
-        crate::ability::SacrificeCount::Any => 0,
-    };
+    let wanted = usize::from(cost.sacrifice_count().unwrap_or_default().min());
     let candidates = state.sacrifice_candidates_for_cast(state.priority, card_type, db);
     if candidates.len() < wanted {
         return None;

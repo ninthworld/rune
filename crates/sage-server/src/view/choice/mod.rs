@@ -156,12 +156,18 @@ fn permanent_choice_prompt(
 fn permanent_choice_question(request: &PermanentRequest, max: u32) -> String {
     // The class the card names, in the same word its rules text uses, pluralized where
     // English wants it — nothing here invents a noun the printed sentence does not have.
-    let singular = crate::rules_text::sacrifice_noun(request.card_type, request.subtype.as_deref());
     let noun = if max == 1 {
-        singular
+        crate::rules_text::sacrifice_noun(request.card_type, request.subtype.as_deref())
     } else {
-        format!("{singular}s")
+        crate::rules_text::plural_sacrifice_noun(request.card_type, request.subtype.as_deref())
     };
+    // The **request's own** floor, not the clamped one, is what says whose decision the
+    // size is: every counted sacrifice asks for exactly its count, so a floor of none on a
+    // question worth posing is the open form and nothing else. Asking that one for a number
+    // would name the board's total as though the card demanded it.
+    if request.min == 0 && request.max > 0 {
+        return format!("Sacrifice any number of {noun}");
+    }
     match (request.outcome, request.except) {
         // A question that excludes the asking permanent is the `another` of a cost, and
         // reads as the card writes it rather than as a count of one.

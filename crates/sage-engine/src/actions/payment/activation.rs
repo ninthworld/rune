@@ -14,7 +14,7 @@
 //! refused rather than dropped, because a payment the engine silently ignored is one the
 //! player believed they had made.
 
-use crate::ability::{Ability, Cost, SacrificeCount};
+use crate::ability::{Ability, Cost};
 use crate::card::{abilities_of_permanent, CardDatabase};
 use crate::id::{CardInstanceId, PermanentId, PlayerId};
 use crate::state::{GameState, Permanent};
@@ -127,9 +127,7 @@ pub(crate) fn chosen_costs_are_payable(
 ) -> bool {
     let seat = crate::characteristics::controller_of(state, source);
     match component {
-        // A cost taking *any number* is payable on an empty board — zero is a number
-        // (CR 601.2b) — so it is never a reason to withhold an offer; a fixed one needs
-        // that many permanents to be there.
+        // A sacrifice needs that many permanents to be there (CR 602.2b).
         Cost::Sacrifice { count, .. } => {
             sacrifice_candidates_for(state, db, source.id, seat, component).len()
                 >= usize::from(count.min())
@@ -342,7 +340,7 @@ fn sacrifices_pay(
     };
     let count = component.sacrifice_count().unwrap_or_default();
     let candidates = sacrifice_candidates_for(state, db, source, seat, component);
-    if !count.is_paid_by(sacrifices.len(), candidates.len()) {
+    if !count.is_paid_by(sacrifices.len()) {
         return false;
     }
     sacrifices
@@ -371,15 +369,11 @@ pub fn auto_activation_payment(
     let mut payment = Vec::new();
     for component in &cost {
         match component {
-            // A fixed count takes that many off the front of the candidate list; an open
-            // one takes **none**, because "how many" is the decision the cost exists to
-            // pose and a server answering it for the player would be answering the whole
-            // card. Zero is always a legal payment for it (CR 601.2b).
+            // A count takes that many off the front of the candidate list, and every count
+            // a cost may name is exact: how many to sacrifice is a decision, and a decision
+            // belongs to a resolution rather than to a payment.
             Cost::Sacrifice { count, .. } => {
-                let wanted = match count {
-                    SacrificeCount::Exactly(n) => usize::from(*n),
-                    SacrificeCount::Any => 0,
-                };
+                let wanted = usize::from(count.min());
                 let mut taken = 0usize;
                 for id in sacrifice_candidates_for(state, db, permanent, seat, component) {
                     if taken == wanted {

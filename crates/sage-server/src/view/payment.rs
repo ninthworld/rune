@@ -103,31 +103,21 @@ pub(crate) fn cast_payment_prompts(
 /// The `select_from_zone` slot a sacrifice cost is answered on, for a cast and an
 /// activation alike.
 ///
-/// **The bounds are where "any number" lives on the wire.** A fixed cost is an exact
-/// selection — `count` with no `min`, the shape every cost before this had — and an open
-/// one is `min: 0` over every candidate, which is the same shape a scry already uses. So a
-/// client that renders "pick between none and all of these" renders `Sacrifice any number
-/// of lands` without learning a rule, and the number it settles on is the number the
-/// engine records as the cost is paid.
+/// **An exact selection**, and every sacrifice cost is one: `count` with no `min`, the
+/// shape every cost has. A sacrifice whose *size* the player picks is not a cost at all —
+/// it is a resolution's question, posed on the choice queue rather than on a cast slot.
 fn sacrifice_prompt(
     cost: &sage_engine::SacrificeCost,
     prompt: String,
     payer: sage_engine::PlayerId,
 ) -> Prompt {
-    let (count, min) = match cost.count {
-        sage_engine::SacrificeCount::Exactly(n) => (u32::from(n), None),
-        sage_engine::SacrificeCount::Any => (
-            u32::try_from(cost.candidates.len()).unwrap_or(u32::MAX),
-            Some(0),
-        ),
-    };
     Prompt::SelectFromZone {
         slot: SACRIFICE_SLOT.to_string(),
         prompt,
         zone: "battlefield".to_string(),
         owner: player_id(payer),
-        count,
-        min,
+        count: u32::from(cost.count.min()),
+        min: None,
         candidates: cost
             .candidates
             .iter()
@@ -316,7 +306,7 @@ pub(super) fn bind_chosen_sacrifices(
     cost: &sage_engine::SacrificeCost,
     answered: &[String],
 ) -> Option<Vec<CostPayment>> {
-    if !cost.count.is_paid_by(answered.len(), cost.candidates.len()) {
+    if !cost.count.is_paid_by(answered.len()) {
         return None;
     }
     answered

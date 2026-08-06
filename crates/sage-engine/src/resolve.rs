@@ -27,11 +27,13 @@ use crate::CardDatabase;
 /// same record of what its cost ate as it started with. Adding a fifth fact is then a
 /// field, not another argument on nine functions.
 ///
-/// All of them come from the object being resolved, and every one is fixed before the
-/// first effect runs — which is the point. A resolution does not re-read the cost to find
-/// its X, re-read the card to find out whether its damage is preventable, or re-scan the
-/// board for the creature its cost sacrificed; those were settled at announcement
-/// (CR 601.2b/601.2h) and are carried, not derived.
+/// All but one come from the object being resolved and are fixed before the first effect
+/// runs — which is the point. A resolution does not re-read the cost to find its X, re-read
+/// the card to find out whether its damage is preventable, or re-scan the board for the
+/// creature its cost sacrificed; those were settled at announcement (CR 601.2b/601.2h) and
+/// are carried, not derived. The exception is [`sacrificed`](Self::sacrificed), which the
+/// resolution writes about *itself* as it goes, because the answer does not exist until a
+/// player gives it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Resolution {
     /// The log sequence this resolution began at — the window a "…this way" question
@@ -47,13 +49,22 @@ pub struct Resolution {
     /// meets whatever threshold that declaration names.
     pub damage_unpreventable: bool,
     /// What this object's cost payment recorded (CR 601.2h) — read by
-    /// [`DerivedAmount::SacrificedToCost`](crate::DerivedAmount) and
     /// [`DerivedAmount::SacrificedCreaturePower`](crate::DerivedAmount).
     ///
     /// The one fact here that could not be recovered from anywhere at all: a cost is paid
     /// as the object goes on the stack, so the permanents it ate are gone by the time it
     /// resolves.
     pub paid: crate::stack::PaidCost,
+    /// How many permanents **this resolution has sacrificed so far** (CR 701.17) — read by
+    /// [`DerivedAmount::SacrificedThisWay`](crate::DerivedAmount), the `that many` of
+    /// `Sacrifice any number of lands. Search your library for up to that many land cards`.
+    ///
+    /// Written by the answer that performs the sacrifice, on the way back into the
+    /// suspended remainder, which is the only moment it could be: the size of an open
+    /// sacrifice is a decision, so it does not exist at announcement, and the event log
+    /// cannot supply it afterwards because only a *creature*'s departure is recorded
+    /// (CR 700.4) — a sacrificed land leaves no trace a later effect could count.
+    pub sacrificed: u32,
 }
 
 impl Resolution {
@@ -521,6 +532,9 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         // permanents it names have left, which is why it was written down rather than
         // looked up.
         paid: object.paid,
+        // Nothing has been sacrificed by a resolution that has not started; the answer to
+        // an open sacrifice writes this on its way back in.
+        sacrificed: 0,
     };
     let suspended = apply_effects_with_targets(
         state,

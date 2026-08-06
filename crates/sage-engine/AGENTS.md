@@ -36,16 +36,19 @@
 Catalog coverage is limited by what the ability IR can *express*, not by authoring
 throughput. Today `Cost` says tapping, mana, loyalty, spending the source itself, removing
 counters from it, and the three whose payment the **player picks** — sacrificing permanents
-they control (filtered by card type, by subtype, optionally excluding the source, and a fixed
-count *or any number*), discarding cards, and exiling cards from their own graveyard. A
+they control (filtered by card type, by subtype, optionally excluding the source, and always
+a fixed count), discarding cards, and exiling cards from their own graveyard. A
 picked payment rides on the action, in `Action::ActivateAbility`'s
 `payment` list, exactly as a cast's additional cost rides on `Action::CastSpell`'s; mana
 never does, because an activation pays it from the pool. A `may` charges the same vocabulary
 minus every component that names the source (`OptionalCost`), answered mid-resolution
-instead. **What a payment settled is recorded as it is paid**, on `StackObject::paid` beside
-the targets: how many permanents it sacrificed, and the power the sacrificed creature had. A
-cost is paid as the object goes on the stack (CR 601.2h), so by resolution those permanents
-are gone and the numbers could not be recovered from anywhere — CR 608.2h's last-known
+instead. **How many a cost takes is never a decision**: a size the payer picks needs a
+resolution to be asked during, so `Sacrifice any number of lands` is an `Effect::Sacrifice`
+with no amount and not a cost — countering Scapeshift therefore takes no lands.
+**What a payment settled is recorded as it is paid**, on `StackObject::paid` beside
+the targets: the power the sacrificed creature had. A
+cost is paid as the object goes on the stack (CR 601.2h), so by resolution that permanent
+is gone and the number could not be recovered from anywhere — CR 608.2h's last-known
 information, written down while it was still current. Exiling from any zone but a graveyard
 is still unwritable.
 `TriggerCondition` observes zone changes and attack
@@ -69,15 +72,19 @@ creates, and an attachment's static grant — the last recalculated on every rea
 static ability is not a resolution. Every *other* X an effect reads is a `DerivedAmount`, a
 closed set of seven phrases with no expression language over them — the life gained this
 turn, a count of what this resolution milled, the greatest mana value among a class, the
-**X its controller announced**, the two read off the object's **own cost payment** (how many
-permanents it sacrificed and the power the creature it sacrificed had), and half a named
-player's life total, hand, or creature count rounded up. Each is read once where the effect
-applies, and between them they feed seven verbs: a pump, a draw, a damage, a search's size,
-a life loss, a discard, and a sacrifice. The halved one is the only arithmetic there is, it
-rounds one way because only one way is printed, and it is read of the player the effect
-*names* rather than of its controller. The announced X and the two payment amounts are the
-ones that read neither the board nor the event log, because their answer was settled at
-announcement and — for the payment — the objects it was about have left. The count keeps its
+**X its controller announced**, the two that read a **sacrifice** back (how many permanents
+this resolution sacrificed, and the power the creature a *cost* sacrificed had), and half a
+named player's life total, hand, or creature count rounded up. Each is read once where the
+effect applies, and between them they feed seven verbs: a pump, a draw, a damage, a search's
+size, a life loss, a discard, and a sacrifice. The halved one is the only arithmetic there
+is, it rounds one way because only one way is printed, and it is read of the player the
+effect *names* rather than of its controller. The announced X and the two sacrifice amounts
+are the ones that read neither the board nor the event log. The first two were settled
+before the effects ran — an X at announcement, a cost's sacrifice at CR 601.2h, and both
+objects have left; the count of what *this resolution* sacrificed is instead a live answer a
+player has just given, written onto the `Resolution` on the way back into the suspended
+remainder because a sacrificed land leaves no event to count (only a creature dies,
+CR 700.4). The count keeps its
 own spelling because it is the one source a static grant may also name; nothing windowed
 over events could stand there.
 

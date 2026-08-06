@@ -794,3 +794,57 @@ fn issue_744_a_sacrifice_cost_is_offered_and_paid_in_the_words_the_card_prints()
     assert_eq!(*count, 1);
     assert_eq!(candidates, &vec![permanent_entity_id(bear)]);
 }
+
+/// **An open sacrifice reaches the client as bounds and as the words the card prints**
+/// (issue #721). Scapeshift's `Sacrifice any number of lands` is the ordinary permanent
+/// selection with a floor of none, so a client that can render "pick between none and all
+/// of these" renders it without learning what a land is — and the prompt says *any number*
+/// rather than naming the board's total as though the card demanded it.
+#[test]
+fn issue_721_an_open_sacrifice_is_posed_with_a_minimum_of_none() {
+    let db = CardDatabase::bundled().unwrap();
+    let mut state = main_phase();
+    let lands: Vec<sage_engine::PermanentId> = ["forest", "mountain", "island"]
+        .iter()
+        .map(|slug| {
+            let instance = state.new_instance(fixture(slug));
+            let id = sage_engine::PermanentId(state.mint_id());
+            state.battlefield.push(sage_engine::Permanent {
+                id,
+                instance: instance.id,
+                printed: fixture(slug).into(),
+                controller: PlayerId(0),
+                ..Default::default()
+            });
+            id
+        })
+        .collect();
+    state.players[0].library = vec![state.new_instance(fixture("plains"))];
+
+    let state = cast_and_resolve(&state, &db, "scapeshift", Vec::new());
+    let view = personalized_view(&state, &db, PlayerId(0));
+    let action = choice_action(&view).expect("the caster is asked");
+    let Prompt::SelectFromZone {
+        prompt,
+        zone,
+        count,
+        min,
+        candidates,
+        ..
+    } = &action.prompts[0]
+    else {
+        panic!("the sacrifice is a select_from_zone");
+    };
+    assert_eq!(prompt, "Sacrifice any number of lands");
+    assert_eq!(zone, "battlefield");
+    assert_eq!(*count, 3, "at most every land on the board");
+    assert_eq!(*min, Some(0), "and at least none of them");
+    assert_eq!(
+        candidates,
+        &lands
+            .iter()
+            .copied()
+            .map(permanent_entity_id)
+            .collect::<Vec<_>>()
+    );
+}

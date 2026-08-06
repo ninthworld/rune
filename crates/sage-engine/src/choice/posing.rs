@@ -210,8 +210,8 @@ pub(crate) fn choices_for_effect(
             )
         }
         // CR 701.17: one question per named seat, each over their own permanents, each
-        // sized by a number read of them as it is posed. The chooser is always the
-        // sacrificing player — CR 701.17b has no other shape.
+        // sized as it is posed. The chooser is always the sacrificing player — CR 701.17b
+        // has no other shape.
         Effect::Sacrifice {
             player_ref,
             amount,
@@ -225,9 +225,19 @@ pub(crate) fn choices_for_effect(
                 subjects
                     .into_iter()
                     .map(|subject| {
-                        let count = crate::condition::derived_amount(
-                            state, amount, controller, subject, resolution, db,
-                        );
+                        // A counted sacrifice is exact in both directions; an open one —
+                        // `sacrifice any number of lands` — is the same question with a
+                        // floor of none and a ceiling of everything the class holds, which
+                        // `permanent_choice_bounds` clamps to what is actually there.
+                        let (min, max) = match amount {
+                            Some(amount) => {
+                                let count = crate::condition::derived_amount(
+                                    state, amount, controller, subject, resolution, db,
+                                );
+                                (count, count)
+                            }
+                            None => (0, u32::MAX),
+                        };
                         (
                             subject,
                             ChoiceQuestion::Permanents(PermanentRequest {
@@ -238,8 +248,8 @@ pub(crate) fn choices_for_effect(
                                 // creatures you control" counts the source among them.
                                 subtype: None,
                                 except: None,
-                                min: count,
-                                max: count,
+                                min,
+                                max,
                                 outcome: PermanentOutcome::Sacrifice,
                             }),
                         )

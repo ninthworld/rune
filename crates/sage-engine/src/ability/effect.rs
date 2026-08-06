@@ -670,10 +670,10 @@ pub enum Effect {
         /// the filter and the destination, and the number is the *same* number this effect
         /// already carries. The field says where it comes from; it does not add a verb.
         ///
-        /// Taken **once**, as the effect is reached (CR 608.2), and the search that
-        /// follows is the ordinary one — a player may always fail to find (CR 701.19c), so
-        /// an amount of zero is a search that shuffles and finds nothing rather than a
-        /// stall.
+        /// Taken **once**, as the effect is reached (CR 608.2), and it is a *ceiling*: the
+        /// search that follows is the ordinary one, so a player may always find fewer or
+        /// fail to find entirely (CR 701.19c), and an amount of zero is a search that
+        /// shuffles and finds nothing rather than a stall.
         #[serde(default)]
         take_amount: Option<DerivedAmount>,
         /// Which cards of the library may be found. Defaults to any of them.
@@ -1012,11 +1012,20 @@ pub enum Effect {
     /// it to one printed type and nothing more. The count is fixed when the choice is
     /// posed (CR 608.2) and clamped to what is actually there, so a player with one
     /// creature asked for two sacrifices the one.
+    ///
+    /// **An absent [`amount`](Self::Sacrifice::amount) is the open form** — `Sacrifice any
+    /// number of lands` — and it is the same question with different bounds rather than a
+    /// second verb: a floor of none and a ceiling of the whole class. That shape belongs
+    /// here and not to a cost, because how many to sacrifice is a *decision*, and a
+    /// decision needs a resolution to be asked during: Scapeshift's lands go when it
+    /// resolves, so countering it takes none of them.
     Sacrifice {
         /// Which player sacrifices.
         player_ref: PlayerRef,
-        /// How many permanents they sacrifice.
-        amount: DerivedAmount,
+        /// How many permanents they sacrifice, or `None` for **any number they choose**,
+        /// including none.
+        #[serde(default)]
+        amount: Option<DerivedAmount>,
         /// Restrict the choice to permanents with this printed card type. Absent lets
         /// any permanent they control be picked.
         #[serde(default)]

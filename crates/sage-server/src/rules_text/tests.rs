@@ -459,6 +459,15 @@ fn issue_722_a_defined_power_and_the_three_places_a_half_reads() {
          Each player discards half the cards in their hand, rounded up.\n\
          Each player sacrifices half the creatures they control, rounded up."
     );
+    // The **open** sacrifice, whose size is not a number read of anything: it names its own
+    // class and prints as the imperative a card writes, with the amount that reads it back
+    // ("that many") in the next sentence.
+    assert_eq!(
+        text_of(&db, "scapeshift"),
+        "Sacrifice any number of lands.\n\
+         Search your library for up to that many land cards, put them onto the \
+         battlefield tapped, then shuffle."
+    );
     // "Its" points back at the noun the same sentence just named, which is why the life
     // gain is part of the exile rather than a clause standing on its own.
     assert_eq!(
@@ -1505,8 +1514,8 @@ fn issue_721_an_activation_cost_states_what_the_player_must_spend() {
     );
 }
 
-/// The three cost shapes issue #721 finishes each state what they take, in the card's own
-/// words — and the two amounts that read a payment name it where a card names it.
+/// The two cost shapes issue #721 finishes each state what they take, in the card's own
+/// words — and the amount that reads a payment names it where a card names it.
 #[test]
 fn issue_721_a_costs_size_and_the_amount_that_reads_it_are_both_stated() {
     let db = bundled();
@@ -1525,15 +1534,8 @@ fn issue_721_a_costs_size_and_the_amount_that_reads_it_are_both_stated() {
          token with flying.\n\
          {1}{U}, Sacrifice two artifacts: Draw a card."
     );
-    // The open count, and the amount that reads it back: "any number", then "that many".
-    assert_eq!(
-        text_of(&db, "scapeshift"),
-        "As an additional cost to cast this spell, sacrifice any number of lands.\n\
-         Search your library for up to that many land cards, put them onto the \
-         battlefield tapped, then shuffle."
-    );
-    // And the other payment amount, named as a possessive about a creature that is gone
-    // by the time the sentence takes effect.
+    // And the payment amount, named as a possessive about a creature that is gone by the
+    // time the sentence takes effect.
     assert_eq!(
         text_of(&db, "thud"),
         "As an additional cost to cast this spell, sacrifice a creature.\n\

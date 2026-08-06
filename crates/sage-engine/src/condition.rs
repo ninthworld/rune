@@ -226,8 +226,9 @@ pub(crate) fn count_graveyard_cards(
 /// power/toughness modifier — and nothing re-reads the source afterwards.
 ///
 /// Some of the sources read the game: the board, or the events a window recorded. The two
-/// that read the object's own [`PaidCost`](crate::PaidCost) read neither, and could not:
-/// their answer was settled at announcement and the objects it was about are gone.
+/// that read the [`Resolution`](crate::Resolution) itself read neither, and could not —
+/// the power the cost sacrificed was settled at announcement and its object is gone, and
+/// the count an open sacrifice settled on is a live answer no zone or log still holds.
 ///
 /// **Two seats, because two different questions are asked.** Most sources are relative to
 /// the object's `controller` — `you` means the caster wherever the effect lands. A
@@ -276,10 +277,12 @@ pub(crate) fn derived_amount(
                 .max()
                 .unwrap_or(0)
         }
-        // Read off the payment, not off the game (CR 601.2h). Zero when the cost took
-        // nothing, which is what makes `Sacrifice any number of lands` a legal cast on an
-        // empty board and a search for nothing.
-        DerivedAmount::SacrificedToCost => resolution.paid.sacrificed,
+        // Read off what this resolution has already done, not off the board or the log
+        // (CR 701.17): a sacrificed land is in a graveyard among every other land, and
+        // only a creature's departure is an event. Zero when the sacrifice took nothing —
+        // answered with none, or never posed at all — which is what makes `Sacrifice any
+        // number of lands` a legal, blank spell on an empty board.
+        DerivedAmount::SacrificedThisWay => resolution.sacrificed,
         // CR 608.2h last-known information, and clamped at zero because damage is never
         // negative (CR 120.1): a creature sacrificed at −1/−1 throws nothing.
         DerivedAmount::SacrificedCreaturePower => resolution

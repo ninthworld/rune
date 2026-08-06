@@ -574,32 +574,49 @@ pub(super) fn watches_the_chosen_color(
     })
 }
 
-/// The two [`DerivedAmount`](crate::DerivedAmount) sources that read an object's own cost
-/// payment rather than the game (CR 601.2h).
-const PAYMENT_AMOUNTS: [&str; 2] = ["sacrificed_to_cost", "sacrificed_creature_power"];
-
-/// Whether `object` reads an amount off a cost payment its own cost never makes — see
-/// [`Violation::PaymentAmountIsNeverPaid`](super::Violation::PaymentAmountIsNeverPaid).
+/// Whether `object` reads a sacrifice back that nothing on it ever performs — see
+/// [`Violation::AmountIsNeverSacrificed`](super::Violation::AmountIsNeverSacrificed).
 ///
 /// The pair rule that matches [`watches_the_chosen_color`]'s: one half of the card names a
 /// number, the other half has to be the thing that produces it. Reads the authored JSON,
 /// because `build.rs` validates a definition before the typed IR exists (ADR 0008 §5).
-pub(super) fn reads_an_unpaid_amount(object: &serde_json::Map<String, serde_json::Value>) -> bool {
-    let reads = every_effect(object).into_iter().any(|effect| {
+///
+/// **Two sources, two producers**, because the halves are not interchangeable: the power a
+/// creature had is read off a *cost* payment (CR 601.2h), while `that many` counts what the
+/// *resolution* sacrificed — so a card with a sacrifice effect could still name the first
+/// and always answer zero.
+pub(super) fn reads_an_unsacrificed_amount(
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> bool {
+    (reads_amount(object, "sacrificed_creature_power") && !a_cost_sacrifices(object))
+        || (reads_amount(object, "sacrificed_this_way") && !an_effect_sacrifices(object))
+}
+
+/// Whether any effect of `object` reads the [`DerivedAmount`](crate::DerivedAmount)
+/// `source`, wherever in the tree it sits — an `amount`, or a search's `take_amount`.
+fn reads_amount(object: &serde_json::Map<String, serde_json::Value>, source: &str) -> bool {
+    every_effect(object).into_iter().any(|effect| {
         ["amount", "take_amount"].into_iter().any(|key| {
             effect
                 .get(key)
                 .and_then(|amount| amount.get("source"))
                 .and_then(serde_json::Value::as_str)
-                .is_some_and(|source| PAYMENT_AMOUNTS.contains(&source))
+                == Some(source)
         })
-    });
-    reads && !sacrifices_something(object)
+    })
+}
+
+/// Whether any effect of `object` is a sacrifice — the resolution-time verb `that many`
+/// counts, wherever in the tree it sits.
+fn an_effect_sacrifices(object: &serde_json::Map<String, serde_json::Value>) -> bool {
+    every_effect(object)
+        .into_iter()
+        .any(|effect| effect.get("kind").and_then(serde_json::Value::as_str) == Some("sacrifice"))
 }
 
 /// Whether any cost of `object` sacrifices a permanent the payer picks — an additional
 /// cast cost, or a component of an activation cost.
-fn sacrifices_something(object: &serde_json::Map<String, serde_json::Value>) -> bool {
+fn a_cost_sacrifices(object: &serde_json::Map<String, serde_json::Value>) -> bool {
     let kind_is_sacrifice = |value: &serde_json::Value| {
         value.get("kind").and_then(serde_json::Value::as_str) == Some("sacrifice")
     };

@@ -1,22 +1,24 @@
-//! The three cost shapes issue #721 finishes: exiling a card from a graveyard, sacrificing
-//! a **fixed** number of permanents greater than one, and sacrificing **any** number of
-//! them — plus the two amounts that read a cost's own payment back.
+//! The two cost shapes issue #721 finishes: exiling a card from a graveyard and
+//! sacrificing a **fixed** number of permanents greater than one — plus the amount that
+//! reads a cost's own payment back.
 //!
 //! Every test here is about the same distinction the sacrifice-cost tests are about: a
 //! cost is not an effect. It gates the offer, it is paid as the object goes on the stack
-//! (CR 601.2h), and nothing on the stack can take it back. The two amounts are the sharp
-//! end of that — by the time `Thud` resolves, the creature whose power it throws is in a
+//! (CR 601.2h), and nothing on the stack can take it back. The amount is the sharp end of
+//! that — by the time `Thud` resolves, the creature whose power it throws is in a
 //! graveyard, so the number has to have been written down when it was paid (CR 608.2h).
+//! Sacrificing a number the *player* picks is the other side of that line and lives in
+//! `scapeshift_sacrifices_on_resolution.rs`: it is a decision, so it belongs to a
+//! resolution rather than to a payment.
 //!
 //! Every test drives the real [`apply_action`] pipeline over the bundled catalog. Cards
 //! are named by their authored `functional_id`, never by an interned handle (ADR 0008 §3).
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use sage_engine::{
-    activation_exile_cost, apply_action, characteristics, choice_candidates, pending_player_choice,
-    sacrifice_cost, valid_actions, Action, CardDatabase, CardId, CardInstance, CardInstanceId,
-    Color, CostPayment, FunctionalId, GameState, Permanent, PermanentId, PlayerId, SacrificeCount,
-    Step, Target,
+    activation_exile_cost, apply_action, characteristics, valid_actions, Action, CardDatabase,
+    CardId, CardInstance, CardInstanceId, Color, CostPayment, FunctionalId, GameState, Permanent,
+    PermanentId, PlayerId, Step, Target,
 };
 
 // ----- fixtures -------------------------------------------------------------
@@ -468,170 +470,7 @@ fn issue_721_sais_trigger_fires_for_an_artifact_spell_and_not_for_a_creature_spe
         .contains(&sage_engine::Keyword::Flying));
 }
 
-// ----- 3. sacrificing any number of permanents (Scapeshift) -----------------
-
-#[test]
-fn issue_721_an_any_number_sacrifice_never_withholds_the_offer() {
-    // The one cost in the IR that cannot be unpayable: zero is a number (CR 601.2b), so
-    // an empty board pays it. That is not a hole in the offer gate — it is what the card
-    // says, and it is why the *size* of this cost has to be recorded when it is paid.
-    let db = db();
-    let mut state = main_phase();
-    let scapeshift = to_hand(&mut state, &db, "scapeshift", PlayerId(0));
-    assert!(
-        state.battlefield.is_empty(),
-        "no land to sacrifice anywhere"
-    );
-    assert!(valid_actions(&state, &db).contains(&offer(scapeshift)));
-
-    let cost = sacrifice_cost(&state, &db, scapeshift).expect("a sacrifice cost");
-    assert_eq!(cost.count, SacrificeCount::Any);
-    assert!(
-        cost.candidates.is_empty(),
-        "…and an empty candidate list is a legal payment of none, not an unpayable cost"
-    );
-}
-
-#[test]
-fn issue_721_scapeshift_sacrificing_no_lands_is_legal_and_searches_for_none() {
-    // A search sized zero is applied outright rather than posed (the never-stall rule),
-    // so the spell resolves, the library is untouched but shuffled, and nothing is found.
-    let db = db();
-    let mut state = main_phase();
-    let forest = place(&mut state, &db, "forest", PlayerId(0));
-    let scapeshift = to_hand(&mut state, &db, "scapeshift", PlayerId(0));
-    library_of(
-        &mut state,
-        &db,
-        PlayerId(0),
-        &["mountain", "island", "shock"],
-    );
-
-    let announced = apply_action(&state, &offer(scapeshift), &db);
-    assert_eq!(announced.stack.len(), 1);
-    assert!(
-        on_battlefield(&announced, forest),
-        "a payment of none takes none"
-    );
-
-    let after = settle(&announced, &db);
-    assert!(
-        pending_player_choice(&after).is_none(),
-        "a search for zero cards asks nothing"
-    );
-    assert_eq!(after.players[0].library.len(), 3, "nothing was found");
-    assert_eq!(
-        after.battlefield.len(),
-        1,
-        "and nothing arrived on the battlefield"
-    );
-    assert!(
-        after.players[0]
-            .graveyard
-            .iter()
-            .any(|card| card.id == scapeshift.id),
-        "the sorcery still reached its final zone (CR 608.3)"
-    );
-}
-
-#[test]
-fn issue_721_scapeshift_searches_for_as_many_lands_as_its_cost_ate() {
-    // The amount that reads the payment. Two lands sacrificed at announcement is a search
-    // for two — a number no scan of the board or of the graveyard could recover, since
-    // both piles are full of lands that got there other ways.
-    let db = db();
-    let mut state = main_phase();
-    let first = place(&mut state, &db, "forest", PlayerId(0));
-    let second = place(&mut state, &db, "mountain", PlayerId(0));
-    let kept = place(&mut state, &db, "forest", PlayerId(0));
-    to_graveyard(&mut state, &db, "forest", PlayerId(0));
-    let scapeshift = to_hand(&mut state, &db, "scapeshift", PlayerId(0));
-    library_of(
-        &mut state,
-        &db,
-        PlayerId(0),
-        &["island", "swamp", "plains", "shock"],
-    );
-
-    let announced = apply_action(
-        &state,
-        &Action::CastSpell {
-            card: scapeshift,
-            mode: None,
-            x: None,
-            targets: Vec::new(),
-            payment: vec![
-                CostPayment::Sacrifice(first),
-                CostPayment::Sacrifice(second),
-            ],
-        },
-        &db,
-    );
-    assert!(!on_battlefield(&announced, first));
-    assert!(!on_battlefield(&announced, second));
-    assert!(on_battlefield(&announced, kept));
-
-    let posed = settle(&announced, &db);
-    let pending = pending_player_choice(&posed).expect("the search");
-    let request = pending.question.cards().expect("a card selection");
-    assert_eq!(request.max, 2, "up to that many — the two lands it ate");
-    assert_eq!(
-        request.min, 0,
-        "failing to find is always legal (CR 701.19c)"
-    );
-    let candidates = choice_candidates(&posed, request, &db);
-    assert_eq!(candidates.len(), 3, "the three land cards in the library");
-
-    let chosen: Vec<CardInstanceId> = candidates.iter().take(2).map(|card| card.id).collect();
-    let after = apply_action(&posed, &Action::AnswerChoice { chosen }, &db);
-    let arrived: Vec<&Permanent> = after
-        .battlefield
-        .iter()
-        .filter(|perm| perm.id != kept)
-        .collect();
-    assert_eq!(arrived.len(), 2, "two lands found");
-    assert!(
-        arrived.iter().all(|perm| perm.tapped),
-        "…and they enter tapped, as the card says"
-    );
-}
-
-#[test]
-fn issue_721_an_any_number_payment_cannot_name_something_the_cost_does_not_accept() {
-    // "Any number" is open in one direction only. A creature is not a land, so naming one
-    // is not a bigger payment — it is a wrong one, and the whole cast is a no-op.
-    let db = db();
-    let mut state = main_phase();
-    let forest = place(&mut state, &db, "forest", PlayerId(0));
-    let ogre = place(&mut state, &db, "onakke_ogre", PlayerId(0));
-    let theirs = place(&mut state, &db, "mountain", PlayerId(1));
-    let scapeshift = to_hand(&mut state, &db, "scapeshift", PlayerId(0));
-    library_of(&mut state, &db, PlayerId(0), &["island"]);
-
-    for forged in [ogre, theirs] {
-        let after = apply_action(
-            &state,
-            &Action::CastSpell {
-                card: scapeshift,
-                mode: None,
-                x: None,
-                targets: Vec::new(),
-                payment: vec![
-                    CostPayment::Sacrifice(forest),
-                    CostPayment::Sacrifice(forged),
-                ],
-            },
-            &db,
-        );
-        assert!(after.stack.is_empty(), "the cast was refused");
-        assert!(
-            on_battlefield(&after, forest),
-            "and the legal half of the payment was not spent"
-        );
-    }
-}
-
-// ----- 4. an amount read off the payment, after the payer has gone (Thud) ---
+// ----- 3. an amount read off the payment, after the payer has gone (Thud) ---
 
 #[test]
 fn issue_721_thud_is_not_offered_without_a_creature_to_throw() {
