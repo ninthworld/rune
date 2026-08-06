@@ -89,7 +89,7 @@ fn blockers_of_unordered(state: &GameState, attacker: PermanentId) -> Vec<Perman
     state
         .battlefield
         .iter()
-        .filter(|p| p.blocking == Some(attacker))
+        .filter(|p| p.blocking.contains(&attacker))
         .map(|p| p.id)
         .collect()
 }
@@ -166,7 +166,7 @@ pub(crate) mod tests {
             tapped: false,
             entered_turn: 0,
             attacking: Some(crate::combat::AttackTarget::Player(defender)),
-            blocking: None,
+            blocking: Vec::new(),
             skips_untap: false,
             damage: 0,
             counters: Default::default(),

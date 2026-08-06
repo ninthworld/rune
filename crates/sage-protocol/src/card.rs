@@ -343,11 +343,17 @@ pub struct Permanent {
     /// relationship between them. Server-computed; never derived by the client.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attacking_planeswalker: Option<EntityId>,
-    /// The permanent this one is blocking, if it was declared as a blocker this
-    /// combat (CR 509): the attacker's entity id. `None`/omitted when it is not
+    /// The permanents this one is blocking, if it was declared as a blocker this
+    /// combat (CR 509): each attacker's entity id. Empty/omitted when it is not
     /// blocking. Several blockers may name the same attacker.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub blocking: Option<EntityId>,
+    ///
+    /// A list because a blocker blocks one attacker *unless* an effect lets it block
+    /// additional creatures (CR 509.1a), and **ordered** because the order is the
+    /// blocker's combat-damage assignment order (CR 509.3): it assigns lethal damage to
+    /// each attacker in this sequence before any to the next. A client renders one
+    /// relationship per entry and derives neither the legality nor the assignment.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocking: Vec<EntityId>,
     /// Damage marked on this permanent this turn (CR 120.3), the value the
     /// lethal-damage state-based action compares against toughness (CR 704.5g).
     /// Server-computed; the client displays it and never derives it. Cleared at

@@ -81,6 +81,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `gargoyle_sentinel` | Gargoyle Sentinel | functional definition |
 | `gearsmith_guardian` | Gearsmith Guardian | functional definition |
 | `gearsmith_prodigy` | Gearsmith Prodigy | functional definition |
+| `ghastbark_twins` | Ghastbark Twins | functional definition |
 | `ghirapur_guide` | Ghirapur Guide | functional definition |
 | `giant_spider` | Giant Spider | functional definition |
 | `gigantosaurus` | Gigantosaurus | functional definition |
@@ -224,7 +225,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Abilities that trigger on a mana ability being activated | the activation condition watches the objects a transition put on the stack, which a mana ability never reaches (CR 605.3a) |
 | Abilities that trigger on someone else drawing a card | the draw trigger condition observes only its own controller's draws |
 | Activation costs paid by sacrificing another permanent, or by discarding | a cast carries its chosen sacrifices and discards on the action, but an activation names only its source, its ability, and its targets |
-| Attack and block requirements, and blocking an additional creature | a declaration can be restricted but never required, and a blocker blocks one attacker |
+| Attack and block requirements | a declaration can be restricted but never required, and CR 509.1c makes validating one a search rather than a per-pair check |
 | Auras that enchant a player or land, or move between hosts | only enchant-creature Auras granting P/T, keywords, or combat restrictions are modeled |
 | Casting from a zone other than the hand, the command zone, or a one-turn graveyard permission | no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure) |
 | Combat damage assigned by a value other than power | every attacker and blocker assigns damage equal to its current power |

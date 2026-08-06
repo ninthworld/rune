@@ -215,17 +215,30 @@ parameter. A unit restriction is its bare name and a parameterized one wraps its
 | `cant_be_blocked_by_more_than_one` | at most one blocker may be assigned to it | the whole-selection block check |
 | `cant_be_blocked_by_power_or_less` | no creature of at most the named power may block it | the pairwise block check |
 | `cant_be_blocked_except_by` | **only** a creature of the named subtype may block it | the pairwise block check |
+| `can_block_additional` | it may block that many creatures beyond the first | the whole-selection block check |
+
+One of them is a *permission* rather than a restriction. `can_block_additional` names a
+count — `{"can_block_additional": 1}` is "can block an additional creature each
+combat" — and lifts the CR 509.1a default that a blocker blocks one attacker. It is
+printed, granted, and read exactly as the restrictions beside it, and permissions of
+different sizes sum. Two of *the same* size collapse, because the layer-6 fold
+deduplicates every restriction alike; no catalog card can reach that today. It grants no
+requirement to use the extra assignment, and blocking nothing stays legal.
 
 Printed restrictions belong only on creatures; the loader rejects them elsewhere. They are
 read through the computed characteristics at CR 613 layer 6, exactly as keywords are, so a
 restriction an Aura or a spell imposes binds identically to a printed one and ends with the
 effect that imposed it.
 
-Two of these are facts about the **whole** declaration rather than about one
-attacker/blocker pair — `cant_be_blocked_by_more_than_one` and menace — so the engine can
-only judge them once the declaration is assembled. Both are therefore stated in the
-blocker slot's `prompt` (`docs/protocol.md`) rather than left to a submit that silently
-does nothing.
+Three of these are facts about the **whole** declaration rather than about one
+attacker/blocker pair — `cant_be_blocked_by_more_than_one`, menace, and
+`can_block_additional` — so the engine can only judge them once the declaration is
+assembled. The first two bound how many creatures may block one attacker and are stated in
+that attacker's blocker slot `prompt` (`docs/protocol.md`) rather than left to a submit
+that silently does nothing. The third is the same question from the blocker's side, and it
+needs no prompt of its own: it is printed on the creature that carries it, where its
+generated rules text says so, and unlike menace it depends on nothing else in the
+declaration.
 
 The colour test reads the blocker's **printed** colours: CR 613 layer 5 (colour-changing
 effects) is not implemented, so printed colour is current colour, the same way printed
@@ -252,7 +265,10 @@ are the printed subtypes — but the read path is already the one that becomes c
 its own the day that layer lands, with no call site left to remember.
 
 Attack and block *requirements* ("attacks each combat if able") are not modeled: a
-declaration can be restricted but never required.
+declaration can be restricted but never required. CR 509.1c is what makes them a separate
+piece of work — a declaration must meet the maximum possible number of requirements
+without violating a restriction, which turns validating a submitted block into a search
+rather than the per-pair and per-count checks above.
 
 ### Imposing restrictions (continuous, CR 613.1f)
 

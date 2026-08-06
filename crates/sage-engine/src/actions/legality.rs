@@ -297,11 +297,11 @@ pub(crate) fn attackers_selection_is_legal(
 /// current blocker candidate of the player who owes this declaration
 /// ([`blocker_candidates_for`] the [`pending_blocker_declarer`]), every named
 /// attacker is currently attacking ([`declared_attackers`]) *and attacking that
-/// player* (CR 509.1a — a player blocks only attackers attacking them), no creature
-/// is declared as a blocker more than once, and each blocker can legally block the
-/// attacker it is assigned to given the pairwise evasion rules (CR 702.9c, 702.17b,
-/// CR 509.1b, via [`blocker_can_block_attacker`]). An empty selection is legal
-/// (declaring no blockers).
+/// player* (CR 509.1a — a player blocks only attackers attacking them), no pair is
+/// declared twice, no creature is assigned to more attackers than it may block
+/// ([`blocks_allowed`]), and each blocker can legally block the attacker it is assigned
+/// to given the pairwise evasion rules (CR 702.9c, 702.17b, CR 509.1b, via
+/// [`blocker_can_block_attacker`]). An empty selection is legal (declaring no blockers).
 ///
 /// Scoping to the current declarer is what makes the multi-defender flow (issue
 /// #344) safe: each attacked player's declaration is validated against exactly
@@ -319,7 +319,12 @@ fn blocks_selection_is_legal(state: &GameState, db: &CardDatabase, blocks: &[Blo
     };
     let blockers = blocker_candidates_for(state, declarer, db);
     let attackers = declared_attackers(state);
-    let assigned: Vec<PermanentId> = blocks.iter().map(|b| b.blocker).collect();
+    // A pair, not a blocker: one creature may be assigned to several attackers
+    // (CR 509.1a), but blocking the same attacker twice is not a second block — it is
+    // the same one written down again, and it would double that attacker's blocker
+    // count against menace and the ceiling.
+    let assigned: Vec<(PermanentId, PermanentId)> =
+        blocks.iter().map(|b| (b.blocker, b.attacker)).collect();
     all_unique(&assigned)
         && blocks.iter().all(|b| {
             blockers.contains(&b.blocker)
@@ -334,6 +339,29 @@ fn blocks_selection_is_legal(state: &GameState, db: &CardDatabase, blocks: &[Blo
         // precisely because it is alone, a second one precisely because it is not,
         // so both can only be judged once the whole declaration is in hand.
         && block_counts_are_legal(state, blocks, db)
+        // And the same question from the blocker's side: how many attackers one
+        // creature was assigned to.
+        && blocker_loads_are_legal(state, blocks, db)
+}
+
+/// Whether every creature named in `blocks` is assigned to a legal *number* of
+/// attackers (CR 509.1a): one, unless it currently has a permission to block additional
+/// creatures ([`blocks_allowed`]).
+///
+/// The counterpart of [`block_counts_are_legal`] from the blocker's side of the pairing,
+/// and a whole-selection judgment for the same reason: a second assignment is illegal
+/// precisely because there is already a first one, which no pairwise check can see.
+///
+/// Read through the computed characteristics (CR 613.1f), so a granted permission counts
+/// exactly as a printed one. A creature blocking nothing is never at issue — this bounds
+/// how a creature blocks, never whether it must.
+fn blocker_loads_are_legal(state: &GameState, blocks: &[Block], db: &CardDatabase) -> bool {
+    blocks.iter().all(|block| {
+        let assigned = blocks.iter().filter(|b| b.blocker == block.blocker).count();
+        u32::try_from(assigned).is_ok_and(|assigned| {
+            assigned <= crate::combat::blocks_allowed(state, block.blocker, db)
+        })
+    })
 }
 
 /// Whether every attacker named in `blocks` is blocked by a legal *number* of
@@ -396,7 +424,7 @@ fn damage_orders_are_legal(state: &GameState, orders: &[DamageOrder]) -> bool {
         let mut declared: Vec<PermanentId> = state
             .battlefield
             .iter()
-            .filter(|p| p.blocking == Some(order.attacker))
+            .filter(|p| p.blocking.contains(&order.attacker))
             .map(|p| p.id)
             .collect();
         let mut chosen = order.blockers.clone();
@@ -439,7 +467,7 @@ mod tests {
             tapped: false,
             entered_turn,
             attacking: None,
-            blocking: None,
+            blocking: Vec::new(),
             skips_untap: false,
             damage: 0,
             counters: Default::default(),
@@ -475,7 +503,7 @@ mod tests {
                 tapped: false,
                 entered_turn: 0,
                 attacking: None,
-                blocking: None,
+                blocking: Vec::new(),
                 skips_untap: false,
                 damage: 0,
                 counters: Default::default(),

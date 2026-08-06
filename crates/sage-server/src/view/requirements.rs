@@ -28,7 +28,7 @@ pub(crate) fn damage_order_prompts(state: &GameState, db: &CardDatabase) -> Vec<
             let items: Vec<String> = state
                 .battlefield
                 .iter()
-                .filter(|p| p.blocking == Some(attacker))
+                .filter(|p| p.blocking.contains(&attacker))
                 .map(|p| permanent_entity_id(p.id))
                 .collect();
             Prompt::Order {

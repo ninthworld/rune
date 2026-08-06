@@ -187,7 +187,7 @@
         "keywords": ["trample"],
         "functional_id": "colossal_dreadmaw"
       },
-      "blocking": "perm_ogre",
+      "blocking": ["perm_ogre"],
       "damage": 3
     },
     {
@@ -206,7 +206,7 @@
         "keywords": ["flying"],
         "functional_id": "air_elemental"
       },
-      "blocking": "perm_serra"
+      "blocking": ["perm_serra"]
     },
     {
       "id": "perm_zombie",
@@ -221,7 +221,7 @@
         "toughness": "2",
         "token": true
       },
-      "blocking": "perm_ogre"
+      "blocking": ["perm_ogre"]
     },
     {
       "id": "perm_gearsmith",

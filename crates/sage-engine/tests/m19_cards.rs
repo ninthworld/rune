@@ -421,7 +421,7 @@ fn boggart_brute_can_be_blocked_only_by_two_or_more_creatures() {
         after
             .battlefield
             .iter()
-            .filter(|p| p.blocking == Some(brute))
+            .filter(|p| p.blocking.contains(&brute))
             .count(),
         2
     );

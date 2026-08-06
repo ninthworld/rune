@@ -84,8 +84,10 @@ export function relations(view: GameView): Relations {
         to: permanent.attacking_planeswalker ?? permanent.attacking_player,
       })
     }
-    if (permanent.blocking !== undefined) {
-      all.push({ kind: 'blocking', from: permanent.id, to: permanent.blocking })
+    // One edge per attacker it blocks, in the server's order: a blocker may block more than
+    // one attacker (CR 509.1a), and that order is the one the damage follows.
+    for (const attacker of list(permanent.blocking)) {
+      all.push({ kind: 'blocking', from: permanent.id, to: attacker })
     }
     if (permanent.attached_to !== undefined) {
       all.push({ kind: 'attached', from: permanent.id, to: permanent.attached_to })

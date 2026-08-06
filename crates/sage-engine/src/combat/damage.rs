@@ -84,7 +84,7 @@ pub(crate) enum DamageStep {
 #[must_use]
 pub(crate) fn combat_has_first_strike(state: &GameState, db: &CardDatabase) -> bool {
     state.battlefield.iter().any(|p| {
-        (p.attacking.is_some() || p.blocking.is_some())
+        (p.attacking.is_some() || !p.blocking.is_empty())
             && (has_keyword(state, p, Keyword::FirstStrike, db)
                 || has_keyword(state, p, Keyword::DoubleStrike, db))
     })
@@ -104,7 +104,7 @@ pub(crate) fn blocked_attackers(state: &GameState) -> Vec<PermanentId> {
         .battlefield
         .iter()
         .filter(|p| {
-            p.attacking.is_some() && state.battlefield.iter().any(|b| b.blocking == Some(p.id))
+            p.attacking.is_some() && state.battlefield.iter().any(|b| b.blocking.contains(&p.id))
         })
         .map(|p| p.id)
         .collect()
@@ -121,7 +121,7 @@ fn blockers_of(state: &GameState, attacker: PermanentId) -> Vec<PermanentId> {
         state
             .battlefield
             .iter()
-            .filter(|p| p.blocking == Some(attacker))
+            .filter(|p| p.blocking.contains(&attacker))
             .map(|p| p.id)
             .collect()
     };
@@ -133,7 +133,7 @@ fn blockers_of(state: &GameState, attacker: PermanentId) -> Vec<PermanentId> {
                 state
                     .battlefield
                     .iter()
-                    .any(|p| p.id == *blocker && p.blocking == Some(attacker))
+                    .any(|p| p.id == *blocker && p.blocking.contains(&attacker))
             })
             .collect(),
         None => battlefield_order(),
@@ -195,8 +195,12 @@ fn push_attack_target_damage(
 ///   (deathtouch-aware, CR 510.1e); with **trample** any remainder is assigned to
 ///   the player it is attacking (CR 702.19e), otherwise it is left undealt.
 ///   Player-chosen damage-assignment order is still deferred.
-/// - Each surviving blocker assigns its combat damage to the attacker it blocks
-///   (CR 510.1c), carrying its own deathtouch/lifelink.
+/// - Each surviving blocker assigns its combat damage among the attackers it blocks
+///   (CR 510.1c), carrying its own deathtouch/lifelink. Blocking one attacker — the
+///   ordinary case — is the whole of its power to that attacker; blocking several
+///   (CR 509.1a, the "block an additional creature" permission) spreads it along the
+///   blocker's own damage assignment order, which is the order its declaration named
+///   them in ([`Permanent::blocking`](crate::Permanent::blocking), CR 509.3).
 ///
 /// Deathtouch is recorded on each [`CombatDamage::ToPermanent`] so the CR 704.5h
 /// state-based action can destroy a creature dealt any nonzero deathtouch damage.
@@ -278,25 +282,52 @@ pub(crate) fn combat_damage(
                 }
             }
         }
-        // Each surviving blocker deals its power back to the attacker, if it deals
-        // in this step (CR 510.1c).
-        for blocker in &blockers {
-            let Some(bperm) = state.battlefield.iter().find(|p| p.id == *blocker) else {
-                continue;
-            };
-            if !deals_in_step(state, bperm, step, db) {
-                continue;
+    }
+    // Each surviving blocker assigns its combat damage among the attackers it blocks
+    // (CR 510.1c). Driven from the blocker rather than from inside the attacker loop
+    // because a blocker may block more than one attacker (CR 509.1a) and its power is
+    // one pool spread across all of them — an attacker-driven loop would hand the same
+    // pool out once per attacker.
+    for blocker in state.battlefield.iter().filter(|p| !p.blocking.is_empty()) {
+        if !deals_in_step(state, blocker, step, db) {
+            continue;
+        }
+        let power = combat_power(state, blocker.id, db);
+        if power == 0 {
+            continue;
+        }
+        let deathtouch = has_keyword(state, blocker, Keyword::Deathtouch, db);
+        let lifelink = has_keyword(state, blocker, Keyword::Lifelink, db);
+        let controller = crate::characteristics::controller_of(state, blocker);
+        // The attackers it blocks, in its own damage assignment order (CR 509.3 — the
+        // order its declaration named them in), minus any that have left the
+        // battlefield: an attacker that died to first strike takes nothing further.
+        let attackers: Vec<PermanentId> = blocker
+            .blocking
+            .iter()
+            .copied()
+            .filter(|atk| state.battlefield.iter().any(|p| p.id == *atk))
+            .collect();
+        let mut remaining = power;
+        for (index, attacker) in attackers.iter().enumerate() {
+            if remaining == 0 {
+                break;
             }
-            let bp = combat_power(state, *blocker, db);
-            if bp > 0 {
+            // Just-lethal to each attacker before the next (CR 510.1e, deathtouch-aware),
+            // and everything still unassigned to the last one in the order — which is
+            // what CR 510.1d permits once every creature ahead of it has lethal, and what
+            // makes the single-attacker case a plain full-power hit, exactly as it was
+            // before a blocker could block two.
+            let assign = if index + 1 == attackers.len() {
+                remaining
+            } else {
+                remaining.min(lethal_needed(state, *attacker, db, deathtouch))
+            };
+            if assign > 0 {
                 push_permanent_damage(
-                    &mut out,
-                    attacker.id,
-                    bp,
-                    has_keyword(state, bperm, Keyword::Deathtouch, db),
-                    crate::characteristics::controller_of(state, bperm),
-                    has_keyword(state, bperm, Keyword::Lifelink, db),
+                    &mut out, *attacker, assign, deathtouch, controller, lifelink,
                 );
+                remaining -= assign;
             }
         }
     }
@@ -363,7 +394,7 @@ pub(crate) mod tests {
             tapped: false,
             entered_turn,
             attacking: None,
-            blocking: None,
+            blocking: Vec::new(),
             skips_untap: false,
             damage: 0,
             counters: Default::default(),
@@ -407,7 +438,7 @@ pub(crate) mod tests {
     ) -> PermanentId {
         let id = creature_card(state, card, controller, 0);
         if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
-            perm.blocking = Some(blocks);
+            perm.blocking = vec![blocks];
         }
         id
     }

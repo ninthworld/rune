@@ -40,7 +40,7 @@ fn issue_117_end_of_combat_removes_creatures_from_combat_cr_511_3() {
     assert_eq!(state.step, Step::EndCombat);
 
     assert!(find_perm(&state, attacker).attacking.is_none());
-    assert_eq!(find_perm(&state, blocker).blocking, None);
+    assert!(find_perm(&state, blocker).blocking.is_empty());
 }
 
 #[test]

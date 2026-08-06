@@ -53,7 +53,7 @@ pub(crate) fn put_permanent(
         // The bool param stages a two-player combat: attacking the sole
         // opponent, seat 1 (issue #341 made this the defending player).
         attacking: attacking.then_some(sage_engine::AttackTarget::Player(PlayerId(1))),
-        blocking: None,
+        blocking: Vec::new(),
         skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),

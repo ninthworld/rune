@@ -197,7 +197,10 @@ pub fn blocker_can_block_attacker(
             | CombatRestriction::CantBeBlockedExceptBy(_)
             | CombatRestriction::CantAttack
             | CombatRestriction::CantBlock
-            | CombatRestriction::CantBeBlockedByMoreThanOne => {}
+            | CombatRestriction::CantBeBlockedByMoreThanOne
+            // A permission about the *blocker's* own assignments, not about being
+            // blocked; the declare-blockers gate reads it ([`blocks_allowed`]).
+            | CombatRestriction::CanBlockAdditional(_) => {}
         }
     }
     true
@@ -241,6 +244,34 @@ pub fn permanent_restrictions(
 #[must_use]
 pub fn blocked_by_at_most_one(state: &GameState, id: PermanentId, db: &CardDatabase) -> bool {
     permanent_has_restriction(state, id, CombatRestriction::CantBeBlockedByMoreThanOne, db)
+}
+
+/// How many attackers the permanent `id` may be assigned to block in one declaration
+/// (CR 509.1a): **one**, plus every additional creature a
+/// [`CombatRestriction::CanBlockAdditional`] permission currently lets it block.
+///
+/// The counterpart of [`blocked_by_at_most_one`] from the other side of the pairing —
+/// that one bounds how many creatures may block *this attacker*, this one bounds how
+/// many attackers *this blocker* may be assigned to — and, like it, a fact the
+/// declare-blockers gate can only judge over the assembled selection.
+///
+/// Read through the computed restrictions (CR 613.1f), so a granted permission counts
+/// exactly as a printed one and stops counting the instant the grant ends. `1` for a
+/// permanent with no such permission, and for one no longer on the battlefield.
+///
+/// The permissions a creature has are **summed**, which is why this counts rather than
+/// tests. Two carrying *the same* count are collapsed one layer up, where every
+/// restriction is deduplicated so a redundant imposition is idempotent (CR 702's
+/// reasoning about keywords, applied to the whole vocabulary) — so a second grant of the
+/// same size adds nothing. That is the one place the dedup is a divergence rather than a
+/// simplification, and nothing in the catalog can reach it: one card prints a permission
+/// and no effect grants one.
+#[must_use]
+pub fn blocks_allowed(state: &GameState, id: PermanentId, db: &CardDatabase) -> u32 {
+    permanent_restrictions(state, id, db)
+        .into_iter()
+        .filter_map(|restriction| restriction.additional_blocks())
+        .fold(1, u32::saturating_add)
 }
 
 /// Whether the permanent `id` currently has **menace** (CR 702.110) — the
@@ -435,7 +466,7 @@ mod tests {
             tapped,
             entered_turn,
             attacking: None,
-            blocking: None,
+            blocking: Vec::new(),
             skips_untap: false,
             damage: 0,
             counters: Default::default(),
@@ -681,6 +712,39 @@ mod tests {
         assert!(
             blocker_can_block_attacker(&state, boar, blocker, &db),
             "the count restriction is judged over the declaration, not the pair"
+        );
+    }
+
+    #[test]
+    fn issue_739_the_block_allowance_is_one_plus_every_permission_printed_or_granted() {
+        // The blocker's side of the count, read through the computed characteristics: a
+        // plain creature blocks one attacker, the printed permission makes it two, and a
+        // granted one adds to whatever is already there — which is what makes a grant
+        // bind exactly as a printed permission does (CR 613.1f).
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let plain = super::super::damage::tests::creature_card(
+            &mut state,
+            fixture("walking_corpse"),
+            PlayerId(1),
+            0,
+        );
+        let twins = super::super::damage::tests::creature_card(
+            &mut state,
+            fixture("ghastbark_twins"),
+            PlayerId(1),
+            0,
+        );
+
+        assert_eq!(blocks_allowed(&state, plain, &db), 1);
+        assert_eq!(blocks_allowed(&state, twins, &db), 2);
+
+        grant(&mut state, plain, CombatRestriction::CanBlockAdditional(2));
+        assert_eq!(blocks_allowed(&state, plain, &db), 3);
+        assert_eq!(
+            blocks_allowed(&state, twins, &db),
+            2,
+            "a grant on one creature says nothing about another"
         );
     }
 

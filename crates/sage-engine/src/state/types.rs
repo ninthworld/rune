@@ -508,14 +508,25 @@ pub struct Permanent {
     /// eligibility and combat damage both follow this assignment. `None` for a
     /// permanent not in combat.
     pub attacking: Option<crate::combat::AttackTarget>,
-    /// The attacker this permanent is blocking, if it was declared as a blocker
-    /// this combat (CR 509.1); `None` for a permanent that is not blocking.
+    /// The attackers this permanent is blocking, if it was declared as a blocker this
+    /// combat (CR 509.1); empty for a permanent that is not blocking.
     ///
-    /// A blocker is assigned to exactly one attacking creature (this field is that
-    /// assignment); several blockers may name the same attacker. Raw stored state,
-    /// set when blockers are declared and cleared at the end-of-combat step
-    /// (CR 511.3).
-    pub blocking: Option<PermanentId>,
+    /// A blocker blocks **one** attacker unless an effect says it may block additional
+    /// creatures (CR 509.1a, [`CombatRestriction::CanBlockAdditional`](crate::CombatRestriction::CanBlockAdditional)),
+    /// so this is a list rather than a single assignment; several blockers may still
+    /// name the same attacker.
+    ///
+    /// **The order is the damage assignment order** (CR 509.3): a blocker assigning
+    /// combat damage among the attackers it blocks assigns along this sequence, lethal
+    /// before the next. It is the order the declaration named them in — the declaring
+    /// player's own choice, made in the same step by the same player, which is why it
+    /// needs no separate announcement the way the attacking player's order does
+    /// ([`GameState::damage_orders`](crate::GameState::damage_orders), CR 510.1: that
+    /// player does not make the declaration and so cannot express an order inside it).
+    ///
+    /// Raw stored state, set when blockers are declared and cleared at the end-of-combat
+    /// step (CR 511.3).
+    pub blocking: Vec<PermanentId>,
     /// Whether this permanent skips its controller's **next** untap step (CR 502.4) —
     /// what `Those creatures don't untap during that player's next untap step` leaves
     /// behind after the spell that said it has gone.

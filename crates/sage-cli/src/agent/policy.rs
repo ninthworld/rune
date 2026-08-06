@@ -336,7 +336,7 @@ mod tests {
             attacking: false,
             attacking_player: None,
             attacking_planeswalker: None,
-            blocking: None,
+            blocking: Vec::new(),
             damage: 0,
             attached_to: None,
             is_commander: false,
