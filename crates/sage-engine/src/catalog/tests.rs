@@ -568,16 +568,26 @@ fn issue_726_a_layer_six_change_that_changes_nothing_is_rejected() {
 }
 
 #[test]
-fn a_return_self_from_graveyard_must_sit_on_an_activated_ability_it_can_pay_for() {
+fn a_return_self_from_graveyard_must_sit_on_an_ability_that_could_reach_it() {
     // CR 113.6: the effect is what makes an ability function from a graveyard, so it is
-    // only honest where such an ability can actually be activated. The shape
-    // Reassembling Skeleton prints — an activated ability whose cost is mana — is the
-    // one that validates.
-    let good = r#", "abilities": [{"type": "activated",
-        "cost": [{"kind": "mana", "mana": "{1}{B}"}],
-        "effects": [{"kind": "return_self_from_graveyard",
-                     "destination": "battlefield_tapped"}]}]"#;
-    assert!(validate_definition(None, &definition(good)).is_ok());
+    // only honest where such an ability can actually be reached from there. The two
+    // shapes M19 prints both validate — Reassembling Skeleton's activated ability whose
+    // cost is mana, and Spit Flame's trigger, whose return is the payoff of an optional
+    // cost nested inside it.
+    for good in [
+        r#", "abilities": [{"type": "activated",
+             "cost": [{"kind": "mana", "mana": "{1}{B}"}],
+             "effects": [{"kind": "return_self_from_graveyard",
+                          "destination": "battlefield_tapped"}]}]"#,
+        r#", "abilities": [{"type": "triggered", "event": "self_dies",
+             "effects": [{"kind": "may", "cost": "{R}", "effects": [
+                 {"kind": "return_self_from_graveyard", "destination": "hand"}]}]}]"#,
+    ] {
+        assert!(
+            validate_definition(None, &definition(good)).is_ok(),
+            "expected `{good}` to validate"
+        );
+    }
 
     // A card in a graveyard is not a permanent: there is nothing to tap. An ability
     // authored this way would simply never be offered — a dead ability, caught here.
@@ -590,17 +600,16 @@ fn a_return_self_from_graveyard_must_sit_on_an_activated_ability_it_can_pay_for(
         }),
     );
 
-    // And on anything but an activated ability there is no activation to offer at all —
-    // a trigger, a spell effect, or an effect nested inside a wrapper.
+    // And outside an activated or triggered ability there is no card in a graveyard for
+    // the return to act on at all — a spell's own effects resolve from the stack, and an
+    // emblem is in no zone and has no card anywhere.
     for elsewhere in [
-        r#", "abilities": [{"type": "triggered", "event": "self_enters_battlefield",
-             "effects": [{"kind": "return_self_from_graveyard", "destination": "hand"}]}]"#,
         r#", "spell_effects": [{"kind": "return_self_from_graveyard",
              "destination": "hand"}]"#,
-        r#", "abilities": [{"type": "activated",
-             "cost": [{"kind": "mana", "mana": "{B}"}],
-             "effects": [{"kind": "may", "effects": [
-                 {"kind": "return_self_from_graveyard", "destination": "hand"}]}]}]"#,
+        r#", "abilities": [{"type": "triggered", "event": "self_dies",
+             "effects": [{"kind": "create_emblem", "abilities": [
+                 {"type": "triggered", "event": "upkeep", "effects": [
+                     {"kind": "return_self_from_graveyard", "destination": "hand"}]}]}]}]"#,
     ] {
         assert_eq!(
             validate_definition(None, &definition(elsewhere)),

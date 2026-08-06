@@ -45,8 +45,9 @@ pub(crate) use words::*;
 /// does (ADR 0008 §7). The engine's catalog loader enforces that pairing in both
 /// directions, so a scripted card can never reach this function with no text to show.
 ///
-/// Clauses are emitted in a fixed order — keywords, abilities, spell effects, the
-/// attachment grant (and, for an Equipment, its equip ability), then any scripted text —
+/// Clauses are emitted in a fixed order — keywords, an additional cast cost, spell
+/// effects, abilities, the attachment grant (and, for an Equipment, its equip ability),
+/// then any scripted text —
 /// one per line. A vanilla card generates the empty string: it has no rules, and inventing
 /// words for it would be noise.
 #[must_use]
@@ -69,10 +70,6 @@ pub(crate) fn rules_text(data: &CardData, scripted: Option<&str>) -> String {
         )));
     }
 
-    for ability in &data.abilities {
-        lines.push(ability_text(source, ability));
-    }
-
     // An additional cast cost is stated *before* what the spell does, because that is
     // the order it happens in: it is paid while the spell is cast (CR 601.2b), and a
     // player who cannot pay it never gets to the sentences below.
@@ -80,8 +77,16 @@ pub(crate) fn rules_text(data: &CardData, scripted: Option<&str>) -> String {
         lines.push(additional_cost_text(cost));
     }
 
+    // What the spell does when it resolves comes before any ability it carries: on the
+    // one card that prints both — an instant with a trigger that works from the graveyard
+    // it lands in — casting it is what happens first, and the ability is the rider. A
+    // permanent has no spell effects, so this changes nothing about every other card.
     for effect in &data.spell_effects {
         lines.push(finish(&effect_clause(source, effect)));
+    }
+
+    for ability in &data.abilities {
+        lines.push(ability_text(source, ability));
     }
 
     if let Some(attachment) = &data.attachment {
@@ -201,6 +206,9 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
         // whose subject is a person.
         Ability::PlayerStatic { modification } => match modification {
             PlayerModification::NoMaximumHandSize => "You have no maximum hand size.".to_string(),
+            PlayerModification::PlayLandsFromGraveyard => {
+                "You may play lands from your graveyard.".to_string()
+            }
         },
         // A static ability reads as a standing statement about other objects, with no
         // trigger word and no cost — "Other Elves you control get +1/+1." The subject

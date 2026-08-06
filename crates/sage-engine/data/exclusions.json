@@ -16,8 +16,8 @@
     "blocker": "only enchant-creature Auras granting P/T, keywords, or combat restrictions are modeled"
   },
   {
-    "name": "Playing a card from a zone other than the hand, the command zone, or a one-turn graveyard permission",
-    "blocker": "an activated ability may function from a graveyard and return its own card from there, but nothing else works outside the battlefield: no triggered ability, no per-turn exile permission, no land played under a permission, no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure), and no way to cast without paying a mana cost"
+    "name": "Playing a card from a zone other than the hand, the command zone, or a permitted graveyard",
+    "blocker": "a graveyard is reached three ways — a one-turn permission to cast from it, a continuous permission to play lands from it, and an activated or triggered ability that returns its own card out of it — but no other zone is reached at all: no per-turn exile permission, nothing played off the top of a library, no way to cast without paying a mana cost, no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure), and no activation cost that exiles other cards from a graveyard"
   },
   {
     "name": "Combat damage assigned by a value other than power",

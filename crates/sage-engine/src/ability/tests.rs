@@ -764,3 +764,27 @@ fn issue_723_a_graveyard_ability_is_derived_from_the_effect_that_moves_its_own_c
         &serde_json::from_str::<Ability>(mana).unwrap()
     ));
 }
+
+#[test]
+fn issue_723_a_triggered_ability_functions_from_a_graveyard_by_the_same_derivation() {
+    // Spit Flame's `whenever a Dragon you control enters, you may pay {R}. If you do,
+    // return this card from your graveyard to your hand`. Nobody activates it, so the
+    // predicate is what decides the trigger is read off the graveyard rather than the
+    // battlefield — and the return is nested inside the optional cost, which is why the
+    // derivation reads the whole effect tree rather than the top-level list.
+    let json = r#"{"type":"triggered",
+        "event":{"permanent_enters":{"scope":"creatures_you_control","subtype":"Dragon"}},
+        "effects":[{"kind":"may","cost":"{R}","effects":[
+            {"kind":"return_self_from_graveyard","destination":"hand"}]}]}"#;
+    let ability: Ability = serde_json::from_str(json).unwrap();
+    assert!(is_graveyard_ability(&ability));
+
+    // A trigger that does anything else answers no, so a permanent's ordinary watcher is
+    // never mistaken for one that fires out of a graveyard.
+    let watcher = r#"{"type":"triggered",
+        "event":{"permanent_enters":{"scope":"creatures_you_control","subtype":"Dragon"}},
+        "effects":[{"kind":"may","cost":"{R}","effects":[{"kind":"draw_card","count":1}]}]}"#;
+    assert!(!is_graveyard_ability(
+        &serde_json::from_str::<Ability>(watcher).unwrap()
+    ));
+}

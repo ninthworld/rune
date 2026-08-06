@@ -870,8 +870,8 @@ because a permission was granted on a later one.
 
 ### Abilities that function from a graveyard
 
-An activated ability that returns **its own card** from a graveyard functions there rather
-than on the battlefield (CR 113.6). Reassembling Skeleton:
+An **activated or triggered** ability that returns **its own card** from a graveyard
+functions there rather than on the battlefield (CR 113.6). Reassembling Skeleton:
 
 ```json
 { "type": "activated",
@@ -883,18 +883,32 @@ than on the battlefield (CR 113.6). Reassembling Skeleton:
 takes. There is no field saying *where* the ability works: it is derived from the effect,
 because an ability that moves its own card out of a graveyard could function nowhere else —
 on the battlefield its source is a permanent, and there is no card in a graveyard for it to
-move.
+move. The derivation reads the whole effect **tree**, so the return may sit inside a `may`
+and still say where its ability works. Spit Flame:
 
-Two consequences follow, and both are enforced:
+```json
+{ "type": "triggered",
+  "event": { "permanent_enters": { "scope": "creatures_you_control", "subtype": "Dragon" } },
+  "effects": [{ "kind": "may", "cost": "{R}",
+                "effects": [{ "kind": "return_self_from_graveyard", "destination": "hand" }] }] }
+```
 
-- **The offer follows the card.** While the card is in its controller's graveyard the
-  ability is offered beside their hand and battlefield activations, bound by the same
-  priority and timing rules a hand cast is, and re-checked at apply. While the card is
+Three consequences follow, and each is enforced:
+
+- **The offer follows the card.** While the card is in its controller's graveyard an
+  activated ability is offered beside their hand and battlefield activations, bound by the
+  same priority and timing rules a hand cast is, and re-checked at apply. While the card is
   anywhere else — a hand, the battlefield, exile — it is not offered at all.
-- **The cost is mana and nothing else.** A card in a zone is not a permanent: it cannot be
-  tapped, sacrificed, or have counters removed. A definition that authors this effect
-  anywhere but directly on an activated ability, or beside a cost of any other kind, fails
-  the build (`GraveyardAbilityCannotFunction`).
+- **So does the trigger.** A graveyard is a third source list the trigger collector walks,
+  beside the battlefield and the emblems. Which list reads a given ability is decided by
+  the ability: one that returns its own card from a graveyard fires only from a graveyard,
+  and every other ability fires only from the others, so nothing can fire twice. The "you"
+  of such a trigger is the seat whose graveyard the card is in.
+- **An activated ability's cost is mana and nothing else.** A card in a zone is not a
+  permanent: it cannot be tapped, sacrificed, or have counters removed. A definition that
+  authors this effect outside an activated or triggered ability — on a spell's own
+  effects, or on an ability handed to an emblem — or beside an activation cost of any
+  other kind, fails the build (`GraveyardAbilityCannotFunction`).
 
 The card does not move when the ability is activated — only when it resolves — so removing
 it in response leaves an ability that resolves and does nothing.
@@ -1066,12 +1080,21 @@ at runtime instead of the type rejecting it outright.
 The subject is always the source's **controller**: every printed ability of this shape
 says "you", so there is no selector to author and none to get wrong.
 
-`no_maximum_hand_size` is the one modification today. It is read where the question is
-asked (`sage_engine::maximum_hand_size`), never applied anywhere, so it takes effect the
-instant its source is on the battlefield and stops the instant it leaves — the same
-derived-on-every-read rule a `static` follows, with nothing stored and nothing to prune.
-Emblems are walked alongside the battlefield, exactly as the characteristics loop walks
-them.
+There are two modifications. Each is read where its question is asked, never applied
+anywhere, so it takes effect the instant its source is on the battlefield and stops the
+instant it leaves — the same derived-on-every-read rule a `static` follows, with nothing
+stored and nothing to prune. Emblems are walked alongside the battlefield, exactly as the
+characteristics loop walks them.
+
+- `no_maximum_hand_size` (CR 402.2), read by `sage_engine::maximum_hand_size`.
+- `play_lands_from_graveyard` (CR 305.9 — Crucible of Worlds), read by
+  `sage_engine::plays_lands_from_graveyard` where the land play is offered. A land is
+  **played**, never cast (CR 116.2a), so this is not the permission
+  `allow_casting_from_graveyard` grants and could not be: that one is granted for a turn
+  by a resolved effect and reaches spells. Everything else about the play is unchanged —
+  one land per turn, the active player's, at sorcery speed — because those gates are asked
+  of the play rather than of the zone it came from, so a land played out of a graveyard
+  spends the turn's land drop like any other.
 
 **No maximum is a distinct state, not a large number.** The predicate answers
 `Option<usize>` and the view carries `{"cards": n}` or `"unlimited"`; a sentinel would be

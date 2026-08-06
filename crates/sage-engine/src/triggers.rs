@@ -22,7 +22,8 @@ use crate::{CardDatabase, Effect};
 /// A collected trigger carries everything needed to put the ability on the stack.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Trigger {
-    /// The object whose ability triggered — a permanent, or an emblem (CR 114).
+    /// The object whose ability triggered — a permanent, an emblem (CR 114), or a card
+    /// in a graveyard whose ability functions from there (CR 113.6).
     pub source: AbilitySource,
     /// The player who controls the triggered ability (its source's controller).
     pub controller: PlayerId,
@@ -34,44 +35,81 @@ pub struct Trigger {
 /// conditions actually read: the source permanent when there is one, and the
 /// controller whose "you" and whose turn the scoped conditions mean.
 ///
-/// An [`Emblem`](crate::Emblem) is the case that makes this a type rather than a bare
-/// `&Permanent`. Every self-condition (`self_enters_battlefield`, `self_dies`,
-/// `self_attacks`) is about a battlefield object and can never be satisfied by one that
-/// is in no zone; every watching condition additionally requires its source to *still be
-/// on the battlefield*, a precondition an emblem can never meet and never needs to,
-/// because it never leaves. Both facts follow from `permanent` being `None`, so neither
-/// is a special case written out per condition.
+/// An [`Emblem`](crate::Emblem) and a card in a **graveyard** are the cases that make
+/// this a type rather than a bare `&Permanent`. Every self-condition
+/// (`self_enters_battlefield`, `self_dies`, `self_attacks`) is about a battlefield object
+/// and can never be satisfied by one that is not on the battlefield; every watching
+/// condition additionally requires its source to *still be there*, which each origin
+/// answers its own way. Both facts follow from [`Self::permanent`] being `None`, so
+/// neither is a special case written out per condition.
 #[derive(Clone, Copy)]
 struct Watcher<'a> {
-    /// The source permanent, or `None` for an emblem.
-    permanent: Option<&'a Permanent>,
+    /// What the ability is on, and therefore where it is watching from.
+    origin: Origin<'a>,
     /// The source's controller.
     controller: PlayerId,
 }
 
+/// Where a watching ability lives — the three source lists [`collect_triggers`] walks.
+#[derive(Clone, Copy)]
+enum Origin<'a> {
+    /// A permanent on the battlefield.
+    Permanent(&'a Permanent),
+    /// An emblem (CR 114), by its object id.
+    Emblem(u64),
+    /// A card in its owner's graveyard whose ability functions from there (CR 113.6).
+    GraveyardCard(crate::id::CardInstance),
+}
+
 impl<'a> Watcher<'a> {
-    /// Whether the source is still there to trigger after the transition.
-    ///
-    /// A permanent must still be on the battlefield — an ability that has left is not
-    /// watching the board it is no longer on. An emblem always is: nothing removes one
-    /// (CR 114.5), so the question has one answer and it is `true`.
-    fn still_present(self, after: &GameState) -> bool {
-        match self.permanent {
-            Some(perm) => after.battlefield.iter().any(|p| p.id == perm.id),
-            None => true,
+    /// A watcher on a battlefield permanent.
+    fn on(permanent: &'a Permanent, controller: PlayerId) -> Self {
+        Self {
+            origin: Origin::Permanent(permanent),
+            controller,
         }
     }
 
-    /// This watcher as the [`AbilitySource`] a collected trigger records, given the
-    /// emblem id to fall back to.
-    fn source(self, emblem: Option<u64>) -> AbilitySource {
-        match (self.permanent, emblem) {
-            (Some(perm), _) => AbilitySource::Permanent(perm.id),
-            (None, Some(id)) => AbilitySource::Emblem(id),
-            // Unreachable in practice: a watcher is built from a permanent or an
-            // emblem, so one of the two is always present.
-            (None, None) => AbilitySource::Emblem(0),
+    /// The source permanent, or `None` for the two origins that are not one.
+    fn permanent(self) -> Option<&'a Permanent> {
+        match self.origin {
+            Origin::Permanent(perm) => Some(perm),
+            Origin::Emblem(_) | Origin::GraveyardCard(_) => None,
         }
+    }
+
+    /// Whether the source is still there to trigger after the transition.
+    ///
+    /// A permanent must still be on the battlefield — an ability that has left is not
+    /// watching the board it is no longer on. A graveyard card must still be in the
+    /// graveyard it was watching from, for exactly the same reason and by exactly the
+    /// same test, one zone over. An emblem always is: nothing removes one (CR 114.5), so
+    /// the question has one answer and it is `true`.
+    fn still_present(self, after: &GameState) -> bool {
+        match self.origin {
+            Origin::Permanent(perm) => after.battlefield.iter().any(|p| p.id == perm.id),
+            Origin::Emblem(_) => true,
+            Origin::GraveyardCard(card) => after
+                .players
+                .get(self.controller.0)
+                .is_some_and(|player| player.graveyard.iter().any(|c| c.id == card.id)),
+        }
+    }
+
+    /// This watcher as the [`AbilitySource`] a collected trigger records.
+    fn source(self) -> AbilitySource {
+        match self.origin {
+            Origin::Permanent(perm) => AbilitySource::Permanent(perm.id),
+            Origin::Emblem(id) => AbilitySource::Emblem(id),
+            Origin::GraveyardCard(card) => AbilitySource::GraveyardCard(card),
+        }
+    }
+
+    /// Whether this watcher is a card in a graveyard — the origin an ability that
+    /// functions from there ([`crate::is_graveyard_ability`]) belongs to, and the one
+    /// every other ability does not.
+    fn is_graveyard_card(self) -> bool {
+        matches!(self.origin, Origin::GraveyardCard(_))
     }
 }
 
@@ -89,9 +127,15 @@ impl<'a> Watcher<'a> {
 /// only in the first pass, where it can still match a condition about something that
 /// happened *to it in place* — being declared as an attacker (CR 603.6d).
 ///
+/// **Three source lists, not one.** Besides the battlefield, an ability may be watching
+/// from an emblem (CR 114.1, in no zone) or from a **card in a graveyard** whose ability
+/// functions there (CR 113.6). All three are walked here and nowhere else, and which one
+/// reads a given ability is decided by the ability itself — see [`collect_from`].
+///
 /// **Ordering (simultaneous triggers).** Triggers are appended in the order their
 /// sources are iterated: `after.battlefield` order for enters, then
-/// `before.battlefield` order for deaths. That battlefield-position order is the
+/// `before.battlefield` order for deaths, then emblems, then graveyards in seat order.
+/// That battlefield-position order is the
 /// engine's deterministic default when several abilities trigger at once — the
 /// full APNAP each-player-orders-their-own prompt (CR 603.3b / CR 101.4) is later
 /// work. [`crate::apply_action`] puts the collected triggers on the stack after
@@ -103,13 +147,9 @@ pub fn collect_triggers(before: &GameState, after: &GameState, db: &CardDatabase
     // Enter-the-battlefield direction: observe permanents present in `after`.
     for perm in &after.battlefield {
         collect_from(
-            Watcher {
-                permanent: Some(perm),
-                // CR 613 layer 2: an ability triggers for whoever controls its source
-                // *now*, so a stolen permanent's triggers belong to the thief.
-                controller: crate::characteristics::controller_of(after, perm),
-            },
-            None,
+            // CR 613 layer 2: an ability triggers for whoever controls its source
+            // *now*, so a stolen permanent's triggers belong to the thief.
+            Watcher::on(perm, crate::characteristics::controller_of(after, perm)),
             // CR 613 layer 6, read against the same snapshot: a permanent that has
             // lost all its abilities has no triggered ones either, so nothing here
             // fires for it.
@@ -128,14 +168,10 @@ pub fn collect_triggers(before: &GameState, after: &GameState, db: &CardDatabase
             continue;
         }
         collect_from(
-            Watcher {
-                permanent: Some(perm),
-                // Read against `before`, the snapshot the permanent still exists in —
-                // and therefore the one whose control-changing effects still apply to
-                // it. A creature that dies while stolen dies under the thief's control.
-                controller: crate::characteristics::controller_of(before, perm),
-            },
-            None,
+            // Read against `before`, the snapshot the permanent still exists in — and
+            // therefore the one whose control-changing effects still apply to it. A
+            // creature that dies while stolen dies under the thief's control.
+            Watcher::on(perm, crate::characteristics::controller_of(before, perm)),
             // Read against `before` for the same reason the controller is: it is the
             // snapshot the permanent still exists in, and therefore the one whose
             // layer-6 effects still silenced it as it died.
@@ -155,16 +191,38 @@ pub fn collect_triggers(before: &GameState, after: &GameState, db: &CardDatabase
     for emblem in &before.emblems {
         collect_from(
             Watcher {
-                permanent: None,
+                origin: Origin::Emblem(emblem.id),
                 controller: emblem.controller,
             },
-            Some(emblem.id),
             emblem.abilities.clone(),
             before,
             after,
             db,
             &mut triggers,
         );
+    }
+    // The third source list (CR 113.6): a card in a graveyard whose triggered ability
+    // functions from there — Spit Flame watching for a Dragon while it waits in the pile.
+    // Read from `before` for the emblem's reason, and controlled by the seat whose
+    // graveyard it is: a card in a zone has no controller of its own (CR 108.4), so the
+    // "you" of `a Dragon you control` is its owner.
+    //
+    // Ordered last, after both battlefield passes and the emblems, so simultaneous
+    // triggers keep a deterministic stack order.
+    for (seat, player) in before.players.iter().enumerate() {
+        for &card in &player.graveyard {
+            collect_from(
+                Watcher {
+                    origin: Origin::GraveyardCard(card),
+                    controller: PlayerId(seat),
+                },
+                crate::card::abilities_of(db, card.card),
+                before,
+                after,
+                db,
+                &mut triggers,
+            );
+        }
     }
     triggers
 }
@@ -215,10 +273,15 @@ pub(crate) fn controller_of_stack_object(state: &GameState, id: StackId) -> Opti
 ///
 /// The source object is read from whichever snapshot still has it (the `after`
 /// battlefield for enters, the `before` battlefield for deaths, and `before` for an
-/// emblem, which is in neither).
+/// emblem, which is in neither, and for a card in a graveyard).
+///
+/// **Where an ability functions decides which pass reads it** (CR 113.6): an ability that
+/// returns its own card from a graveyard ([`crate::is_graveyard_ability`]) fires only from
+/// the graveyard pass, and every other ability fires only from the others. One comparison
+/// rather than a rule written twice, so a permanent card whose trigger works in a
+/// graveyard can never fire from both.
 fn collect_from(
     watcher: Watcher<'_>,
-    emblem: Option<u64>,
     abilities: Vec<Ability>,
     before: &GameState,
     after: &GameState,
@@ -226,6 +289,9 @@ fn collect_from(
     out: &mut Vec<Trigger>,
 ) {
     for ability in abilities {
+        if crate::ability::is_graveyard_ability(&ability) != watcher.is_graveyard_card() {
+            continue;
+        }
         if let Ability::Triggered { event, effects } = ability {
             // A condition reports *how many times* it was met, not whether: an ability
             // watching the rest of the board sees one event per qualifying object, and
@@ -233,7 +299,7 @@ fn collect_from(
             // self-conditions can only ever answer 0 or 1.
             for _ in 0..fire_count(&event, watcher, before, after, db) {
                 out.push(Trigger {
-                    source: watcher.source(emblem),
+                    source: watcher.source(),
                     controller: watcher.controller,
                     effects: effects.clone(),
                 });
@@ -414,7 +480,7 @@ fn observed_matches(
 ) -> bool {
     // An emblem is not a permanent, so it is never the "this" an `except_this`
     // excludes — `map` answering `None` says so without an arm of its own.
-    if observes.excludes_source() && source.permanent.map(|p| p.id) == Some(candidate.id) {
+    if observes.excludes_source() && source.permanent().map(|p| p.id) == Some(candidate.id) {
         return false;
     }
     let Some(face) = candidate.printed.face(db) else {
@@ -515,7 +581,7 @@ fn fire_count(
         // the same caveat.
         TriggerCondition::SelfEntersBattlefield => usize::from(
             watcher
-                .permanent
+                .permanent()
                 .is_some_and(|perm| on_battlefield(after, perm) && !on_battlefield(before, perm)),
         ),
         // CR 700.4 / 603.6c: the permanent died — it left the battlefield for a
@@ -523,7 +589,7 @@ fn fire_count(
         // and its physical instance is now in some graveyard where it was not
         // before. Requiring the *graveyard* destination is what stops a leave to a
         // non-graveyard zone (a future bounce or exile) from firing this.
-        TriggerCondition::SelfDies => usize::from(watcher.permanent.is_some_and(|perm| {
+        TriggerCondition::SelfDies => usize::from(watcher.permanent().is_some_and(|perm| {
             on_battlefield(before, perm)
                 && !on_battlefield(after, perm)
                 && death_of(perm, before, after)
@@ -539,7 +605,7 @@ fn fire_count(
         // apart — an object that was not there before has no previous `attacking`
         // either way — so the rule is stated as the extra condition it is: the
         // permanent has to have been on the battlefield to be declared from it.
-        TriggerCondition::SelfAttacks => usize::from(watcher.permanent.is_some_and(|perm| {
+        TriggerCondition::SelfAttacks => usize::from(watcher.permanent().is_some_and(|perm| {
             let attacking_in = |state: &GameState| {
                 state
                     .battlefield
@@ -657,7 +723,7 @@ fn fire_count(
                         && observed_spell_matches(
                             *spell,
                             card.card,
-                            watcher.permanent.and_then(|perm| perm.chosen_color),
+                            watcher.permanent().and_then(|perm| perm.chosen_color),
                             db,
                         ))
                 })

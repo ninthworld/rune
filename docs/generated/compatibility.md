@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (207)
+## Supported cards (210)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -46,6 +46,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `colossal_majesty` | Colossal Majesty | functional definition |
 | `court_cleric` | Court Cleric | functional definition |
 | `crash_through` | Crash Through | functional definition |
+| `crucible_of_worlds` | Crucible of Worlds | functional definition |
 | `daggerback_basilisk` | Daggerback Basilisk | functional definition |
 | `daybreak_chaplain` | Daybreak Chaplain | functional definition |
 | `death_baron` | Death Baron | functional definition |
@@ -182,6 +183,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `smelt` | Smelt | functional definition |
 | `snapping_drake` | Snapping Drake | functional definition |
 | `sovereign_s_bite` | Sovereign's Bite | functional definition |
+| `spit_flame` | Spit Flame | functional definition |
 | `stitcher_s_supplier` | Stitcher's Supplier | functional definition |
 | `stone_quarry` | Stone Quarry | functional definition |
 | `strangling_spores` | Strangling Spores | functional definition |
@@ -192,6 +194,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `suspicious_bookcase` | Suspicious Bookcase | functional definition |
 | `swamp` | Swamp | functional definition |
 | `take_vengeance` | Take Vengeance | functional definition |
+| `talons_of_wildwood` | Talons of Wildwood | functional definition |
 | `tattered_mummy` | Tattered Mummy | functional definition |
 | `tectonic_rift` | Tectonic Rift | functional definition |
 | `tezzeret_artifice_master` | Tezzeret, Artifice Master | functional definition |
@@ -251,7 +254,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Modal spells that choose one | no mode choice on announcement |
 | Multi-face cards (transform, modal double-faced) | the card model has a single face |
 | Optional costs paid with anything but mana | an optional effect's cost is a mana payment; sacrificing, discarding, or exiling to pay is unwritable |
-| Playing a card from a zone other than the hand, the command zone, or a one-turn graveyard permission | an activated ability may function from a graveyard and return its own card from there, but nothing else works outside the battlefield: no triggered ability, no per-turn exile permission, no land played under a permission, no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure), and no way to cast without paying a mana cost |
+| Playing a card from a zone other than the hand, the command zone, or a permitted graveyard | a graveyard is reached three ways — a one-turn permission to cast from it, a continuous permission to play lands from it, and an activated or triggered ability that returns its own card out of it — but no other zone is reached at all: no per-turn exile permission, nothing played off the top of a library, no way to cast without paying a mana cost, no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure), and no activation cost that exiles other cards from a graveyard |
 | Protection | there is no protection layer: nothing stops a spell, a block, an aura, or damage by a quality the way CR 702.16 does |
 | Reflexive triggers, and conditional branches that choose a target | an optional effect declares the target group of the one effect it wraps, but a conditional's branches, a wrapper over two targeting effects, and a "when you do" aimed after a cost is paid have no group one announcement could fill |
 | Replacement effects | no replacement-effect layer in the rules engine |

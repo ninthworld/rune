@@ -240,18 +240,40 @@ const RETURN_SELF_FROM_GRAVEYARD: &str = "return_self_from_graveyard";
 /// Two failures, one rule — "where the ability functions is derived from what it does"
 /// only holds if the effect appears where that derivation is true:
 ///
-/// - **Anywhere but an activated ability.** A spell effect, a trigger, or a nested branch
-///   has no activation for the graveyard offer to reach, so the effect would sit in a
-///   card that reads as recursive and never is.
+/// - **Anywhere but an activated or a triggered ability.** A spell effect or an ability
+///   handed to an emblem has no source in a graveyard for the return to act on, so the
+///   effect would sit in a card that reads as recursive and never is.
 /// - **Beside a cost a card in a graveyard cannot pay.** A card in a zone is not a
 ///   permanent: it cannot be tapped, sacrificed, or have counters removed. Mana is the
 ///   only cost component such an ability can charge, and one that charged anything else
 ///   would simply never be offered — a dead ability, caught here rather than shipped.
+///
+/// A triggered ability has no activation cost, so only the first rule applies to it; the
+/// `you may pay` a printed one wraps the return in is an [`Effect::May`](crate::Effect),
+/// whose cost is mana by construction.
 pub(super) fn graveyard_ability_is_bad(
     object: &serde_json::Map<String, serde_json::Value>,
 ) -> bool {
     fn returns_self(effect: &serde_json::Value) -> bool {
         effect.get("kind").and_then(serde_json::Value::as_str) == Some(RETURN_SELF_FROM_GRAVEYARD)
+    }
+    /// Occurrences in one ability's own effect tree — its list, and the `may` and
+    /// `conditional` wrappers inside it. Deliberately **not** [`nested_effects`], which
+    /// also descends into the abilities a `create_emblem` hands out: an emblem is in no
+    /// zone and has no card in a graveyard, so one authored there is uncounted here and
+    /// falls out as a mismatch below.
+    fn count_in(effects: &[serde_json::Value]) -> usize {
+        effects
+            .iter()
+            .map(|effect| {
+                usize::from(returns_self(effect))
+                    + ["effects", "then", "otherwise"]
+                        .into_iter()
+                        .filter_map(|key| effect.get(key).and_then(serde_json::Value::as_array))
+                        .map(|nested| count_in(nested))
+                        .sum::<usize>()
+            })
+            .sum()
     }
     let abilities = object
         .get("abilities")
@@ -263,10 +285,11 @@ pub(super) fn graveyard_ability_is_bad(
         .into_iter()
         .filter(|effect| returns_self(effect))
         .count();
-    // The ones sitting directly on an activated ability, where they work.
-    let mut on_activations = 0;
+    // The ones inside an activated or triggered ability, where they work.
+    let mut on_abilities = 0;
     for ability in abilities {
-        if ability.get("type").and_then(serde_json::Value::as_str) != Some("activated") {
+        let kind = ability.get("type").and_then(serde_json::Value::as_str);
+        if !matches!(kind, Some("activated" | "triggered")) {
             continue;
         }
         let effects = ability
@@ -274,11 +297,11 @@ pub(super) fn graveyard_ability_is_bad(
             .and_then(serde_json::Value::as_array)
             .map(Vec::as_slice)
             .unwrap_or_default();
-        let here = effects.iter().filter(|effect| returns_self(effect)).count();
+        let here = count_in(effects);
         if here == 0 {
             continue;
         }
-        on_activations += here;
+        on_abilities += here;
         let payable = ability
             .get("cost")
             .and_then(serde_json::Value::as_array)
@@ -292,7 +315,7 @@ pub(super) fn graveyard_ability_is_bad(
             return true;
         }
     }
-    total != on_activations
+    total != on_abilities
 }
 
 /// Whether `effect` is a `create_emblem` handing out an ability an emblem cannot carry

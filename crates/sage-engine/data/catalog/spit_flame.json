@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "functional_id": "spit_flame",
+  "name": "Spit Flame",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{2}{R}",
+  "colors": [
+    "red"
+  ],
+  "spell_effects": [
+    {
+      "kind": "deal_damage",
+      "target": "any_creature",
+      "amount": 4
+    }
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "permanent_enters": {
+          "scope": "creatures_you_control",
+          "subtype": "Dragon"
+        }
+      },
+      "effects": [
+        {
+          "kind": "may",
+          "cost": "{R}",
+          "effects": [
+            {
+              "kind": "return_self_from_graveyard",
+              "destination": "hand"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

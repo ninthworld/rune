@@ -550,6 +550,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "spit_flame",
+    "collector_number": "160",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "sure_strike",
     "collector_number": "161",
     "rarity": "common"
@@ -710,6 +715,11 @@
     "rarity": "rare"
   },
   {
+    "functional_id": "talons_of_wildwood",
+    "collector_number": "202",
+    "rarity": "common"
+  },
+  {
     "functional_id": "thornhide_wolves",
     "collector_number": "204",
     "rarity": "common"
@@ -778,6 +788,11 @@
     "functional_id": "arcane_encyclopedia",
     "collector_number": "227",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "crucible_of_worlds",
+    "collector_number": "229",
+    "rarity": "mythic"
   },
   {
     "functional_id": "diamond_mare",
