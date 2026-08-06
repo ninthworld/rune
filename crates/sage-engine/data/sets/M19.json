@@ -700,6 +700,11 @@
     "rarity": "rare"
   },
   {
+    "functional_id": "rabid_bite",
+    "collector_number": "195",
+    "rarity": "common"
+  },
+  {
     "functional_id": "reclamation_sage",
     "collector_number": "196",
     "rarity": "uncommon"

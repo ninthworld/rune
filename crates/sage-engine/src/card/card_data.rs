@@ -225,7 +225,7 @@ impl CardData {
             })
             .into_iter()
             .collect();
-        groups.extend(self.spell_effects.iter().filter_map(Effect::target_group));
+        groups.extend(self.spell_effects.iter().flat_map(Effect::target_groups));
         groups
     }
 

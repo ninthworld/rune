@@ -377,6 +377,9 @@ pub(crate) fn apply_effect(
         | Effect::GainControl { .. }
         // An equip names a host to attach to, so it too arrives with a chosen target.
         | Effect::Attach { .. }
+        // A fight arrives with *two* chosen targets, so it is applied via
+        // [`apply_multi_target_effect`] and is doubly a no-op here.
+        | Effect::Fight { .. }
         | Effect::Restrict { .. } => {}
         // X is taken **once, on resolution** (CR 608.2), from the board as it stands
         // then — a creature that dies afterwards does not take the life back. The count

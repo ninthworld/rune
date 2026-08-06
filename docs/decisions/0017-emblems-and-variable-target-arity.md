@@ -100,6 +100,13 @@ effectively gave, so self-referential effects needed no new case at all.
 `Effect::target_group() -> Option<TargetGroup>` replaces the slot count of one with
 `{spec, min, max}`. Every existing effect is `{min: 1, max: 1}` and behaves exactly as it did.
 
+*Since issue #737 the accessor is `Effect::target_groups() -> Vec<TargetGroup>`* — an ordered
+list, because an effect's slots need not share a spec (a fight names "target creature you
+control" and "target creature you don't control"). Nothing below changes: an effect that
+declares one group is the overwhelming majority and behaves as this section describes, and
+`target_group()` remains as the narrowing for the paths that have already established they
+are looking at exactly one.
+
 Three consequences, each enforced rather than assumed:
 
 - **Offering.** A group with `min == 0` is never a reason to withhold an ability: choosing

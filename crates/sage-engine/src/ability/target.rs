@@ -380,7 +380,7 @@ pub enum Target {
 pub fn minimum_targets(effects: &[Effect]) -> usize {
     effects
         .iter()
-        .filter_map(Effect::target_group)
+        .flat_map(Effect::target_groups)
         .map(|group| usize::from(group.min))
         .sum()
 }
@@ -391,7 +391,7 @@ pub fn minimum_targets(effects: &[Effect]) -> usize {
 pub fn maximum_targets(effects: &[Effect]) -> usize {
     effects
         .iter()
-        .filter_map(Effect::target_group)
+        .flat_map(Effect::target_groups)
         .map(|group| usize::from(group.max))
         .sum()
 }
@@ -409,7 +409,7 @@ pub fn maximum_targets(effects: &[Effect]) -> usize {
 /// target creatures" existed does.
 #[must_use]
 pub fn target_counts(effects: &[Effect], chosen: usize) -> Vec<usize> {
-    let groups: Vec<TargetGroup> = effects.iter().filter_map(Effect::target_group).collect();
+    let groups: Vec<TargetGroup> = effects.iter().flat_map(Effect::target_groups).collect();
     group_target_counts(&groups, chosen)
 }
 

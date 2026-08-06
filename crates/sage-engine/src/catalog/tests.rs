@@ -656,3 +656,38 @@ fn issue_738_the_chosen_color_must_be_chosen_somewhere_on_the_card() {
         "effects": [{"kind": "draw_card", "count": 1}]}]"#;
     assert!(validate_definition(None, &definition(ordinary)).is_ok());
 }
+
+#[test]
+fn issue_737_a_two_slot_effect_counts_as_two_target_groups() {
+    // A fight names two slots in two fields, so every rule stated in *groups* sees two
+    // of them. A `may` forwards the groups of the one effect it wraps, and two is one
+    // too many for the flat stored target list to pair back.
+    let optional_fight = r#", "spell_effects": [{"kind": "may",
+        "effects": [{"kind": "fight", "dealer": "any_creature_you_control",
+                     "dealt_to": "any_creature_an_opponent_controls"}]}]"#;
+    assert_eq!(
+        validate_definition(None, &definition(optional_fight)),
+        Err(Violation::TwoTargetsInsideOptional {
+            functional_id: "test_card".to_string(),
+        }),
+    );
+
+    // A conditional branch may choose no target at all, however the branch is written —
+    // and both of a fight's slots are targets.
+    let conditional_fight = r#", "spell_effects": [{"kind": "conditional",
+        "condition": {"kind": "controls_at_least",
+                      "permanents": {"card_type": "creature"}, "count": 2},
+        "then": [{"kind": "fight", "dealer": "any_creature_you_control",
+                  "dealt_to": "any_creature_an_opponent_controls"}]}]"#;
+    assert_eq!(
+        validate_definition(None, &definition(conditional_fight)),
+        Err(Violation::TargetInsideConditional {
+            functional_id: "test_card".to_string(),
+        }),
+    );
+
+    // On its own it is exactly what Rabid Bite authors, and it validates.
+    let bare = r#", "spell_effects": [{"kind": "fight", "dealer": "any_creature_you_control",
+        "dealt_to": "any_creature_an_opponent_controls"}]"#;
+    assert!(validate_definition(None, &definition(bare)).is_ok());
+}

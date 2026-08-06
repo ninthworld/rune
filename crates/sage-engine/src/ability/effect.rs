@@ -156,6 +156,52 @@ pub enum Effect {
         /// What this effect is allowed to target (typically a creature or permanent).
         target: TargetSpec,
     },
+    /// Two chosen creatures and the damage their power deals (CR 701.12): the first
+    /// deals damage equal to its power to the second, and — when the card prints the
+    /// word *fights* — the second deals damage equal to its power back.
+    ///
+    /// **The effect that names two differently-specified targets.** Every other
+    /// targeting effect in the IR declares one [`TargetSpec`] and takes its slots from
+    /// that one class; this one declares a spec *per slot*, which is what lets a card
+    /// say "target creature you control" and "target creature you don't control" in one
+    /// sentence. Splitting it into two effects would not do: two effects are aimed
+    /// independently, and the whole content of this one is that the two creatures it
+    /// names are related to each other.
+    ///
+    /// The amount is not an [`Amount`](crate::Amount)-style expression and does not need
+    /// one. CR 701.12a *defines* fighting as each creature dealing damage equal to its
+    /// power, so the power read is part of the verb rather than a number the card
+    /// supplies — which is why this effect has no amount field at all. Both powers are
+    /// read before either damage is dealt, so the damage is simultaneous (CR 701.12a)
+    /// and a creature that dies still dealt its full power.
+    ///
+    /// # When one of them has gone (CR 701.12c)
+    ///
+    /// If either creature is an illegal target as the effect is reached — it left the
+    /// battlefield, stopped being a creature, gained hexproof — **neither** deals nor is
+    /// dealt damage. That is stricter than the CR 608.2c default of doing as much as
+    /// possible, and it is the rule for every multi-slot effect here: the slots are not
+    /// interchangeable, so half of one is not a smaller version of it. When *every*
+    /// target is illegal the object never resolves at all (CR 608.2b), which the resolve
+    /// path settles before this effect is reached.
+    ///
+    /// The damage has a *source* — a permanent, unlike every other damage this IR deals
+    /// — so deathtouch (CR 702.2b) and lifelink (CR 702.15e) on either creature apply,
+    /// through the same seams combat damage uses.
+    Fight {
+        /// The first slot: the creature that deals damage equal to its power. Almost
+        /// always `any_creature_you_control`.
+        dealer: TargetSpec,
+        /// The second slot: the creature that damage is dealt to. Almost always
+        /// `any_creature_an_opponent_controls`, the class a card prints as "target
+        /// creature you don't control".
+        dealt_to: TargetSpec,
+        /// Whether the second creature deals damage equal to *its* power back to the
+        /// first — the printed word **fights** (CR 701.12a). `false`, the default, is
+        /// the one-sided form a card prints as "deals damage equal to its power to".
+        #[serde(default)]
+        mutual: bool,
+    },
     /// The referenced player gains `amount` life (CR 119.3). The subject is a
     /// non-targeted [`PlayerRef`] (like [`Effect::DrawCard`]'s implicit
     /// controller), so this effect chooses no target.
@@ -981,26 +1027,51 @@ pub enum Effect {
 }
 
 impl Effect {
-    /// The [`TargetSpec`] this effect's slot group names, or `None` for an effect with
-    /// an implicit subject ([`Effect::AddMana`], [`Effect::DrawCard`]).
+    /// The [`TargetSpec`] this effect names, for the effects that name exactly **one**.
     ///
-    /// The convenience over [`Self::target_group`] for the great majority of callers,
-    /// which care what may be targeted and not how many.
+    /// The convenience over [`Self::target_groups`] for the great majority of callers,
+    /// which care what may be targeted and not how many. `None` for an effect with an
+    /// implicit subject ([`Effect::AddMana`], [`Effect::DrawCard`]) *and* for one that
+    /// declares more than one group ([`Effect::Fight`]): a two-slot effect has no single
+    /// spec, and answering with the first one would be a wrong answer rather than a
+    /// partial one.
     #[must_use]
     pub fn target_spec(&self) -> Option<TargetSpec> {
-        self.target_group().map(|group| group.spec)
+        match self.target_groups().as_slice() {
+            [group] => Some(group.spec),
+            _ => None,
+        }
     }
 
-    /// The [`TargetGroup`] this effect must be given chosen targets for, or
-    /// `None` for an effect with an implicit subject ([`Effect::AddMana`],
-    /// [`Effect::DrawCard`]).
+    /// The [`TargetGroup`] this effect must be given chosen targets for, for an effect
+    /// that declares exactly one; `None` for an effect with an implicit subject and for
+    /// one that declares two ([`Effect::Fight`]).
     ///
-    /// The resolution path uses this to pair each of an object's stored
-    /// [`Target`]s with the effect that consumes it and to re-check that
-    /// target's legality (CR 608.2b). Kept exhaustive so a new targeting
-    /// [`Effect`] variant must declare its spec here.
+    /// The single-group narrowing of [`Self::target_groups`], kept for the resolve and
+    /// legality paths that have already established they are looking at one slot.
     #[must_use]
     pub fn target_group(&self) -> Option<TargetGroup> {
+        match self.target_groups().as_slice() {
+            [group] => Some(*group),
+            _ => None,
+        }
+    }
+
+    /// The [`TargetGroup`]s this effect must be given chosen targets for, in slot
+    /// order — empty for an effect with an implicit subject ([`Effect::AddMana`],
+    /// [`Effect::DrawCard`]).
+    ///
+    /// **An ordered list rather than one group**, because an effect's slots need not all
+    /// share a spec: a fight names "target creature you control" and "target creature you
+    /// don't control" in one sentence (CR 701.12), and the two are aimed together or not
+    /// at all. Every other effect in the vocabulary returns zero or one group and behaves
+    /// exactly as it did when this answered `Option`.
+    ///
+    /// The resolution path uses this to pair each of an object's stored [`Target`]s with
+    /// the effect that consumes it and to re-check that target's legality (CR 608.2b).
+    /// Kept exhaustive so a new targeting [`Effect`] variant must declare its specs here.
+    #[must_use]
+    pub fn target_groups(&self) -> Vec<TargetGroup> {
         match self {
             // The one variable-arity effect: `put a +1/+1 counter on each of up to two
             // target creatures` chooses between zero and two, and every other authoring
@@ -1009,7 +1080,7 @@ impl Effect {
                 target, targets, ..
             }
             | Effect::ReturnCardToHand { target, targets } => {
-                Some(TargetGroup::counted(*target, *targets))
+                vec![TargetGroup::counted(*target, *targets)]
             }
             // An optional effect declares the group of the **one** effect it wraps, so
             // "you may destroy target artifact" names its target once, at announcement
@@ -1018,7 +1089,16 @@ impl Effect {
             // wrapped effect once it is spliced in, which is what keeps the flat stored
             // target list pairing back exactly. The catalog validator holds a `may` to
             // one such effect, so this is a lookup and never a choice between two.
-            Effect::May { effects, .. } => effects.iter().find_map(Effect::target_group),
+            Effect::May { effects, .. } => effects
+                .iter()
+                .flat_map(Effect::target_groups)
+                .collect(),
+            // The one effect whose slots do **not** share a spec (CR 701.12): each of the
+            // two creatures is chosen from its own class, in the order the printed
+            // sentence names them, and both slots are required.
+            Effect::Fight {
+                dealer, dealt_to, ..
+            } => vec![TargetGroup::single(*dealer), TargetGroup::single(*dealt_to)],
             Effect::Tap { target }
             | Effect::CounterSpell { target }
             | Effect::Destroy { target }
@@ -1034,7 +1114,7 @@ impl Effect {
             // An equip names its *host* as a target and its own source as everything
             // else, so it declares exactly one slot (CR 702.6b).
             | Effect::Attach { target }
-            | Effect::ReturnToHand { target } => Some(TargetGroup::single(*target)),
+            | Effect::ReturnToHand { target } => vec![TargetGroup::single(*target)],
             // A player-subject effect targets exactly when its reference does
             // (CR 115.1) — "target opponent loses 2 life" fills a slot, "each
             // opponent loses 2 life" fills none. One answer, from the reference.
@@ -1053,13 +1133,19 @@ impl Effect {
             | Effect::TapAll { player_ref, .. }
             // And a token creation names its creator the same way: "create a 2/4 white
             // Ox token" is made by you, "target player creates …" fills a slot.
-            | Effect::CreateToken { player_ref, .. } => {
-                player_ref.target_spec().map(TargetGroup::single)
-            }
+            | Effect::CreateToken { player_ref, .. } => player_ref
+                .target_spec()
+                .map(TargetGroup::single)
+                .into_iter()
+                .collect(),
             // Damage asks its subject the same question: "any target" fills a slot,
             // "each opponent" and "each creature" fill none (CR 115.1).
             Effect::DealDamage { subject, .. } | Effect::DealDamageByCount { subject, .. } => {
-                subject.target_spec().map(TargetGroup::single)
+                subject
+                    .target_spec()
+                    .map(TargetGroup::single)
+                    .into_iter()
+                    .collect()
             }
             Effect::AddMana { .. }
             | Effect::AddColorlessMana { .. }
@@ -1102,7 +1188,7 @@ impl Effect {
             // not a target either (CR 115.1) — the reason a graveyard activation needs no
             // candidate set to be offered.
             | Effect::ReturnSelfFromGraveyard { .. }
-            | Effect::PutCountersOnSelf { .. } => None,
+            | Effect::PutCountersOnSelf { .. } => Vec::new(),
         }
     }
 }

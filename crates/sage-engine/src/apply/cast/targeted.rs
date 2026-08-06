@@ -2,7 +2,10 @@
 //! re-checked that the target is still legal (CR 608.2b).
 
 use super::*;
+use crate::card::Keyword;
 
+#[cfg(test)]
+mod fight_tests;
 #[cfg(test)]
 mod modification_tests;
 #[cfg(test)]
@@ -474,6 +477,10 @@ pub(crate) fn apply_targeted_effect(
                 }
             }
         }
+        // A fight declares two target groups, so the resolve path routes it to
+        // [`apply_multi_target_effect`] with both of its targets at once; one target on
+        // its own says nothing about which slot it filled, so this arm stays empty.
+        Effect::Fight { .. } => {}
         // Put the targeted permanent on top of its owner's library (CR 400.7). A token
         // put anywhere but the battlefield ceases to exist (CR 111.7), so it never
         // arrives — which the one leaves-battlefield seam below already knows.
@@ -514,6 +521,106 @@ fn pump_by(state: &mut GameState, target: Target, power_per: i32, toughness_per:
         },
         duration: Duration::UntilEndOfTurn,
     });
+}
+
+/// Apply a targeting [`Effect`] that declares **more than one** target slot, to the
+/// targets its caster chose — in slot order, and only once the resolve path has found
+/// every one of them still legal (CR 608.2b).
+///
+/// The multi-slot counterpart of [`apply_targeted_effect`], and a separate function for
+/// the reason the slots are separate: an effect that names two classes acts on the pair,
+/// so applying it once per target would be a different effect. The resolve path routes
+/// here only for an effect whose [`Effect::target_groups`] answered with more than one
+/// group; anything else is a no-op, which keeps the pairing between the two entry points
+/// total rather than assumed.
+pub(crate) fn apply_multi_target_effect(
+    state: &mut GameState,
+    effect: &Effect,
+    targets: &[Target],
+    db: &CardDatabase,
+) {
+    // CR 701.12: the first creature deals damage equal to its power to the second, and —
+    // when the card printed the word *fights* — the second deals damage equal to its
+    // power back. One arm today; a second multi-slot effect joins it here.
+    let Effect::Fight { mutual, .. } = effect else {
+        return;
+    };
+    let [Target::Permanent(dealer), Target::Permanent(dealt_to)] = targets else {
+        return;
+    };
+    let (dealer, dealt_to) = (*dealer, *dealt_to);
+    // CR 701.12a: the damage is dealt **simultaneously**, so both powers are read before
+    // either is applied. A creature that dies to the damage it took still dealt its own
+    // power, and a `-1/-1` counter the first damage would have put on the second (were
+    // there such a card) could not shrink the answer.
+    let forward = power_as_damage(state, dealer, db);
+    let back = if *mutual {
+        power_as_damage(state, dealt_to, db)
+    } else {
+        0
+    };
+    deal_damage_between_permanents(state, dealer, dealt_to, forward, db);
+    if *mutual {
+        deal_damage_between_permanents(state, dealt_to, dealer, back, db);
+    }
+}
+
+/// The damage a creature's power deals outside combat (CR 701.12a), floored at zero: a
+/// creature with negative power, zero power, or no power at all deals none.
+///
+/// Read through [`crate::characteristics::characteristics`] like every other power
+/// question, so counters and anthems are folded in (CR 613).
+fn power_as_damage(state: &GameState, permanent: PermanentId, db: &CardDatabase) -> u32 {
+    let power = crate::characteristics::characteristics(state, permanent, db)
+        .power
+        .unwrap_or(0);
+    u32::try_from(power.max(0)).unwrap_or(0)
+}
+
+/// Deal `amount` damage from one permanent to another (CR 120.3) — the seam for damage
+/// whose **source is a permanent** rather than a spell.
+///
+/// That source is the whole reason this exists beside
+/// [`GameState::deal_damage_to_permanent`](crate::GameState): damage from a creature
+/// carries that creature's deathtouch (CR 702.2b) and lifelink (CR 702.15e), which
+/// damage from a burn spell has no way to. Both ride the same fields combat damage uses
+/// — the CR 704.5h flag list and a plain life change — so a creature killed by a fight
+/// dies exactly the way one killed by a block does.
+///
+/// Zero damage is not dealt at all (CR 120.3), so it triggers nothing and gains nobody
+/// life.
+fn deal_damage_between_permanents(
+    state: &mut GameState,
+    source: PermanentId,
+    recipient: PermanentId,
+    amount: u32,
+    db: &CardDatabase,
+) {
+    if amount == 0 {
+        return;
+    }
+    // Both keywords are read off the source *before* the damage lands, for CR 608.2h's
+    // reason: the damage may destroy the source's own opposite number, and a keyword is
+    // read from the object as it was when the effect began.
+    let deathtouch =
+        crate::characteristics::permanent_has_keyword(state, source, Keyword::Deathtouch, db);
+    let lifelink =
+        crate::characteristics::permanent_has_keyword(state, source, Keyword::Lifelink, db);
+    let gains = crate::characteristics::controller_of_id(state, source);
+    let dealt = state.deal_damage_to_permanent(recipient, amount, db);
+    // CR 702.2b / 704.5h: any nonzero damage from a deathtouch source makes the
+    // recipient a candidate for destruction, whether or not it was lethal.
+    if dealt && deathtouch && !state.deathtouch_struck.contains(&recipient) {
+        state.deathtouch_struck.push(recipient);
+    }
+    // CR 702.15e: lifelink life gain is a non-damage life change to the source's
+    // controller, and it rides *damage that was dealt* — so a recipient that is not there
+    // to take any gains nobody anything.
+    if dealt && lifelink {
+        if let Some(seat) = gains {
+            state.change_life(seat, i32::try_from(amount).unwrap_or(i32::MAX));
+        }
+    }
 }
 
 /// Remove the card `instance` from whichever graveyard holds it, or `None` when no

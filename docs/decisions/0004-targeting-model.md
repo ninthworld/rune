@@ -45,6 +45,13 @@ the client renders the choice as data and computes no legality.
     `DrawCard`, carry none.
   - A **`Target`** value: a resolved reference to a specific object — a `CardInstanceId`, a
     `PermanentId`, a `PlayerId`, or a `StackId`. Never a bare printed `CardId`.
+
+  An effect declares its slots as an **ordered list of groups** (`Effect::target_groups`),
+  each a `{spec, min, max}` (ADR 0017 §5). The list is what lets one effect name two
+  *differently* specified slots — a fight's "target creature you control" and "target creature
+  you don't control" — without splitting into two effects that would be aimed independently.
+  An effect whose slots do not share a spec acts on all of them or on none (CR 701.12c);
+  within a single group the CR 608.2c per-target re-check still applies.
 - **Chosen targets are stored on the stack.** `StackObject` carries the targets recorded when
   the spell or ability was put on the stack (CR 601.2c — targets are chosen on announcement,
   not on resolution). The stack stays a complete, inspectable record: a view can show
@@ -115,6 +122,8 @@ not an afterthought.
   dimension, and legal-action generation must compute candidate sets under an explicit
   O(N)-per-slot budget. `ChooseAction` stops being a single string: clients must send the
   token and the selection.
-- **Not covered.** Multi-target spells with per-slot distinctness rules, "up to N targets",
-  and hidden-zone targets are all expressible in this model but are not built. Each is an
-  addition to the vocabulary, not a change to the model.
+- **Not covered.** Hidden-zone targets are expressible in this model but are not built; each
+  such addition is a change to the vocabulary, not to the model. "Up to N targets" (ADR 0017
+  §5) and slots with per-slot specs (issue #737) have since been built exactly that way — as
+  additions to the vocabulary that left the model, the protocol, and the client untouched,
+  which is the load-bearing claim this ADR made.

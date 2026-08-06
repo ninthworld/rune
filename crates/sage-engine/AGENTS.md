@@ -120,11 +120,15 @@ self-referential effect. Do not put an emblem on the battlefield: every state-ba
 every target spec, and every combat gate would then need a clause saying why it does not
 apply, and *saying nothing* is the correct answer.
 
-**One effect may declare more than one target** (ADR 0017). `Effect::target_group` returns
-`{spec, min, max}`; `min == 0` is the "up to N" shape, and a group with `min == 0` is never a
-reason to withhold an offer. At most **one** variable-arity group per ability or spell — the
-stored target list is flat, and the validator enforces the limit so the pairing back onto
-effects is exact rather than a guess.
+**One effect may declare more than one target, and its slots need not share a spec**
+(ADR 0017 §5, ADR 0004). `Effect::target_groups` returns an ordered `Vec<{spec, min, max}>`;
+`min == 0` is the "up to N" shape, and a group with `min == 0` is never a reason to withhold
+an offer. At most **one** variable-arity group per ability or spell — the stored target list
+is flat, and the validator enforces the limit so the pairing back onto effects is exact
+rather than a guess. `Effect::Fight` is the one effect with *two* groups, one spec each, and
+an effect with more than one group acts on all of its slots or on none (CR 701.12c) rather
+than doing as much as it can. It is also the one damage whose **source is a permanent**, so
+it is the one place outside combat where deathtouch and lifelink apply.
 
 `Ability::Static` exists and covers anthems and lords ("creatures you control", optionally
 filtered to a subtype, optionally excluding the source). It is **derived, never stored**:

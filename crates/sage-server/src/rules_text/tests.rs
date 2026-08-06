@@ -1370,3 +1370,30 @@ fn issue_723_a_spell_states_what_it_does_before_the_ability_it_carries() {
          If you do, return Spit Flame from your graveyard to your hand."
     );
 }
+
+/// An effect whose two target slots do not share a spec reads as one sentence naming
+/// both, in slot order (CR 701.12) — the two nouns are exactly what the player will be
+/// asked for, so a sentence naming only one of them would describe a different card.
+#[test]
+fn issue_737_a_two_target_effect_names_both_of_its_targets() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "rabid_bite"),
+        "Target creature you control deals damage equal to its power to \
+         target creature an opponent controls."
+    );
+
+    // The mutual form is the printed verb, which says the power reading on its own. No
+    // M19 card prints it, so it is exercised inline (ADR 0009).
+    let inline = CardDatabase::from_json(
+        r#"[{"schema_version":1,"functional_id":"test_pounce","name":"Test Pounce",
+            "types":["instant"],"mana_cost":"{1}{G}","colors":["green"],
+            "spell_effects":[{"kind":"fight","dealer":"any_creature_you_control",
+              "dealt_to":"any_creature_an_opponent_controls","mutual":true}]}]"#,
+    )
+    .unwrap();
+    assert_eq!(
+        text_of(&inline, "test_pounce"),
+        "Target creature you control fights target creature an opponent controls."
+    );
+}
