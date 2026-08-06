@@ -70,14 +70,19 @@ function Slot({ entry, surface }: { entry: FieldEntry; surface: Surface }) {
 
   return (
     <div className={`perm${tapped ? ' perm-tapped' : ''}`} style={style}>
-      {/* an arrow aims at the inner box: turned by the same rotation as the permanent */}
-      <div className="perm-inner" data-anchor={face.id}>
+      {/* An arrow aims at the permanent's **own** card, not at the group box that holds it and
+          everything attached to it (issue #715). The group is what the eye reads as one pile, but
+          it is not what a spell targets: ringing it drew a highlight around an Equipment that was
+          never the target. Each card in the pile carries its own anchor and is ringed only when it
+          is itself the thing being pointed at. The rotation still comes from the ancestor, so a
+          tapped permanent's ring is still its tapped box. */}
+      <div className="perm-inner">
         {cards.map((card, index) => (
           <Card
             key={card.id}
             face={card}
             style={{ '--i': index } as CSSProperties}
-            anchor={index === cards.length - 1 ? undefined : card.id}
+            anchor={card.id}
             state={surface.stateOf(card.id)}
             link={surface.linkOf(card.id)}
             onTrace={surface.trace}
