@@ -89,6 +89,9 @@ impl GameState {
         // was granted on. Cleared here rather than compared everywhere, so a stale entry
         // cannot outlive its turn even by one read.
         self.graveyard_casting.clear();
+        // The same for a "this turn" permission to ignore hexproof: one boundary drops
+        // every per-turn permission, so neither can outlive its turn.
+        self.ignoring_hexproof.clear();
     }
 
     /// Empty every player's mana pool on this owned state (CR 500.4). Applies to

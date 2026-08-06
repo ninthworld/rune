@@ -99,8 +99,8 @@ pub use setup::{
 pub use stack::{AbilityOrigin, AbilitySource, StackId, StackObject, StackObjectKind};
 pub use state::{
     CommanderDamage, CounterKind, DamageTarget, Duration, EffectAffects, Emblem, GameEvent,
-    GameLogEntry, GameResult, GameState, GraveyardCasting, LoggedIdentity, LoggedPermanent,
-    Modification, Permanent, StaticEffect,
+    GameLogEntry, GameResult, GameState, GraveyardCasting, IgnoringHexproof, LoggedIdentity,
+    LoggedPermanent, Modification, Permanent, StaticEffect,
 };
 pub use token::{Printed, PrintedFace, TokenData};
 pub use triggers::{collect_triggers, pending_trigger_target_choice, Trigger};

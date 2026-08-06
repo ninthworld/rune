@@ -395,6 +395,32 @@ pub struct GraveyardCasting {
     pub turn: u32,
 }
 
+/// A permission to aim spells and abilities **as though hexproof were not there**,
+/// granted to one player for one turn ([`Effect::IgnoreHexproof`](crate::Effect)) —
+/// Detection Tower's `{1}, {T}`.
+///
+/// The exact shape of [`GraveyardCasting`] and for the same reasons: raw stored state
+/// nothing else in [`GameState`](crate::GameState) could recover (ADR 0005 §1), kept as
+/// a list because two grants can be in force at once, and carrying the
+/// [`turn`](Self::turn) it was granted on rather than a duration to tick down.
+///
+/// **Per player, not per permanent.** Hexproof (CR 702.11b) is already relative to who
+/// is doing the targeting — a permanent's controller is never stopped by it — so a
+/// permission that names the *aiming* player says everything the card says: "creatures
+/// your opponents control with hexproof can be the targets of spells and abilities you
+/// control" is exactly "this player is not stopped by hexproof". It is read in the one
+/// predicate that enforces hexproof
+/// ([`target_is_legal`](crate::resolve)), which both the announcement gate and the
+/// CR 608.2b resolution re-check run, so a grant taken between the two is honoured by
+/// both without either learning about it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IgnoringHexproof {
+    /// The player whose spells and abilities ignore hexproof.
+    pub player: PlayerId,
+    /// The turn the permission was granted on; it lapses when that turn ends.
+    pub turn: u32,
+}
+
 /// A permanent on the shared battlefield.
 ///
 /// Its [`PermanentId`] is minted fresh on battlefield entry and is distinct
@@ -561,7 +587,9 @@ impl Permanent {
 /// This slice models only the layer-7c power/toughness modification an anthem or
 /// pump performs; other layers slot in as new [`Modification`] variants behind
 /// the same read path.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// `Clone` rather than `Copy`, following its [`Modification`].
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StaticEffect {
     /// Object id of the source that put this effect into force — a permanent's
     /// [`PermanentId`](crate::PermanentId) value today, or a future stack
@@ -644,7 +672,10 @@ pub enum EffectAffects {
 
 /// The continuous modification a [`StaticEffect`] performs. The variant fixes
 /// the CR 613 layer the effect applies in.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// `Clone` rather than `Copy` because [`Self::GrantRestriction`] carries a
+/// [`CombatRestriction`], one of whose forms names an open-ended subtype string.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Modification {
     /// CR 613 **layer 7c**: add the given signed amounts to power and toughness
     /// (a negative amount subtracts). Applied after counters, in timestamp order

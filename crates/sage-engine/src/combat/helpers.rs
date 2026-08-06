@@ -121,6 +121,7 @@ pub(crate) fn has_keyword(
 /// - flying: only a creature with flying or reach may block it (CR 702.9c, 702.17b);
 /// - [`CombatRestriction::CantBeBlocked`]: nothing may block it;
 /// - [`CombatRestriction::CantBeBlockedBy`]: no creature of the named colour may;
+/// - [`CombatRestriction::CantBeBlockedExceptBy`]: only a creature of the named subtype may;
 /// - [`CombatRestriction::CantBlock`] on the *blocker*, which is a fact about the
 ///   blocker rather than the pair but is enforced here too, so a creature restricted
 ///   after blocker candidates were computed still cannot slip through.
@@ -166,10 +167,12 @@ pub fn blocker_can_block_attacker(
         .face(db)
         .map(|face| face.colors().to_vec())
         .unwrap_or_default();
-    // The blocker's power, unlike its colour, is read through the computed
-    // characteristics: the layers that change power are implemented, so a pumped blocker
-    // really has escaped a power-based evasion.
-    let blocker_power = crate::characteristics::characteristics(state, blocker, db).power;
+    // The blocker's power and subtypes, unlike its colour, are read through the computed
+    // characteristics: a pumped blocker really has escaped a power-based evasion, and
+    // reading computed subtypes is already right for the day CR 613 layer 4 lands.
+    let blocker_characteristics = crate::characteristics::characteristics(state, blocker, db);
+    let blocker_power = blocker_characteristics.power;
+    let blocker_subtypes = blocker_characteristics.subtypes;
     for restriction in permanent_restrictions(state, attacker, db) {
         match restriction {
             CombatRestriction::CantBeBlocked => return false,
@@ -181,9 +184,17 @@ pub fn blocker_can_block_attacker(
             {
                 return false
             }
+            // The one evasion stated as a permission: a blocker without the named
+            // subtype is forbidden, which is the exact inverse of the colour form's test.
+            CombatRestriction::CantBeBlockedExceptBy(ref subtype)
+                if !blocker_subtypes.contains(subtype) =>
+            {
+                return false
+            }
             // Not pairwise facts, or not about being blocked at all.
             CombatRestriction::CantBeBlockedBy(_)
             | CombatRestriction::CantBeBlockedByPowerOrLess(_)
+            | CombatRestriction::CantBeBlockedExceptBy(_)
             | CombatRestriction::CantAttack
             | CombatRestriction::CantBlock
             | CombatRestriction::CantBeBlockedByMoreThanOne => {}

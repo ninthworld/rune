@@ -239,7 +239,7 @@ pub(super) fn keyword_word(keyword: Keyword) -> &'static str {
 /// chosen target (`Target creature can't be blocked this turn.`), and a class
 /// (`Creatures without flying can't block this turn.`). "Can't" is invariant across
 /// singular and plural subjects, so one string serves all four.
-pub(super) fn restriction_predicate(restriction: CombatRestriction) -> String {
+pub(super) fn restriction_predicate(restriction: &CombatRestriction) -> String {
     match restriction {
         CombatRestriction::CantAttack => "can't attack".to_string(),
         CombatRestriction::CantBlock => "can't block".to_string(),
@@ -252,6 +252,9 @@ pub(super) fn restriction_predicate(restriction: CombatRestriction) -> String {
         }
         CombatRestriction::CantBeBlockedByPowerOrLess(power) => {
             format!("can't be blocked by creatures with power {power} or less")
+        }
+        CombatRestriction::CantBeBlockedExceptBy(subtype) => {
+            format!("can't be blocked except by {subtype}s")
         }
     }
 }

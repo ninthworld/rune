@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (198)
+## Supported cards (199)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -49,6 +49,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `daybreak_chaplain` | Daybreak Chaplain | functional definition |
 | `death_baron` | Death Baron | functional definition |
 | `demon_of_catastrophes` | Demon of Catastrophes | functional definition |
+| `detection_tower` | Detection Tower | functional definition |
 | `diregraf_ghoul` | Diregraf Ghoul | functional definition |
 | `disperse` | Disperse | functional definition |
 | `divination` | Divination | functional definition |
@@ -243,7 +244,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Modal spells that choose one | no mode choice on announcement |
 | Multi-face cards (transform, modal double-faced) | the card model has a single face |
 | Optional costs paid with anything but mana | an optional effect's cost is a mana payment; sacrificing, discarding, or exiling to pay is unwritable |
-| Protection, and evasion that names a subtype or a land type | a blocking restriction names a colour, a count, or a power; there is no protection layer |
+| Protection | there is no protection layer: nothing stops a spell, a block, an aura, or damage by a quality the way CR 702.16 does |
 | Reflexive triggers, and conditional branches that choose a target | an optional effect declares the target group of the one effect it wraps, but a conditional's branches, a wrapper over two targeting effects, and a "when you do" aimed after a cost is paid have no group one announcement could fill |
 | Replacement effects | no replacement-effect layer in the rules engine |
 | Selectors that filter by toughness, or by a power relative to another permanent's | a permanent count, an enters-or-dies trigger selector, a blocking restriction, and a card choice each name a fixed power threshold; a target spec, a mass-effect class, and a static ability's condition name none, no threshold reads toughness, and no threshold is another permanent's power |

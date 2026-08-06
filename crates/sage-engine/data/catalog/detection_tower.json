@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "functional_id": "detection_tower",
+  "name": "Detection Tower",
+  "types": [
+    "land"
+  ],
+  "subtypes": [],
+  "mana_cost": "",
+  "colors": [],
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "tap"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "add_colorless_mana",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{1}"
+        },
+        {
+          "kind": "tap"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "ignore_hexproof",
+          "player_ref": "controller"
+        }
+      ]
+    }
+  ]
+}
