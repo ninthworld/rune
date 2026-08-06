@@ -137,6 +137,34 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         Effect::RestrictSelf { restriction } => {
             format!("{source} {} this turn", restriction_predicate(restriction))
         }
+        // One printed sentence, so one clause: what is lost, then what is gained, in
+        // the order the effect applies them. A clause that only loses or only gains
+        // reads as the single half it is.
+        Effect::AlterAbilitiesSelf {
+            lose_all,
+            lose,
+            gain,
+        } => {
+            let mut parts: Vec<String> = Vec::new();
+            if *lose_all {
+                parts.push("loses all abilities".to_string());
+            }
+            if !lose.is_empty() {
+                let words: Vec<&str> = lose.iter().map(|&kw| keyword_word(kw)).collect();
+                parts.push(format!("loses {}", list_words(&words)));
+            }
+            if !gain.is_empty() {
+                let words: Vec<&str> = gain.iter().map(|&kw| keyword_word(kw)).collect();
+                parts.push(format!("gains {}", list_words(&words)));
+            }
+            // Nothing lost and nothing gained is not a sentence; the catalog validator
+            // keeps it unauthorable, and saying so beats printing a bare name.
+            if parts.is_empty() {
+                format!("{source} is unchanged until end of turn")
+            } else {
+                format!("{source} {} until end of turn", parts.join(" and "))
+            }
+        }
         Effect::PutCountersOnSelf { counter, count } => {
             format!("put {} on {source}", counters(*counter, *count))
         }

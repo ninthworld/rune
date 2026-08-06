@@ -59,15 +59,33 @@ pub fn equip_ability(data: &super::CardData) -> Option<Ability> {
     })
 }
 
-/// All abilities of a **permanent**, whether it is a card or a token.
+/// All abilities of a **permanent**, whether it is a card or a token — after CR 613
+/// **layer 6**.
 ///
 /// The permanent-side counterpart of [`abilities_of`], and the accessor every path
 /// that reads a battlefield object's abilities goes through. A card permanent defers
 /// to [`abilities_of`], so its data tier and its code tier are still unioned; a token
 /// has only what the effect that created it wrote down, because the code tier is keyed
 /// on an authored `functional_id` and a token has none (CR 111).
+///
+/// **It takes the state because layer 6 subtracts.** A permanent under a
+/// loses-all-abilities effect has none
+/// ([`loses_all_abilities`](crate::characteristics::loses_all_abilities)), and *every*
+/// collector has to agree about that or a removed trigger still fires, a silenced
+/// permanent still offers its activation, or a suppressed anthem still pumps. Making
+/// the one accessor answer it is what makes those impossible to get wrong
+/// individually — there is no printed-abilities reader left to reach for by mistake.
+/// The predicate reads stored effects only, so this is safe to call from inside the
+/// characteristics computation itself.
 #[must_use]
-pub fn abilities_of_permanent(db: &CardDatabase, perm: &Permanent) -> Vec<crate::ability::Ability> {
+pub fn abilities_of_permanent(
+    state: &crate::GameState,
+    db: &CardDatabase,
+    perm: &Permanent,
+) -> Vec<crate::ability::Ability> {
+    if crate::characteristics::loses_all_abilities(state, perm) {
+        return Vec::new();
+    }
     match &perm.printed {
         crate::token::Printed::Card(card) => abilities_of(db, *card),
         crate::token::Printed::Token(token) => token.abilities.clone(),
@@ -107,7 +125,11 @@ pub(crate) fn spell_effects_of(db: &CardDatabase, card: CardId) -> Vec<Effect> {
 /// here (CR 614.13 ordering among multiple external replacements is out of scope).
 /// Both authoring tiers are honored via [`abilities_of`]; non-replacement
 /// abilities are ignored.
-pub(crate) fn apply_enters_replacements(db: &CardDatabase, perm: &mut Permanent) {
+pub(crate) fn apply_enters_replacements(
+    state: &crate::GameState,
+    db: &CardDatabase,
+    perm: &mut Permanent,
+) {
     // CR 306.5b: a planeswalker enters the battlefield with a number of loyalty
     // counters equal to its printed loyalty. This is not an authored ability — every
     // planeswalker does it, from the printed number alone — so it is applied from the
@@ -121,7 +143,11 @@ pub(crate) fn apply_enters_replacements(db: &CardDatabase, perm: &mut Permanent)
             .entry(crate::state::CounterKind::Loyalty)
             .or_insert(0) += loyalty;
     }
-    for ability in abilities_of_permanent(db, perm) {
+    // The permanent is not on the battlefield yet and carries a freshly minted id, so
+    // no continuous effect can be keyed to it — the layer-6 gate inside the accessor is
+    // inert here by construction, and the state is passed only so this reads the same
+    // abilities every other collector does.
+    for ability in abilities_of_permanent(state, db, perm) {
         match ability {
             crate::ability::Ability::EntersTapped => perm.tapped = true,
             crate::ability::Ability::EntersWithCounters { counter, count } => {

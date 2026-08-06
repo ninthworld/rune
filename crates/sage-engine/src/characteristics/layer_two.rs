@@ -38,7 +38,11 @@ pub fn controller_of(state: &GameState, perm: &Permanent) -> PlayerId {
             Modification::GainControl(player) => Some((effect.timestamp(), player)),
             Modification::PowerToughness { .. }
             | Modification::GrantKeyword(_)
-            | Modification::GrantRestriction(_) => None,
+            | Modification::GrantRestriction(_)
+            // Losing abilities is layer 6 and never touches control: a permanent with
+            // no abilities at all is still controlled by whoever controls it.
+            | Modification::LoseKeyword(_)
+            | Modification::LoseAllAbilities => None,
         })
         .max_by_key(|(timestamp, _)| *timestamp)
         .map_or(perm.controller, |(_, player)| player)

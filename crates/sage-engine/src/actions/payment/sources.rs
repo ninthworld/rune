@@ -69,7 +69,7 @@ pub fn is_plain_mana_source(state: &GameState, db: &CardDatabase, source: ManaSo
     let Some(perm) = state.battlefield.iter().find(|p| p.id == source.permanent) else {
         return false;
     };
-    let Some(ability) = abilities_of_permanent(db, perm)
+    let Some(ability) = abilities_of_permanent(state, db, perm)
         .into_iter()
         .nth(source.index)
     else {
@@ -163,7 +163,7 @@ pub(crate) fn mana_options(
             continue;
         }
         let mut options = Vec::new();
-        for (index, ability) in abilities_of_permanent(db, perm).iter().enumerate() {
+        for (index, ability) in abilities_of_permanent(state, db, perm).iter().enumerate() {
             let Some(adds) = plain_mana_yield(ability) else {
                 continue;
             };

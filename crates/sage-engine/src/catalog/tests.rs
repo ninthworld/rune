@@ -530,3 +530,39 @@ fn an_attachment_s_counted_grant_may_not_count_by_power() {
     // safe from inside the layer system and is what a counted Aura actually needs.
     assert!(validate_definition(None, &aura(r#"{"subtype": "Forest"}"#)).is_ok());
 }
+
+#[test]
+fn issue_726_a_layer_six_change_that_changes_nothing_is_rejected() {
+    // Every field of `alter_abilities_self` defaults, so the clause that says nothing is
+    // exactly the one a typo lands on — and it would mint a timestamp, sit in the stored
+    // effects until cleanup, and describe itself as "unchanged until end of turn".
+    let empty = r#", "abilities": [{"type": "activated", "cost": [],
+        "effects": [{"kind": "alter_abilities_self"}]}]"#;
+    assert_eq!(
+        validate_definition(None, &definition(empty)),
+        Err(Violation::AbilityChangeIsEmpty {
+            functional_id: "test_card".to_string(),
+        }),
+    );
+
+    // Empty lists are the same nothing spelled out longhand.
+    let empty_lists = r#", "abilities": [{"type": "activated", "cost": [],
+        "effects": [{"kind": "alter_abilities_self", "lose": [], "gain": []}]}]"#;
+    assert_eq!(
+        validate_definition(None, &definition(empty_lists)),
+        Err(Violation::AbilityChangeIsEmpty {
+            functional_id: "test_card".to_string(),
+        }),
+    );
+
+    // Any one of the three fields carrying something makes it a clause.
+    for spec in [
+        r#"{"kind": "alter_abilities_self", "lose": ["defender"]}"#,
+        r#"{"kind": "alter_abilities_self", "gain": ["flying"]}"#,
+        r#"{"kind": "alter_abilities_self", "lose_all": true}"#,
+    ] {
+        let ability =
+            format!(r#", "abilities": [{{"type": "activated", "cost": [], "effects": [{spec}]}}]"#);
+        assert!(validate_definition(None, &definition(&ability)).is_ok());
+    }
+}

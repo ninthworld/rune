@@ -71,7 +71,7 @@ pub(crate) fn action_target_groups(
             let Some(perm) = state.battlefield.iter().find(|p| p.id == *permanent) else {
                 return Vec::new();
             };
-            let abilities = crate::card::abilities_of_permanent(db, perm);
+            let abilities = crate::card::abilities_of_permanent(state, db, perm);
             let Some(Ability::Activated { effects, .. }) = abilities.get(*index) else {
                 return Vec::new();
             };

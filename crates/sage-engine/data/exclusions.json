@@ -76,8 +76,12 @@
     "blocker": "a control change is a targeted layer-2 effect the cleanup step ends; no duration outlives the turn and nothing swaps two permanents' controllers"
   },
   {
-    "name": "Keyword removal and loses-all-abilities effects",
-    "blocker": "the ability-adding layer only adds abilities"
+    "name": "Losing abilities on a permanent other than the effect's own source",
+    "blocker": "a layer-6 removal names its own source, loses named keywords or all abilities until end of turn, and reaches no target and no class"
+  },
+  {
+    "name": "Rules that apply as though a permanent lacked a keyword it has",
+    "blocker": "a keyword is present or absent at layer 6; nothing tells one rule to ignore a keyword the permanent still has"
   },
   {
     "name": "Kicker and other optional additional costs",

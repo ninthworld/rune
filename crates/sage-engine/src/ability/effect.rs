@@ -382,6 +382,47 @@ pub enum Effect {
         /// The signed amount added to the source's toughness until end of turn.
         toughness: i32,
     },
+    /// Change what abilities **this ability's own source** has until end of turn at
+    /// CR 613 **layer 6** — `loses defender and gains flying until end of turn`, or
+    /// `loses all abilities until end of turn`.
+    ///
+    /// One effect for the whole clause, the way [`Effect::Pump`] carries its keywords
+    /// and [`Effect::GainControl`] carries its untap: a card that both subtracts and
+    /// adds prints one sentence about one permanent, and splitting it into two effects
+    /// would make the two halves separately timestamped and separately skippable.
+    /// Within the clause the subtraction is applied before the addition — the order the
+    /// card prints, and the order that makes `loses defender and gains defender`
+    /// (nobody's card, but a shape the IR can say) mean what it reads as.
+    ///
+    /// Between clauses it is the **timestamp** that decides (CR 613.1f): a later grant
+    /// puts back what an earlier removal took, and a later removal takes back what an
+    /// earlier grant gave. Nothing here is retroactive and nothing is permanent — the
+    /// whole effect is `UntilEndOfTurn` and the cleanup step removes it (CR 514.2), at
+    /// which point the printed abilities are simply there again, because they were
+    /// never taken off the card (ADR 0005).
+    ///
+    /// Like [`Effect::PumpSelf`] the subject is implicit: the source is not a *target*
+    /// (CR 115.1), so this chooses nothing, fills no slot, and can never fizzle. A
+    /// source that has left the battlefield is not there to change, and the effect does
+    /// nothing.
+    AlterAbilitiesSelf {
+        /// Whether the source loses **all** abilities (CR 613.1f) — every keyword,
+        /// every combat restriction, and every printed static, triggered, and activated
+        /// ability. Applied before [`Self::AlterAbilitiesSelf::lose`] and before
+        /// [`Self::AlterAbilitiesSelf::gain`], so a clause that says "loses all
+        /// abilities and gains hexproof" ends with exactly hexproof.
+        #[serde(default)]
+        lose_all: bool,
+        /// Keyword abilities the source loses, whether it printed them or was granted
+        /// them earlier (CR 613.1f makes no distinction by then). Losing one it does
+        /// not have does nothing.
+        #[serde(default)]
+        lose: Vec<Keyword>,
+        /// Keyword abilities the source gains, applied after the losses so the two
+        /// halves of one printed sentence do not fight.
+        #[serde(default)]
+        gain: Vec<Keyword>,
+    },
     /// Put `count` counters of `counter` on **this ability's own source** (CR 122) —
     /// the self-referential counterpart of [`Effect::PutCounters`] (`put a +1/+1
     /// counter on this creature`). Like [`Effect::PumpSelf`] the subject is implicit
@@ -972,6 +1013,7 @@ impl Effect {
             | Effect::RestrictAll { .. }
             | Effect::PumpSelf { .. }
             | Effect::RestrictSelf { .. }
+            | Effect::AlterAbilitiesSelf { .. }
             | Effect::PutCountersOnSelf { .. } => None,
         }
     }

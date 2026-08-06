@@ -250,6 +250,24 @@ pub(super) fn emblem_ability_is_bad(effect: &serde_json::Value) -> bool {
         })
 }
 
+/// Whether `effect` is an `alter_abilities_self` that changes nothing — no `lose_all`,
+/// no keyword lost, no keyword gained. Every field defaults, so the empty clause is
+/// exactly the one a typo produces.
+pub(super) fn ability_change_is_empty(effect: &serde_json::Value) -> bool {
+    if effect.get("kind").and_then(serde_json::Value::as_str) != Some("alter_abilities_self") {
+        return false;
+    }
+    let names_none = |key: &str| {
+        effect
+            .get(key)
+            .and_then(serde_json::Value::as_array)
+            .is_none_or(Vec::is_empty)
+    };
+    effect.get("lose_all").and_then(serde_json::Value::as_bool) != Some(true)
+        && names_none("lose")
+        && names_none("gain")
+}
+
 /// Every effect a definition authors at the top level of an ability or of its spell
 /// effects, in file order.
 ///

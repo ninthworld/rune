@@ -57,6 +57,16 @@ has drifted. Prose in an `AGENTS.md` or in the brief drifts silently — this fi
 so when a paragraph here and an entry there disagree, believe the entry and fix the
 paragraph.
 
+**Layer 6 subtracts as well as adds**, and is therefore ordered by timestamp (CR 613.1f):
+a grant after a removal grants, a removal after a grant removes. `alter_abilities_self` is
+the one verb that subtracts — it names its own source, loses named keywords or *all*
+abilities until end of turn, and reaches no target and no class. Losing all abilities is
+answered by `characteristics::loses_all_abilities`, a stored-effects-only predicate read
+from inside `abilities_of_permanent`; that accessor takes `&GameState` for exactly this
+reason and is the only path any collector uses, so there is no printed-abilities reader to
+pick by mistake. What is still unsayable is a rule applying *as though* a permanent lacked
+a keyword it has, which is not removal and not a layer.
+
 Combat restrictions are a second layer-6 vocabulary beside `Keyword` (`CombatRestriction`):
 they are not keyword abilities, some carry a parameter, and each is enforced in exactly one
 place — the attacker candidate set, the blocker candidate set, the pairwise block check, or

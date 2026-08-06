@@ -208,7 +208,7 @@ fn activation_clears_summoning_sickness(
     let Some(perm) = state.battlefield.iter().find(|p| p.id == permanent) else {
         return false;
     };
-    match abilities_of_permanent(db, perm).get(index) {
+    match abilities_of_permanent(state, db, perm).get(index) {
         Some(Ability::Activated { cost, .. }) => !tap_cost_is_summoning_sick(state, perm, cost, db),
         _ => true,
     }
@@ -232,7 +232,7 @@ fn loyalty_activation_is_legal(
     let Some(perm) = state.battlefield.iter().find(|p| p.id == permanent) else {
         return false;
     };
-    let Some(ability) = abilities_of_permanent(db, perm).get(index).cloned() else {
+    let Some(ability) = abilities_of_permanent(state, db, perm).get(index).cloned() else {
         return true;
     };
     if !crate::ability::is_loyalty_ability(&ability) {
@@ -265,7 +265,7 @@ fn equip_activation_is_legal(
     let Some(perm) = state.battlefield.iter().find(|p| p.id == permanent) else {
         return false;
     };
-    match abilities_of_permanent(db, perm).get(index) {
+    match abilities_of_permanent(state, db, perm).get(index) {
         Some(ability) if crate::ability::is_equip_ability(ability) => {
             equip_timing_allows(state, perm)
         }

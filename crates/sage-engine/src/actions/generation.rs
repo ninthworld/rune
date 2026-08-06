@@ -444,7 +444,7 @@ fn offer_activations(
         if crate::characteristics::controller_of(state, perm) != seat {
             continue;
         }
-        for (index, ability) in crate::card::abilities_of_permanent(db, perm)
+        for (index, ability) in crate::card::abilities_of_permanent(state, db, perm)
             .iter()
             .enumerate()
         {

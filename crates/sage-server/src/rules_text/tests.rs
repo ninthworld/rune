@@ -1236,3 +1236,40 @@ fn issue_742_detection_tower_states_its_mana_and_its_permission() {
          hexproof were not there this turn."
     );
 }
+
+#[test]
+fn a_layer_six_change_says_what_is_lost_before_what_is_gained() {
+    // One clause for one printed sentence, in the order the effect applies it. Gargoyle
+    // Sentinel is the whole shape on a real card; the halves M19 does not print — losing
+    // all abilities, and losing without gaining — are exercised inline (ADR 0009).
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "gargoyle_sentinel"),
+        "Defender\n{3}: Gargoyle Sentinel loses defender and gains flying until end of turn."
+    );
+
+    let inline = CardDatabase::from_json(
+        r#"[
+            {"schema_version":1,"functional_id":"test_blank","name":"Test Blank",
+             "types":["creature"],"subtypes":["Shapeshifter"],"mana_cost":"{2}","colors":["blue"],
+             "power":2,"toughness":2,
+             "abilities":[{"type":"activated","cost":[{"kind":"mana","mana":"{1}"}],
+               "effects":[{"kind":"alter_abilities_self","lose_all":true,"gain":["hexproof"]}]}]},
+            {"schema_version":1,"functional_id":"test_grounded","name":"Test Grounded",
+             "types":["creature"],"subtypes":["Bird"],"mana_cost":"{1}","colors":["white"],
+             "power":1,"toughness":1,"keywords":["flying","vigilance"],
+             "abilities":[{"type":"activated","cost":[{"kind":"mana","mana":"{1}"}],
+               "effects":[{"kind":"alter_abilities_self","lose":["flying","vigilance"]}]}]}
+        ]"#,
+    )
+    .unwrap();
+    assert_eq!(
+        text_of(&inline, "test_blank"),
+        "{1}: Test Blank loses all abilities and gains hexproof until end of turn."
+    );
+    // Two keywords lost read as a list, and a clause that only subtracts says only that.
+    assert_eq!(
+        text_of(&inline, "test_grounded"),
+        "Flying, vigilance\n{1}: Test Grounded loses flying and vigilance until end of turn."
+    );
+}

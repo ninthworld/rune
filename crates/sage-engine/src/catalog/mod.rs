@@ -236,6 +236,15 @@ pub(crate) fn validate_definition(
         return Err(Violation::EmblemAbilityIsNotStaticOrTriggered { functional_id });
     }
 
+    // A layer-6 change that neither subtracts nor adds is no effect at all, and every
+    // field of one defaults — so the empty clause is the shape a typo lands on.
+    if every_effect(object)
+        .into_iter()
+        .any(ability_change_is_empty)
+    {
+        return Err(Violation::AbilityChangeIsEmpty { functional_id });
+    }
+
     // At most one "up to N" target group per ability or spell, so the flat stored target
     // list pairs back onto effects unambiguously.
     if effect_lists(object)

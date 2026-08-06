@@ -304,7 +304,7 @@ pub(crate) fn ability_label(
         .find(|perm| perm.id == permanent)
         .and_then(|perm| {
             let name = permanent_name(perm, db);
-            abilities_of_permanent(db, perm)
+            abilities_of_permanent(state, db, perm)
                 .get(index)
                 .map(|ability| ability_text(&name, ability))
         })

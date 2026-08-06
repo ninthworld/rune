@@ -392,7 +392,7 @@ fn valid_action_view(
             .iter()
             .find(|perm| perm.id == *permanent)
             .and_then(|perm| {
-                abilities_of_permanent(db, perm)
+                abilities_of_permanent(state, db, perm)
                     .get(*index)
                     .map(is_mana_ability)
             })

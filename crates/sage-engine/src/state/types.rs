@@ -693,10 +693,41 @@ pub enum Modification {
     /// ([`characteristics`](crate::characteristics::characteristics) folds it into
     /// the computed keyword set). Redundant grants are idempotent (CR 702.2c-style:
     /// granting flying twice is simply flying), so this modification never stacks —
-    /// it either adds the keyword or leaves an already-present one unchanged. Layer
-    /// 6 is timestamp-independent for a pure grant, so unlike layer-7c modifiers
-    /// these need not be folded in order.
+    /// it either adds the keyword or leaves an already-present one unchanged.
+    ///
+    /// Layer 6 **is** folded in timestamp order (CR 613.1f), because the layer now
+    /// subtracts as well as adds ([`Self::LoseKeyword`], [`Self::LoseAllAbilities`]):
+    /// a grant after a removal grants, and a removal after a grant removes. Among
+    /// grants alone the order is still immaterial.
     GrantKeyword(Keyword),
+    /// CR 613 **layer 6** (CR 613.1f): the affected permanent **loses** this keyword
+    /// ability — `loses defender until end of turn`. The subtracting counterpart of
+    /// [`Self::GrantKeyword`], and the reason the layer is ordered at all.
+    ///
+    /// Removing a keyword the permanent does not have does nothing; removing one it
+    /// has printed and one it was granted are the same operation, because a granted
+    /// keyword is indistinguishable from a printed one by the time this applies
+    /// (CR 613.1f folds both into one set). What it is *not* is retroactive: a grant
+    /// with a **later** timestamp puts the keyword back, and only the timestamp
+    /// decides which of the two speaks last.
+    LoseKeyword(Keyword),
+    /// CR 613 **layer 6**: the affected permanent **loses all abilities** — every
+    /// keyword, every combat restriction, and every printed static, triggered, and
+    /// activated ability it has.
+    ///
+    /// The one modification that is not about a single named thing, and therefore the
+    /// one every collector that walks a permanent's abilities has to respect: a
+    /// silenced permanent offers no activation, contributes no continuous effect to
+    /// anything, and fires no trigger. The single question those collectors ask is
+    /// [`characteristics::loses_all_abilities`](crate::characteristics::loses_all_abilities),
+    /// which reads the stored effects and nothing else — so it can be asked from
+    /// *inside* the layer computation, exactly as layer 2 can.
+    ///
+    /// A keyword granted **after** it is still granted (CR 613.1f), which the ordered
+    /// layer-6 fold handles on its own. Nothing in the IR grants a non-keyword ability,
+    /// so for the ability collectors a boolean is not an approximation of the ordered
+    /// answer — it *is* the ordered answer.
+    LoseAllAbilities,
     /// CR 613 **layer 6** (CR 613.1f): impose a combat restriction on the affected
     /// permanent — an Aura's "can neither attack nor block", or a spell's "target
     /// creature can't be blocked this turn". The exact counterpart of

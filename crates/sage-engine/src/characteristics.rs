@@ -30,6 +30,7 @@ mod layer_two;
 
 use continuous::*;
 use layer_seven::*;
+pub use layer_six::loses_all_abilities;
 use layer_six::*;
 pub use layer_two::{controller_of, controller_of_id};
 
@@ -84,14 +85,19 @@ pub struct Characteristics {
     /// layer changes printed loyalty, so it is carried through unchanged.
     pub loyalty: Option<u32>,
     /// The permanent's current ability set, unioning data-driven and scripted
-    /// sources via [`abilities_of`].
+    /// sources via [`abilities_of`] — **empty** while a CR 613 layer-6 effect has it
+    /// losing all abilities ([`loses_all_abilities`]).
     pub abilities: Vec<Ability>,
     /// The permanent's *current* keyword abilities (CR 702): its printed
     /// [`CardData::keywords`](crate::CardData::keywords) unioned with any granted by
     /// continuous effects at CR 613 **layer 6** (CR 613.1f) — an attached Aura's
-    /// grant, an anthem, or an until-end-of-turn pump. A granted keyword is
-    /// indistinguishable from a printed one, and duplicates are collapsed (a keyword
-    /// granted twice, or granted atop a printed one, appears once).
+    /// grant, an anthem, or an until-end-of-turn pump — and with any **removed** by
+    /// one taken back out. A granted keyword is indistinguishable from a printed one,
+    /// and duplicates are collapsed (a keyword granted twice, or granted atop a printed
+    /// one, appears once).
+    ///
+    /// The fold runs in timestamp order, so `loses defender` and `gains defender` are
+    /// settled by which of the two spoke last — the whole of CR 613.1f.
     pub keywords: Vec<Keyword>,
     /// The permanent's *current* combat restrictions (CR 506.3, CR 509.1b): its printed
     /// [`CardData::restrictions`](crate::CardData::restrictions) unioned with any imposed by
@@ -158,7 +164,9 @@ pub fn characteristics(
         // Printed starting loyalty (CR 306.5b), carried through untouched: no layer
         // modifies it, and *current* loyalty is the counter count, not this.
         loyalty: face.loyalty(),
-        abilities: abilities_of_permanent(db, perm),
+        // CR 613 layer 6 again, the non-keyword half: the accessor answers `None` for
+        // everything on a permanent that has lost all its abilities.
+        abilities: abilities_of_permanent(state, db, perm),
         // CR 613 layer 6 (CR 613.1f): the printed keywords unioned with any granted
         // continuously. Seeded from the printed set so a granted keyword sits beside
         // the printed ones and is read the same way everywhere.

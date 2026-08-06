@@ -83,6 +83,27 @@ legitimate only when the question is about **ownership**, which today means the 
 battlefield-departure seams. Layers 1 and 3–5 sit behind the existing signature, so filling
 them in changes no call site.
 
+**Layer 6 subtracts as well as adds**, which is what made it an *ordered* layer. A grant
+after a removal grants and a removal after a grant removes (CR 613.1f), so the layer folds
+its effects in ascending timestamp order exactly as layer 7c does; among grants alone the
+order is still immaterial, which is why it did not have to be until now.
+
+Losing **all** abilities is the one modification that is not about a single named thing,
+and it is answered by a second non-recursive predicate beside `controller_of` —
+
+```
+loses_all_abilities(&GameState, &Permanent) -> bool
+```
+
+— read from inside `abilities_of_permanent`, which every path that walks a battlefield
+object's abilities goes through and which therefore takes `&GameState`. That is the whole
+of the enforcement: there is one accessor, it answers the layer-6 question, and no
+printed-abilities reader is left to reach for by mistake. The predicate reads stored
+effects only, so calling it from inside the characteristics computation cannot recurse.
+A boolean is exact rather than convenient here: a later grant would put an ability back,
+and the only grants the IR can express are keyword grants, which the ordered layer-6 fold
+already settles.
+
 ### 4. The invariant
 
 **Rules code never reads printed `CardData` for a permanent's current characteristics —
@@ -103,5 +124,8 @@ where no permanent and no continuous effect exist.
   the engine's recompute-everything stance everywhere else. Reviewers must guard against new
   direct printed-value reads for battlefield permanents.
 - **Not covered.** Layers 1 and 3–5; a control change lasting longer than a turn, or
-  exchanging two permanents' controllers; counter kinds beyond `+1/+1` and `-1/-1`;
-  characteristic-defining abilities. Each is an addition behind the existing signature.
+  exchanging two permanents' controllers; an ability loss aimed at a target or a class
+  rather than at the effect's own source, or one outliving the turn; a rule applying *as
+  though* a permanent lacked a keyword it still has, which is not a layer at all; counter
+  kinds beyond `+1/+1` and `-1/-1`; characteristic-defining abilities. Each is an addition
+  behind the existing signature.

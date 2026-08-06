@@ -158,7 +158,7 @@ pub(crate) fn potential_mana_pool(
         if crate::characteristics::controller_of(state, perm) != player || perm.tapped {
             continue;
         }
-        for ability in abilities_of_permanent(db, perm) {
+        for ability in abilities_of_permanent(state, db, perm) {
             if !is_mana_ability(&ability) {
                 continue;
             }

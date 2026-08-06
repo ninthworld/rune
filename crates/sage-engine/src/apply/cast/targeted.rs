@@ -413,6 +413,7 @@ pub(crate) fn apply_targeted_effect(
         | Effect::RestrictAll { .. }
         | Effect::PumpSelf { .. }
         | Effect::RestrictSelf { .. }
+        | Effect::AlterAbilitiesSelf { .. }
         | Effect::GainLifeByCount { .. }
         | Effect::PutCountersOnSelf { .. } => {}
         // "Target player's graveyard": the targeting form of the same verb, routed here
