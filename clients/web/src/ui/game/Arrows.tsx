@@ -264,31 +264,72 @@ function build(arrows: readonly Arrow[]): Frame {
   return { shapes, rings: [...rings.values()] }
 }
 
+/**
+ * How long after a change the overlay keeps following the layout, in frames.
+ *
+ * A ring is measured from a box, and a box can still be **moving** when it is measured: `Motion`
+ * plays a flight for 320ms with the Web Animations API, and a card settling into a re-laid-out
+ * row moves without changing size. Neither is a render and neither is a resize, so nothing tells
+ * this overlay to look again — which is how an outline came to sit at the coordinates a card had
+ * a moment ago and stay there until a hover happened to re-render the board (issue #715).
+ *
+ * Long enough to outlast the longest motion, and it stops early the moment the measurement stops
+ * changing, so an idle board does no work.
+ */
+const SETTLE_FRAMES = 40
+
+/** Frames of an unchanged measurement that count as "the layout has stopped moving". */
+const STILL_FRAMES = 3
+
 export function Arrows({ arrows }: { arrows: readonly Arrow[] }) {
   const [frame, setFrame] = useState<Frame>({ shapes: [], rings: [] })
   const seen = useRef('')
 
-  /* re-measured on every render and on anything that can move a rectangle underneath one — a
-     strip panned, the window resized, a seat resized. The frame is compared before it is set, so
-     the measure the state change triggers settles rather than loops. */
+  /* re-measured on every render, on anything that can move a rectangle underneath one — a strip
+     panned, the window resized, a seat resized — and then on every frame until the layout stops
+     moving. The frame is compared before it is set, so the measure the state change triggers
+     settles rather than loops. */
   useLayoutEffect(() => {
-    const measure = () => {
+    let raf = 0
+    /** Returns whether this pass found the layout somewhere new. */
+    const measure = (): boolean => {
       const next = build(arrows)
       const key = JSON.stringify(next)
-      if (key === seen.current) return
+      if (key === seen.current) return false
       seen.current = key
       setFrame(next)
+      return true
     }
-    measure()
-    const observer = new ResizeObserver(measure)
+    /* Follow the layout for a bounded run of frames rather than trusting one reading: an
+       animation, a re-flowed row, and a font arriving all move a box after the render that
+       caused them. Restarted by every measure, so a second change extends the window instead of
+       being cut off by the first one's. */
+    const follow = () => {
+      cancelAnimationFrame(raf)
+      let left = SETTLE_FRAMES
+      let still = 0
+      const step = () => {
+        still = measure() ? 0 : still + 1
+        left -= 1
+        if (left > 0 && still < STILL_FRAMES) raf = requestAnimationFrame(step)
+      }
+      raf = requestAnimationFrame(step)
+    }
+    const remeasure = () => {
+      measure()
+      follow()
+    }
+    remeasure()
+    const observer = new ResizeObserver(remeasure)
     observer.observe(document.documentElement)
     for (const el of document.querySelectorAll('[data-anchor], .strip')) observer.observe(el)
-    window.addEventListener('resize', measure)
-    window.addEventListener('scroll', measure, true)
+    window.addEventListener('resize', remeasure)
+    window.addEventListener('scroll', remeasure, true)
     return () => {
+      cancelAnimationFrame(raf)
       observer.disconnect()
-      window.removeEventListener('resize', measure)
-      window.removeEventListener('scroll', measure, true)
+      window.removeEventListener('resize', remeasure)
+      window.removeEventListener('scroll', remeasure, true)
     }
   })
 

@@ -67,12 +67,19 @@ export function MatchResult({
           )}
         </div>
         <div className="zone-foot">
-          <span className="zone-hint">Leaving ends this session and starts a new one.</span>
+          {/* No hint line here (issue #715). This panel is 420px wide and its two buttons take
+              nearly all of it, so a `zone-hint` — which clips to an ellipsis rather than wrapping
+              — was drawn as `Leavi…` at every size. A sentence nobody can finish reading is worse
+              than no sentence: what leaving costs is said on the button that does it. */}
           <div className="zone-acts">
             <button className="action-done action-alt" onClick={onDismiss}>
               Look at the board
             </button>
-            <button className="action-done" onClick={onLeave}>
+            <button
+              className="action-done"
+              onClick={onLeave}
+              title="Leaving ends this session and starts a new one."
+            >
               Back to the lobby
             </button>
           </div>

@@ -11,6 +11,7 @@ import {
   answer,
   arm,
   ask,
+  choose,
   disarm,
   remainingCost,
   spentSources,
@@ -1363,5 +1364,132 @@ describe('an ordering, answered by clicking', () => {
     // that id in, so a card in the pile answers the ordering and nothing has to know it is one.
     const armed = arm(IDLE, LOOK)
     expect(gestureFor([LOOK], armed, 'card_b')).toEqual({ kind: 'fill', slot: 'choice' })
+  })
+})
+
+describe('declaring blockers by naming the blocker first (issue #772)', () => {
+  // The server publishes one slot per **attacker**, each listing the blockers that may legally
+  // block that attacker. That shape is right — legality is per pair and the server owns it — but
+  // it is asked attacker-first, and a defender thinks blocker-first: *this creature stops that
+  // one*. A blocker listed by two attackers used to land in whichever slot came first in reading
+  // order, so a player could declare a block and not say what it blocked.
+  const BLOCK: ValidAction = {
+    id: 'a_block',
+    type: 'declare_blockers',
+    label: 'Declare blockers',
+    requirements: [
+      {
+        slot: 'block_ogre',
+        optional: true,
+        prompt: 'Choose blockers for Onakke Ogre',
+        subject: 'perm_ogre',
+        // The Wall can block either attacker; the Drake can only block the flier.
+        candidates: ['perm_wall'],
+      },
+      {
+        slot: 'block_drake',
+        optional: true,
+        prompt: 'Choose blockers for Snapping Drake',
+        subject: 'perm_drake',
+        candidates: ['perm_wall', 'perm_skyguard'],
+      },
+    ],
+  }
+  const OFFERED = [BLOCK]
+  const armed: Interaction = { armed: 'a_block', draft: {} }
+
+  it('asks which attacker a blocker listed by more than one is blocking', () => {
+    // Not a fill: one click cannot mean two things, and picking one for the player would be this
+    // client deciding a block it was never told to decide.
+    expect(gestureFor(OFFERED, armed, 'perm_wall')).toEqual({ kind: 'choose', id: 'perm_wall' })
+    const picked = choose(armed, 'perm_wall')
+    expect(picked.assigning).toBe('perm_wall')
+    // Nothing is drafted by picking it — a pick the player abandons leaves the declaration alone.
+    expect(picked.draft).toEqual({})
+  })
+
+  it('offers only the attackers that blocker may legally block', () => {
+    const picked = choose(armed, 'perm_wall')
+    expect(highlightFor(OFFERED, picked, 'perm_ogre')).toBe('candidate')
+    expect(highlightFor(OFFERED, picked, 'perm_drake')).toBe('candidate')
+    // The blocker being placed stays lit as the one the question is about…
+    expect(highlightFor(OFFERED, picked, 'perm_wall')).toBe('selected')
+    // …and every other eligible blocker goes quiet until this question is answered.
+    expect(highlightFor(OFFERED, picked, 'perm_skyguard')).toBe('idle')
+  })
+
+  it('assigns the blocker to the attacker named next, not the attacker to a slot', () => {
+    const picked = choose(armed, 'perm_wall')
+    const gesture = gestureFor(OFFERED, picked, 'perm_drake')
+    expect(gesture).toEqual({ kind: 'assign', slot: 'block_drake', id: 'perm_wall' })
+
+    const slots = focus(OFFERED, picked).slots
+    const slot = slots.find((each) => each.slot === 'block_drake')
+    const assigned = fill(picked, slot as never, 'perm_wall', slots)
+    // The blocker is in the *attacker's* slot, which is what the server asked for, and the
+    // question is over.
+    expect(assigned.draft.block_drake).toEqual(['perm_wall'])
+    expect(assigned.draft.block_ogre).toBeUndefined()
+    expect(assigned.assigning).toBeUndefined()
+  })
+
+  it('takes the pick back when the same blocker is clicked again', () => {
+    const picked = choose(armed, 'perm_wall')
+    expect(gestureFor(OFFERED, picked, 'perm_wall')).toEqual({ kind: 'choose', id: 'perm_wall' })
+    expect(choose(picked, 'perm_wall').assigning).toBeUndefined()
+  })
+
+  it('reads anything that is not an answer to the question being asked', () => {
+    // The board is this one question's answer sheet while a blocker is held, exactly as it is
+    // while an action is armed: a stray click cannot quietly mean something else.
+    const picked = choose(armed, 'perm_wall')
+    expect(gestureFor(OFFERED, picked, 'perm_skyguard')).toEqual({ kind: 'inspect' })
+  })
+
+  it('blocks in one click when the server listed only one attacker for that creature', () => {
+    // One legal block has one meaning, so asking which attacker would be a question with a
+    // single answer. The Skyguard is listed by the Drake's slot and no other.
+    expect(gestureFor(OFFERED, armed, 'perm_skyguard')).toEqual({
+      kind: 'fill',
+      slot: 'block_drake',
+    })
+  })
+
+  it('takes an assignment back out by clicking the blocker that already holds it', () => {
+    const assigned: Interaction = { armed: 'a_block', draft: { block_drake: ['perm_wall'] } }
+    // Already assigned, so the click has one meaning again: remove it. It does not re-open the
+    // question of which attacker.
+    expect(gestureFor(OFFERED, assigned, 'perm_wall')).toEqual({
+      kind: 'fill',
+      slot: 'block_drake',
+    })
+    const slots = focus(OFFERED, assigned).slots
+    const slot = slots.find((each) => each.slot === 'block_drake')
+    expect(fill(assigned, slot as never, 'perm_wall', slots).draft.block_drake).toEqual([])
+  })
+
+  it('draws an assigned blocker as chosen and leaves the rest choosable', () => {
+    const assigned: Interaction = { armed: 'a_block', draft: { block_drake: ['perm_wall'] } }
+    expect(highlightFor(OFFERED, assigned, 'perm_wall')).toBe('selected')
+    expect(highlightFor(OFFERED, assigned, 'perm_skyguard')).toBe('candidate')
+  })
+
+  it('leaves declaring attackers exactly as it was', () => {
+    // The inversion is about a slot listing one answer under several subjects. An attacker is
+    // chosen in a subject-less slot of its own, so nothing about attacking reaches it.
+    const declare: ValidAction = {
+      id: 'a_attack',
+      type: 'declare_attackers',
+      label: 'Declare attackers',
+      requirements: [
+        { slot: 'attackers', optional: true, prompt: 'Attack', candidates: ['perm_bear'] },
+        { slot: 'defend_bear', prompt: 'At what', subject: 'perm_bear', candidates: ['p2'] },
+      ],
+    }
+    const armedAttack: Interaction = { armed: 'a_attack', draft: {} }
+    expect(gestureFor([declare], armedAttack, 'perm_bear')).toEqual({
+      kind: 'fill',
+      slot: 'attackers',
+    })
   })
 })

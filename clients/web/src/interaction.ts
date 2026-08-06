@@ -109,6 +109,28 @@ export interface Interaction {
    */
   readonly aiming?: string
   /**
+   * A creature the player has picked that answers **more than one** subject's slot, waiting to be
+   * told whose (issue #772).
+   *
+   * The mirror of [`aiming`](Interaction.aiming), and the two are the same idea approached from
+   * opposite ends. Aiming starts from the subject — *this attacker, now what does it attack* —
+   * because the subject was chosen in a slot of its own. Assigning starts from the **answer**:
+   * a blocker is listed as a candidate by every attacker it may legally block, and no slot asks
+   * the player to choose the blocker first, so a click on one could mean any of them.
+   *
+   * Blocking is the case that needs it. The server publishes one slot per attacker, each listing
+   * the blockers that may block *that* attacker, so before this a click on a creature able to
+   * block two attackers landed in whichever slot came first in reading order — the player could
+   * declare a block but not say what it blocked. Naming the creature and then the attacker is
+   * both the natural order at a table and the only one that can express the choice.
+   *
+   * Presentation only, like every other field here: which slots list this id is the server's
+   * answer, and this is only which half of the question the player is on. A creature listed by
+   * exactly one slot never reaches this state — one legal block is one click, and asking which
+   * attacker when there is only one would be a question with a single answer.
+   */
+  readonly assigning?: string
+  /**
    * A card the player has said they are playing, before the server offers it.
    *
    * Held across messages, unlike everything else here, because that is the whole point: the
@@ -700,8 +722,54 @@ export function aimedSlot(slots: readonly Slot[], interaction: Interaction): Slo
   return slots.find((slot) => slot.subject === interaction.aiming)
 }
 
+/**
+ * The slots that would take `id` as an answer **on behalf of a subject** — one per attacker a
+ * blocker may legally block (issue #772).
+ *
+ * Read straight off what the server enumerated: a slot with a `subject` whose `candidates`
+ * include this id. Nothing here knows the word "block" or asks what the action is; a question
+ * the server posed per-subject is a question with several answers only when it listed the same
+ * answer under several subjects.
+ */
+export function assignableSlots(slots: readonly Slot[], id: string): readonly Slot[] {
+  return slots.filter(
+    (slot) => slot.byEntity && slot.subject !== undefined && slot.candidates.includes(id),
+  )
+}
+
+/**
+ * The slot the assigned creature would answer if the player named `subject` next, if any.
+ *
+ * The other half of [`assignableSlots`]: the player has picked a blocker and is now pointing at
+ * an attacker, and this is the question that pair answers.
+ */
+export function slotForSubject(
+  slots: readonly Slot[],
+  assigning: string,
+  subject: string,
+): Slot | undefined {
+  return assignableSlots(slots, assigning).find((slot) => slot.subject === subject)
+}
+
+/**
+ * Whether picking `id` is a question about *whose* slot it answers rather than an answer
+ * outright — the blocker able to block two attackers.
+ *
+ * Two conditions, and both are the server's own words. It is listed by more than one subject's
+ * slot, and it is not already held by one of them: a creature already assigned is taken back out
+ * by clicking it again, which has one meaning and needs no question.
+ */
+function needsAssignment(slots: readonly Slot[], id: string): boolean {
+  const takes = assignableSlots(slots, id)
+  return takes.length > 1 && !takes.some((slot) => slot.chosen.includes(id))
+}
+
 export type Gesture =
   | { kind: 'fill'; slot: string }
+  /** Put the creature already being assigned into this slot — the attacker it blocks (#772). */
+  | { kind: 'assign'; slot: string; id: string }
+  /** Pick this creature as the one to be assigned, or take back the pick if it already is. */
+  | { kind: 'choose'; id: string }
   | { kind: 'take'; action: string }
   | { kind: 'select' }
   | { kind: 'pay' }
@@ -722,7 +790,24 @@ export function gestureFor(
   id: string,
   payable: ReadonlySet<string> = new Set(),
 ): Gesture {
-  const open = slotFor(focus(actions, interaction).slots, id, interaction.aiming)
+  const slots = focus(actions, interaction).slots
+
+  // A creature has been picked and is waiting to be told whose slot it answers (issue #772). The
+  // board is that one question's answer sheet until it is answered or the pick is taken back:
+  // clicking the creature again un-picks it, clicking an attacker it may block assigns it, and
+  // anything else is read rather than acted on — the same rule an armed action already follows.
+  if (interaction.assigning !== undefined) {
+    if (interaction.assigning === id) return { kind: 'choose', id }
+    const slot = slotForSubject(slots, interaction.assigning, id)
+    if (slot) return { kind: 'assign', slot: slot.slot, id: interaction.assigning }
+    return { kind: 'inspect' }
+  }
+
+  // A creature several subjects list as a candidate is a question rather than an answer: it is
+  // picked first, and the subject whose slot it answers is named second.
+  if (needsAssignment(slots, id)) return { kind: 'choose', id }
+
+  const open = slotFor(slots, id, interaction.aiming)
   if (open) return { kind: 'fill', slot: open.slot }
 
   // While an action is being drafted, the board is that action's answer sheet and nothing else
@@ -775,6 +860,15 @@ export function highlightFor(
     // While one subject is being aimed, only its own slot's candidates are choosable — the
     // board says "this attacker, now pick what it attacks" rather than lighting up every
     // creature that could also have attacked.
+    // The same narrowing from the other end (issue #772): a blocker has been picked, so the only
+    // choosable things on the board are the attackers whose slots list it — the creature itself
+    // stays lit as the one being placed, and every other eligible blocker goes quiet until this
+    // question is answered. Which attackers those are is the server's list, not a legality this
+    // client worked out.
+    if (interaction.assigning !== undefined) {
+      if (interaction.assigning === id) return 'selected'
+      return slotForSubject(current.slots, interaction.assigning, id) ? 'candidate' : 'idle'
+    }
     const aimed = aimedSlot(current.slots, interaction)
     if (aimed) return aimed.candidates.includes(id) ? 'candidate' : 'idle'
     return slotFor(current.slots, id, interaction.aiming) ? 'candidate' : 'idle'
@@ -861,7 +955,10 @@ export function fill(
   }
   const draft = toggleSelection(interaction.draft, slot.slot, id, slot.max)
   const next = { ...interaction, draft }
-  if (slot.subject !== undefined) return { ...next, aiming: undefined }
+  // Answering a subject's slot ends both halves of the question: the attacker that was being
+  // aimed has been given something to attack, and the blocker that was being assigned has been
+  // given an attacker to block (issue #772).
+  if (slot.subject !== undefined) return { ...next, aiming: undefined, assigning: undefined }
 
   const added = (draft[slot.slot] ?? []).includes(id)
   if (!added) {
@@ -869,6 +966,24 @@ export function fill(
   }
   const owed = slots.some((candidate) => candidate.subject === id)
   return owed ? { ...next, aiming: id } : next
+}
+
+/**
+ * Pick the creature whose assignment is being made, or take the pick back (issue #772).
+ *
+ * Nothing is drafted by this: it names which creature the next click is about, and a click that
+ * never comes leaves the declaration exactly as it was. Picking a second creature while one is
+ * held simply moves the question to the new one, because that is what clicking it said.
+ */
+export function choose(interaction: Interaction, id: string): Interaction {
+  return {
+    ...interaction,
+    assigning: interaction.assigning === id ? undefined : id,
+    // The two questions are exclusive: a board being asked "what does this blocker block" is not
+    // also being asked "what does this attacker attack".
+    aiming: undefined,
+    asking: undefined,
+  }
 }
 
 /**
@@ -909,7 +1024,7 @@ export function answer(
  * press of the same control and the Escape key.
  */
 export function reset(interaction: Interaction): Interaction {
-  return { ...interaction, draft: {}, aiming: undefined, asking: undefined }
+  return { ...interaction, draft: {}, aiming: undefined, assigning: undefined, asking: undefined }
 }
 
 /**
