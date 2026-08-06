@@ -60,6 +60,15 @@ test.describe('the board, from one view', () => {
     await expect(stack).toContainText('resolves next')
     await expect(stack).toContainText('Lightning Bolt')
 
+    // Every entry says **which** spell or ability it is (issue #715). This fixture holds the
+    // case that made it necessary: an activated and a triggered ability whose names, controllers,
+    // and thumbnails give a player nothing to tell them apart, and whose own text does. The
+    // sentence is the server's — the client neither composes it nor parses it.
+    await expect(stack).toContainText('Tap target creature.')
+    await expect(stack).toContainText('Add {G}.')
+    // And a spell does not repeat its own name underneath itself.
+    await expect(stack.locator('.stack-detail', { hasText: /^Lightning Bolt$/ })).toHaveCount(0)
+
     // §3: the page itself never scrolls, in either axis.
     expect(await pageFits(page)).toEqual({ x: true, y: true })
   })

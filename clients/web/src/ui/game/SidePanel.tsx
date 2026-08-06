@@ -39,6 +39,17 @@ export interface StackEntry {
   /** Who put it there, and what it is aimed at, in the words the view stated. */
   who: string
   kind: string
+  /**
+   * Which spell or ability this entry *is*, in the server's own words (`StackItem.description`),
+   * or absent where that only repeats the card's name.
+   *
+   * A stack entry showing a name, a controller, and targets does not say which of a permanent's
+   * abilities was activated (issue #715), and no client may work that out — composing an
+   * ability's text from its effects is rules interpretation, which is why the server sends this
+   * already composed. Held here rather than folded into `kind` because the two answer different
+   * questions: `kind` is what sort of object it is, this is which one.
+   */
+  detail?: string
   targets: readonly string[]
 }
 
@@ -190,6 +201,17 @@ export function SidePanel({
                           <div className="stack-kind">
                             {entry.who} · {entry.kind}
                           </div>
+                          {/* **Which** spell or ability this entry is (issue #715). The card name
+                              above it names the *source*, and a permanent with three abilities put
+                              three identical-looking entries on the stack. The server composes this
+                              from the object's own effects — the same formatter that writes the
+                              card's rules text — so it distinguishes two abilities of one card, and
+                              it keeps naming the ability after its source has left the battlefield,
+                              where the thumbnail cannot. Drawn only where it says something the
+                              name does not, which for a spell is nothing. */}
+                          {entry.detail !== undefined && (
+                            <div className="stack-detail">{entry.detail}</div>
+                          )}
                           {entry.targets.length > 0 && (
                             <div className="stack-target">→ {entry.targets.join(', ')}</div>
                           )}
