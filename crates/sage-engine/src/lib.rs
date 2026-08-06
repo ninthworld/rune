@@ -64,13 +64,14 @@ pub use apply::apply_action;
 pub use automation::{forced_declaration_without_choice, priority_has_no_meaningful_action};
 pub use card::{
     abilities_of, abilities_of_permanent, equip_ability, AdditionalCost, Attachment,
-    AttachmentKind, CardData, CardDatabase, CatalogError, CombatRestriction, Keyword, Printing,
-    PrintingDatabase, Rarity, SCHEMA_VERSION,
+    AttachmentKind, CardData, CardDatabase, CatalogError, CombatRestriction, DamageCharacteristic,
+    Keyword, Printing, PrintingDatabase, Rarity, RuleModification, SCHEMA_VERSION,
 };
 pub use card_type::{CardType, Supertype};
 pub use catalog::Violation;
 pub use characteristics::{
-    characteristics, controller_of, controller_of_id, loses_all_abilities, Characteristics,
+    assigns_combat_damage_by, attacks_as_though_no_defender, characteristics, controller_of,
+    controller_of_id, loses_all_abilities, Characteristics,
 };
 pub use choice::{
     choice_bounds, choice_candidates, confirm_is_payable, pending_player_choice, ChoiceOutcome,

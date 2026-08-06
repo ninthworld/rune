@@ -7,12 +7,12 @@ use sage_engine::{CardDatabase, CardId, FunctionalId};
 
 /// The bundled catalog, whose definitions cover every IR construct the engine
 /// has: the generated text is asserted against real cards, not toy structs.
-fn bundled() -> CardDatabase {
+pub(super) fn bundled() -> CardDatabase {
     CardDatabase::bundled().unwrap()
 }
 
 /// The generated text of the card with this authored identity.
-fn text_of(db: &CardDatabase, functional_id: &str) -> String {
+pub(super) fn text_of(db: &CardDatabase, functional_id: &str) -> String {
     let id = db
         .card_id(&FunctionalId::try_from(functional_id.to_string()).unwrap())
         .unwrap();
@@ -783,7 +783,7 @@ fn the_stack_description_speaks_the_same_vocabulary() {
 /// A card whose only rules are a static ability, built inline: the wording has to
 /// be asserted from the IR shape, and the catalog carries whichever shapes real
 /// cards happen to use.
-fn static_text(affects: &str, modification: &str) -> String {
+pub(super) fn static_text(affects: &str, modification: &str) -> String {
     let json = format!(
         r#"[{{"schema_version":1,"functional_id":"test_lord","name":"Test Lord",
             "types":["creature"],"subtypes":["Elf"],"mana_cost":"{{G}}","colors":["green"],

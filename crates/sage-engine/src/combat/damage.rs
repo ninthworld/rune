@@ -3,9 +3,9 @@ use crate::id::{PermanentId, PlayerId};
 use crate::state::GameState;
 use crate::CardDatabase;
 
+use super::assigned_combat_damage;
 use super::helpers::{
-    combat_power, deals_in_step, has_keyword, lethal_needed, push_permanent_damage,
-    push_player_damage,
+    deals_in_step, has_keyword, lethal_needed, push_permanent_damage, push_player_damage,
 };
 
 /// A single combat-damage assignment computed for a combat-damage step
@@ -179,9 +179,15 @@ fn push_attack_target_damage(
 }
 
 /// Compute all combat damage for the combat-damage step `step` (CR 510.1): every
-/// attacking and blocking creature that deals in this step assigns its power as
-/// combat damage, gathered here so [`crate::apply_action`] can apply the whole
-/// batch at once (simultaneously, CR 510.2).
+/// attacking and blocking creature that deals in this step assigns
+/// [`assigned_combat_damage`] — its power (CR 510.1a), or the characteristic a
+/// continuous effect substitutes for it — gathered here so [`crate::apply_action`] can
+/// apply the whole batch at once (simultaneously, CR 510.2).
+///
+/// The substitution is read once, at the top of each creature's arm, and everything below
+/// is about the amount rather than about where it came from. That is why trample's excess
+/// and the marked damage the lethal-damage state-based action reads both follow the
+/// override with no clause of their own.
 ///
 /// `blocked` is the set of attackers blocked this combat ([`blocked_attackers`]),
 /// captured before any damage so a blocked attacker whose blockers have since died
@@ -199,7 +205,7 @@ fn push_attack_target_damage(
 ///   Player-chosen damage-assignment order is still deferred.
 /// - Each surviving blocker assigns its combat damage among the attackers it blocks
 ///   (CR 510.1c), carrying its own deathtouch/lifelink. Blocking one attacker — the
-///   ordinary case — is the whole of its power to that attacker; blocking several
+///   ordinary case — is the whole of its assignment to that attacker; blocking several
 ///   (CR 509.1a, the "block an additional creature" permission) spreads it along the
 ///   blocker's own damage assignment order, which is the order its declaration named
 ///   them in ([`Permanent::blocking`](crate::Permanent::blocking), CR 509.3).
@@ -223,7 +229,7 @@ pub(crate) fn combat_damage(
         let blockers = blockers_of(state, attacker.id);
         // The attacker's own strike, if it deals in this step.
         if deals_in_step(state, attacker, step, db) {
-            let power = combat_power(state, attacker.id, db);
+            let assigned = assigned_combat_damage(state, attacker.id, db);
             let deathtouch = has_keyword(state, attacker, Keyword::Deathtouch, db);
             let controller = crate::characteristics::controller_of(state, attacker);
             // CR 702.15e gains the *source's controller* the life, so the keyword and
@@ -237,13 +243,13 @@ pub(crate) fn combat_damage(
             let source_commander = state.commander_owner_of(attacker.instance);
             if !blocked.contains(&attacker.id) {
                 // Unblocked: the attacker's damage goes to what it attacks.
-                if power > 0 {
+                if assigned > 0 {
                     if let Some(target) = defender {
                         push_attack_target_damage(
                             &mut out,
                             state,
                             target,
-                            power,
+                            assigned,
                             deathtouch,
                             lifelink,
                             source_commander,
@@ -253,7 +259,7 @@ pub(crate) fn combat_damage(
             } else {
                 // Blocked: spread across surviving blockers, lethal-per-blocker
                 // (deathtouch-aware); trample sends the remainder to the player.
-                let mut remaining = power;
+                let mut remaining = assigned;
                 for blocker in &blockers {
                     if remaining == 0 {
                         break;
@@ -287,15 +293,15 @@ pub(crate) fn combat_damage(
     }
     // Each surviving blocker assigns its combat damage among the attackers it blocks
     // (CR 510.1c). Driven from the blocker rather than from inside the attacker loop
-    // because a blocker may block more than one attacker (CR 509.1a) and its power is
-    // one pool spread across all of them — an attacker-driven loop would hand the same
+    // because a blocker may block more than one attacker (CR 509.1a) and its assignment
+    // is one pool spread across all of them — an attacker-driven loop would hand the same
     // pool out once per attacker.
     for blocker in state.battlefield.iter().filter(|p| !p.blocking.is_empty()) {
         if !deals_in_step(state, blocker, step, db) {
             continue;
         }
-        let power = combat_power(state, blocker.id, db);
-        if power == 0 {
+        let assigned = assigned_combat_damage(state, blocker.id, db);
+        if assigned == 0 {
             continue;
         }
         let deathtouch = has_keyword(state, blocker, Keyword::Deathtouch, db);
@@ -310,7 +316,7 @@ pub(crate) fn combat_damage(
             .copied()
             .filter(|atk| state.battlefield.iter().any(|p| p.id == *atk))
             .collect();
-        let mut remaining = power;
+        let mut remaining = assigned;
         for (index, attacker) in attackers.iter().enumerate() {
             if remaining == 0 {
                 break;
@@ -318,7 +324,7 @@ pub(crate) fn combat_damage(
             // Just-lethal to each attacker before the next (CR 510.1e, deathtouch-aware),
             // and everything still unassigned to the last one in the order — which is
             // what CR 510.1d permits once every creature ahead of it has lethal, and what
-            // makes the single-attacker case a plain full-power hit, exactly as it was
+            // makes the single-attacker case a plain full-assignment hit, exactly as it was
             // before a blocker could block two.
             let assign = if index + 1 == attackers.len() {
                 remaining

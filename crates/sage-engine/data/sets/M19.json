@@ -125,6 +125,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "novice_knight",
+    "collector_number": "30",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "oreskos_swiftclaw",
     "collector_number": "31",
     "rarity": "common"
@@ -803,6 +808,11 @@
     "functional_id": "aerial_engineer",
     "collector_number": "211",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "arcades_the_strategist",
+    "collector_number": "212",
+    "rarity": "mythic"
   },
   {
     "functional_id": "draconic_disciple",

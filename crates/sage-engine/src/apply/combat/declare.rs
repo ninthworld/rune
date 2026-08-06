@@ -4,6 +4,8 @@
 use super::*;
 
 #[cfg(test)]
+mod defender_tests;
+#[cfg(test)]
 mod tests;
 
 /// Declare the active player's attackers (CR 508.1): mark each as attacking and

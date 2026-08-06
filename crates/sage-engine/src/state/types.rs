@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::card::{CombatRestriction, Keyword};
+use crate::card::{CombatRestriction, Keyword, RuleModification};
 use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::player::LossReason;
 use crate::token::Printed;
@@ -701,7 +701,8 @@ pub enum EffectAffects {
 }
 
 /// The continuous modification a [`StaticEffect`] performs. The variant fixes
-/// the CR 613 layer the effect applies in.
+/// the CR 613 layer the effect applies in — or, for [`Self::ModifyRule`], says that it
+/// applies in none.
 ///
 /// `Clone` rather than `Copy` because [`Self::GrantRestriction`] carries a
 /// [`CombatRestriction`], one of whose forms names an open-ended subtype string.
@@ -786,6 +787,24 @@ pub enum Modification {
     /// is a fact about [`Permanent::entered_turn`] rather than about this modification —
     /// the effect that creates one stamps the turn as it applies.
     GainControl(PlayerId),
+    /// **No layer at all**: a continuous effect that modifies a *rule* rather than a
+    /// characteristic ([`RuleModification`]) — how much combat damage the permanent
+    /// assigns (CR 510.1a), and whether the defender it has stops it attacking
+    /// (CR 702.3b applied as though absent, CR 609.4).
+    ///
+    /// The one modification [`characteristics`](crate::characteristics::characteristics)
+    /// never folds in, and deliberately so. CR 613 orders effects that change
+    /// characteristics; this changes none, so there is nothing for a layer to order and
+    /// nothing for the computed [`Characteristics`](crate::Characteristics) to carry. It
+    /// is read where the rule it modifies is asked
+    /// ([`crate::characteristics::assigns_combat_damage_by`],
+    /// [`crate::characteristics::attacks_as_though_no_defender`]), and every other reader
+    /// of the permanent — its power, its keywords, its restrictions, the projected view —
+    /// sees exactly what it saw before. That is what keeps
+    /// [`RuleModification::AssignsCombatDamageBy`] from being a P/T setter and
+    /// [`RuleModification::AttacksAsThoughNoDefender`] from being
+    /// [`Self::LoseKeyword`].
+    ModifyRule(RuleModification),
 }
 
 /// One running total of cumulative **combat** damage a commander has dealt a

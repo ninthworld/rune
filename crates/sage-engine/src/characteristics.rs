@@ -23,16 +23,26 @@
 //! timestamps, and every later layer is read against its answer. Keeping it a separate,
 //! non-recursive function is what lets the layer-6 and layer-7c selectors ask "does this
 //! permanent's controller match?" from inside the very computation they are part of.
+//!
+//! **A rule modification is in no layer at all**, and is read by its own question in
+//! [`rules_modifying`] — [`assigns_combat_damage_by`], [`attacks_as_though_no_defender`].
+//! Control is kept out of [`Characteristics`] because CR 109.3 says it is not one; these
+//! are kept out because being invisible to every other reader *is* the effect. A creature
+//! that assigns combat damage by its toughness has exactly the power it had, and a
+//! creature attacking as though it had no defender still has defender — including for the
+//! ability that granted the permission.
 mod continuous;
 mod layer_seven;
 mod layer_six;
 mod layer_two;
+mod rules_modifying;
 
 use continuous::*;
 use layer_seven::*;
 pub use layer_six::loses_all_abilities;
 use layer_six::*;
 pub use layer_two::{controller_of, controller_of_id};
+pub use rules_modifying::{assigns_combat_damage_by, attacks_as_though_no_defender};
 
 use crate::ability::{Ability, StaticAffects, StaticCondition};
 use crate::card::{abilities_of_permanent, CardDatabase, CombatRestriction, Keyword};

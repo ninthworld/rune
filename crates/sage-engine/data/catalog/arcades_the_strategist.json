@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "functional_id": "arcades_the_strategist",
+  "name": "Arcades, the Strategist",
+  "supertypes": [
+    "legendary"
+  ],
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elder",
+    "Dragon"
+  ],
+  "mana_cost": "{1}{G}{W}{U}",
+  "colors": [
+    "white",
+    "blue",
+    "green"
+  ],
+  "power": 3,
+  "toughness": 5,
+  "keywords": [
+    "flying",
+    "vigilance"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "permanent_enters": {
+          "scope": "creatures_you_control",
+          "keyword": "defender"
+        }
+      },
+      "effects": [
+        {
+          "kind": "draw_card",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "type": "static",
+      "affects": {
+        "scope": "creatures_you_control",
+        "keyword": "defender"
+      },
+      "modification": {
+        "kind": "assigns_combat_damage_by",
+        "characteristic": "toughness"
+      }
+    },
+    {
+      "type": "static",
+      "affects": {
+        "scope": "creatures_you_control",
+        "keyword": "defender"
+      },
+      "modification": {
+        "kind": "attacks_as_though_no_defender"
+      }
+    }
+  ]
+}

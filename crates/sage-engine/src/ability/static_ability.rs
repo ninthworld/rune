@@ -23,6 +23,20 @@ pub enum StaticAffects {
         /// A lord that pumped itself would be a different card.
         #[serde(default)]
         except_this: bool,
+        /// Restrict to creatures that have this keyword — the `with **defender**` of
+        /// "each creature you control with defender". Absent means every creature.
+        ///
+        /// Read off the **printed** face, exactly as `subtype` beside it is, and for the
+        /// same reason: this selector is evaluated from inside the computation of the
+        /// affected permanent's characteristics, and the computed keyword set is what
+        /// that computation is producing. So a creature *granted* defender is outside the
+        /// class, which is the same limitation the printed subtype read already carries.
+        /// The observer's counterpart
+        /// ([`ObservedPermanent`](crate::ObservedPermanent)) is evaluated outside the
+        /// layer system and does read the computed keywords — the asymmetry is the
+        /// recursion, not a difference of opinion.
+        #[serde(default)]
+        keyword: Option<Keyword>,
     },
     /// The source permanent and nothing else — the "this creature" of `This creature
     /// gets +1/+0 as long as you control an artifact.`
@@ -70,6 +84,16 @@ pub enum StaticCondition {
     /// are declared and off when the permanent leaves combat, with no event to observe
     /// in either direction.
     SourceIsAttacking,
+    /// The source permanent currently has something **attached** to it — `as long as
+    /// this creature is enchanted or equipped`.
+    ///
+    /// One condition rather than two, because the card prints one: an Aura and an
+    /// Equipment are the same fact about the host (CR 303.4 / CR 301.5 — something is
+    /// attached to it), and only the attachment's own kind tells them apart. Read off
+    /// [`Permanent::attached_to`](crate::Permanent::attached_to) on every read, so it
+    /// turns on the instant an Aura resolves onto the creature and off the instant the
+    /// Equipment is moved elsewhere, with nothing to prune either way.
+    SourceIsEnchantedOrEquipped,
 }
 
 /// The default threshold of a [`StaticCondition::ControlsAtLeast`]: one, the "an" of
@@ -102,6 +126,24 @@ pub enum StaticModification {
         /// The keyword granted for as long as the source is on the battlefield.
         keyword: Keyword,
     },
+    /// **No layer**: the affected permanents assign combat damage equal to the named
+    /// characteristic rather than to their power (CR 510.1a, modified).
+    ///
+    /// Not a power-setting effect, and the distinction is the card. The creature's power
+    /// is untouched — a 0/5 Wall under Arcades is still a 0/5 to every selector, every
+    /// evasion rule, and the projected view — and only the combat-damage step reads the
+    /// substitute. See [`RuleModification::AssignsCombatDamageBy`].
+    AssignsCombatDamageBy {
+        /// Which of the creature's own characteristics the amount comes from.
+        characteristic: DamageCharacteristic,
+    },
+    /// **No layer**: the affected permanents may attack as though they did not have
+    /// defender (CR 702.3b applied as though absent, CR 609.4).
+    ///
+    /// Not [`Modification::LoseKeyword`](crate::Modification::LoseKeyword): the creature
+    /// keeps defender for every other purpose, including the `keyword` filter of the very
+    /// selector that reached it. See [`RuleModification::AttacksAsThoughNoDefender`].
+    AttacksAsThoughNoDefender,
 }
 
 impl StaticModification {
@@ -114,6 +156,14 @@ impl StaticModification {
             }
             StaticModification::GrantKeyword { keyword } => {
                 crate::Modification::GrantKeyword(keyword)
+            }
+            StaticModification::AssignsCombatDamageBy { characteristic } => {
+                crate::Modification::ModifyRule(RuleModification::AssignsCombatDamageBy {
+                    characteristic,
+                })
+            }
+            StaticModification::AttacksAsThoughNoDefender => {
+                crate::Modification::ModifyRule(RuleModification::AttacksAsThoughNoDefender)
             }
         }
     }

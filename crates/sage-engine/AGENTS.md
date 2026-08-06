@@ -75,8 +75,20 @@ abilities until end of turn, and reaches no target and no class. Losing all abil
 answered by `characteristics::loses_all_abilities`, a stored-effects-only predicate read
 from inside `abilities_of_permanent`; that accessor takes `&GameState` for exactly this
 reason and is the only path any collector uses, so there is no printed-abilities reader to
-pick by mistake. What is still unsayable is a rule applying *as though* a permanent lacked
-a keyword it has, which is not removal and not a layer.
+pick by mistake.
+
+**A rule modification is in no layer, and that is the point** (`Modification::ModifyRule`,
+`RuleModification`). CR 613 orders effects that change *characteristics*; these change
+none, so nothing folds them in and each is read where its rule is asked —
+`assigns_combat_damage_by` at the one place the combat-damage step computes an amount (so
+trample's excess and the marked damage CR 704.5g reads follow it for free),
+`attacks_as_though_no_defender` at the attacker declaration. Assigning by toughness is
+**not** a P/T change and attacking as though it had no defender is **not** `LoseKeyword`
+(CR 609.4): the power and the keyword are both untouched, which is what keeps the creature
+inside the `keyword`-filtered class that granted it either one. That filter reads the
+**printed** face inside the layer system — asking the layer-6 fold for the set it is
+producing would not terminate — while the trigger selector's runs outside it and reads the
+computed set.
 
 Combat restrictions are a second layer-6 vocabulary beside `Keyword` (`CombatRestriction`):
 they are not keyword abilities, some carry a parameter, and each is enforced in exactly one
@@ -137,7 +149,9 @@ than doing as much as it can. It is also the one damage whose **source is a perm
 it is the one place outside combat where deathtouch and lifelink apply.
 
 `Ability::Static` exists and covers anthems and lords ("creatures you control", optionally
-filtered to a subtype, optionally excluding the source). It is **derived, never stored**:
+filtered to a printed subtype or a printed keyword, optionally excluding the source), and
+its `as long as …` asks one of three questions — a permanent count, whether the source is
+attacking, and whether anything is attached to it. It is **derived, never stored**:
 `characteristics` reads it off the battlefield on every call, so the effect begins and ends
 with its source's presence and nothing enters `GameState::static_effects`. Extend
 `StaticAffects` when a card needs a scope it cannot name; a cost reducer still needs a

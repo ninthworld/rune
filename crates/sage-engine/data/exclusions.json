@@ -20,8 +20,8 @@
     "blocker": "a graveyard is reached three ways — a one-turn permission to cast from it, a continuous permission to play lands from it, and an activated or triggered ability that returns its own card out of it — but no other zone is reached at all: no per-turn exile permission, nothing played off the top of a library, no way to cast without paying a mana cost, no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure), and no activation cost that exiles other cards from a graveyard"
   },
   {
-    "name": "Combat damage assigned by a value other than power",
-    "blocker": "every attacker and blocker assigns damage equal to its current power"
+    "name": "Combat damage assigned by anything but the assigning creature's own power or toughness",
+    "blocker": "an attacker or blocker assigns its current power, or its current toughness while a continuous effect names that one instead, read at the single place the combat-damage step asks how much a creature assigns; no other characteristic can be named, nothing assigns a fixed amount or a count, and nothing reads another object's characteristic"
   },
   {
     "name": "Conditions other than a permanent count, a mill, a discard, or life gained this turn",
@@ -76,8 +76,8 @@
     "blocker": "a layer-6 removal names its own source, loses named keywords or all abilities until end of turn, and reaches no target and no class"
   },
   {
-    "name": "Rules that apply as though a permanent lacked a keyword it has",
-    "blocker": "a keyword is present or absent at layer 6; nothing tells one rule to ignore a keyword the permanent still has"
+    "name": "Rules that apply as though a permanent lacked a keyword other than defender",
+    "blocker": "one as-though permission is modeled — attacking as though the creature did not have defender (CR 609.4), granted as a continuous effect that is in no layer and read only at the attacker declaration, so the keyword itself is untouched everywhere else; no other keyword can be ignored by a rule, and nothing applies as though a permanent had a keyword it does not"
   },
   {
     "name": "Kicker and other optional additional costs",

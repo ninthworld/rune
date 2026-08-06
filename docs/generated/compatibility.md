@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (220)
+## Supported cards (222)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -25,6 +25,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `ajani_s_pridemate` | Ajani's Pridemate | functional definition |
 | `ajani_s_welcome` | Ajani's Welcome | functional definition |
 | `angel_of_the_dawn` | Angel of the Dawn | functional definition |
+| `arcades_the_strategist` | Arcades, the Strategist | functional definition |
 | `arcane_encyclopedia` | Arcane Encyclopedia | functional definition |
 | `arisen_gorgon` | Arisen Gorgon | functional definition |
 | `aven_wind_mage` | Aven Wind Mage | functional definition |
@@ -144,6 +145,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `mystic_archaeologist` | Mystic Archaeologist | functional definition |
 | `naturalize` | Naturalize | functional definition |
 | `nightmare_s_thirst` | Nightmare's Thirst | functional definition |
+| `novice_knight` | Novice Knight | functional definition |
 | `oakenform` | Oakenform | functional definition |
 | `omenspeaker` | Omenspeaker | functional definition |
 | `onakke_ogre` | Onakke Ogre | functional definition |
@@ -244,7 +246,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Abilities that trigger on someone else drawing a card | the draw trigger condition observes only its own controller's draws |
 | Attack requirements | a block requirement is maximised over the whole declaration (CR 509.1c), but nothing can force a creature into the attacker declaration (CR 508.1d) — and the one requirement modeled is that every creature able to block an attacker does so, never that one particular creature blocks |
 | Auras that enchant a player or land, or move between hosts | only enchant-creature Auras granting P/T, keywords, or combat restrictions are modeled |
-| Combat damage assigned by a value other than power | every attacker and blocker assigns damage equal to its current power |
+| Combat damage assigned by anything but the assigning creature's own power or toughness | an attacker or blocker assigns its current power, or its current toughness while a continuous effect names that one instead, read at the single place the combat-damage step asks how much a creature assigns; no other characteristic can be named, nothing assigns a fixed amount or a count, and nothing reads another object's characteristic |
 | Conditions other than a permanent count, a mill, a discard, or life gained this turn | a permanent count cannot require distinct names, and no condition asks what one permanent has done — on the intervening-if side or the continuous one |
 | Cost reduction and cost increase effects | no cost-modification layer |
 | Costs paid by exiling a card, by sacrificing more than one permanent, or by choosing to pay at all | a cast and an activation each carry the sacrifices and discards their cost names on the action, one permanent per sacrifice and always the caster's or activator's own; nothing exiles a card as a cost, no cost takes two permanents or any number of them, and every non-mana cost is mandatory rather than an option the player may decline |
@@ -267,7 +269,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Protection | there is no protection layer: nothing stops a spell, a block, an aura, or damage by a quality the way CR 702.16 does |
 | Reflexive triggers, and conditional branches that choose a target | an optional effect declares the target group of the one effect it wraps, but a conditional's branches, a wrapper over two targeting effects, and a "when you do" aimed after a cost is paid have no group one announcement could fill |
 | Replacement effects other than one modifying a permanent entering the battlefield | the entering object's own self-replacements and a one-shot replacement an ability created for the turn are collected, ordered by the affected permanent's controller (CR 616.1), and applied once each (CR 614.5); damage is reached only by a prevention shield, and no other event can be replaced — not a permanent leaving the battlefield, a draw, or life gained — no permanent carries a static replacement ability, and the only substitution an entry can be given is exile |
-| Rules that apply as though a permanent lacked a keyword it has | a keyword is present or absent at layer 6; nothing tells one rule to ignore a keyword the permanent still has |
+| Rules that apply as though a permanent lacked a keyword other than defender | one as-though permission is modeled — attacking as though the creature did not have defender (CR 609.4), granted as a continuous effect that is in no layer and read only at the attacker declaration, so the keyword itself is untouched everywhere else; no other keyword can be ignored by a rule, and nothing applies as though a permanent had a keyword it does not |
 | Selectors that filter by toughness, or by a power relative to another permanent's | a permanent count, an enters-or-dies trigger selector, a blocking restriction, and a card choice each name a fixed power threshold; a target spec, a mass-effect class, and a static ability's condition name none, no threshold reads toughness, and no threshold is another permanent's power |
 | Spells with X in their cost | mana costs are fixed strings with no X announcement |
 | Static abilities that affect anything but the source or creatures its controller controls | the continuous-effect selector names the source or one class of that controller's creatures, so a permanent or an emblem may modify no other |

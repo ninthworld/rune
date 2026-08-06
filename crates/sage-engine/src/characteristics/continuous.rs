@@ -113,6 +113,15 @@ struct StaticSource {
 /// not terminate. When those layers land, this is the call site that must start
 /// reading a computed value — through a seam that cannot recurse.
 ///
+/// The **keyword** test reads the printed face for the second of those two reasons and
+/// not the first: layer 6 *is* implemented, so a granted keyword is a real keyword — but
+/// it is granted by the very fold this selector is called from
+/// ([`current_keywords`]), and asking for the answer while computing it would not
+/// terminate. So "each creature you control with defender" finds every creature that
+/// prints defender and no creature that was handed one. The observer's counterpart
+/// ([`crate::ObservedPermanent`]) runs outside the layer system and does read the
+/// computed set.
+///
 /// Control is already read that way: [`controller_of`] is layer 2, applied before this
 /// layer, and it *is* a seam that cannot recurse (it reads stored effects only). So an
 /// anthem stops pumping a creature the moment someone else gains control of it, and
@@ -129,6 +138,7 @@ fn static_affects_match(
         StaticAffects::CreaturesYouControl {
             subtype,
             except_this,
+            keyword,
         } => {
             if !is_creature || controller_of(state, perm) != source.controller {
                 return false;
@@ -140,13 +150,20 @@ fn static_affects_match(
             if *except_this && source.permanent == Some(perm.id) {
                 return false;
             }
-            match subtype {
-                None => true,
-                Some(wanted) => perm
-                    .printed
-                    .face(db)
-                    .is_some_and(|face| face.has_subtype(wanted)),
+            let Some(face) = perm.printed.face(db) else {
+                return false;
+            };
+            if let Some(wanted) = subtype {
+                if !face.has_subtype(wanted) {
+                    return false;
+                }
             }
+            if let Some(wanted) = keyword {
+                if !face.keywords().contains(wanted) {
+                    return false;
+                }
+            }
+            true
         }
         // A class of one. An emblem has no source permanent, so a `source` static on one
         // applies to nothing — which is what `None == Some(perm.id)` says.
@@ -179,6 +196,14 @@ fn static_condition_holds(
                 .iter()
                 .any(|p| p.id == id && p.attacking.is_some())
         }),
+        // CR 303.4 / CR 301.5: "enchanted or equipped" is one question about the host —
+        // is anything attached to it — and the attachment's own kind is the only thing
+        // that would tell the two words apart. Read off the battlefield on this call, so
+        // an Aura resolving onto it turns the ability on and moving the Equipment away
+        // turns it off, with nothing to prune.
+        Some(StaticCondition::SourceIsEnchantedOrEquipped) => source
+            .permanent
+            .is_some_and(|id| state.battlefield.iter().any(|p| p.attached_to == Some(id))),
     }
 }
 

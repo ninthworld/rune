@@ -10,6 +10,8 @@ mod dies_tests;
 mod double_strike_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod toughness_tests;
 
 /// Combat-damage step turn-based action: deal all combat damage (CR 510).
 ///

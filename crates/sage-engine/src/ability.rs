@@ -12,7 +12,7 @@
 
 use serde::Deserialize;
 
-use crate::card::{CombatRestriction, Keyword};
+use crate::card::{CombatRestriction, DamageCharacteristic, Keyword, RuleModification};
 use crate::card_type::CardType;
 use crate::id::{CardInstanceId, PermanentId, PlayerId};
 use crate::mana::Color;

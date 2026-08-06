@@ -40,6 +40,10 @@ pub(super) fn current_keywords(
             Modification::LoseAllAbilities => keywords.clear(),
             Modification::GrantRestriction(_)
             | Modification::PowerToughness { .. }
+            // A rule modification adds and removes no keyword — that is the whole of
+            // what distinguishes an as-though permission from
+            // [`Modification::LoseKeyword`] above it.
+            | Modification::ModifyRule(_)
             | Modification::GainControl(_) => {}
         }
     }
@@ -74,6 +78,7 @@ pub(super) fn current_restrictions(
             Modification::GrantKeyword(_)
             | Modification::LoseKeyword(_)
             | Modification::PowerToughness { .. }
+            | Modification::ModifyRule(_)
             | Modification::GainControl(_) => {}
         }
     }

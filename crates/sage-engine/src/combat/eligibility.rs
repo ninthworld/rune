@@ -1,4 +1,4 @@
-use crate::card::{CombatRestriction, Keyword};
+use crate::card::CombatRestriction;
 use crate::card_type::CardType;
 use crate::id::{PermanentId, PlayerId};
 use crate::state::GameState;
@@ -131,7 +131,9 @@ pub fn defending_player(state: &GameState) -> Option<PlayerId> {
 /// O(N) scan of the battlefield, never a product over selections. Haste (CR
 /// 702.10b) exempts a creature from the summoning-sickness restriction; defender
 /// (CR 702.3b) and a [`CombatRestriction::CantAttack`] imposition (CR 506.3a) each
-/// remove a creature from the set outright.
+/// remove a creature from the set outright — defender only while nothing lets the
+/// creature attack as though it did not have one
+/// ([`defender_stops_attacking`](super::defender_stops_attacking), CR 609.4).
 ///
 /// Attack *requirements* — "attacks each combat if able" — are a constraint from the
 /// other direction and are not modeled: nothing here can force a creature into the
@@ -149,11 +151,11 @@ pub fn attacker_candidates(state: &GameState, db: &CardDatabase) -> Vec<Permanen
                 // CR 302.6, with the CR 702.10b haste exemption: a hasty creature
                 // ignores the summoning-sickness attack restriction.
                 && !summoning_sickness_restricts(state, perm, db)
-                // CR 702.3b: a creature with defender can't attack. Read through the
-                // computed keywords (CR 613.1f), so a *granted* defender restricts
-                // exactly as a printed one does — and stops doing so the instant the
-                // grant ends.
-                && !super::helpers::has_keyword(state, perm, Keyword::Defender, db)
+                // CR 702.3b: a creature with defender can't attack — unless something
+                // lets it attack *as though* it did not have one (CR 609.4). Both halves
+                // are asked as one question, so the permission cannot be honoured here
+                // and forgotten elsewhere; the creature keeps the keyword either way.
+                && !super::defender_stops_attacking(state, perm, db)
                 // CR 506.3a: the same prohibition without the keyword, as an Aura or a
                 // spell imposes it. Read through the same computed characteristics.
                 && !permanent_has_restriction(state, perm.id, CombatRestriction::CantAttack, db)

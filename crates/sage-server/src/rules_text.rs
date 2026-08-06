@@ -24,11 +24,11 @@
 use sage_engine::{
     equip_ability, Ability, ActivatorScope, AdditionalCost, Attachment, AttachmentKind, CardData,
     CardFilter, CardType, Chooser, Color, CombatRestriction, Condition, Cost, CountScope,
-    CounterKind, DamageSubject, DerivedAmount, Effect, EnteringFilter, FoundDestination,
-    GraveyardCardClass, GraveyardScope, Keyword, ManaRestriction, MassAffects, ObservedPermanent,
-    ObservedSpell, PermanentCount, PlayerModification, PlayerRef, ReplacementEffect, StaticAffects,
-    StaticCondition, StaticModification, TargetCount, TargetSpec, TokenData, TriggerCondition,
-    TriggerStep, TurnScope,
+    CounterKind, DamageCharacteristic, DamageSubject, DerivedAmount, Effect, EnteringFilter,
+    FoundDestination, GraveyardCardClass, GraveyardScope, Keyword, ManaRestriction, MassAffects,
+    ObservedPermanent, ObservedSpell, PermanentCount, PlayerModification, PlayerRef,
+    ReplacementEffect, StaticAffects, StaticCondition, StaticModification, TargetCount, TargetSpec,
+    TokenData, TriggerCondition, TriggerStep, TurnScope,
 };
 
 mod effects;
@@ -221,7 +221,7 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
             let statement = format!(
                 "{} {}",
                 static_subject(affects, source),
-                static_verb(modification)
+                static_verb(modification, subject_is_plural(affects))
             );
             // The `as long as …` clause trails the statement, where a card prints it.
             match condition {
@@ -356,15 +356,37 @@ fn static_subject(affects: &StaticAffects, source: &str) -> String {
         StaticAffects::CreaturesYouControl {
             subtype,
             except_this,
+            keyword,
         } => {
             // "Other" is what distinguishes a lord from an anthem, and it is a fact
             // about the selector, so it is read off the selector.
             let other = if *except_this { "other " } else { "" };
-            match subtype {
+            let class = match subtype {
                 Some(kind) => format!("{other}{} you control", plural(kind)),
                 None => format!("{other}creatures you control"),
+            };
+            // A keyword filter trails the class, where a card prints it: "each creature
+            // you control **with defender**". The same place the observer's counterpart
+            // puts it, because it is the same phrase.
+            match keyword {
+                None => class,
+                Some(keyword) => format!("{class} with {}", keyword_word(*keyword)),
             }
         }
+    }
+}
+
+/// Whether a static ability's subject is **plural** — a class of permanents rather than
+/// the single permanent that printed the ability.
+///
+/// Read by the one verb that has to agree with its subject: an as-though clause carries a
+/// pronoun back to it ("as though **it** didn't have defender"), and there is no wording
+/// that is right for both numbers. The other verbs need no such agreement — "get +1/+1"
+/// and "have flying" read the same after either subject — so only that one asks.
+fn subject_is_plural(affects: &StaticAffects) -> bool {
+    match affects {
+        StaticAffects::Source => false,
+        StaticAffects::CreaturesYouControl { .. } => true,
     }
 }
 
@@ -379,6 +401,7 @@ fn static_condition_clause(condition: &StaticCondition) -> String {
             format!("you control {}", counted_permanents(permanents, *count))
         }
         StaticCondition::SourceIsAttacking => "it's attacking".to_string(),
+        StaticCondition::SourceIsEnchantedOrEquipped => "it's enchanted or equipped".to_string(),
     }
 }
 
@@ -466,7 +489,11 @@ fn plural(subtype: &str) -> String {
 }
 
 /// The predicate of a static ability's sentence — what the affected permanents get.
-fn static_verb(modification: &StaticModification) -> String {
+///
+/// `plural` says whether the subject is a class or the one permanent that printed the
+/// ability ([`subject_is_plural`]). Only the as-though clause reads it, because only it
+/// refers back to its own subject with a pronoun.
+fn static_verb(modification: &StaticModification, plural: bool) -> String {
     match modification {
         StaticModification::PowerToughness { power, toughness } => {
             format!("get {power:+}/{toughness:+}")
@@ -476,6 +503,34 @@ fn static_verb(modification: &StaticModification) -> String {
         // and a pump.
         StaticModification::GrantKeyword { keyword } => {
             format!("have {}", keyword_word(*keyword))
+        }
+        // "Rather than their power" is stated even though it is implied, because it is
+        // the whole content of the ability: without it the sentence claims a creature
+        // assigns damage equal to a characteristic, which every creature already does.
+        StaticModification::AssignsCombatDamageBy { characteristic } => {
+            let (verb, possessive) = if plural {
+                ("assign", "their")
+            } else {
+                ("assigns", "its")
+            };
+            match characteristic {
+                DamageCharacteristic::Toughness => format!(
+                    "{verb} combat damage equal to {possessive} toughness rather than \
+                     {possessive} power"
+                ),
+                // The unmodified rule, said out loud. No card prints it, but the
+                // vocabulary can say it and a sentence that silently omitted it would be
+                // the one kind of text this formatter must never produce.
+                DamageCharacteristic::Power => {
+                    format!("{verb} combat damage equal to {possessive} power")
+                }
+            }
+        }
+        // "As though", not "doesn't have": the keyword is still there, and a player
+        // reading this needs to know that their own defender-counting cards still see it.
+        StaticModification::AttacksAsThoughNoDefender => {
+            let pronoun = if plural { "they didn't" } else { "it didn't" };
+            format!("can attack as though {pronoun} have defender")
         }
     }
 }
@@ -547,5 +602,7 @@ fn clauses(source: &str, effects: &[Effect]) -> String {
     parts.join(" and ")
 }
 
+#[cfg(test)]
+mod rule_modification_tests;
 #[cfg(test)]
 mod tests;

@@ -1237,13 +1237,49 @@ battlefield, with nothing ever put on the stack — an anthem or a lord:
 ```
 
 - `affects` names the class. `creatures_you_control` takes `subtype` (which restricts it
-  to a lord's tribe — "other **Elves** you control") and `except_this` (the "other" in a
+  to a lord's tribe — "other **Elves** you control"), `keyword` (the "with **defender**"
+  of "each creature you control with defender"), and `except_this` (the "other" in a
   lord's wording, comparing the *permanent* rather than the card, so two copies of one
   lord do pump each other). `{"scope": "source"}` is the class of one — the "this
   creature" of a card that modifies itself, which flows through the same selector, the
   same timestamp, and the same layer as an anthem rather than needing a path of its own.
-- `modification` is either `power_toughness` (layer 7c, folded after counters in timestamp
-  order) or `grant_keyword` (layer 6, idempotent).
+
+  Both `subtype` and `keyword` are matched against the **printed** face. That is forced
+  rather than chosen: this selector is evaluated from *inside* the computation of the
+  affected permanent's characteristics, and asking for a computed keyword there is asking
+  the layer-6 fold for the answer it is in the middle of producing. So a creature that was
+  *granted* defender is outside "each creature you control with defender". The trigger
+  selector's `keyword` (see [Trigger conditions](#trigger-conditions)) runs outside the
+  layer system and does read the computed set; the asymmetry is that recursion and nothing
+  else.
+- `modification` is one of four, and the last two are not in a layer at all:
+  - `power_toughness` — layer 7c, folded after counters in timestamp order.
+  - `grant_keyword` — layer 6, idempotent.
+  - `assigns_combat_damage_by` — **no layer**. The affected creatures assign combat damage
+    equal to the named `characteristic` (`power` or `toughness`) rather than to their
+    power (CR 510.1a, modified), read at the one place the combat-damage step asks how
+    much a creature assigns. Everything downstream follows for free: trample's excess
+    (CR 702.19e) is what is left of that amount after each blocker's lethal, and the
+    marked damage the lethal-damage state-based action reads (CR 704.5g) is what of it was
+    dealt.
+
+    **This is not a power-setting effect**, and the distinction is the card rather than a
+    nicety. The creature's power is untouched — every evasion rule, every selector with a
+    power bound, and the power a client is shown all keep reading it — because CR 613
+    orders effects that change *characteristics* and this changes none. A layer-7b
+    `set power to toughness` would be visible to all of them and would be a different
+    card.
+  - `attacks_as_though_no_defender` — **no layer**. The affected creatures may be declared
+    as attackers even though they have defender (CR 702.3b applied as though absent,
+    CR 609.4), read at the attacker declaration and nowhere else.
+
+    **This is not keyword removal.** The creature still has defender for every other
+    purpose: a card that counts creatures with defender still counts it, the keyword line
+    still prints it, and — the case that matters — the `keyword` filter of the very
+    selector that granted the permission still matches it. A permission built out of
+    `loses_keyword` would take the creature out of the class that granted it. It also
+    permits exactly one thing: a tapped creature, a summoning-sick one, and one under a
+    `cant_attack` restriction all still cannot attack.
 - `condition` is the optional `as long as …` clause. Absent is unconditional, which is
   what every anthem and lord says:
 
@@ -1256,10 +1292,13 @@ battlefield, with nothing ever put on the stack — an anthem or a lord:
 
   The conditions are `controls_at_least` — the same `permanents` selector an
   intervening-if counts, with `count` defaulting to the "an" of "as long as you control
-  **an** artifact" — and `source_is_attacking`. It is a separate vocabulary from the
-  `Condition` an `Effect::Conditional` takes, because most of that one's variants ask what
-  a *resolution* or a *turn* has already done and a continuous ability is neither: it has
-  no window of its own to read and no start to measure from.
+  **an** artifact" — `source_is_attacking`, and `source_is_enchanted_or_equipped` (the
+  source has something attached to it, CR 303.4 / CR 301.5 — one condition because a card
+  prints one, and only the attachment's own kind tells the two words apart). It is a
+  separate vocabulary from the `Condition` an `Effect::Conditional` takes, because most of
+  that one's variants ask what a *resolution* or a *turn* has already done and a
+  continuous ability is neither: it has no window of its own to read and no start to
+  measure from.
 
   A `permanents` selector gains a `color` alongside its `card_type` and `subtype`, which
   is what lets a card ask for "a **blue** creature" or "an **Ajani** planeswalker".
