@@ -92,6 +92,20 @@ pub struct GameState {
     /// replacement layer walks; the first is the entering object's own abilities, which
     /// are read off the card and never stored (see [`crate::replacement`]).
     pub replacements: Vec<crate::replacement::PendingReplacement>,
+    /// The **damage-prevention shields** in force this turn (CR 615.1), each named by
+    /// the class of damage it prevents — see [`DamageFilter`](crate::DamageFilter).
+    ///
+    /// Raw stored state for the same reason [`Self::replacements`] is: a shield exists
+    /// because an effect said so, and no snapshot of the board could recover it. It
+    /// differs from that list in its lifetime, which is the difference between `the next
+    /// time … this turn` and `this turn`: a shield is **not** spent by applying, and it
+    /// ends in the **cleanup step** rather than at the turn boundary, simultaneously
+    /// with the pump and the marked damage it is authored beside (CR 514.2).
+    ///
+    /// Each entry is the filter alone: nothing reads who created a shield, because a
+    /// shield names no target, and CR 616.1 gives the ordering decision to the affected
+    /// player rather than to its controller. Empty in almost every state.
+    pub prevention: Vec<crate::replacement::DamageFilter>,
     /// The stack of spells and abilities, bottom first (the last element is the
     /// top and resolves first). Mana abilities never appear here.
     pub stack: Vec<StackObject>,

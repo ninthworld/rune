@@ -54,6 +54,14 @@ pub(crate) fn deal_combat_damage(state: &mut GameState, db: &CardDatabase) {
 /// changes and marked damage land together; a deathtouch mark records the
 /// recipient for the CR 704.5h state-based action, and lifelink life gain rides
 /// the same batch as the damage (CR 702.15e).
+///
+/// Every assignment goes through [`GameState::deal_damage`], which is where a
+/// prevention shield is consulted (CR 615.1) — so combat damage is prevented by exactly
+/// the mechanism a burn spell's damage is, and this step contains no clause about it.
+/// What comes back is the damage that was actually **dealt**, and it is that number, not
+/// the assigned one, that flags a deathtouch recipient, feeds the CR 903.10a commander
+/// tally, and gains a lifelink source life: fully prevented damage does none of the
+/// three.
 pub(crate) fn apply_combat_batch(
     state: &mut GameState,
     batch: Vec<CombatDamage>,
@@ -65,43 +73,55 @@ pub(crate) fn apply_combat_batch(
                 player,
                 amount,
                 source_commander,
+                lifelink,
             } => {
                 // Damage to a player is life loss recorded as a `DamageDealt` event
                 // (not a bare life change), so a client can report the hit.
-                state.deal_damage_to_player(player, amount);
+                let dealt =
+                    state.deal_damage(PendingDamage::to_player(player, amount).in_combat(), db);
                 // CR 903.10a: combat damage from a commander also accrues to the
                 // per-designation tally that the 21-damage loss reads. Keyed to the
                 // commander's owning player, so it survives the commander's zone
                 // changes; non-combat damage never reaches this seam, so it never
                 // counts.
                 if let Some(commander) = source_commander {
-                    state.add_commander_damage(commander, player, amount);
+                    state.add_commander_damage(commander, player, dealt);
                 }
+                gain_lifelink(state, lifelink, dealt);
             }
             CombatDamage::ToPermanent {
                 permanent,
                 amount,
                 deathtouch,
+                lifelink,
             } => {
-                // The one damage-to-a-permanent seam: it marks the damage on a
-                // creature and removes loyalty from a planeswalker (CR 120.3c/d),
-                // recording the `DamageDealt` event either way.
-                let marked = state.deal_damage_to_permanent(permanent, amount, db);
+                // The one damage seam: it marks the damage on a creature and removes
+                // loyalty from a planeswalker (CR 120.3c/d), recording the
+                // `DamageDealt` event either way.
+                let dealt = state.deal_damage(
+                    PendingDamage::to_permanent(permanent, amount).in_combat(),
+                    db,
+                );
                 // CR 702.2b / 704.5h: any nonzero damage from a deathtouch source
                 // makes the recipient a candidate for destruction.
-                if marked
-                    && deathtouch
-                    && amount > 0
-                    && !state.deathtouch_struck.contains(&permanent)
-                {
+                if dealt > 0 && deathtouch && !state.deathtouch_struck.contains(&permanent) {
                     state.deathtouch_struck.push(permanent);
                 }
-            }
-            CombatDamage::GainLife { player, amount } => {
-                // Lifelink life gain is a non-damage life change (CR 702.15e).
-                state.change_life(player, i32::try_from(amount).unwrap_or(i32::MAX));
+                gain_lifelink(state, lifelink, dealt);
             }
         }
+    }
+}
+
+/// Gain `dealt` life for a lifelink source's controller (CR 702.15e), if the source had
+/// lifelink and any damage was actually dealt.
+///
+/// A non-damage life change, simultaneous with the damage because it is applied in the
+/// same pass over the batch. Damage that was prevented gains nothing: CR 702.15e is
+/// about damage *dealt*, and there was none.
+fn gain_lifelink(state: &mut GameState, lifelink: Option<PlayerId>, dealt: u32) {
+    if let (Some(player), true) = (lifelink, dealt > 0) {
+        state.change_life(player, i32::try_from(dealt).unwrap_or(i32::MAX));
     }
 }
 

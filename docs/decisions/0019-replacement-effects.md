@@ -73,6 +73,36 @@ CR 614.12 calls it one. It is a question rather than a modification, there is no
 order it against, and the entry is already deferred on it (ADR 0013 §8). Folding it in
 would mean posing a choice about a choice.
 
+## The second event: damage (issue #736)
+
+Damage prevention (CR 615) landed on this layer rather than beside it, and it needed no
+second collector, no second ordering mechanism, and no second never-twice rule — which is
+what the bar being low was supposed to mean. `PendingDamage` is the event value: the
+recipient, the amount, and whether it is **combat** damage. `GameState::deal_damage` is
+its seam, and it is now the only way anything in the engine deals damage; the combat
+batch, a burn spell, a sweeper, and a fight all build the value and hand it over.
+Prevented damage is therefore never marked (CR 120.3d), never lethal (CR 704.5g), never
+life loss (CR 120.3a), and never a lifelink gain (CR 702.15e) as one fact rather than as
+four clauses.
+
+Two things about it are smaller than the entry event, and both are facts about the cards
+rather than shortcuts:
+
+- **A shield is not one-shot, so it is not on the one-shot list.** `Prevent all combat
+  damage that would be dealt this turn` covers every damage event for the rest of the
+  turn. It lives on `GameState::prevention` with a duration and ends in the **cleanup
+  step**, simultaneously with the pumps and the marked damage (CR 514.2) — where a
+  created replacement is spent by applying and is dropped at the turn boundary.
+- **Nothing is ordered.** Every shield modeled prevents *all* of the damage it applies
+  to, so two applicable shields produce the same event in either order and CR 616.1 has
+  no answer that could differ. A shield that prevents an *amount* is what makes the order
+  observable; it asks through the same queue an entry's ordering does.
+
+The one thing that moved outside the layer is lifelink. `CombatDamage` used to carry a
+separate `gain N life` entry computed from the damage *assigned*; it now carries the
+gaining seat on the assignment itself, because CR 702.15e is about the damage **dealt**
+and only the seam knows how much of it survived.
+
 ## Consequences
 
 The four battlefield-entry roads became one, and gained a rules layer on the way. A token
@@ -85,17 +115,16 @@ The cost is that `create_token` and the entry seam now return `Option<PermanentI
 entry can be replaced, and then there is no permanent. That is honest and every caller
 already ignored the id.
 
-The bar for the next event is low and the bar for the next *modification* is lower. Damage
-prevention (CR 615) is a second event value plus its seam; entering as a copy is a third
-`ReplacementEffect` variant. Neither needs a second collector, a second ordering
-mechanism, or a second never-twice rule.
+The bar for the next event is low and the bar for the next *modification* is lower —
+damage prevention was the first thing to test that claim, and it held (see above).
+Entering as a copy is a third `ReplacementEffect` variant.
 
-What we did not build, and what the compatibility report's exclusion says plainly: only
-the entry event is replaceable. A permanent *leaving* the battlefield, damage, a draw, and
-life gained are all events printed cards replace, and none of them routes through this
-layer. Adding one is not free — the leave seams run inside the state-based-action loop,
-where there is nothing to suspend a CR 616.1 question onto, and that is the real work
-behind the next event rather than the collector.
+What we did not build, and what the compatibility report's exclusions say plainly: two
+events are replaceable, an entry and damage. A permanent *leaving* the battlefield, a
+draw, and life gained are all events printed cards replace, and none of them routes
+through this layer. Adding one is not free — the leave seams run inside the
+state-based-action loop, where there is nothing to suspend a CR 616.1 question onto, and
+that is the real work behind the next event rather than the collector.
 
 The replacement is also **silent in the public log**. `sage_protocol::GameLogEvent` has no
 entry for a replaced event, and a fact recorded in the engine that the projection quietly

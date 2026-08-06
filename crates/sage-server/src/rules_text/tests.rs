@@ -1464,3 +1464,27 @@ fn issue_748_flash_variable_arity_and_a_mana_value_filter_read_as_their_cards() 
         "Defender\n{3}, {T}: Target creature can't be blocked this turn."
     );
 }
+
+/// A prevention shield reads as the one sentence Root Snare prints (CR 615.1): the verb,
+/// the class of damage, and the turn it lasts. An unfiltered shield drops the word that
+/// narrows it, exercised inline because M19 prints no `prevent all damage` (ADR 0009).
+#[test]
+fn issue_736_a_prevention_shield_reads_as_prevent_all_damage_this_turn() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "root_snare"),
+        "Prevent all combat damage that would be dealt this turn."
+    );
+    let inline = CardDatabase::from_json(
+        r#"[
+            {"schema_version":1,"functional_id":"test_ward","name":"Test Ward",
+             "types":["instant"],"mana_cost":"{W}","colors":["white"],
+             "spell_effects":[{"kind":"prevent_damage"}]}
+        ]"#,
+    )
+    .unwrap();
+    assert_eq!(
+        text_of(&inline, "test_ward"),
+        "Prevent all damage that would be dealt this turn."
+    );
+}

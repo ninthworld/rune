@@ -755,6 +755,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "root_snare",
+    "collector_number": "199",
+    "rarity": "common"
+  },
+  {
     "functional_id": "runic_armasaur",
     "collector_number": "200",
     "rarity": "rare"

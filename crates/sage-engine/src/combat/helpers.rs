@@ -363,54 +363,42 @@ pub(crate) fn lethal_needed(
     }
 }
 
-/// Record `amount` combat damage a `source_controller`'s creature deals to
-/// `player`, plus the simultaneous lifelink life gain if the source has it
-/// (CR 702.15e). `source_commander` carries the source's commander designation
-/// (its owning player) when the striking creature is a commander, so the batch
-/// application can feed the CR 903.10a commander-damage tally (`None` otherwise).
+/// Record `amount` combat damage a creature deals to `player`, carrying the seat a
+/// lifelink source gains life (CR 702.15e — `None` without lifelink).
+/// `source_commander` carries the source's commander designation (its owning player)
+/// when the striking creature is a commander, so the batch application can feed the
+/// CR 903.10a commander-damage tally (`None` otherwise).
 pub(crate) fn push_player_damage(
     out: &mut Vec<crate::combat::CombatDamage>,
     player: crate::id::PlayerId,
     amount: u32,
-    source_controller: crate::id::PlayerId,
-    lifelink: bool,
+    lifelink: Option<crate::id::PlayerId>,
     source_commander: Option<crate::id::PlayerId>,
 ) {
     out.push(crate::combat::CombatDamage::ToPlayer {
         player,
         amount,
         source_commander,
+        lifelink,
     });
-    if lifelink && amount > 0 {
-        out.push(crate::combat::CombatDamage::GainLife {
-            player: source_controller,
-            amount,
-        });
-    }
 }
 
-/// Record `amount` combat damage a `source_controller`'s creature deals to
-/// `permanent`, carrying the source's deathtouch flag (CR 702.2b) and adding the
-/// simultaneous lifelink life gain if the source has it (CR 702.15e).
+/// Record `amount` combat damage a creature deals to `permanent`, carrying the
+/// source's deathtouch flag (CR 702.2b) and the seat a lifelink source gains life
+/// (CR 702.15e — `None` without lifelink).
 pub(crate) fn push_permanent_damage(
     out: &mut Vec<crate::combat::CombatDamage>,
     permanent: PermanentId,
     amount: u32,
     deathtouch: bool,
-    source_controller: crate::id::PlayerId,
-    lifelink: bool,
+    lifelink: Option<crate::id::PlayerId>,
 ) {
     out.push(crate::combat::CombatDamage::ToPermanent {
         permanent,
         amount,
         deathtouch,
+        lifelink,
     });
-    if lifelink && amount > 0 {
-        out.push(crate::combat::CombatDamage::GainLife {
-            player: source_controller,
-            amount,
-        });
-    }
 }
 
 #[cfg(test)]

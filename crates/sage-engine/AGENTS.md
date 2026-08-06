@@ -176,10 +176,18 @@ created for the turn), the affected object's **controller** orders them when mor
 applies (CR 616.1, through the same choice queue), and `PendingEntry::applied` is what stops
 any of them applying twice (CR 614.5) — which is also what makes the loop terminate.
 Applying either modifies the event or replaces it outright, and answering an ordering
-question re-enters the same function. Only the **entry** event is replaceable: a permanent
-leaving the battlefield, damage, a draw, and life gained route nowhere near this, and the
-leave seams run inside the SBA loop where there is nothing to suspend a question onto.
-`EntersChoosingColor` is not collected here — it is a question, not a modification to order.
+question re-enters the same function. `EntersChoosingColor` is not collected here — it is a
+question, not a modification to order.
+
+**Damage is the second replaceable event** (CR 615). `PendingDamage` is the value — the
+recipient, the amount, whether it is *combat* damage — and `GameState::deal_damage` is the
+one seam anything deals damage through, so a prevention shield covers combat, a burn spell,
+and a fight in one place; prevented damage is never marked, never lethal, never life loss,
+and gains a lifelink source nothing. A shield is **not** one-shot: it lives on
+`GameState::prevention` and ends in the cleanup step beside the pumps (CR 514.2), and none
+is ordered against another because every one modeled prevents all of it. A permanent
+leaving the battlefield, a draw, and life gained route nowhere near this, and the leave
+seams run inside the SBA loop where there is nothing to suspend a question onto.
 
 A choice asks one shape of **question** (`ChoiceQuestion`, ADR 0014): pick cards, answer a
 `you may` yes-or-no, name a colour, or order applicable replacements by position in a

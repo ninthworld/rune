@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (219)
+## Supported cards (220)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -171,6 +171,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `resplendent_angel` | Resplendent Angel | functional definition |
 | `revitalize` | Revitalize | functional definition |
 | `rhox_oracle` | Rhox Oracle | functional definition |
+| `root_snare` | Root Snare | functional definition |
 | `runic_armasaur` | Runic Armasaur | functional definition |
 | `rustwing_falcon` | Rustwing Falcon | functional definition |
 | `salvager_of_secrets` | Salvager of Secrets | functional definition |
@@ -247,7 +248,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Conditions other than a permanent count, a mill, a discard, or life gained this turn | a permanent count cannot require distinct names, and no condition asks what one permanent has done — on the intervening-if side or the continuous one |
 | Cost reduction and cost increase effects | no cost-modification layer |
 | Costs paid by exiling a card, by sacrificing more than one permanent, or by choosing to pay at all | a cast and an activation each carry the sacrifices and discards their cost names on the action, one permanent per sacrifice and always the caster's or activator's own; nothing exiles a card as a cost, no cost takes two permanents or any number of them, and every non-mana cost is mandatory rather than an option the player may decline |
-| Damage prevention | no prevention shield or damage-replacement layer |
+| Damage prevention beyond a blanket shield for the turn | a shield prevents all damage — or all combat damage — for the rest of the turn, consulted at the one seam damage is dealt; nothing prevents a fixed amount, names a recipient or a source, redirects damage, or lasts anything but the turn, and no damage can be made unpreventable (Banefire's clause needs X first) |
 | Effects that ask a player to name a type or a card | a permanent records the colour its controller named as it entered; a card name and a creature type have no recorded identity, and nothing on a spell records a choice at all |
 | Effects that let a player choose the order of cards put back on a library | a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random |
 | Effects that return a card from a graveyard to a zone other than a hand or the battlefield | a targeted card returns from a graveyard to a hand or to the battlefield, and a whole graveyard can be exiled; nothing else moves a card out of one |
@@ -265,7 +266,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Playing a card from a zone other than the hand, the command zone, or a permitted graveyard | a graveyard is reached three ways — a one-turn permission to cast from it, a continuous permission to play lands from it, and an activated or triggered ability that returns its own card out of it — but no other zone is reached at all: no per-turn exile permission, nothing played off the top of a library, no way to cast without paying a mana cost, no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure), and no activation cost that exiles other cards from a graveyard |
 | Protection | there is no protection layer: nothing stops a spell, a block, an aura, or damage by a quality the way CR 702.16 does |
 | Reflexive triggers, and conditional branches that choose a target | an optional effect declares the target group of the one effect it wraps, but a conditional's branches, a wrapper over two targeting effects, and a "when you do" aimed after a cost is paid have no group one announcement could fill |
-| Replacement effects other than one modifying a permanent entering the battlefield | the entering object's own self-replacements and a one-shot replacement an ability created for the turn are collected, ordered by the affected permanent's controller (CR 616.1), and applied once each (CR 614.5); no other event can be replaced — not a permanent leaving the battlefield, damage, a draw, or life gained — no permanent carries a static replacement ability, and the only substitution an entry can be given is exile |
+| Replacement effects other than one modifying a permanent entering the battlefield | the entering object's own self-replacements and a one-shot replacement an ability created for the turn are collected, ordered by the affected permanent's controller (CR 616.1), and applied once each (CR 614.5); damage is reached only by a prevention shield, and no other event can be replaced — not a permanent leaving the battlefield, a draw, or life gained — no permanent carries a static replacement ability, and the only substitution an entry can be given is exile |
 | Rules that apply as though a permanent lacked a keyword it has | a keyword is present or absent at layer 6; nothing tells one rule to ignore a keyword the permanent still has |
 | Selectors that filter by toughness, or by a power relative to another permanent's | a permanent count, an enters-or-dies trigger selector, a blocking restriction, and a card choice each name a fixed power threshold; a target spec, a mass-effect class, and a static ability's condition name none, no threshold reads toughness, and no threshold is another permanent's power |
 | Spells with X in their cost | mana costs are fixed strings with no X announcement |

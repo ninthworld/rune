@@ -101,8 +101,9 @@ pub use player::{
     MAX_HAND_SIZE, STARTING_LIFE,
 };
 pub use replacement::{
-    pending_replacement_options, EnteringFilter, EnteringObject, OfferedReplacement, PendingEntry,
-    PendingReplacement, ReplacementEffect, ReplacementOption,
+    pending_replacement_options, DamageFilter, DamageRecipient, EnteringFilter, EnteringObject,
+    OfferedReplacement, PendingDamage, PendingEntry, PendingReplacement, ReplacementEffect,
+    ReplacementOption,
 };
 pub use scripted::scripted_rules_text;
 pub use setup::{

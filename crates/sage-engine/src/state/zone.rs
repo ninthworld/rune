@@ -4,7 +4,7 @@ use crate::card_type::CardType;
 use crate::combat::AttackTarget;
 use crate::id::{CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::player::Player;
-use crate::replacement::{EnteringObject, PendingEntry};
+use crate::replacement::{DamageRecipient, EnteringObject, PendingDamage, PendingEntry};
 use crate::token::TokenData;
 use crate::CardDatabase;
 
@@ -473,8 +473,8 @@ impl GameState {
     /// Adjust a player's life by `delta` and record a [`GameEvent::LifeChanged`]
     /// when the change is nonzero. The seam every **non-damage** life movement
     /// (life gain, life paid or lost) routes through, so the log observes it in
-    /// order. Damage to a player uses [`Self::deal_damage_to_player`] instead, which
-    /// records a [`GameEvent::DamageDealt`] rather than a life change.
+    /// order. Damage to a player uses [`Self::deal_damage`] instead, which is subject to
+    /// prevention and records a [`GameEvent::DamageDealt`] rather than a life change.
     pub(crate) fn change_life(&mut self, player: PlayerId, delta: i32) {
         let Some(p) = self.players.get_mut(player.0) else {
             return;
@@ -488,12 +488,49 @@ impl GameState {
         }
     }
 
+    /// Deal `damage` (CR 120.3) — **the** damage seam, and the one place a prevention
+    /// shield is consulted (CR 615.1). Returns how much damage was actually dealt.
+    ///
+    /// Everything that deals damage builds a [`PendingDamage`] and comes here: the
+    /// combat-damage step, a burn spell, a class-wide sweeper, an ability, a fight. The
+    /// event is described before it happens, the shields in force are applied to it
+    /// ([`after_prevention`](crate::replacement)), and only what survives is dealt —
+    /// which is what makes "prevented damage is never marked, never kills, never becomes
+    /// life loss, and gains a lifelink source nothing" one fact instead of four.
+    ///
+    /// A fully prevented event does **nothing at all**: no life moves, nothing is marked,
+    /// and no [`GameEvent::DamageDealt`] is recorded, because no damage was dealt to
+    /// record. The prevention itself records nothing either — `sage_protocol` has no wire
+    /// event for it, and a fact the projection would silently drop is worse than one that
+    /// is not recorded (the same call [`crate::replacement`] makes for a replaced entry).
+    ///
+    /// The return is the amount dealt rather than a yes/no, because two callers need the
+    /// number and not the verdict: lifelink gains life equal to the damage *dealt*
+    /// (CR 702.15e), and the CR 903.10a commander tally counts the damage that landed.
+    /// Zero comes back for damage that was prevented **and** for damage aimed at a
+    /// permanent that is no longer there — neither dealt any.
+    pub(crate) fn deal_damage(&mut self, damage: PendingDamage, db: &CardDatabase) -> u32 {
+        let amount = crate::replacement::after_prevention(self, &damage);
+        if amount == 0 {
+            return 0;
+        }
+        match damage.recipient {
+            DamageRecipient::Player(player) => self.deal_damage_to_player(player, amount),
+            DamageRecipient::Permanent(id) => self.deal_damage_to_permanent(id, amount, db),
+        }
+    }
+
     /// Deal `amount` damage to a player: reduce their life (CR 120.3a) and record a
     /// [`GameEvent::DamageDealt`] when `amount` is nonzero. Zero-life is settled by
-    /// the state-based-actions loop (CR 704.5a).
-    pub(crate) fn deal_damage_to_player(&mut self, player: PlayerId, amount: u32) {
+    /// the state-based-actions loop (CR 704.5a). Returns the damage dealt — zero for a
+    /// seat that does not exist.
+    ///
+    /// The player half of [`Self::deal_damage`], and private for that reason: damage
+    /// that skipped the prevention shield would be damage the rules do not allow, so
+    /// there is no way to ask for it.
+    fn deal_damage_to_player(&mut self, player: PlayerId, amount: u32) -> u32 {
         let Some(p) = self.players.get_mut(player.0) else {
-            return;
+            return 0;
         };
         p.life -= i32::try_from(amount).unwrap_or(i32::MAX);
         if amount > 0 {
@@ -502,11 +539,12 @@ impl GameState {
                 amount,
             });
         }
+        amount
     }
 
-    /// Deal `amount` damage to the permanent `id` (CR 120.3) — the single
-    /// damage-to-a-permanent seam, which decides *what damage does to this object*
-    /// before anything is recorded.
+    /// Deal `amount` damage to the permanent `id` (CR 120.3) — the permanent half of
+    /// [`Self::deal_damage`], which decides *what damage does to this object* before
+    /// anything is recorded.
     ///
     /// Two outcomes, and the permanent's type picks between them:
     ///
@@ -516,23 +554,19 @@ impl GameState {
     /// - everything else has the damage **marked** on it (CR 120.3d) for the
     ///   lethal-damage state-based action to compare against toughness (CR 704.5g).
     ///
-    /// Every source of damage to a permanent routes through here — combat
-    /// (`apply.rs :: apply_combat_batch`), a targeted burn effect, and a class-wide one
-    /// — so "damage to a planeswalker takes loyalty" is one fact rather than three that
-    /// could be implemented two-thirds of the way. Both branches record the same
+    /// Every source of damage to a permanent routes through [`Self::deal_damage`] and
+    /// arrives here — combat, a targeted burn effect, a class-wide one, a fight — so
+    /// "damage to a planeswalker takes loyalty" is one fact rather than four that could
+    /// be implemented two-thirds of the way. Both branches record the same
     /// [`GameEvent::DamageDealt`], so a client reports a hit on a planeswalker exactly
-    /// as it reports one on a creature. Returns whether a permanent with that id was
-    /// present (so a combat caller can then apply a deathtouch flag).
+    /// as it reports one on a creature. Returns the damage dealt — zero when no
+    /// permanent with that id is there to take it, which is how a combat caller knows
+    /// not to apply a deathtouch flag or gain lifelink life.
     ///
     /// The **redirection rule is gone** from current rules: damage aimed at a player is
     /// dealt to that player, never moved to a planeswalker they control, so nothing
     /// here looks at where damage was pointed.
-    pub(crate) fn deal_damage_to_permanent(
-        &mut self,
-        id: PermanentId,
-        amount: u32,
-        db: &CardDatabase,
-    ) -> bool {
+    fn deal_damage_to_permanent(&mut self, id: PermanentId, amount: u32, db: &CardDatabase) -> u32 {
         let is_planeswalker = self
             .battlefield
             .iter()
@@ -543,7 +577,7 @@ impl GameState {
             return self.mark_damage_on_permanent(id, amount);
         }
         let Some(perm) = self.battlefield.iter_mut().find(|p| p.id == id) else {
-            return false;
+            return 0;
         };
         // CR 120.3c: that much loyalty is removed. Saturating, so overkill damage
         // leaves it at zero rather than wrapping — zero is what CR 704.5i reads.
@@ -559,20 +593,19 @@ impl GameState {
                 amount,
             });
         }
-        true
+        amount
     }
 
     /// Mark `amount` damage on the permanent `id` (CR 120.3d) and record a
-    /// [`GameEvent::DamageDealt`] when `amount` is nonzero. Returns whether a
-    /// permanent with that id was present. Marked damage feeds the lethal-damage SBA
-    /// (CR 704.5g).
+    /// [`GameEvent::DamageDealt`] when `amount` is nonzero. Returns the damage dealt,
+    /// zero when no permanent with that id was present. Marked damage feeds the
+    /// lethal-damage SBA (CR 704.5g).
     ///
-    /// The marking half of [`Self::deal_damage_to_permanent`], which is what callers
-    /// use: damage decides between marking and removing loyalty, and only that seam
-    /// makes the decision.
-    fn mark_damage_on_permanent(&mut self, id: PermanentId, amount: u32) -> bool {
+    /// The marking half of [`Self::deal_damage_to_permanent`]: damage decides between
+    /// marking and removing loyalty, and only that seam makes the decision.
+    fn mark_damage_on_permanent(&mut self, id: PermanentId, amount: u32) -> u32 {
         let Some(perm) = self.battlefield.iter_mut().find(|p| p.id == id) else {
-            return false;
+            return 0;
         };
         perm.damage = perm.damage.saturating_add(amount);
         let logged = LoggedPermanent::of(perm);
@@ -582,7 +615,7 @@ impl GameState {
                 amount,
             });
         }
-        true
+        amount
     }
 
     /// Add `amount` to the cumulative combat damage the commander owned by

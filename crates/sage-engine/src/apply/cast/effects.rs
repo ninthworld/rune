@@ -119,6 +119,11 @@ pub(crate) fn apply_effect(
                     turn,
                 });
         }
+        // CR 615.1: a prevention shield that covers every damage event it names for the
+        // rest of the turn. It is not spent by applying — the cleanup step's turn-based
+        // action is what ends it (CR 514.2) — and it belongs to nobody: no target, no
+        // player, and no controller anything reads back.
+        Effect::PreventDamage { damage } => state.prevention.push(damage.clone()),
         Effect::DrawCard { count } => draw_cards(state, controller, u32::from(*count)),
         // The same draw, with the number taken off the game instead of off the card
         // (CR 608.2) — once, here, so a mill this same resolution performed is what the
@@ -713,12 +718,12 @@ fn apply_class_damage(
         DamageSubject::Target(_) => {}
         DamageSubject::Players(player_ref) => {
             for seat in non_targeting_subjects(state, *player_ref, controller) {
-                state.deal_damage_to_player(seat, amount);
+                state.deal_damage(PendingDamage::to_player(seat, amount), db);
             }
         }
         DamageSubject::Permanents(affects) => {
             for id in permanents_in(state, affects, controller, db) {
-                state.deal_damage_to_permanent(id, amount, db);
+                state.deal_damage(PendingDamage::to_permanent(id, amount), db);
             }
         }
     }

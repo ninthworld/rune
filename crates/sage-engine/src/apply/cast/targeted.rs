@@ -89,20 +89,20 @@ pub(crate) fn apply_targeted_effect(
             let amount = amount_per.saturating_mul(count);
             match target {
                 Target::Permanent(id) => {
-                    state.deal_damage_to_permanent(id, amount, db);
+                    state.deal_damage(PendingDamage::to_permanent(id, amount), db);
                 }
                 Target::Player(seat) => {
-                    state.deal_damage_to_player(seat, amount);
+                    state.deal_damage(PendingDamage::to_player(seat, amount), db);
                 }
                 Target::Card(_) | Target::Spell(_) => {}
             }
         }
         Effect::DealDamage { amount, .. } => match target {
             Target::Permanent(id) => {
-                state.deal_damage_to_permanent(id, *amount, db);
+                state.deal_damage(PendingDamage::to_permanent(id, *amount), db);
             }
             Target::Player(seat) => {
-                state.deal_damage_to_player(seat, *amount);
+                state.deal_damage(PendingDamage::to_player(seat, *amount), db);
             }
             Target::Card(_) | Target::Spell(_) => {}
         },
@@ -437,6 +437,7 @@ pub(crate) fn apply_targeted_effect(
         | Effect::AllowCastingFromGraveyard { .. }
         | Effect::IgnoreHexproof { .. }
         | Effect::CreateReplacement { .. }
+        | Effect::PreventDamage { .. }
         | Effect::Conditional { .. }
         | Effect::PumpAll { .. }
         | Effect::GrantKeywordAll { .. }
@@ -582,11 +583,12 @@ fn power_as_damage(state: &GameState, permanent: PermanentId, db: &CardDatabase)
 /// whose **source is a permanent** rather than a spell.
 ///
 /// That source is the whole reason this exists beside
-/// [`GameState::deal_damage_to_permanent`](crate::GameState): damage from a creature
-/// carries that creature's deathtouch (CR 702.2b) and lifelink (CR 702.15e), which
-/// damage from a burn spell has no way to. Both ride the same fields combat damage uses
-/// — the CR 704.5h flag list and a plain life change — so a creature killed by a fight
-/// dies exactly the way one killed by a block does.
+/// [`GameState::deal_damage`](crate::GameState): damage from a creature carries that
+/// creature's deathtouch (CR 702.2b) and lifelink (CR 702.15e), which damage from a burn
+/// spell has no way to. Both ride the same fields combat damage uses — the CR 704.5h flag
+/// list and a plain life change — so a creature killed by a fight dies exactly the way one
+/// killed by a block does. The damage itself still goes through the one seam, so a
+/// prevention shield (CR 615.1) stops a fight exactly as it stops a block.
 ///
 /// Zero damage is not dealt at all (CR 120.3), so it triggers nothing and gains nobody
 /// life.
@@ -608,18 +610,18 @@ fn deal_damage_between_permanents(
     let lifelink =
         crate::characteristics::permanent_has_keyword(state, source, Keyword::Lifelink, db);
     let gains = crate::characteristics::controller_of_id(state, source);
-    let dealt = state.deal_damage_to_permanent(recipient, amount, db);
+    let dealt = state.deal_damage(PendingDamage::to_permanent(recipient, amount), db);
     // CR 702.2b / 704.5h: any nonzero damage from a deathtouch source makes the
     // recipient a candidate for destruction, whether or not it was lethal.
-    if dealt && deathtouch && !state.deathtouch_struck.contains(&recipient) {
+    if dealt > 0 && deathtouch && !state.deathtouch_struck.contains(&recipient) {
         state.deathtouch_struck.push(recipient);
     }
     // CR 702.15e: lifelink life gain is a non-damage life change to the source's
     // controller, and it rides *damage that was dealt* — so a recipient that is not there
-    // to take any gains nobody anything.
-    if dealt && lifelink {
+    // to take any, and one whose damage was prevented (CR 615.1), gain nobody anything.
+    if lifelink && dealt > 0 {
         if let Some(seat) = gains {
-            state.change_life(seat, i32::try_from(amount).unwrap_or(i32::MAX));
+            state.change_life(seat, i32::try_from(dealt).unwrap_or(i32::MAX));
         }
     }
 }

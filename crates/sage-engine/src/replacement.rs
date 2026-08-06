@@ -1,4 +1,5 @@
-//! Replacement effects (CR 614): modifying an event *before* it happens.
+//! Replacement and prevention effects (CR 614, CR 615): modifying an event *before* it
+//! happens.
 //!
 //! Everything else in the engine reacts to an event after the fact — a trigger is
 //! collected by diffing the state a change produced, a state-based action tidies up a
@@ -42,13 +43,43 @@
 //! modeled; nothing outside these two produces a replacement effect, and the
 //! compatibility report's exclusion says so.
 //!
+//! ## The second event: damage (CR 615)
+//!
+//! [`PendingDamage`] is damage described before it lands — who or what would take it,
+//! how much, and whether it is **combat** damage — and it is consulted by the same kind
+//! of layer at the one seam damage is dealt
+//! ([`GameState::deal_damage`](crate::GameState)). Prevention is a replacement effect
+//! (CR 615.1): the damage that is prevented is never dealt at all, so it is never marked
+//! on a permanent (CR 120.3d), never feeds the lethal-damage state-based action
+//! (CR 704.5g), never becomes life loss (CR 120.3a), and gains a lifelink source nothing
+//! (CR 702.15e).
+//!
+//! Two things make it a smaller layer than the entry event rather than a copy of it, and
+//! both are facts about the shields a card can print today rather than shortcuts:
+//!
+//! - **A shield is not one-shot.** `Prevent all combat damage that would be dealt this
+//!   turn` covers every damage event for the rest of the turn, so it lives in
+//!   [`GameState::prevention`](crate::GameState) — a duration, expiring in the cleanup
+//!   step beside the pump it is authored like (CR 514.2) — rather than in the one-shot
+//!   [`GameState::replacements`](crate::GameState) list, which a single application
+//!   spends.
+//! - **No one is asked to order them.** Every shield modeled prevents *all* of the
+//!   damage it applies to, so two applicable shields produce the same event in either
+//!   order and the CR 616.1 question has no answer that could differ. A shield that
+//!   prevents only part of the damage is what would make the order observable, and it
+//!   would ask through the same queue an entry's ordering does.
+//!
 //! ## What is not here
 //!
-//! Only the battlefield-**entry** event is replaceable. A permanent *leaving* the
-//! battlefield, damage being dealt, a card being drawn, and life being gained are all
-//! events a printed card can replace, and none of them routes through this layer yet.
-//! Adding one is a variant of the event value plus its seam — the collector, the
-//! ordering choice, and the never-twice rule are already shared.
+//! Two events are replaceable: a permanent **entering** the battlefield, and **damage**
+//! being dealt. A permanent *leaving* the battlefield, a card being drawn, and life
+//! being gained are all events a printed card can replace, and none of them routes
+//! through this layer yet. Adding one is a variant of the event value plus its seam —
+//! the collector, the ordering choice, and the never-twice rule are already shared.
+//!
+//! Damage that **can't be prevented** is not here either: it is a fact about the damage
+//! event that the shield would have to read, and the one M19 card that prints it needs
+//! `X` before it needs prevention.
 //!
 //! [`Ability::EntersChoosingColor`] is deliberately *not* one of the replacements
 //! collected here even though CR 614.12 calls it one. It is not a modification anybody
@@ -469,5 +500,114 @@ fn exile_entering(state: &mut GameState, entry: &PendingEntry) {
         state.players.get_mut(entry.controller.0),
     ) {
         owner.exile.push(card);
+    }
+}
+
+// ----- the damage event (CR 615) ---------------------------------------------
+
+/// Who or what damage would be dealt to (CR 120.3): a player, or a permanent.
+///
+/// The recipient half of [`PendingDamage`], and deliberately not
+/// [`DamageTarget`](crate::DamageTarget): that one is the *log's* vocabulary and carries
+/// a permanent's rendered identity, which is a fact about an object that has already
+/// been dealt damage. This one names an object the damage has not reached yet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DamageRecipient {
+    /// A player, who would lose that much life (CR 120.3a).
+    Player(PlayerId),
+    /// A permanent, which would have that much damage marked on it (CR 120.3d) — or,
+    /// for a planeswalker, that much loyalty removed (CR 120.3c).
+    Permanent(PermanentId),
+}
+
+/// Damage described **before it is dealt** — the event a prevention shield is consulted
+/// about (CR 615.1), and the counterpart of [`PendingEntry`] for the second replaceable
+/// event.
+///
+/// It carries the one fact about damage that cannot be recovered from the recipient:
+/// whether it is **combat** damage (CR 510.1). A blocked creature's 3 and a burn spell's
+/// 3 are the same 3 by the time either is marked, and `Prevent all combat damage that
+/// would be dealt this turn` distinguishes exactly those two. So the caller that knows
+/// says so here, and every road funnels into the one seam that asks
+/// ([`GameState::deal_damage`](crate::GameState)).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PendingDamage {
+    /// What would take the damage.
+    pub recipient: DamageRecipient,
+    /// How much would be dealt, before any of it is prevented.
+    pub amount: u32,
+    /// Whether this is combat damage (CR 510.1) — dealt by a creature in the
+    /// combat-damage step, which includes a trampler's excess and a blocker's swing
+    /// back. Damage from a spell, an ability, or a fight (CR 701.12) is not.
+    pub combat: bool,
+}
+
+impl PendingDamage {
+    /// Non-combat damage to a player (CR 120.3a) — a burn spell, an ability, a drain.
+    #[must_use]
+    pub fn to_player(player: PlayerId, amount: u32) -> Self {
+        Self {
+            recipient: DamageRecipient::Player(player),
+            amount,
+            combat: false,
+        }
+    }
+
+    /// Non-combat damage to a permanent (CR 120.3c/d) — a burn spell, an ability, or
+    /// the damage a fight deals (CR 701.12).
+    #[must_use]
+    pub fn to_permanent(permanent: PermanentId, amount: u32) -> Self {
+        Self {
+            recipient: DamageRecipient::Permanent(permanent),
+            amount,
+            combat: false,
+        }
+    }
+
+    /// The same damage, dealt in the combat-damage step (CR 510.1). Written as a
+    /// modifier on the recipient rather than as a second pair of constructors, because
+    /// combat-ness is the *only* thing the two roads disagree about.
+    #[must_use]
+    pub fn in_combat(mut self) -> Self {
+        self.combat = true;
+        self
+    }
+}
+
+/// Which damage events a prevention shield applies to.
+///
+/// The [`EnteringFilter`] of the damage event, and the same shape for the same reason:
+/// a product of independent restrictions, each defaulting to "no restriction", so an
+/// omitted filter prevents every damage event there is.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+pub struct DamageFilter {
+    /// Restrict to **combat** damage (CR 510.1) — Root Snare's `all combat damage`.
+    /// `false` covers damage from every source, combat or not.
+    #[serde(default)]
+    pub combat_only: bool,
+}
+
+impl DamageFilter {
+    /// Whether `damage` is the kind of damage event this shield prevents.
+    #[must_use]
+    pub(crate) fn matches(&self, damage: &PendingDamage) -> bool {
+        !self.combat_only || damage.combat
+    }
+}
+
+/// How much of `damage` is actually dealt once every prevention shield in force has been
+/// applied to it (CR 615.1).
+///
+/// One applicable shield is the whole answer: every shield a card can print today
+/// prevents *all* of the damage it applies to, so a second one has nothing left to
+/// prevent and the CR 616.1 ordering question — which a partial shield would make
+/// observable — has no answer that could differ. The moment a shield prevents an amount
+/// rather than everything, this becomes a fold and that question joins the choice queue.
+#[must_use]
+pub(crate) fn after_prevention(state: &GameState, damage: &PendingDamage) -> u32 {
+    if state.prevention.iter().any(|shield| shield.matches(damage)) {
+        0
+    } else {
+        damage.amount
     }
 }

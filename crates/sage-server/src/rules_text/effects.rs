@@ -495,6 +495,12 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 replacement_phrase(replacement),
             ),
         },
+        // CR 615.1, in the order a card prints it: the verb, the class of damage, and
+        // the duration — `prevent all combat damage that would be dealt this turn`.
+        Effect::PreventDamage { damage } => format!(
+            "prevent all {}damage that would be dealt this turn",
+            if damage.combat_only { "combat " } else { "" },
+        ),
     }
 }
 

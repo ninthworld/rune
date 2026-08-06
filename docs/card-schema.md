@@ -1043,6 +1043,40 @@ terminate. `enters_choosing_color` is deliberately not one of them: it is a ques
 modification anyone could order it against, and the entry is already deferred until it is
 answered.
 
+### Preventing damage
+
+`prevent_damage` raises a **damage-prevention shield** for the rest of the turn (CR 615.1).
+Root Snare:
+
+```json
+{ "kind": "prevent_damage", "damage": { "combat_only": true } }
+```
+
+Prevention is a replacement effect, and it is consulted at the single seam damage is dealt —
+so combat damage, a burn spell, a sweeper, and a fight are covered by one shield and by one
+piece of code. Damage that is prevented is **never dealt**: it is not marked on a permanent
+(CR 120.3d), so it never feeds the lethal-damage state-based action (CR 704.5g); it is not
+life loss (CR 120.3a); it gains a lifelink source nothing (CR 702.15e); it removes no loyalty
+(CR 120.3c); and it is reported nowhere, because there is no damage event to report.
+
+Its `damage` filter is the same shape `exile_entering`'s `entering` is — independent
+restrictions, each defaulting to "no restriction", so an omitted filter prevents every point
+of damage anyone would deal:
+
+| Field | Meaning |
+| --- | --- |
+| `combat_only` | Only **combat** damage (CR 510.1), including a trampler's excess |
+
+It differs from `create_replacement` in exactly one way, and it is the duration. `The next
+time …` is spent by applying it; `this turn` is not, and covers every damage event until the
+turn ends — so a shield is recorded with a duration rather than on the one-shot list, and it
+ends in the **cleanup step** alongside the pumps and the marked damage (CR 514.2) rather than
+at the turn boundary.
+
+Like a replacement it names no target and no player: it watches an *event*, so it prevents
+damage **anyone** would deal, which is what `all combat damage` says. Nothing yet prevents a
+fixed amount, names a recipient or a source, or makes damage unpreventable.
+
 ### Abilities that function from a graveyard
 
 An **activated or triggered** ability that returns **its own card** from a graveyard

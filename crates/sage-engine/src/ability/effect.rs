@@ -1025,6 +1025,26 @@ pub enum Effect {
         /// The replacement effect to create: what it watches, and what happens instead.
         replacement: crate::replacement::ReplacementEffect,
     },
+    /// Raise a **damage-prevention shield** for the rest of the turn (CR 615.1) —
+    /// `Prevent all combat damage that would be dealt this turn.`
+    ///
+    /// The prevention half of [`Self::CreateReplacement`], and separate from it for the
+    /// one reason that matters: a shield is **not** one-shot. `The next time …` is spent
+    /// by applying it; `this turn` is not, and covers every damage event until the turn
+    /// ends. So it is recorded on [`GameState::prevention`](crate::GameState) with a
+    /// duration rather than on the one-shot list, and it ends in the **cleanup step**,
+    /// simultaneously with the marked damage and the pumps (CR 514.2), instead of at the
+    /// turn boundary.
+    ///
+    /// Like a replacement it names no target and no player: a shield watches an
+    /// **event**, and which events it covers is [`DamageFilter`](crate::DamageFilter) —
+    /// chosen when the card was written, not aimed when the spell was cast. It applies to
+    /// damage *anyone* would deal, which is what `all combat damage` says.
+    PreventDamage {
+        /// Which damage the shield prevents. An absent filter prevents all of it.
+        #[serde(default)]
+        damage: crate::replacement::DamageFilter,
+    },
     /// Move **this ability's own card** out of the graveyard it is in
     /// (`Return this card from your graveyard to the battlefield tapped.`).
     ///
@@ -1198,8 +1218,9 @@ impl Effect {
             // same reason: it is a fact about a seat, not about an object.
             | Effect::IgnoreHexproof { .. }
             // A replacement effect names an *event*, which is not an object and so
-            // cannot be targeted (CR 115.1).
+            // cannot be targeted (CR 115.1) — and a prevention shield is one.
             | Effect::CreateReplacement { .. }
+            | Effect::PreventDamage { .. }
             // A choice over the controller's own library names no target: the library
             // is theirs by definition (CR 115.1).
             | Effect::Scry { .. }
