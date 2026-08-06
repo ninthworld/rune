@@ -134,7 +134,7 @@ pub(crate) fn bind_order_combat_damage(
         let blockers: Vec<PermanentId> = state
             .battlefield
             .iter()
-            .filter(|p| p.blocking == Some(attacker))
+            .filter(|p| p.blocking.contains(&attacker))
             .map(|p| p.id)
             .collect();
         let mut ordered = Vec::new();

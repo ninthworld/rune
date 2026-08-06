@@ -35,8 +35,8 @@ describe('reading the board both ways', () => {
     const board = view({
       battlefield: [
         permanent('attacker', 'Onakke Ogre', { attacking: true, attacking_player: 'p2' }),
-        permanent('wall', 'Wall of Vines', { blocking: 'attacker' }),
-        permanent('bear', 'Grizzly Bears', { blocking: 'attacker' }),
+        permanent('wall', 'Wall of Vines', { blocking: ['attacker'] }),
+        permanent('bear', 'Grizzly Bears', { blocking: ['attacker'] }),
       ],
     })
 
@@ -69,8 +69,8 @@ describe('reading the board both ways', () => {
     // to share a phrase. The order is the view's — the client has no basis for another.
     const board = view({
       battlefield: [
-        permanent('bear', 'Grizzly Bears', { blocking: 'attacker' }),
-        permanent('wall', 'Wall of Vines', { blocking: 'attacker' }),
+        permanent('bear', 'Grizzly Bears', { blocking: ['attacker'] }),
+        permanent('wall', 'Wall of Vines', { blocking: ['attacker'] }),
         permanent('attacker', 'Onakke Ogre', { attacking: true }),
       ],
     })
@@ -78,6 +78,28 @@ describe('reading the board both ways', () => {
     const blocked = trail(board, 'attacker').filter((line) => line.kind === 'blocking')
     expect(blocked).toHaveLength(1)
     expect(blocked[0]?.ends.map((end) => end.name)).toEqual(['Grizzly Bears', 'Wall of Vines'])
+  })
+
+  it('gives a blocker on two attackers one line per attacker it blocked', () => {
+    // A blocker blocks one attacker unless an effect lets it block additional creatures
+    // (CR 509.1a), so `blocking` is a list and each entry is its own edge. The order is the
+    // server's — it is the order the blocker assigns its combat damage in.
+    const board = view({
+      battlefield: [
+        permanent('twins', 'Ghastbark Twins', { blocking: ['second', 'first'] }),
+        permanent('first', 'Onakke Ogre', { attacking: true }),
+        permanent('second', 'Colossal Dreadmaw', { attacking: true }),
+      ],
+    })
+
+    expect(
+      relations(board)
+        .from('twins')
+        .map((relation) => relation.to),
+    ).toEqual(['second', 'first'])
+    // And each attacker reads its own side of it, from the one field the blocker carries.
+    expect(relationNote(trail(board, 'first'))).toContain('blocked by Ghastbark Twins')
+    expect(relationNote(trail(board, 'second'))).toContain('blocked by Ghastbark Twins')
   })
 
   it('names the planeswalker being attacked, not the seat that answers for it', () => {
@@ -613,7 +635,7 @@ describe('the readable copy of a drawn line', () => {
     const board = view({
       battlefield: [
         permanent('perm_ogre', 'Onakke Ogre', { attacking: true, attacking_player: 'p2' }),
-        permanent('perm_bear', 'Grizzly Bears', { blocking: 'perm_ogre' }),
+        permanent('perm_bear', 'Grizzly Bears', { blocking: ['perm_ogre'] }),
       ],
     })
     for (const id of ['perm_ogre', 'perm_bear']) {

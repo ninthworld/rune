@@ -48,6 +48,7 @@ pub use eligibility::{
     defending_player_candidates, AttackTarget,
 };
 pub use helpers::{
-    attacking_taps, blocked_by_at_most_one, blocker_can_block_attacker, permanent_has_menace,
-    permanent_has_restriction, permanent_restrictions, summoning_sickness_restricts,
+    attacking_taps, blocked_by_at_most_one, blocker_can_block_attacker, blocks_allowed,
+    permanent_has_menace, permanent_has_restriction, permanent_restrictions,
+    summoning_sickness_restricts,
 };

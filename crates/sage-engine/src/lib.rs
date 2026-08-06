@@ -74,9 +74,9 @@ pub use choice::{
 pub use combat::{
     attack_target_of, attacked_players, attacker_candidates, attackers_needing_damage_order,
     attacking_defender_of, attacking_taps, blocked_by_at_most_one, blocker_can_block_attacker,
-    blocker_candidates, blocker_candidates_for, declared_attackers, defender_candidates,
-    defending_player, defending_player_candidates, pending_blocker_declarer, pending_damage_order,
-    permanent_has_menace, permanent_has_restriction, permanent_restrictions,
+    blocker_candidates, blocker_candidates_for, blocks_allowed, declared_attackers,
+    defender_candidates, defending_player, defending_player_candidates, pending_blocker_declarer,
+    pending_damage_order, permanent_has_menace, permanent_has_restriction, permanent_restrictions,
     summoning_sickness_restricts, AttackTarget,
 };
 pub use commander::{

@@ -219,7 +219,7 @@ fn a_discard_is_refused_on_a_card_that_owes_no_additional_cost() {
         tapped: false,
         entered_turn: 0,
         attacking: None,
-        blocking: None,
+        blocking: Vec::new(),
         skips_untap: false,
         damage: 0,
         counters: Default::default(),

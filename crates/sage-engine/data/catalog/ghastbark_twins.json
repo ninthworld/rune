@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "functional_id": "ghastbark_twins",
+  "name": "Ghastbark Twins",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Treefolk"
+  ],
+  "mana_cost": "{4}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 5,
+  "toughness": 5,
+  "keywords": [
+    "trample"
+  ],
+  "restrictions": [
+    {
+      "can_block_additional": 1
+    }
+  ]
+}

@@ -30,7 +30,7 @@ pub(crate) fn apply_play_land(state: &mut GameState, card: CardInstance, db: &Ca
         tapped: false,
         entered_turn,
         attacking: None,
-        blocking: None,
+        blocking: Vec::new(),
         skips_untap: false,
         damage: 0,
         counters: Default::default(),

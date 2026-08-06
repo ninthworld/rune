@@ -189,7 +189,7 @@ fn issue_152_aura_boosted_host_projects_current_pt() {
         tapped: false,
         entered_turn: 0,
         attacking: None,
-        blocking: None,
+        blocking: Vec::new(),
         skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
@@ -204,7 +204,7 @@ fn issue_152_aura_boosted_host_projects_current_pt() {
         tapped: false,
         entered_turn: 0,
         attacking: None,
-        blocking: None,
+        blocking: Vec::new(),
         skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
@@ -245,7 +245,7 @@ fn issue_68_permanent_counters_project_into_the_view() {
         tapped: false,
         entered_turn: 0,
         attacking: None,
-        blocking: None,
+        blocking: Vec::new(),
         skips_untap: false,
         damage: 0,
         // Insertion order is deliberately reversed from the expected wire
@@ -267,7 +267,7 @@ fn issue_68_permanent_counters_project_into_the_view() {
         tapped: false,
         entered_turn: 0,
         attacking: None,
-        blocking: None,
+        blocking: Vec::new(),
         skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
@@ -338,7 +338,7 @@ fn issue_117_attack_and_block_state_project_into_the_view() {
         tapped: true,
         entered_turn: 0,
         attacking: Some(AttackTarget::Player(PlayerId(1))),
-        blocking: None,
+        blocking: Vec::new(),
         skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
@@ -353,7 +353,7 @@ fn issue_117_attack_and_block_state_project_into_the_view() {
         tapped: false,
         entered_turn: 0,
         attacking: None,
-        blocking: Some(attacker),
+        blocking: vec![attacker],
         skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
@@ -367,7 +367,7 @@ fn issue_117_attack_and_block_state_project_into_the_view() {
         .find(|p| p.id == permanent_entity_id(attacker))
         .expect("attacker in view");
     assert!(attacker_view.attacking);
-    assert_eq!(attacker_view.blocking, None);
+    assert!(attacker_view.blocking.is_empty());
 
     let blocker_view = view
         .battlefield
@@ -375,9 +375,65 @@ fn issue_117_attack_and_block_state_project_into_the_view() {
         .find(|p| p.id == permanent_entity_id(blocker))
         .expect("blocker in view");
     assert!(!blocker_view.attacking);
+    assert_eq!(blocker_view.blocking, vec![permanent_entity_id(attacker)]);
+}
+
+/// A blocker assigned to more than one attacker (CR 509.1a, issue #739) projects
+/// **every** assignment, in the engine's order — which is the order it will assign its
+/// combat damage in (CR 509.3). A client draws one relationship per entry and derives
+/// neither the count nor the order.
+#[test]
+fn issue_739_a_blocker_on_two_attackers_projects_both_in_order() {
+    let db = CardDatabase::bundled().unwrap();
+    let mut state = GameState::new_two_player();
+
+    let mut attack = |instance: u64| {
+        let id = PermanentId(state.mint_id());
+        state.battlefield.push(sage_engine::Permanent {
+            id,
+            instance: CardInstanceId(instance),
+            printed: fixture("walking_corpse").into(),
+            controller: PlayerId(0),
+            tapped: true,
+            entered_turn: 0,
+            attacking: Some(AttackTarget::Player(PlayerId(1))),
+            blocking: Vec::new(),
+            skips_untap: false,
+            damage: 0,
+            counters: std::collections::BTreeMap::new(),
+            attached_to: None,
+        });
+        id
+    };
+    let first = attack(0);
+    let second = attack(1);
+
+    let blocker = PermanentId(state.mint_id());
+    state.battlefield.push(sage_engine::Permanent {
+        id: blocker,
+        instance: CardInstanceId(2),
+        printed: fixture("ghastbark_twins").into(),
+        controller: PlayerId(1),
+        tapped: false,
+        entered_turn: 0,
+        attacking: None,
+        blocking: vec![second, first],
+        skips_untap: false,
+        damage: 0,
+        counters: std::collections::BTreeMap::new(),
+        attached_to: None,
+    });
+
+    let view = personalized_view(&state, &db, PlayerId(0));
+    let blocker_view = view
+        .battlefield
+        .iter()
+        .find(|p| p.id == permanent_entity_id(blocker))
+        .expect("blocker in view");
     assert_eq!(
-        blocker_view.blocking.as_deref(),
-        Some(permanent_entity_id(attacker).as_str())
+        blocker_view.blocking,
+        vec![permanent_entity_id(second), permanent_entity_id(first)],
+        "both assignments, in the order the engine holds them"
     );
 }
 
@@ -398,7 +454,7 @@ fn issue_118_marked_damage_projects_into_the_view() {
         tapped: false,
         entered_turn: 0,
         attacking: None,
-        blocking: None,
+        blocking: Vec::new(),
         skips_untap: false,
         damage: 2,
         counters: std::collections::BTreeMap::new(),
@@ -451,7 +507,7 @@ fn issue_333_aura_attachment_projects_into_the_view() {
         tapped: false,
         entered_turn: 0,
         attacking: None,
-        blocking: None,
+        blocking: Vec::new(),
         skips_untap: false,
         damage: 0,
         counters: BTreeMap::new(),
@@ -514,7 +570,7 @@ fn issue_153_keywords_project_onto_the_card_view() {
         tapped: false,
         entered_turn: 0,
         attacking: None,
-        blocking: None,
+        blocking: Vec::new(),
         skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
@@ -529,7 +585,7 @@ fn issue_153_keywords_project_onto_the_card_view() {
         tapped: false,
         entered_turn: 0,
         attacking: None,
-        blocking: None,
+        blocking: Vec::new(),
         skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
@@ -583,7 +639,7 @@ fn issue_374_granted_keyword_projects_onto_the_card_view() {
         tapped: false,
         entered_turn: 0,
         attacking: None,
-        blocking: None,
+        blocking: Vec::new(),
         skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
@@ -598,7 +654,7 @@ fn issue_374_granted_keyword_projects_onto_the_card_view() {
         tapped: false,
         entered_turn: 0,
         attacking: None,
-        blocking: None,
+        blocking: Vec::new(),
         skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),
@@ -616,7 +672,7 @@ fn issue_374_granted_keyword_projects_onto_the_card_view() {
         tapped: false,
         entered_turn: 0,
         attacking: None,
-        blocking: None,
+        blocking: Vec::new(),
         skips_untap: false,
         damage: 0,
         counters: std::collections::BTreeMap::new(),

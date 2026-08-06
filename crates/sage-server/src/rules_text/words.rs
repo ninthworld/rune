@@ -256,6 +256,15 @@ pub(super) fn restriction_predicate(restriction: &CombatRestriction) -> String {
         CombatRestriction::CantBeBlockedExceptBy(subtype) => {
             format!("can't be blocked except by {subtype}s")
         }
+        // The one permission in the vocabulary, and the one predicate here that is not a
+        // "can't". "Can" is invariant across singular and plural subjects exactly as
+        // "can't" is, so it serves the same four subjects the rest do.
+        CombatRestriction::CanBlockAdditional(1) => {
+            "can block an additional creature each combat".to_string()
+        }
+        CombatRestriction::CanBlockAdditional(count) => {
+            format!("can block up to {count} additional creatures each combat")
+        }
     }
 }
 

@@ -154,8 +154,8 @@ fn issue_117_defender_declares_blockers_multiple_per_attacker_cr_509_1a() {
         },
         &db,
     );
-    assert_eq!(find_perm(&after, blocker_a).blocking, Some(attacker));
-    assert_eq!(find_perm(&after, blocker_b).blocking, Some(attacker));
+    assert_eq!(find_perm(&after, blocker_a).blocking, vec![attacker]);
+    assert_eq!(find_perm(&after, blocker_b).blocking, vec![attacker]);
     assert!(after.blockers_declared);
     // After blockers are declared the active player receives priority (CR 509.4).
     assert_eq!(after.priority, PlayerId(0));
@@ -414,7 +414,7 @@ fn issue_153_ground_creature_cannot_block_a_flyer_cr_702_9c() {
     );
     assert_eq!(
         find_perm(&blocked_by_reach, reacher).blocking,
-        Some(flyer),
+        vec![flyer],
         "a reach creature can block a flyer (CR 702.17b)"
     );
     assert!(blocked_by_reach.blockers_declared);
@@ -543,7 +543,7 @@ fn issue_344_split_attacks_each_defender_declares_in_apnap_order() {
         },
         &db,
     );
-    assert_eq!(find_perm(&after1, blk1).blocking, Some(atk_a));
+    assert_eq!(find_perm(&after1, blk1).blocking, vec![atk_a]);
     assert!(
         !after1.blockers_declared,
         "seat 2 still owes a declaration, so combat is not done"
@@ -560,7 +560,7 @@ fn issue_344_split_attacks_each_defender_declares_in_apnap_order() {
         },
         &db,
     );
-    assert_eq!(find_perm(&after2, blk2).blocking, Some(atk_b));
+    assert_eq!(find_perm(&after2, blk2).blocking, vec![atk_b]);
     assert!(
         after2.blockers_declared,
         "both attacked players declared — the step is done"

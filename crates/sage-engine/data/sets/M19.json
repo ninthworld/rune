@@ -615,6 +615,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "ghastbark_twins",
+    "collector_number": "181",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "ghirapur_guide",
     "collector_number": "182",
     "rarity": "uncommon"

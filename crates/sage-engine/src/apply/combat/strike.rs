@@ -106,12 +106,12 @@ pub(crate) fn apply_combat_batch(
 }
 
 /// End-of-combat turn-based action: remove every creature from combat (CR 511.3)
-/// by clearing the attacking flag and blocking assignment on every permanent. The
+/// by clearing the attacking flag and blocking assignments on every permanent. The
 /// per-turn declaration flags are reset when the next turn begins
 /// ([`GameState::begin_next_turn`]), so a fresh combat starts clean.
 pub(crate) fn remove_creatures_from_combat(state: &mut GameState) {
     for perm in &mut state.battlefield {
         perm.attacking = None;
-        perm.blocking = None;
+        perm.blocking.clear();
     }
 }

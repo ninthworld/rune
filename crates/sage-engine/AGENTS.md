@@ -62,8 +62,12 @@ they are not keyword abilities, some carry a parameter, and each is enforced in 
 place — the attacker candidate set, the blocker candidate set, the pairwise block check, or
 the whole-selection block check. A restriction that can only be judged over the assembled
 declaration must also be stated in the blocker slot's prompt, or it reaches the player as a
-submit that silently does nothing. Attack and block *requirements* ("attacks each combat if
-able") are still unmodeled, and a blocker still blocks exactly one attacker.
+submit that silently does nothing. One member of the vocabulary is a *permission* rather
+than a restriction — `CanBlockAdditional`, which lifts the CR 509.1a default that a blocker
+blocks one attacker — so `Permanent.blocking` is an ordered list, and its order is the
+blocker's CR 509.3 damage assignment order, carried by the declaration that named them.
+Attack and block *requirements* ("attacks each combat if able") are still unmodeled: CR
+509.1c makes validating a submitted declaration a search rather than a per-pair check.
 
 **Not every permanent is a card** (ADR 0015). `Permanent.printed` is a `Printed` — a
 catalog `CardId`, or the `TokenData` an effect gave a token (CR 111) — and every read of a

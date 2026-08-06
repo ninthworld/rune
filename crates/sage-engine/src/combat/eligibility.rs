@@ -273,7 +273,7 @@ mod tests {
             tapped,
             entered_turn,
             attacking: None,
-            blocking: None,
+            blocking: Vec::new(),
             skips_untap: false,
             damage: 0,
             counters: Default::default(),
