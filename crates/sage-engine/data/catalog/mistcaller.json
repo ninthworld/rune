@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "functional_id": "mistcaller",
+  "name": "Mistcaller",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Spirit"
+  ],
+  "mana_cost": "{1}{U}",
+  "colors": [
+    "blue"
+  ],
+  "power": 2,
+  "toughness": 1,
+  "keywords": [
+    "flash"
+  ],
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "sacrifice_this"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "create_replacement",
+          "replacement": {
+            "kind": "exile_entering",
+            "entering": {
+              "card_type": "creature",
+              "nontoken": true,
+              "not_cast": true
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

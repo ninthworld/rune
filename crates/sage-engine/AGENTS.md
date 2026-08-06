@@ -165,8 +165,25 @@ on the battlefield to be caught mid-decision. Answering completes the entry thro
 `ObservedSpell::ChosenColor`. Naming a **type** or a **card** is still unwritable, and nothing
 records a choice on a spell.
 
-A choice asks one of two **questions** (`ChoiceQuestion`, ADR 0014): pick cards, or answer
-a `you may` yes-or-no. Everything around them is single — one queue, one chooser, one
+**A replaceable event is a value, and there is exactly one road onto the battlefield**
+(ADR 0019). `PendingEntry` describes an arrival *before it happens* — the object, its
+controller, the tapped state and counters it would carry, and whether it got there by being
+cast — and `begin_battlefield_entry` is the only place a `Permanent` is born: a land played,
+a token created, a permanent spell resolving, and a card an effect put there all build one.
+Applicable replacements are **derived** from two source lists (the entering object's own
+`EntersTapped`/`EntersWithCounters`, and the one-shot `GameState::replacements` an ability
+created for the turn), the affected object's **controller** orders them when more than one
+applies (CR 616.1, through the same choice queue), and `PendingEntry::applied` is what stops
+any of them applying twice (CR 614.5) — which is also what makes the loop terminate.
+Applying either modifies the event or replaces it outright, and answering an ordering
+question re-enters the same function. Only the **entry** event is replaceable: a permanent
+leaving the battlefield, damage, a draw, and life gained route nowhere near this, and the
+leave seams run inside the SBA loop where there is nothing to suspend a question onto.
+`EntersChoosingColor` is not collected here — it is a question, not a modification to order.
+
+A choice asks one shape of **question** (`ChoiceQuestion`, ADR 0014): pick cards, answer a
+`you may` yes-or-no, name a colour, or order applicable replacements by position in a
+derived list. Everything around them is single — one queue, one chooser, one
 `Resume` — and only the answer branches, so a new question shape is a variant plus its own
 `Action`, never a second queue. An accepted optional effect is *spliced onto the front of
 the remainder*, not applied on the spot; declining is the same path with nothing spliced,

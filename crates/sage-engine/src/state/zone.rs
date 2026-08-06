@@ -4,7 +4,8 @@ use crate::card_type::CardType;
 use crate::combat::AttackTarget;
 use crate::id::{CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::player::Player;
-use crate::token::{Printed, TokenData};
+use crate::replacement::{EnteringObject, PendingEntry};
+use crate::token::TokenData;
 use crate::CardDatabase;
 
 use super::{CommanderDamage, DamageTarget, GameEvent, GameState, LoggedPermanent, Permanent};
@@ -159,28 +160,23 @@ impl GameState {
     /// Put the physical card `card` onto the battlefield under `controller` — the
     /// single card → battlefield seam.
     ///
-    /// A permanent spell resolving (CR 608.3) and a card found by a library search or a
-    /// look-at-the-top both route through here, so a permanent that arrives by either
-    /// road is indistinguishable afterwards: it mints a fresh [`PermanentId`] (the
-    /// physical [`CardInstance`](crate::id::CardInstance) carries over unchanged), applies
-    /// its own CR 614.1c/614.12 enters-the-battlefield self-replacements *as* it enters
-    /// — before any state-based action or ETB trigger observes it — and is picked up by
-    /// the diff-based trigger collector like anything else.
+    /// A card found by a library search, one returned from a graveyard, and one put
+    /// there by any other effect all route through here, so a permanent that arrives by
+    /// any road is indistinguishable afterwards: it runs through the CR 614 replacement
+    /// layer ([`Self::begin_battlefield_entry`]), mints a fresh [`PermanentId`] (the
+    /// physical [`CardInstance`](crate::id::CardInstance) carries over unchanged), and is
+    /// picked up by the diff-based trigger collector like anything else. A card entering
+    /// because a **spell resolved** uses
+    /// [`Self::resolve_permanent_spell_onto_battlefield`] instead — the same road, with
+    /// the one fact a replacement may ask about that this one cannot answer.
     ///
     /// `tapped` is the entry state the *effect* dictates ("onto the battlefield
     /// tapped"); a card's own "enters tapped" replacement is applied on top and can only
     /// add to it. `attached_to` is the host an entering Aura was cast at (CR 303.4d),
     /// `None` for everything else.
     ///
-    /// Returns the new permanent's id, or **`None` when the entry was deferred** on a
-    /// choice its controller makes as the permanent enters (CR 614.12 — today, a colour,
-    /// [`Ability::EntersChoosingColor`](crate::Ability)). Such a card is put on the
-    /// choice queue rather than on the battlefield, and arrives the instant the question
-    /// is answered ([`ColorOutcome::RecordOnEntry`](crate::ColorOutcome)) — which,
-    /// because a pending choice takes priority away from every other seat, is before any
-    /// player acts again. It is deliberately not a value a caller has to handle: every
-    /// one of them puts a card somewhere and moves on, so "there is no permanent yet" is
-    /// simply the absence of an id.
+    /// Returns the new permanent's id, or `None` when nothing entered — see
+    /// [`Self::begin_battlefield_entry`].
     pub(crate) fn put_card_onto_battlefield(
         &mut self,
         card: crate::id::CardInstance,
@@ -189,61 +185,176 @@ impl GameState {
         attached_to: Option<PermanentId>,
         db: &CardDatabase,
     ) -> Option<PermanentId> {
-        let entry = crate::choice::PendingEntry {
-            card,
-            controller,
-            tapped,
-            attached_to,
-        };
-        if crate::card::chooses_color_on_entry(db, card.card) {
-            // CR 614.12: the choice is made *as* the permanent enters, so the card waits
-            // here — in no zone, exactly as a spell's card waits while its resolution is
-            // suspended — rather than entering and being amended afterwards.
-            self.pending_choices.push(crate::choice::PendingChoice {
-                chooser: controller,
-                question: crate::choice::ChoiceQuestion::Color(crate::choice::ColorRequest {
-                    outcome: crate::choice::ColorOutcome::RecordOnEntry(entry),
-                }),
-                resume: None,
-            });
-            return None;
+        self.begin_battlefield_entry(
+            PendingEntry {
+                object: EnteringObject::Card(card),
+                controller,
+                tapped,
+                attacking: None,
+                attached_to,
+                counters: Vec::new(),
+                cast: false,
+                applied: Vec::new(),
+            },
+            db,
+        )
+    }
+
+    /// Put the card of a **resolving permanent spell** onto the battlefield (CR 608.3).
+    ///
+    /// Identical to [`Self::put_card_onto_battlefield`] in every respect but one: the
+    /// permanent is entering *because a spell was cast*, and a printed replacement that
+    /// says `without being cast` needs to know. That fact cannot be recovered from the
+    /// object — the same creature card reanimated and cast produces the same permanent —
+    /// so it is recorded here, at the one seam a cast spell becomes a permanent, and
+    /// nowhere else.
+    pub(crate) fn resolve_permanent_spell_onto_battlefield(
+        &mut self,
+        card: crate::id::CardInstance,
+        controller: PlayerId,
+        attached_to: Option<PermanentId>,
+        db: &CardDatabase,
+    ) -> Option<PermanentId> {
+        self.begin_battlefield_entry(
+            PendingEntry {
+                object: EnteringObject::Card(card),
+                controller,
+                tapped: false,
+                attacking: None,
+                attached_to,
+                counters: Vec::new(),
+                cast: true,
+                applied: Vec::new(),
+            },
+            db,
+        )
+    }
+
+    /// Run `entry` through the **replacement layer** (CR 614) and, if anything is left
+    /// of it, put the permanent it describes on the battlefield.
+    ///
+    /// The single battlefield-entry seam, and the whole of the layer's control flow:
+    ///
+    /// 1. Ask what applies to the event and has not applied to it already
+    ///    ([`applicable_to_entry`](crate::replacement)).
+    /// 2. **Exactly one** — apply it. Either the entry is modified and the loop asks
+    ///    again, or the event was replaced outright and nothing enters.
+    /// 3. **More than one** — the affected object's controller chooses which applies
+    ///    first (CR 616.1). The whole entry goes on the choice queue and the object
+    ///    waits in no zone at all until the answer comes back, which is what makes "the
+    ///    permanent is never briefly on the battlefield mid-decision" true by
+    ///    construction.
+    /// 4. **None** — the CR 614.12 colour question, if the card asks one, defers the
+    ///    entry the same way; otherwise the permanent arrives.
+    ///
+    /// Returns the new permanent's id, or **`None` when nothing entered** — because the
+    /// event was replaced, or because the entry is deferred on a question. It is
+    /// deliberately not a value a caller has to handle: every one of them puts something
+    /// somewhere and moves on, so "there is no permanent" is simply the absence of an id.
+    pub(crate) fn begin_battlefield_entry(
+        &mut self,
+        mut entry: PendingEntry,
+        db: &CardDatabase,
+    ) -> Option<PermanentId> {
+        loop {
+            let options = crate::replacement::applicable_to_entry(self, db, &entry);
+            match options.len() {
+                0 => break,
+                1 => {
+                    if crate::replacement::apply_to_entry(self, &mut entry, options[0], db)
+                        == crate::replacement::EntryOutcome::Replaced
+                    {
+                        return None;
+                    }
+                }
+                // CR 616.1: the affected object's controller — not the effects'
+                // controller — picks one to apply. Posed through the one choice queue
+                // every mid-resolution decision uses (ADR 0013), so the freeze, the
+                // routing, and the priority hand-off need nothing new.
+                _ => {
+                    self.pending_choices.push(crate::choice::PendingChoice {
+                        chooser: entry.controller,
+                        question: crate::choice::ChoiceQuestion::Replacement(
+                            crate::choice::ReplacementRequest { entry },
+                        ),
+                        resume: None,
+                    });
+                    return None;
+                }
+            }
+        }
+        if let EnteringObject::Card(card) = entry.object {
+            if crate::card::chooses_color_on_entry(db, card.card) {
+                // CR 614.12: the choice is made *as* the permanent enters, so the card
+                // waits here — in no zone, exactly as a spell's card waits while its
+                // resolution is suspended — rather than entering and being amended
+                // afterwards.
+                self.pending_choices.push(crate::choice::PendingChoice {
+                    chooser: entry.controller,
+                    question: crate::choice::ChoiceQuestion::Color(crate::choice::ColorRequest {
+                        outcome: crate::choice::ColorOutcome::RecordOnEntry(entry),
+                    }),
+                    resume: None,
+                });
+                return None;
+            }
         }
         Some(self.complete_battlefield_entry(&entry, None, db))
     }
 
     /// Build the permanent `entry` describes, give it `chosen_color`, and put it on the
-    /// battlefield — the half of [`Self::put_card_onto_battlefield`] that actually
-    /// arrives.
+    /// battlefield — the half of [`Self::begin_battlefield_entry`] that actually arrives.
     ///
-    /// Split out because it happens at two different moments: immediately, for the cards
-    /// that ask nothing, and one action later for a card whose colour had to be named
-    /// first. Everything else about the entry is identical between them — the same fresh
-    /// [`PermanentId`], the same CR 614.1c self-replacements applied before the
-    /// battlefield ever sees the object — which is the whole reason it is one function.
+    /// Split out because it happens at two different moments: immediately, for the
+    /// objects that ask nothing, and one action later for a card whose colour had to be
+    /// named first. Everything else about the entry is identical between them — the same
+    /// fresh [`PermanentId`], the same already-applied replacements baked into the entry
+    /// — which is the whole reason it is one function.
+    ///
+    /// The one thing applied *here* rather than by the replacement layer is a
+    /// planeswalker's starting loyalty (CR 306.5b). It is not a replacement effect: every
+    /// planeswalker does it, from its printed number alone, and there is nothing for the
+    /// affected player to order it against. It still has to happen before the permanent
+    /// is on the battlefield, or a planeswalker would arrive at zero loyalty and be put
+    /// into its owner's graveyard by CR 704.5i before anyone could act on it.
     pub(crate) fn complete_battlefield_entry(
         &mut self,
-        entry: &crate::choice::PendingEntry,
+        entry: &PendingEntry,
         chosen_color: Option<crate::mana::Color>,
         db: &CardDatabase,
     ) -> PermanentId {
         let id = PermanentId(self.mint_id());
+        // A card carries the physical copy it came from; a token has no card, so a
+        // per-object id is minted from the same counter to keep the identity fields
+        // uniform (ADR 0015).
+        let instance = match &entry.object {
+            EnteringObject::Card(card) => card.id,
+            EnteringObject::Token(_) => CardInstanceId(self.mint_id()),
+        };
         let entered_turn = self.turn;
-        let mut permanent = Permanent {
+        let mut counters: std::collections::BTreeMap<super::CounterKind, u32> = Default::default();
+        for (counter, count) in &entry.counters {
+            *counters.entry(*counter).or_insert(0) += count;
+        }
+        let printed = entry.object.printed();
+        if let Some(loyalty) = printed.face(db).and_then(|face| face.loyalty()) {
+            *counters.entry(super::CounterKind::Loyalty).or_insert(0) += loyalty;
+        }
+        let permanent = Permanent {
             id,
-            instance: entry.card.id,
-            printed: Printed::Card(entry.card.card),
+            instance,
+            printed,
             controller: entry.controller,
             tapped: entry.tapped,
             entered_turn,
-            attacking: None,
+            attacking: entry.attacking,
             blocking: Vec::new(),
             skips_untap: false,
             damage: 0,
-            counters: Default::default(),
+            counters,
             attached_to: entry.attached_to,
             chosen_color,
         };
-        crate::card::apply_enters_replacements(self, db, &mut permanent);
         self.battlefield.push(permanent);
         id
     }
@@ -251,16 +362,15 @@ impl GameState {
     /// Create one token with the characteristics `token` under `controller` — the
     /// single effect → battlefield seam for an object that is not a card (CR 111.1).
     ///
-    /// The counterpart of [`Self::put_card_onto_battlefield`], and deliberately its
-    /// twin: the token mints a fresh [`PermanentId`], takes the current turn as its
-    /// [`entered_turn`](Permanent::entered_turn) so it is summoning-sick like anything
-    /// else that just arrived (CR 302.6), applies its own enters-the-battlefield
-    /// self-replacements, and is then simply pushed onto the battlefield — where the
-    /// diff-based trigger collector picks it up as an entry indistinguishable from a
-    /// creature spell resolving.
+    /// The counterpart of [`Self::put_card_onto_battlefield`], and deliberately not a
+    /// twin but the *same* road: both build a [`PendingEntry`] and hand it to
+    /// [`Self::begin_battlefield_entry`], so a token runs through the replacement layer
+    /// (CR 614) exactly as a card does. That is what makes the `nontoken` wording of a
+    /// printed replacement a filter rather than an omission — a replacement that does
+    /// not say it is asked about tokens too.
     ///
     /// It differs in exactly one place: there is no [`CardInstance`] to carry, because
-    /// there is no card. A per-object [`CardInstanceId`] is still minted so the
+    /// there is no card. A per-object [`CardInstanceId`] is minted at arrival so the
     /// permanent's identity fields stay uniform, and — a token never leaving the
     /// battlefield as a card (CR 111.7) — that id can never appear in another zone.
     ///
@@ -272,7 +382,8 @@ impl GameState {
     /// "the effect did not say attacking" and "there was no attack to join". Nothing
     /// here taps a token for attacking: it was never declared as an attacker
     /// (CR 506.3c), so the only thing that taps it is `tapped`. Returns the new
-    /// permanent's id.
+    /// permanent's id, or `None` when the entry was replaced — a token that never
+    /// arrives simply ceases to exist (CR 111.7).
     pub(crate) fn create_token(
         &mut self,
         token: TokenData,
@@ -280,28 +391,20 @@ impl GameState {
         tapped: bool,
         attacking: Option<AttackTarget>,
         db: &CardDatabase,
-    ) -> PermanentId {
-        let id = PermanentId(self.mint_id());
-        let instance = CardInstanceId(self.mint_id());
-        let entered_turn = self.turn;
-        let mut permanent = Permanent {
-            id,
-            instance,
-            printed: Printed::Token(Box::new(token)),
-            controller,
-            tapped,
-            entered_turn,
-            attacking,
-            blocking: Vec::new(),
-            skips_untap: false,
-            damage: 0,
-            counters: Default::default(),
-            attached_to: None,
-            chosen_color: None,
-        };
-        crate::card::apply_enters_replacements(self, db, &mut permanent);
-        self.battlefield.push(permanent);
-        id
+    ) -> Option<PermanentId> {
+        self.begin_battlefield_entry(
+            PendingEntry {
+                object: EnteringObject::Token(Box::new(token)),
+                controller,
+                tapped,
+                attacking,
+                attached_to: None,
+                counters: Vec::new(),
+                cast: false,
+                applied: Vec::new(),
+            },
+            db,
+        )
     }
 
     /// Put the top `count` cards of `player`'s library into their graveyard

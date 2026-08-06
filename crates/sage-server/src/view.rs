@@ -16,13 +16,13 @@ use sage_engine::{
     blocker_can_block_attacker, blocker_candidates_for, bottom_requirement, characteristics,
     choice_bounds, choice_candidates, confirm_is_payable, declared_attackers, defender_candidates,
     is_mana_ability, mana_ability_pips, pending_blocker_declarer, pending_player_choice,
-    scripted_rules_text, summoning_sickness_restricts, target_requirements, valid_actions,
-    AbilityOrigin, Action, Attack, AttackTarget, Block, CardData, CardDatabase, CardId,
-    CardInstance, CardInstanceId, ChoiceOutcome, ChoiceQuestion, ChoiceRequest, ChoiceZone, Color,
-    ColorOutcome, ColorRequest, ConfirmRequest, CostPayment, CounterKind, DamageOrder,
-    DamageTarget, GameEvent, GameResult, GameState, Keyword, LoggedIdentity, LoggedPermanent,
-    LossReason, PermanentId, Player, PlayerId, PrintedFace, StackId, StackObject, StackObjectKind,
-    Step, Target, TargetSpec,
+    pending_replacement_options, scripted_rules_text, summoning_sickness_restricts,
+    target_requirements, valid_actions, Ability, AbilityOrigin, Action, Attack, AttackTarget,
+    Block, CardData, CardDatabase, CardId, CardInstance, CardInstanceId, ChoiceOutcome,
+    ChoiceQuestion, ChoiceRequest, ChoiceZone, Color, ColorOutcome, ColorRequest, ConfirmRequest,
+    CostPayment, CounterKind, DamageOrder, DamageTarget, GameEvent, GameResult, GameState, Keyword,
+    LoggedIdentity, LoggedPermanent, LossReason, OfferedReplacement, PermanentId, Player, PlayerId,
+    PrintedFace, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
 };
 
 use crate::rules_text::{
@@ -568,6 +568,11 @@ pub(crate) fn resolve_action(
             // A color choice is answered on the same slot with a color's option id
             // (issue #620) — again, only one the offer listed.
             Action::AnswerColor { .. } => bind_player_color(state, &offered, &choice.targets),
+            // The CR 616.1 replacement ordering is answered on the same slot with the
+            // option id that *is* the position in the engine's derived list.
+            Action::AnswerReplacement { .. } => {
+                bind_player_replacement(state, &offered, &choice.targets)
+            }
             _ => {
                 if !targets_fill_requirements(
                     &choice.targets,

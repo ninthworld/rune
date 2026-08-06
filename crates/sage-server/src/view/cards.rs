@@ -224,6 +224,7 @@ fn keyword_str(keyword: Keyword) -> &'static str {
         Keyword::DoubleStrike => "double_strike",
         Keyword::Hexproof => "hexproof",
         Keyword::Indestructible => "indestructible",
+        Keyword::Flash => "flash",
     }
 }
 

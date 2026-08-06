@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (215)
+## Supported cards (216)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -135,6 +135,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `millstone` | Millstone | functional definition |
 | `mind_rot` | Mind Rot | functional definition |
 | `mist_cloaked_herald` | Mist-Cloaked Herald | functional definition |
+| `mistcaller` | Mistcaller | functional definition |
 | `mountain` | Mountain | functional definition |
 | `murder` | Murder | functional definition |
 | `mystic_archaeologist` | Mystic Archaeologist | functional definition |
@@ -261,7 +262,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Playing a card from a zone other than the hand, the command zone, or a permitted graveyard | a graveyard is reached three ways — a one-turn permission to cast from it, a continuous permission to play lands from it, and an activated or triggered ability that returns its own card out of it — but no other zone is reached at all: no per-turn exile permission, nothing played off the top of a library, no way to cast without paying a mana cost, no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure), and no activation cost that exiles other cards from a graveyard |
 | Protection | there is no protection layer: nothing stops a spell, a block, an aura, or damage by a quality the way CR 702.16 does |
 | Reflexive triggers, and conditional branches that choose a target | an optional effect declares the target group of the one effect it wraps, but a conditional's branches, a wrapper over two targeting effects, and a "when you do" aimed after a cost is paid have no group one announcement could fill |
-| Replacement effects | no replacement-effect layer in the rules engine |
+| Replacement effects other than one modifying a permanent entering the battlefield | the entering object's own self-replacements and a one-shot replacement an ability created for the turn are collected, ordered by the affected permanent's controller (CR 616.1), and applied once each (CR 614.5); no other event can be replaced — not a permanent leaving the battlefield, damage, a draw, or life gained — no permanent carries a static replacement ability, and the only substitution an entry can be given is exile |
 | Rules that apply as though a permanent lacked a keyword it has | a keyword is present or absent at layer 6; nothing tells one rule to ignore a keyword the permanent still has |
 | Selectors that filter by toughness, or by a power relative to another permanent's | a permanent count, an enters-or-dies trigger selector, a blocking restriction, and a card choice each name a fixed power threshold; a target spec, a mass-effect class, and a static ability's condition name none, no threshold reads toughness, and no threshold is another permanent's power |
 | Spells with X in their cost | mana costs are fixed strings with no X announcement |

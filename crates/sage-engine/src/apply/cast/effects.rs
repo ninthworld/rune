@@ -103,6 +103,22 @@ pub(crate) fn apply_effect(
                 });
             }
         }
+        // CR 614.1b: a replacement effect that exists for the rest of the turn and is
+        // spent the first time the event it watches would happen. Minted from the same
+        // monotonic counter every other object uses — which is both its identity and the
+        // handle an ordering answer names — and then it simply waits.
+        Effect::CreateReplacement { replacement } => {
+            let id = state.mint_id();
+            let turn = state.turn;
+            state
+                .replacements
+                .push(crate::replacement::PendingReplacement {
+                    id,
+                    controller,
+                    effect: replacement.clone(),
+                    turn,
+                });
+        }
         Effect::DrawCard { count } => draw_cards(state, controller, u32::from(*count)),
         // The same draw, with the number taken off the game instead of off the card
         // (CR 608.2) — once, here, so a mill this same resolution performed is what the

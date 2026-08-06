@@ -68,8 +68,14 @@ no Oracle text, flavor, art, or branding.
 | `scripted` | no | Declares behavior implemented in `src/scripted.rs`; defaults to `false` |
 
 Current keyword values are `flying`, `reach`, `vigilance`, `haste`, `defender`, `menace`,
-`first_strike`, `trample`, `deathtouch`, `lifelink`, `double_strike`, `hexproof`, and
-`indestructible`.
+`first_strike`, `trample`, `deathtouch`, `lifelink`, `double_strike`, `hexproof`,
+`indestructible`, and `flash`.
+
+`flash` (CR 702.8) is the one keyword that is not about a permanent at all — it is a static
+ability of the **card**, and it stops mattering the instant that card becomes a permanent. It
+lifts the sorcery-speed gate and nothing else, in the single timing predicate every casting
+road asks (from hand, from a graveyard under a one-turn permission, from the command zone),
+which both the offer and the apply-time re-check run.
 
 `indestructible` (CR 702.12) is not a combat rule either, and not a targeting one: it is an
 exception to **destruction**, enforced at the two places destruction happens — the CR
@@ -964,6 +970,56 @@ gate and the CR 608.2b resolution re-check run. So the permission is consulted i
 honoured in both by construction: a creature targeted while the permission is in force stays a
 legal target when the spell resolves, and a spell aimed on an earlier turn does not become legal
 because a permission was granted on a later one.
+
+### Creating a replacement effect
+
+`create_replacement` creates a **one-shot replacement effect** (CR 614.1b) that lasts for the
+rest of the turn and is spent by the first event it applies to — the `The next time a … would
+… this turn, … instead` a card prints. Mistcaller:
+
+```json
+{ "kind": "create_replacement",
+  "replacement": {
+    "kind": "exile_entering",
+    "entering": { "card_type": "creature", "nontoken": true, "not_cast": true } } }
+```
+
+It is the third per-turn thing an ability can put into the state, recorded exactly like
+`allow_casting_from_graveyard` and `ignore_hexproof` — on a list carrying the turn it was
+created on, dropped at the same turn boundary. It differs in one way, and that is the `next
+time`: **applying it removes it**, so it can never do its job twice.
+
+It names no target and no player. A replacement watches an *event*, and which events it
+watches is the replacement's own filter — a class of thing that might happen, chosen when the
+card was written rather than aimed when the ability was activated.
+
+`exile_entering` is today's only replacement: a permanent that would enter the battlefield is
+**exiled instead**. The event is cancelled rather than modified, so nothing enters, no
+enters-the-battlefield trigger is collected, and every other replacement that was applicable to
+that entry stops applying — there is no longer an entry to modify. A card goes to its owner's
+exile; a token simply ceases to exist (CR 111.7).
+
+Its `entering` filter is a small product of independent restrictions, every one of which
+defaults to "no restriction":
+
+| Field | Meaning |
+| --- | --- |
+| `card_type` | Only an entering permanent with this printed card type |
+| `nontoken` | Only a permanent that is not a token (CR 111) |
+| `not_cast` | Only a permanent that got there **without being cast** |
+
+`not_cast` is the one fact about an entry that cannot be read off the object: the same creature
+card reanimated and cast produces the same permanent, and it is recorded at the single seam
+where a resolving permanent spell becomes a permanent.
+
+**Self-replacements are the same layer.** `enters_tapped` and `enters_with_counters` are
+collected alongside whatever an ability created, so when more than one applies to the same
+entry the affected permanent's **controller** — not the effects' controller — chooses which
+applies first (CR 616.1), through the mid-resolution choice queue every other player decision
+rides. Each applies at most once to one event (CR 614.5), which is what makes the loop
+terminate. `enters_choosing_color` is deliberately not one of them: it is a question, not a
+modification anyone could order it against, and the entry is already deferred until it is
+answered.
 
 ### Abilities that function from a graveyard
 

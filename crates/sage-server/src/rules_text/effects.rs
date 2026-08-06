@@ -477,6 +477,47 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
              this turn",
             subject_pronoun(*player_ref),
         ),
+        // CR 614.1b, in the order a card prints it: the event, then the duration the
+        // one-shot lasts, then any qualifier on the event, then what happens instead.
+        Effect::CreateReplacement { replacement } => match replacement {
+            ReplacementEffect::ExileEntering { entering } => format!(
+                "the next time {} would enter the battlefield this turn{}, {}",
+                entering_noun(entering),
+                if entering.not_cast {
+                    " without being cast"
+                } else {
+                    ""
+                },
+                replacement_phrase(replacement),
+            ),
+        },
+    }
+}
+
+/// What a replacement effect does **instead** of the event it watches (CR 614.1a).
+///
+/// The half of the clause that is about the substitution rather than about the event,
+/// split out because the CR 616.1 ordering prompt asks a player to choose *between
+/// substitutions* — they already know what is entering. One formatter either way, so the
+/// question and the card's rules text can never describe the same effect two ways.
+#[must_use]
+pub(crate) fn replacement_phrase(replacement: &ReplacementEffect) -> String {
+    match replacement {
+        ReplacementEffect::ExileEntering { .. } => "exile it instead".to_string(),
+    }
+}
+
+/// The class of entering permanent a replacement's filter names, as a noun phrase with
+/// its article: `a nontoken creature`, `a permanent`.
+fn entering_noun(filter: &EnteringFilter) -> String {
+    let noun = match filter.card_type {
+        Some(card_type) => card_type_word(card_type),
+        None => "permanent",
+    };
+    if filter.nontoken {
+        format!("a nontoken {noun}")
+    } else {
+        format!("a {noun}")
     }
 }
 

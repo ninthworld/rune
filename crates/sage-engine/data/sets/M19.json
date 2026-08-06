@@ -220,6 +220,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "mistcaller",
+    "collector_number": "62",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "mystic_archaeologist",
     "collector_number": "63",
     "rarity": "rare"

@@ -436,6 +436,7 @@ pub(crate) fn apply_targeted_effect(
         | Effect::CreateEmblem { .. }
         | Effect::AllowCastingFromGraveyard { .. }
         | Effect::IgnoreHexproof { .. }
+        | Effect::CreateReplacement { .. }
         | Effect::Conditional { .. }
         | Effect::PumpAll { .. }
         | Effect::GrantKeywordAll { .. }

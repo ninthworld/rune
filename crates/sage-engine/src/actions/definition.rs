@@ -259,6 +259,27 @@ pub enum Action {
         /// whatever spend restriction the producing effect declared (CR 106.6).
         color: crate::mana::Color,
     },
+    /// Answer the **CR 616.1 replacement-ordering choice** the game is currently waiting
+    /// on: more than one replacement effect would modify the same event, and the
+    /// affected object's controller picks which applies first (see
+    /// [`crate::pending_replacement_options`]).
+    ///
+    /// The fourth answer shape beside the three above, routed identically — offered to
+    /// the choice's chooser and to no other seat, and nothing else happens until it
+    /// arrives. Applying the named replacement may leave others still applicable, in
+    /// which case the question is asked again with a shorter list; it terminates because
+    /// a replacement never applies twice to one event (CR 614.5).
+    ///
+    /// The chooser is frequently **not** the effects' controller. A replacement an
+    /// opponent created and a self-replacement printed on the entering card are ordered
+    /// by the entering permanent's controller, which is what CR 616.1 says and the whole
+    /// reason this is a routed choice rather than a decision the engine makes.
+    AnswerReplacement {
+        /// Which replacement applies first, as a position in the freshly derived option
+        /// list — never an id the client made up, and never an index into a list that
+        /// was snapshotted when the question was posed.
+        index: u8,
+    },
     /// Cast a spell from hand, paying its mana cost from the caster's pool.
     CastSpell {
         /// The specific card in the caster's hand to cast. Names the physical
@@ -455,6 +476,7 @@ impl Action {
             | Action::AnswerChoice { .. }
             | Action::AnswerConfirm { .. }
             | Action::AnswerColor { .. }
+            | Action::AnswerReplacement { .. }
             | Action::PlayLand { .. }
             | Action::Discard { .. }
             | Action::Mulligan
@@ -527,6 +549,10 @@ impl Action {
             Action::AnswerColor { .. } => Action::AnswerColor {
                 color: crate::mana::Color::White,
             },
+            // And a replacement-ordering answer the same way: one bare question, whose
+            // answer names a position in the submitted action. Zero is the requirement
+            // form's stand-in, never a default anyone is held to.
+            Action::AnswerReplacement { .. } => Action::AnswerReplacement { index: 0 },
             // The requirement form of a combat declaration is the empty selection —
             // exactly what `valid_actions` advertises during the declare window.
             Action::DeclareAttackers { .. } => Action::DeclareAttackers {
