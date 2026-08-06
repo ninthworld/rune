@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (204)
+## Supported cards (207)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -135,11 +135,14 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `murder` | Murder | functional definition |
 | `mystic_archaeologist` | Mystic Archaeologist | functional definition |
 | `naturalize` | Naturalize | functional definition |
+| `nightmare_s_thirst` | Nightmare's Thirst | functional definition |
 | `oakenform` | Oakenform | functional definition |
 | `omenspeaker` | Omenspeaker | functional definition |
 | `onakke_ogre` | Onakke Ogre | functional definition |
+| `one_with_the_machine` | One with the Machine | functional definition |
 | `open_the_graves` | Open the Graves | functional definition |
 | `oreskos_swiftclaw` | Oreskos Swiftclaw | functional definition |
+| `patient_rebuilding` | Patient Rebuilding | functional definition |
 | `pelakka_wurm` | Pelakka Wurm | functional definition |
 | `pendulum_of_patterns` | Pendulum of Patterns | functional definition |
 | `plague_mare` | Plague Mare | functional definition |
@@ -237,7 +240,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Effects that let a player choose the order of cards put back on a library | a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random |
 | Effects that return a card from a graveyard to a zone other than a hand or the battlefield | a targeted card returns from a graveyard to a hand or to the battlefield, and a whole graveyard can be exiled; nothing else moves a card out of one |
 | Effects that untap a permanent it did not just take | untapping rides on the control change that steals a creature, because one effect names one target; nothing else brings an untap forward |
-| Effects whose amount is derived from anything but a count of permanents | a count of permanents may feed power/toughness, life, damage, a token count, and an attachment's static grant; nothing else may — not cards in a zone, a life total, a mana value, another object's power, life gained this turn, half of a total, or a count of what this resolution milled or sacrificed |
+| Effects whose amount is derived from a source outside the four the IR names | an amount may be a count of permanents (feeding power/toughness, life, damage, a token count, and an attachment's static grant), the life gained this turn, a count of what this resolution milled, or the greatest mana value among a class of permanents — the last three feeding power/toughness and a draw; nothing else may — not cards in a zone, a life total, one named object's mana value, another object's power, half of a total, a count of what this resolution sacrificed, or the permanent an effect just put onto the battlefield |
 | Emblems with an activated ability | an emblem carries static and triggered abilities only; nothing offers a way to activate one |
 | Equipment that grants an ability or a type, and cards that ask whether a creature is equipped | an attachment grants power/toughness, keywords, and combat restrictions at CR 613 layers 6 and 7c; it adds no triggered ability and no type, and nothing asks whether a permanent is attached |
 | Fight, and other effects taking two differently-specified targets | one effect's target slots all share a single spec, so two differently-specified slots are unwritable |

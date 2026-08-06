@@ -756,6 +756,47 @@ pub enum Effect {
         /// Which permanents are counted, relative to the effect's controller.
         count_of: PermanentCount,
     },
+    /// Give the single creature this effect targets `power_per`/`toughness_per` **per
+    /// unit of** `amount`, until end of turn — `Target creature gets -X/-X until end of
+    /// turn, where X is the amount of life you gained this turn.`
+    ///
+    /// The sibling of [`Effect::PumpByCount`] for every X that is *not* a count of
+    /// permanents ([`DerivedAmount`]), and identical to it in the one way that matters:
+    /// X is computed **on resolution** (CR 608.2), once, and the fixed modifier that
+    /// results is what the layer system folds in. Life gained after this resolves does
+    /// not shrink the creature further, which is what the printed card means.
+    ///
+    /// A separate variant rather than a second field on [`Effect::PumpByCount`] because
+    /// exactly one of the two sources is ever present: a card says "for each Zombie you
+    /// control" *or* "where X is the amount of life you gained this turn", never both,
+    /// and two optional fields would make "neither" and "both" authorable shapes that
+    /// mean nothing.
+    PumpByAmount {
+        /// What this effect is allowed to target (a creature).
+        target: TargetSpec,
+        /// The signed power change contributed by each unit of the amount.
+        power_per: i32,
+        /// The signed toughness change contributed by each unit of the amount.
+        toughness_per: i32,
+        /// Where X comes from.
+        amount: DerivedAmount,
+    },
+    /// The controller draws a number of cards the card does not print — `Draw cards equal
+    /// to the greatest mana value among artifacts you control.`, and `you draw a card for
+    /// each land card put into their graveyard this way`.
+    ///
+    /// The derived-amount counterpart of [`Effect::DrawCard`], whose `count` is a printed
+    /// number. The subject is the same implicit one — the controller — so this effect
+    /// chooses no target either, and each draw goes through the same
+    /// [`Player::draw`](crate::Player::draw) seam, so emptying a library still flags the
+    /// CR 704.5c decking loss.
+    ///
+    /// X is taken once, as the effect applies (CR 608.2), which for a "this way" source
+    /// is what makes it read the mill the *same resolution* performed a moment earlier.
+    DrawCardsByAmount {
+        /// How many cards are drawn.
+        amount: DerivedAmount,
+    },
     /// The referenced player gains `amount_per` life **per permanent** matching
     /// `count_of` (`You gain 1 life for each creature you control.`) — the
     /// count-derived counterpart of [`Effect::GainLife`], and the life-total sibling of
@@ -972,6 +1013,7 @@ impl Effect {
             | Effect::Exile { target }
             | Effect::Pump { target, .. }
             | Effect::PumpByCount { target, .. }
+            | Effect::PumpByAmount { target, .. }
             | Effect::GrantKeyword { target, .. }
             | Effect::Restrict { target, .. }
             | Effect::GainControl { target, .. }
@@ -1014,6 +1056,9 @@ impl Effect {
             // player answering it is the effect's controller by definition.
             | Effect::AddManaAnyColor { .. }
             | Effect::DrawCard { .. }
+            // A derived number of cards is still drawn by the controller, so it names no
+            // target either — where the number comes from is not a subject.
+            | Effect::DrawCardsByAmount { .. }
             // An emblem is given to a named player, never a targeted one (CR 114.3 —
             // "you get an emblem"), and a graveyard-casting permission likewise names
             // its player without targeting.

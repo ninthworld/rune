@@ -230,6 +230,16 @@
     "rarity": "common"
   },
   {
+    "functional_id": "one_with_the_machine",
+    "collector_number": "66",
+    "rarity": "rare"
+  },
+  {
+    "functional_id": "patient_rebuilding",
+    "collector_number": "67",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "psychic_corrosion",
     "collector_number": "68",
     "rarity": "uncommon"
@@ -367,6 +377,11 @@
   {
     "functional_id": "murder",
     "collector_number": "110",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "nightmare_s_thirst",
+    "collector_number": "111",
     "rarity": "uncommon"
   },
   {

@@ -241,6 +241,17 @@ impl<'a> PrintedFace<'a> {
         }
     }
 
+    /// The object's **mana value** (CR 202.3): the total of its printed mana cost.
+    ///
+    /// Zero for a token, and for anything else with no mana cost, which CR 202.3b says
+    /// outright — so a class measured by mana value never has to decide whether to skip
+    /// a token, and simply finds a zero where one is.
+    #[must_use]
+    pub fn mana_value(&self) -> u32 {
+        let cost = crate::mana::parse_mana_cost(self.mana_cost());
+        u32::from(cost.generic) + u32::from(cost.colored_total())
+    }
+
     /// The object's colors (CR 105.2).
     #[must_use]
     pub fn colors(&self) -> &'a [Color] {

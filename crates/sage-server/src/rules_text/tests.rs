@@ -412,6 +412,28 @@ fn issue_722_a_counted_grant_and_a_counted_token_state_the_class_they_scale_with
 }
 
 #[test]
+fn issue_722_an_amount_that_is_not_a_count_names_the_source_it_reads() {
+    // Each of the three sources reads as the noun phrase the printed card puts after
+    // "where X is" or "equal to" — never as a number, which does not exist until the
+    // effect resolves.
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "one_with_the_machine"),
+        "You draw cards equal to the greatest mana value among artifacts you control."
+    );
+    assert_eq!(
+        text_of(&db, "nightmare_s_thirst"),
+        "You gain 1 life.\nTarget creature gets -X/-X until end of turn, \
+         where X is the amount of life you gained this turn."
+    );
+    assert_eq!(
+        text_of(&db, "patient_rebuilding"),
+        "At the beginning of your upkeep, target opponent mills three cards \
+         and you draw cards equal to the number of land cards milled this way."
+    );
+}
+
+#[test]
 fn issue_728_an_equipment_states_its_grant_and_its_equip_ability() {
     // Marauder's Axe (bundled). The grant sentence names "equipped creature" rather than
     // repeating the equip ability's restriction — an Equipment is only ever on a creature

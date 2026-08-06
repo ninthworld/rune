@@ -697,6 +697,55 @@ the same recursion, and the same refusal, as `min_power` inside a static ability
 `condition`. The count is relative to the **attachment's** controller, which is who "you
 control" means on the card that printed the grant, not the host's controller.
 
+### Amounts derived from something else (`where X is …`)
+
+Not every X is a count of permanents. The other sources are a closed set — a
+`DerivedAmount`, authored as an `amount` block with a `source` tag — and there is no
+arithmetic over them: no halving, no adding two together, and no way to compose one out of
+another. A card that needs a new phrase adds a source.
+
+| `source` | Reads | Written on a card as |
+| --- | --- | --- |
+| `life_gained_this_turn` | how much life **you** have gained this turn (CR 118.3) | `where X is the amount of life you gained this turn` |
+| `milled_this_way` | how many cards **this resolution** milled matching `filter` | `for each land card put into their graveyard this way` |
+| `greatest_mana_value` | the greatest mana value among the permanents `among` names (CR 202.3) | `equal to the greatest mana value among artifacts you control` |
+
+Two effects read one:
+
+```json
+{ "kind": "pump_by_amount", "target": "any_creature",
+  "power_per": -1, "toughness_per": -1,
+  "amount": { "source": "life_gained_this_turn" } }
+{ "kind": "draw_cards_by_amount",
+  "amount": { "source": "greatest_mana_value",
+              "among": { "scope": "you_control", "card_type": "artifact" } } }
+{ "kind": "draw_cards_by_amount",
+  "amount": { "source": "milled_this_way", "filter": { "kind": "land" } } }
+```
+
+`pump_by_amount` is `pump_by_count`'s sibling for every X that is not a count, and freezes
+X into a fixed modifier in exactly the same way: life gained later in the turn does not
+shrink the creature any further. `draw_cards_by_amount` is `draw_card`'s, with the number
+taken off the game instead of off the card; each draw goes through the same seam, so
+emptying a library still flags the decking loss (CR 704.5c).
+
+They are separate verbs rather than an extra field on their fixed siblings because exactly
+one source is ever present: a card says `for each Zombie you control` **or** `where X is
+the amount of life you gained this turn`, never both, and two optional fields would make
+"neither" and "both" authorable shapes that mean nothing.
+
+**A count of permanents is deliberately not one of these sources**, and keeps the
+`count_of` spelling of the previous section. It is the one X a *static* ability may also
+read — an Aura's `+1/+1 for each Forest you control` is recalculated on every read of its
+host — and nothing here could stand in that position: `life_gained_this_turn` and
+`milled_this_way` read recorded **events** over a window (the turn, and this resolution),
+and a window has no meaning outside a resolution.
+
+`milled_this_way` names no player, on purpose. A resolution's mills belong to the
+resolution, and the card reading the number is the card that just did the milling — "their
+graveyard" is the player the effect above it already named, so a scope here would be a
+second way to say the same thing and a second way to get it wrong.
+
 ### Emptying a graveyard, and the top of a library
 
 `exile_graveyard` moves **every** card of the named player's graveyard to exile at once. Its

@@ -24,12 +24,17 @@ mod removal_tests;
 /// [`Effect::Attach`] names *two* objects, the host it targets and the source it moves.
 /// Both want a permanent, so both go through [`AbilitySource::permanent`](crate::AbilitySource),
 /// which answers `None` for an emblem and for a card in a graveyard — neither is one.
+///
+/// `resolution_start` is the log sequence this resolution began at, carried for the same
+/// reason [`apply_effect`] carries it: an amount that says "this way" is a question about
+/// what this resolution has already done.
 pub(crate) fn apply_targeted_effect(
     state: &mut GameState,
     effect: &Effect,
     target: Target,
     controller: PlayerId,
     source: Option<crate::stack::AbilitySource>,
+    resolution_start: u64,
     db: &CardDatabase,
 ) {
     let source = source.and_then(crate::stack::AbilitySource::permanent);
@@ -355,24 +360,30 @@ pub(crate) fn apply_targeted_effect(
             count_of,
             ..
         } => {
-            if let Target::Permanent(id) = target {
-                if state.battlefield.iter().any(|p| p.id == id) {
-                    let count = i32::try_from(crate::condition::count_permanents(
-                        state, count_of, controller, db,
-                    ))
-                    .unwrap_or(i32::MAX);
-                    let source = state.mint_id();
-                    state.static_effects.push(StaticEffect {
-                        source,
-                        affects: EffectAffects::SpecificPermanent(id),
-                        modification: Modification::PowerToughness {
-                            power: power_per.saturating_mul(count),
-                            toughness: toughness_per.saturating_mul(count),
-                        },
-                        duration: Duration::UntilEndOfTurn,
-                    });
-                }
-            }
+            let count = i32::try_from(crate::condition::count_permanents(
+                state, count_of, controller, db,
+            ))
+            .unwrap_or(i32::MAX);
+            pump_by(state, target, *power_per, *toughness_per, count);
+        }
+        // The same freeze, with X off a source that is not a count of permanents: the
+        // amount is read here, on resolution, and the modifier that results is fixed —
+        // life gained later this turn does not shrink the creature any further.
+        Effect::PumpByAmount {
+            power_per,
+            toughness_per,
+            amount,
+            ..
+        } => {
+            let count = i32::try_from(crate::condition::derived_amount(
+                state,
+                amount,
+                controller,
+                resolution_start,
+                db,
+            ))
+            .unwrap_or(i32::MAX);
+            pump_by(state, target, *power_per, *toughness_per, count);
         }
         // Return the targeted card from a graveyard to the battlefield. It goes through
         // the one card→battlefield seam, so it mints a fresh `PermanentId`, applies its
@@ -417,6 +428,7 @@ pub(crate) fn apply_targeted_effect(
         | Effect::RestrictSelf { .. }
         | Effect::AlterAbilitiesSelf { .. }
         | Effect::GainLifeByCount { .. }
+        | Effect::DrawCardsByAmount { .. }
         // A card returning itself out of a graveyard names its own source, never a
         // chosen one (CR 115.1), so it too is applied by [`apply_effect`].
         | Effect::ReturnSelfFromGraveyard { .. }
@@ -458,6 +470,37 @@ pub(crate) fn apply_targeted_effect(
             }
         }
     }
+}
+
+/// Give `target` a fixed `power_per`/`toughness_per` **times** `units` until end of turn
+/// (CR 613 layer 7c).
+///
+/// The shared tail of the two X-derived pumps: by the time either reaches here X is a
+/// number, so nothing below knows whether it came from a count of permanents or from a
+/// [`DerivedAmount`](crate::DerivedAmount). Freezing it into one timestamped modifier is
+/// the whole point — a selector re-evaluated on every read would give a shrunk creature
+/// its toughness back the moment the board changed.
+///
+/// A target that is no longer on the battlefield gets nothing; the caller has already
+/// re-checked legality (CR 608.2b), and this is the narrower question of whether the
+/// permanent is still there to modify.
+fn pump_by(state: &mut GameState, target: Target, power_per: i32, toughness_per: i32, units: i32) {
+    let Target::Permanent(id) = target else {
+        return;
+    };
+    if !state.battlefield.iter().any(|p| p.id == id) {
+        return;
+    }
+    let source = state.mint_id();
+    state.static_effects.push(StaticEffect {
+        source,
+        affects: EffectAffects::SpecificPermanent(id),
+        modification: Modification::PowerToughness {
+            power: power_per.saturating_mul(units),
+            toughness: toughness_per.saturating_mul(units),
+        },
+        duration: Duration::UntilEndOfTurn,
+    });
 }
 
 /// Remove the card `instance` from whichever graveyard holds it, or `None` when no
