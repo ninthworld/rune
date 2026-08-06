@@ -47,8 +47,13 @@ CR 603.4 trigger check. Every question but the count reads recorded events over 
 the resolution, or the turn — because none of them can be answered from a snapshot.
 A count of permanents (`count_of`) may feed an effect's amount, the number of tokens it
 creates, and an attachment's static grant — the last recalculated on every read, because a
-static ability is not a resolution; cards in a zone, life totals, mana values, and another
-object's power feed nothing.
+static ability is not a resolution. Every *other* X is a `DerivedAmount`, a closed set of
+three phrases with no arithmetic over them — the life gained this turn, a count of what
+this resolution milled, the greatest mana value among a class — read once where the effect
+applies and feeding two verbs, a pump and a draw. The count keeps its own spelling because
+it is the one source a static grant may also name; nothing windowed over events could
+stand there. Cards in a zone, a life total, one named object's mana value, another
+object's power, and half of anything still feed nothing.
 
 **`data/exclusions.json` is the maintained list, and it is the one that has to stay
 right.** Every exclusion names a single blocker; `make compat` regenerates

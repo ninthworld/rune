@@ -1,14 +1,21 @@
 //! Evaluating an [`Effect::Conditional`](crate::Effect)'s [`Condition`] — the
 //! intervening-if clause of `If you control three or more artifacts, draw two cards
-//! instead.`
+//! instead.` — and the [`DerivedAmount`] behind the `X` of `where X is …`.
+//!
+//! The two belong together because they ask the same questions and differ only in what
+//! they do with the answer: `if you gained life this turn` and `X is the amount of life
+//! you gained this turn` read one number, once, and one of them compares it while the
+//! other uses it. Sharing the readers is what keeps them from ever disagreeing.
 //!
 //! Two kinds of question live here, and they read different things:
 //!
-//! - a question about the **board** ([`Condition::ControlsAtLeast`]) counts permanents,
-//!   the way every mass selector does;
+//! - a question about the **board** ([`Condition::ControlsAtLeast`],
+//!   [`DerivedAmount::GreatestManaValue`]) reads the permanents on it, the way every
+//!   mass selector does;
 //! - a question about **what has already happened**
 //!   ([`Condition::MilledThisWay`], [`Condition::DiscardedThisWay`],
-//!   [`Condition::GainedLifeThisTurn`]) reads the events that were recorded, over a
+//!   [`Condition::GainedLifeThisTurn`], [`DerivedAmount::MilledThisWay`],
+//!   [`DerivedAmount::LifeGainedThisTurn`]) reads the events that were recorded, over a
 //!   window that is either the resolution or the turn.
 //!
 //! The second kind is why this is a module rather than a match arm. A snapshot cannot
@@ -19,7 +26,7 @@
 //! discipline the life-gain and cast trigger conditions already follow (ADR 0007),
 //! applied to a window this module chooses.
 
-use crate::ability::{CardFilter, Condition, CountScope, PermanentCount};
+use crate::ability::{CardFilter, Condition, CountScope, DerivedAmount, PermanentCount};
 use crate::id::PlayerId;
 use crate::state::{GameEvent, GameState};
 use crate::CardDatabase;
@@ -76,7 +83,24 @@ pub(crate) fn count_permanents(
     controller: PlayerId,
     db: &CardDatabase,
 ) -> u32 {
-    let matching = state.battlefield.iter().filter(|perm| {
+    let matching = permanents_matching(state, wanted, controller, db);
+    u32::try_from(matching.count()).unwrap_or(u32::MAX)
+}
+
+/// The permanents `wanted` names, in battlefield order, for an object controlled by
+/// `controller`.
+///
+/// The shared body of every question asked *about* a counted class: how many there are
+/// ([`count_permanents`]) and the greatest mana value among them
+/// ([`DerivedAmount::GreatestManaValue`]). One predicate, so "artifacts you control"
+/// cannot mean one set when it is counted and another when it is measured.
+fn permanents_matching<'a>(
+    state: &'a GameState,
+    wanted: &'a PermanentCount,
+    controller: PlayerId,
+    db: &'a CardDatabase,
+) -> impl Iterator<Item = &'a crate::state::Permanent> {
+    state.battlefield.iter().filter(move |perm| {
         // CR 613 layer 2, read through the one control path: a creature someone has
         // gained control of counts for its *new* controller and not for its old one.
         let perm_controller = crate::characteristics::controller_of(state, perm);
@@ -119,8 +143,52 @@ pub(crate) fn count_permanents(
                 .power
                 .is_some_and(|power| power >= min)
         })
-    });
-    u32::try_from(matching.count()).unwrap_or(u32::MAX)
+    })
+}
+
+/// The number a [`DerivedAmount`] names, for an object controlled by `controller`
+/// resolving in a window that began at log sequence `resolution_start`.
+///
+/// Taken **once**, where it is called (CR 608.2): every caller turns the answer into a
+/// fixed number — cards drawn, or a timestamped power/toughness modifier — and nothing
+/// re-reads the source afterwards.
+#[must_use]
+pub(crate) fn derived_amount(
+    state: &GameState,
+    amount: &DerivedAmount,
+    controller: PlayerId,
+    resolution_start: u64,
+    db: &CardDatabase,
+) -> u32 {
+    match amount {
+        DerivedAmount::LifeGainedThisTurn => life_gained_this_turn(state, controller),
+        // Every card this resolution milled, whoever's library it came from — see
+        // [`DerivedAmount::MilledThisWay`] for why the seat is not a field. A resolution
+        // that milled nothing counts nothing, which is the zero a card that draws "for
+        // each land milled this way" wants off an empty library.
+        DerivedAmount::MilledThisWay { filter } => {
+            let milled = events_since(state, resolution_start)
+                .filter_map(|event| match event {
+                    GameEvent::CardsMilled { cards, .. } => Some(cards),
+                    _ => None,
+                })
+                .flatten()
+                .filter(|card| card_matches(db, card.card, filter))
+                .count();
+            u32::try_from(milled).unwrap_or(u32::MAX)
+        }
+        // CR 202.3b: mana value is a number off the printed face, so a token — which has
+        // no mana cost at all — is a zero rather than an exclusion. An empty class is
+        // zero for the same reason, which is what makes such a spell castable with
+        // nothing on the board.
+        DerivedAmount::GreatestManaValue { among } => {
+            permanents_matching(state, among, controller, db)
+                .filter_map(|perm| perm.printed.face(db))
+                .map(|face| face.mana_value())
+                .max()
+                .unwrap_or(0)
+        }
+    }
 }
 
 /// The events recorded at or after log sequence `from` — the window a

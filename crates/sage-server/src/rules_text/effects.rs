@@ -390,6 +390,27 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             sign(*toughness_per),
             count_subject(count_of),
         ),
+        // The same X clause with the source spelled out by the amount itself, which
+        // already reads as the noun phrase a card puts after "where X is".
+        Effect::PumpByAmount {
+            target,
+            power_per,
+            toughness_per,
+            amount,
+        } => format!(
+            "{} gets {}X/{}X until end of turn, where X is {}",
+            target_noun(*target),
+            sign(*power_per),
+            sign(*toughness_per),
+            amount_noun(amount),
+        ),
+        // Named subject, unlike the fixed [`Effect::DrawCard`] beside it: a derived draw
+        // is printed as the *second* clause of a sentence whose first one belongs to
+        // somebody else ("target opponent mills three cards, then **you** draw …"), and a
+        // bare "draw" there reads as an instruction to the opponent.
+        Effect::DrawCardsByAmount { amount } => {
+            format!("you draw cards equal to {}", amount_noun(amount))
+        }
         // The colors are the player's, so the sentence says how many mana and leaves
         // the colors to them — exactly what the card says.
         Effect::AddManaAnyColor {
@@ -481,6 +502,28 @@ fn count_subject(count: &PermanentCount) -> String {
         CountScope::Any => noun,
     };
     power_clause(&class, count)
+}
+
+/// A [`DerivedAmount`] as the noun phrase a card puts after "where X is" or "equal to".
+///
+/// One phrasing per source, in the words the printed card uses, so the two positions the
+/// amount can appear in read as one sentence apiece — "gets -X/-X …, where X is **the
+/// amount of life you gained this turn**", "draw cards equal to **the greatest mana value
+/// among artifacts you control**". Exhaustive, so a new source has to say how it reads.
+fn amount_noun(amount: &DerivedAmount) -> String {
+    match amount {
+        DerivedAmount::LifeGainedThisTurn => "the amount of life you gained this turn".to_string(),
+        // "milled this way" is the wording the intervening-if clause already uses for the
+        // same window; one phrase, so the yes-or-no and the count cannot describe the
+        // same mill two ways.
+        DerivedAmount::MilledThisWay { filter } => format!(
+            "the number of {} milled this way",
+            filter_noun(filter, true)
+        ),
+        DerivedAmount::GreatestManaValue { among } => {
+            format!("the greatest mana value among {}", count_subject(among))
+        }
+    }
 }
 
 /// A class with its power bound trailing it, where a card prints it: "creatures you

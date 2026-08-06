@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "functional_id": "patient_rebuilding",
+  "name": "Patient Rebuilding",
+  "types": [
+    "enchantment"
+  ],
+  "mana_cost": "{3}{U}{U}",
+  "colors": [
+    "blue"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "beginning_of_step": {
+          "step": "upkeep",
+          "whose_turn": "yours"
+        }
+      },
+      "effects": [
+        {
+          "kind": "mill",
+          "player_ref": "target_opponent",
+          "count": 3
+        },
+        {
+          "kind": "draw_cards_by_amount",
+          "amount": {
+            "source": "milled_this_way",
+            "filter": {
+              "kind": "land"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

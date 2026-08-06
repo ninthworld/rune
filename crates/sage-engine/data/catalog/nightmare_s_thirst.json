@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "functional_id": "nightmare_s_thirst",
+  "name": "Nightmare's Thirst",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{B}",
+  "colors": [
+    "black"
+  ],
+  "spell_effects": [
+    {
+      "kind": "gain_life",
+      "player_ref": "controller",
+      "amount": 1
+    },
+    {
+      "kind": "pump_by_amount",
+      "target": "any_creature",
+      "power_per": -1,
+      "toughness_per": -1,
+      "amount": {
+        "source": "life_gained_this_turn"
+      }
+    }
+  ]
+}

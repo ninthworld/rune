@@ -24,10 +24,11 @@
 use sage_engine::{
     equip_ability, Ability, ActivatorScope, AdditionalCost, Attachment, AttachmentKind, CardData,
     CardFilter, CardType, Chooser, Color, CombatRestriction, Condition, Cost, CountScope,
-    CounterKind, DamageSubject, Effect, FoundDestination, GraveyardCardClass, GraveyardScope,
-    Keyword, ManaRestriction, MassAffects, ObservedPermanent, ObservedSpell, PermanentCount,
-    PlayerModification, PlayerRef, StaticAffects, StaticCondition, StaticModification, TargetCount,
-    TargetSpec, TokenData, TriggerCondition, TriggerStep, TurnScope,
+    CounterKind, DamageSubject, DerivedAmount, Effect, FoundDestination, GraveyardCardClass,
+    GraveyardScope, Keyword, ManaRestriction, MassAffects, ObservedPermanent, ObservedSpell,
+    PermanentCount, PlayerModification, PlayerRef, StaticAffects, StaticCondition,
+    StaticModification, TargetCount, TargetSpec, TokenData, TriggerCondition, TriggerStep,
+    TurnScope,
 };
 
 mod effects;

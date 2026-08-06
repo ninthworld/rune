@@ -61,6 +61,70 @@ pub enum Condition {
     },
 }
 
+/// The `X` of `where X is …` — a number an effect takes off the **game** rather than
+/// off its own printed text.
+///
+/// Taken once, at the moment the effect applies (CR 608.2), and never re-read: the
+/// resulting number is what the effect uses, so a permanent that leaves afterwards
+/// changes nothing about an amount already fixed.
+///
+/// Deliberately closed and **not composable** — there is no arithmetic here, no halving,
+/// and no way to add two sources together. Each variant is a phrase a printed card
+/// writes, and a card that needs a new phrase adds a variant.
+///
+/// A **count of permanents** is deliberately not one of them: it keeps its own spelling
+/// ([`PermanentCount`], authored as `count_of`), because it is the one source a *static*
+/// ability may also read — an Aura's `+1/+1 for each Forest you control` is recalculated
+/// on every read of its host's characteristics, and has to be. Nothing here could stand
+/// in that position: two of the three read *events* over a window, exactly as
+/// [`Condition`] does and for the same reason, and an event window has no meaning
+/// outside a resolution.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(tag = "source", rename_all = "snake_case")]
+pub enum DerivedAmount {
+    /// How much life the effect's **controller has gained this turn** (CR 118.3) — the
+    /// `where X is the amount of life you gained this turn` of a drain that grows with a
+    /// lifegain deck.
+    ///
+    /// The very number [`Condition::GainedLifeThisTurn`] compares against, read as a
+    /// quantity instead of as a yes: a sum of the turn's gains, never a net and never a
+    /// maximum. Gaining three and losing it again is still three gained, which is why a
+    /// difference of life totals would answer wrongly and the recorded events are read
+    /// instead. Life the *same resolution* gained a moment ago is included — a card that
+    /// gains one life and then reads this means it.
+    LifeGainedThisTurn,
+    /// How many cards **this resolution milled** that match `filter` — the `for each land
+    /// card put into their graveyard this way` of a mill-and-draw.
+    ///
+    /// The counting form of [`Condition::MilledThisWay`], over the same window and read
+    /// off the same recorded [`GameEvent::CardsMilled`](crate::GameEvent) entries: a land
+    /// already in that graveyard was not milled this way, and a graveyard scan could
+    /// never tell the two apart.
+    ///
+    /// Whose library the cards came from is deliberately **not** a field. A resolution's
+    /// mills belong to the resolution, and the card that reads this number is the same
+    /// card that just did the milling — "their graveyard" names the player the effect
+    /// above it already named, so a scope here would be a second way to say the same
+    /// thing and a second way to get it wrong.
+    MilledThisWay {
+        /// Which milled cards are counted. Defaults to all of them.
+        #[serde(default)]
+        filter: CardFilter,
+    },
+    /// The **greatest mana value** among permanents matching `among` (CR 202.3) — the
+    /// `equal to the greatest mana value among artifacts you control` of a draw spell
+    /// that pays off a heavy board.
+    ///
+    /// Zero when nothing matches, which is what makes such a spell a legal but blank cast
+    /// rather than an uncastable one. Mana value is read off the **printed** face, where
+    /// CR 202.3b puts it, so a token — which has no mana cost — contributes zero and an
+    /// Aura or a land contributes what its cost says.
+    GreatestManaValue {
+        /// Which permanents are looked at, relative to the effect's controller.
+        among: PermanentCount,
+    },
+}
+
 /// A class of permanents to **count**, relative to an effect's controller.
 ///
 /// Deliberately a small product of three independent filters rather than a closed list

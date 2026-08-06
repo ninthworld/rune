@@ -6,12 +6,19 @@ use super::*;
 #[cfg(test)]
 mod tests;
 
-/// Apply a single [`Effect`] to `state` on behalf of `controller`.
+/// Apply a single [`Effect`] to `state` on behalf of `controller`, resolving in a window
+/// that began at log sequence `resolution_start`.
+///
+/// The window is the same one an intervening condition is judged over, and it is here for
+/// the same reason: an amount that says "this way" ([`DerivedAmount::MilledThisWay`]) is
+/// a question about what *this* resolution has already done, which no snapshot of the
+/// game can answer.
 pub(crate) fn apply_effect(
     state: &mut GameState,
     effect: &Effect,
     controller: PlayerId,
     source: Option<crate::stack::AbilitySource>,
+    resolution_start: u64,
     db: &CardDatabase,
 ) {
     if state.players.get(controller.0).is_none() {
@@ -96,26 +103,14 @@ pub(crate) fn apply_effect(
                 });
             }
         }
-        Effect::DrawCard { count } => {
-            // Routes each draw through `Player::draw`, so a card-draw effect that
-            // empties the library also flags the decking loss (CR 704.5c). Only the
-            // cards that actually moved are logged (an empty-library draw adds none).
-            let mut drawn = 0u32;
-            for _ in 0..*count {
-                let moved = state
-                    .players
-                    .get_mut(controller.0)
-                    .is_some_and(|player| player.draw());
-                if moved {
-                    drawn += 1;
-                }
-            }
-            if drawn > 0 {
-                state.record_event(GameEvent::CardsDrawn {
-                    player: controller,
-                    count: drawn,
-                });
-            }
+        Effect::DrawCard { count } => draw_cards(state, controller, u32::from(*count)),
+        // The same draw, with the number taken off the game instead of off the card
+        // (CR 608.2) — once, here, so a mill this same resolution performed is what the
+        // "this way" sources read.
+        Effect::DrawCardsByAmount { amount } => {
+            let count =
+                crate::condition::derived_amount(state, amount, controller, resolution_start, db);
+            draw_cards(state, controller, count);
         }
         // CR 119.3: the referenced player gains life. A non-targeting reference names
         // its seats outright ([`non_targeting_subjects`]); a targeting one is routed through
@@ -374,6 +369,7 @@ pub(crate) fn apply_effect(
         | Effect::PutCounters { .. }
         | Effect::Pump { .. }
         | Effect::PumpByCount { .. }
+        | Effect::PumpByAmount { .. }
         | Effect::GrantKeyword { .. }
         | Effect::ReturnCardToBattlefield { .. }
         | Effect::ReturnCardToHand { .. }
@@ -419,6 +415,35 @@ pub(crate) fn apply_effect(
                 }
             }
         }
+    }
+}
+
+/// Draw `count` cards for `controller`, one at a time (CR 121.1).
+///
+/// Routes each draw through [`Player::draw`](crate::Player::draw), so a card-draw effect
+/// that empties the library also flags the decking loss (CR 704.5c). Only the cards that
+/// actually moved are logged — an empty-library draw adds none — and a count of zero
+/// records nothing at all, which is what a derived amount of zero should look like in a
+/// log: an effect that drew no cards, not a draw of no cards.
+///
+/// One function so the printed and the derived spellings of a draw cannot differ about
+/// what drawing is.
+fn draw_cards(state: &mut GameState, controller: PlayerId, count: u32) {
+    let mut drawn = 0u32;
+    for _ in 0..count {
+        let moved = state
+            .players
+            .get_mut(controller.0)
+            .is_some_and(|player| player.draw());
+        if moved {
+            drawn += 1;
+        }
+    }
+    if drawn > 0 {
+        state.record_event(GameEvent::CardsDrawn {
+            player: controller,
+            count: drawn,
+        });
     }
 }
 

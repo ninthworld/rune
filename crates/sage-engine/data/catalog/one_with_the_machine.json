@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "functional_id": "one_with_the_machine",
+  "name": "One with the Machine",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{3}{U}",
+  "colors": [
+    "blue"
+  ],
+  "spell_effects": [
+    {
+      "kind": "draw_cards_by_amount",
+      "amount": {
+        "source": "greatest_mana_value",
+        "among": {
+          "scope": "you_control",
+          "card_type": "artifact"
+        }
+      }
+    }
+  ]
+}

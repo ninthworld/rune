@@ -56,8 +56,8 @@
     "blocker": "untapping rides on the control change that steals a creature, because one effect names one target; nothing else brings an untap forward"
   },
   {
-    "name": "Effects whose amount is derived from anything but a count of permanents",
-    "blocker": "a count of permanents may feed power/toughness, life, damage, a token count, and an attachment's static grant; nothing else may — not cards in a zone, a life total, a mana value, another object's power, life gained this turn, half of a total, or a count of what this resolution milled or sacrificed"
+    "name": "Effects whose amount is derived from a source outside the four the IR names",
+    "blocker": "an amount may be a count of permanents (feeding power/toughness, life, damage, a token count, and an attachment's static grant), the life gained this turn, a count of what this resolution milled, or the greatest mana value among a class of permanents — the last three feeding power/toughness and a draw; nothing else may — not cards in a zone, a life total, one named object's mana value, another object's power, half of a total, a count of what this resolution sacrificed, or the permanent an effect just put onto the battlefield"
   },
   {
     "name": "Emblems with an activated ability",

@@ -162,11 +162,16 @@ pub(crate) fn apply_activate_ability(
                 Some(choices) => {
                     crate::choice::pose_choices(state, choices, db);
                 }
+                // A mana ability has no resolution to be a window over — it never uses
+                // the stack (CR 605.1a) — and every effect it may carry is a mana verb,
+                // none of which reads an amount off the game. "From here on" is the
+                // honest window, and nothing consults it.
                 None => apply_effect(
                     state,
                     effect,
                     controller,
                     Some(crate::stack::AbilitySource::Permanent(permanent)),
+                    state.next_log_sequence,
                     db,
                 ),
             }
