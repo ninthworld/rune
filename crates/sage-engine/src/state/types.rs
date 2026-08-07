@@ -323,6 +323,20 @@ pub enum GameEvent {
         /// Already-derived terminal result.
         result: GameResult,
     },
+    /// The table was rolled back to an earlier state at a player's request (issue
+    /// #648) — the one event here that is **not** something the rules did.
+    ///
+    /// Undo is a table rule the server owns entirely: the engine holds no history,
+    /// no limit, and no opinion about when a rollback is allowed. What it owns is the
+    /// log window and the sequence numbers in it, so a rollback that no engine event
+    /// can describe would otherwise have to be numbered by something that is not
+    /// allowed to number anything. The event is therefore recorded here, through
+    /// [`GameState::with_undo_recorded`], and says only what a player at the table
+    /// would say: this state was restored, and that player asked for it.
+    Undone {
+        /// The player who requested the rollback.
+        player: PlayerId,
+    },
 }
 
 /// A kind of counter that can sit on a [`Permanent`].

@@ -19,6 +19,7 @@ import { expect, test } from '@playwright/test'
 import {
   DESKTOP,
   fixture,
+  messages,
   openSide,
   pageFits,
   serveFrames,
@@ -208,5 +209,52 @@ test.describe('the settle, made legible', () => {
 
     await expect(page.getByRole('region', { name: 'Actions' })).toBeVisible()
     await expect(page.getByRole('status')).toHaveCount(0)
+  })
+})
+
+test.describe('undo, where the table allows it', () => {
+  test('offers undo where the table allows it, and nowhere else', async ({ page }) => {
+    // `gameview-turn.json` is a table that allows undo with three checkpoints left, so the
+    // control is drawn, pressable, and carries the count (issue #648). One press sends one
+    // `undo` and asserts nothing locally — the restored state arrives as an ordinary view.
+    const socket = await serveFrames(page, [fixture('gameview-turn.json')])
+    await page.goto('/')
+    await openSide(page)
+
+    const undo = page.getByRole('button', { name: /^Undo/ })
+    await expect(undo).toBeEnabled()
+    await expect(undo).toContainText('3')
+    await undo.click()
+    await expect.poll(() => messages(socket.sent, 'undo')).toEqual([{ type: 'undo' }])
+    // Nothing was sent as a play: an undo is not an action the rules offered.
+    expect(submissions(socket.sent)).toHaveLength(0)
+  })
+
+  test('drops everything it was holding when it asks for a rollback', async ({ page }) => {
+    // A rollback is the one moment where every piece of held interaction is stale at
+    // once, so the board throws all of it away as it asks (issue #648). A concede
+    // waiting for its second click is the visible case: it is local state, it is
+    // destructive, and it must not survive into a state it was never asked about.
+    await serveFrames(page, [fixture('gameview-turn.json')])
+    await page.goto('/')
+    await openSide(page)
+
+    await page.getByRole('button', { name: 'Concede' }).click()
+    await expect(page.getByRole('button', { name: 'Yes, concede the game' })).toBeVisible()
+
+    await page.getByRole('button', { name: /^Undo/ }).click()
+    // Back to asking, with nothing armed — and no `choose_action` ever left the tab.
+    await expect(page.getByRole('button', { name: 'Concede' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Yes, concede the game' })).toHaveCount(0)
+  })
+
+  test('draws no undo control at a table that does not carry the rule', async ({ page }) => {
+    // `gameview.json` has no `undo` field at all, which is every table by default — so there
+    // is no control, rather than a disabled one implying the rule might exist.
+    await serveFrames(page, [fixture('gameview.json')])
+    await page.goto('/')
+    await openSide(page)
+
+    await expect(page.getByRole('button', { name: /^Undo/ })).toHaveCount(0)
   })
 })

@@ -44,6 +44,7 @@ const SAMPLES: readonly Event[] = [
   { type: 'player_eliminated', player: 'p1', reason: 'life_zero' },
   { type: 'commander_returned_to_command_zone', player: 'p0', card },
   { type: 'game_over', result: { reason: 'concede', winner: 'p0' } },
+  { type: 'undone', player: 'p1' },
 ]
 
 suite('the log', () => {
@@ -63,6 +64,18 @@ suite('the log', () => {
     expect(
       kindOf({ type: 'damage_dealt', target: { kind: 'player', player: 'p1' }, amount: 3 }),
     ).toBe('life')
+  })
+
+  it('names who took the table back, in the only place a rollback is recorded', () => {
+    // The entries the undone move wrote went back with the state that held them, so this
+    // line is the whole record — and the one thing it must carry is the player, since the
+    // restored board cannot show who asked for it (issue #648).
+    const undone: Event = { type: 'undone', player: 'p1' }
+    expect(describe(undone, name)).toBe('Alice undid the previous action')
+    // Its own class: it is not the game reporting itself, and it should not read as one
+    // more thing that happened in the turn.
+    expect(kindOf(undone)).toBe('table')
+    expect(kindOf({ type: 'game_over', result: { reason: 'decked' } })).not.toBe('table')
   })
 
   it('says so rather than guessing when a newer server logs something unknown', () => {

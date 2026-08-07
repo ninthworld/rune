@@ -265,13 +265,19 @@ test.describe('the lobby', () => {
       form.getByRole('radiogroup', { name: 'Format' }).getByRole('radio'),
     ).not.toHaveCount(0)
 
-    // Undo is drawn where §9.5 puts it and offers nothing: neither answer is pressable and
-    // neither is selected, because a chosen `Allowed` would state a rule `RoomConfig` cannot
-    // carry (issue #704). Pinned until #648 puts the field on the wire.
+    // Undo is a table rule chosen here (§9.5, issue #648). A new table takes nothing back
+    // until somebody asks it to, so `Not allowed` is the answer already selected.
     const undo = form.locator('.undo-field')
-    await expect(undo.getByRole('button', { name: 'Allowed', exact: true })).toBeDisabled()
-    await expect(undo.getByRole('button', { name: 'Not allowed' })).toBeDisabled()
-    await expect(undo.locator('.seg-on')).toHaveCount(0)
+    await expect(undo.getByRole('radio', { name: 'Not allowed' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+    await expect(undo.getByRole('radio', { name: 'Allowed', exact: true })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    )
+    // The footer restates what will be made, so the rule is read where the commit is.
+    await expect(form.locator('.zone-hint')).toContainText('no undo')
 
     await form.getByRole('button', { name: 'Create the table' }).click()
 
@@ -279,8 +285,26 @@ test.describe('the lobby', () => {
     const config = messages(socket.sent, 'create_room')[0]?.config as Record<string, unknown>
     expect(typeof config.game_setup).toBe('string')
     expect(typeof config.seats).toBe('number')
-    // And nothing about undo reaches the wire, because there is no field for it to reach.
+    // Off is the default and elides: the table that is made is the one the wire describes.
     expect(config.undo_enabled).toBeUndefined()
+  })
+
+  test('sends the undo rule only when the table was made with it', async ({ page }) => {
+    const socket = await serveFrames(page, [
+      fixture('lobbyview-open.json'),
+      fixture('catalogview.json'),
+    ])
+    await open(page, 'Ada')
+
+    await page.getByRole('button', { name: '+ Create table' }).click()
+    const form = page.getByRole('dialog', { name: 'New table' })
+    await form.locator('.undo-field').getByRole('radio', { name: 'Allowed', exact: true }).click()
+    await expect(form.locator('.zone-hint')).toContainText('undo allowed')
+    await form.getByRole('button', { name: 'Create the table' }).click()
+
+    await expect.poll(() => messages(socket.sent, 'create_room')).toHaveLength(1)
+    const config = messages(socket.sent, 'create_room')[0]?.config as Record<string, unknown>
+    expect(config.undo_enabled).toBe(true)
   })
 })
 
@@ -298,10 +322,13 @@ test.describe('the table room', () => {
     // Chosen when the table was made, and shown where it is played — including that it is not
     // open to anyone.
     await expect(page.locator('.room-facts')).toContainText('Invite only')
-    // A table never claims undo: nothing on the wire says whether it is allowed, so the strip
-    // states it is unavailable and does not colour it as a rule (issue #704, pinned until #648).
-    await expect(page.locator('.room-facts')).toContainText('Undo unavailable')
-    await expect(page.locator('.room-facts')).not.toContainText('Undo allowed')
+    // A rule that changes how the game plays is drawn in its own colour beside the words that
+    // say the same thing (§9.5, issue #648). This table was made without undo, and the strip
+    // says so from `RoomConfig` rather than from any client assumption.
+    const facts = page.locator('.room-facts')
+    await expect(facts).toContainText('No undo')
+    await expect(facts).not.toContainText('Undo allowed')
+    await expect(facts.locator('.fact-off')).toHaveText('No undo')
 
     // Every seat carries its own state, on the seat rather than summarised underneath.
     await expect(table).toContainText('Practice bot')

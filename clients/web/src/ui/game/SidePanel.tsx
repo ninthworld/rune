@@ -13,6 +13,13 @@
  * server's settle acting on a preference it stores (ADR 0010). Concede sits at the end of the
  * same strip, in the one colour nothing else on the board wears.
  *
+ * **Undo sits in that strip too** (issue #648), and it belongs there for the same reason concede
+ * does: it is about the match rather than about the board, and it is never a play. It is drawn
+ * only where the server said this table allows it, disabled where the server said nothing is left
+ * to take back, and it carries the count so a player can see the history running out. The client
+ * decides neither — `GameView.undo` is the whole of what it knows, and pressing it sends one
+ * `undo` and renders whatever comes back.
+ *
  * Then the tabs. **Stack comes first because it is the only one you have to read now** — it is
  * the game asking you to respond — and its tab carries a count, so a spell going on the stack is
  * visible from the Log tab too. Anything the server is showing this seat right now (`revealed`)
@@ -26,7 +33,7 @@ import { useState } from 'react'
 
 import type { CardFace } from './../../card-face'
 import { describe, kindOf } from './../../game-log'
-import type { GameLogEntry, StackItem } from './../../protocol'
+import type { GameLogEntry, StackItem, UndoView } from './../../protocol'
 import { presetWording, type StopPreset } from './../../turn'
 import { Card } from './../card/Card'
 import { Symbols } from './../card/Symbols'
@@ -78,6 +85,8 @@ export function SidePanel({
   onPreset,
   onConcede,
   concedeAsked,
+  undo,
+  onUndo,
   surface,
 }: {
   open: boolean
@@ -94,6 +103,9 @@ export function SidePanel({
   /** Absent when the server is not currently offering the action. */
   onConcede?(): void
   concedeAsked: boolean
+  /** What undo can do here, or nothing at a table that does not allow it (issue #648). */
+  undo?: UndoView
+  onUndo(): void
   surface: Surface
 }) {
   const [tab, setTab] = useState<Tab>('Stack')
@@ -125,6 +137,23 @@ export function SidePanel({
             {PRESET_LABELS[entry]}
           </button>
         ))}
+        {/* Drawn only where the table allows it, and unpressable where the room has nothing
+            left to restore — both facts the server stated, neither one worked out here. The
+            count is the history running out, in the open, so it is never a surprise. */}
+        {undo && (
+          <button
+            className="helper-btn helper-undo"
+            onClick={onUndo}
+            disabled={undo.available === 0}
+            title={
+              undo.available === 0
+                ? 'Nothing earlier is left to go back to'
+                : `Take the last action back — ${undo.available} of ${undo.limit} kept`
+            }
+          >
+            Undo{undo.available > 0 && <span className="panel-count">{undo.available}</span>}
+          </button>
+        )}
         {onConcede && (
           <button className="helper-btn helper-concede" onClick={onConcede}>
             {concedeAsked ? 'Yes, concede the game' : 'Concede'}

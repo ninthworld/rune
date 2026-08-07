@@ -35,7 +35,7 @@ pub use ai::{ai_options, policy_for, serve_ai_seat, AiKind, AiPolicy, RandomPoli
 pub use lobby::{serve_lobby_connection, Lobby};
 pub use room::{
     serve_connection, serve_spectator_connection, AutoPassPolicy, Room, RoomHandle, RoomInput,
-    Seat, StopPolicy,
+    Seat, StopPolicy, UndoPolicy,
 };
 
 use std::future::Future;

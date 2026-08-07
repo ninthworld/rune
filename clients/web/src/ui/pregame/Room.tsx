@@ -7,12 +7,9 @@
  *
  * **A table's rules are chosen when it is made and shown where it is played.** The strip under
  * the title carries them plainly, and a rule that changes how the game plays is drawn in its own
- * colour. Three of them — the mulligan, the clock, and undo — are not on the wire; they are
- * drawn as what every table currently does, unpressable, rather than left out and having to be
- * designed back in the day the server carries them. **Undo is drawn as unavailable, not as a
- * rule that is on**: `RoomConfig` has no undo field, so a table that said `Undo allowed` was
- * telling a player a gameplay rule existed when nothing behind it did (issue #704). The green
- * "allowed" of §9.5 is what this becomes once #648 puts the fact on the wire.
+ * colour: **undo allowed in green, no undo in red** (§9.5, issue #648). The fact comes from
+ * `RoomConfig.undo_enabled` and nowhere else — this screen states a table rule only because the
+ * table stated it first, which is the whole of what #704 was about.
  *
  * **A seat shows what its player brought, and both seats are drawn the same way** (§9.7): the deck's
  * colours, and the commander it was built around. Your own comes from the draft on this device;
@@ -142,9 +139,11 @@ export function Room({
           {format && format.min_deck_size > 0 && (
             <span className="fact">{format.min_deck_size} card minimum</span>
           )}
-          {/* Not a table rule yet: the wire carries no undo field, so this states what is true of
-              every table today rather than colouring a rule the server never sent (issue #704). */}
-          <span className="fact">Undo unavailable</span>
+          {/* A rule that changes how the game plays, so it is drawn in its own colour beside the
+              words that say the same thing — never in colour alone (issue #648). */}
+          <span className={`fact ${room.config.undo_enabled ? 'fact-on' : 'fact-off'}`}>
+            {room.config.undo_enabled ? 'Undo allowed' : 'No undo'}
+          </span>
         </div>
 
         <div

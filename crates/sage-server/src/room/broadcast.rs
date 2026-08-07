@@ -213,6 +213,10 @@ impl Room {
         // submission (correlated or not, see `record_ack`) and dropped when the seat
         // reconnects, so it never outlives the connection that earned it.
         view.action_ack = self.pending_acks.get(seat).cloned().flatten();
+        // What undo can do at this table right now (issue #648). Public and the same
+        // for every seat — undo is a table rule, not a personal preference — and absent
+        // entirely at a table that did not enable it, which is what draws no control.
+        view.undo = self.undo_view();
         if let Some(at) = self.deadline {
             if !view.valid_actions.is_empty() {
                 view.action_deadline =

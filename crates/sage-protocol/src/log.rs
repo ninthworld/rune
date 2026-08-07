@@ -184,6 +184,21 @@ pub enum GameLogEvent {
         /// The terminal result.
         result: GameResult,
     },
+    /// A player **undid** the last accepted transition and the table was returned to
+    /// the state before it (issue #648). The one entry here that reports something a
+    /// player did to the game rather than something the game did.
+    ///
+    /// It is the record of the rollback, and it is deliberately the *only* one: the
+    /// entries the undone transition wrote went back with the state that held them, so
+    /// the window a client renders after an undo is the window as it stood at the
+    /// restored checkpoint, plus this. Nothing says what was taken back, because the
+    /// state that would have described it no longer exists — what a player needs to
+    /// know is that the board they are looking at is an earlier one and who asked for
+    /// it.
+    Undone {
+        /// The player who requested the rollback.
+        player: PlayerId,
+    },
 }
 
 /// A clickable named entity reference in a game log event.
@@ -324,6 +339,23 @@ mod tests {
                 "card": { "id": "card_2", "name": "Lathliss, Dragon Queen" },
             })
         );
+    }
+
+    #[test]
+    fn issue_648_undone_event_names_who_rolled_the_table_back() {
+        // The log is where a rollback is recorded and the only place it is named, so
+        // the entry says the one thing nobody could work out from the restored board:
+        // which player asked for it.
+        let event = GameLogEvent::Undone {
+            player: "p1".into(),
+        };
+        assert_eq!(
+            serde_json::to_value(&event).unwrap(),
+            serde_json::json!({ "type": "undone", "player": "p1" })
+        );
+        let back: GameLogEvent =
+            serde_json::from_str(&serde_json::to_string(&event).unwrap()).unwrap();
+        assert_eq!(back, event);
     }
 
     #[test]

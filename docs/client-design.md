@@ -420,6 +420,11 @@ So:
   across rather than down, and it is where combat is already read across.
 - **The stop preferences are a tray of named helpers in the side column** — *to next turn*, *to end
   step*, *to your turn*, *skip stack*, *to prior end*, *cancel skip* — beside `Concede`.
+- **`Undo` is in that same tray, where the table's rules are** (issue #648), and it belongs there
+  for the reason `Concede` does: it is about the match rather than about the board, and it is never
+  a play. It is drawn only where the server said this table allows undo, unpressable where the
+  server said nothing is left to take back, and it carries the count of what remains — a history
+  running out should be visible before it runs out, not discovered when the button stops working.
 
 Two reversals here. The first is small: an earlier draft made the full turn **one compact control
 that expands on a gesture**, on the reasoning that a twelve-step rail is expensive. The prototype
@@ -1511,16 +1516,17 @@ title carries them plainly — format, seats, access, mulligan, clock, undo — 
 changes how the game plays is drawn in its own colour**: undo allowed in green, no undo in red,
 beside the words that say the same thing (§5.5).
 
-**Undo is a table rule**, named here because it is the first of its kind: chosen at creation, fixed
-for the life of the table, and visible to everyone at it. A player must never have to ask whether
-this table lets an action be taken back.
+**Undo is a table rule**, named here because it is the first of its kind: chosen at creation,
+changeable by the host while the table is still gathering, and visible to everyone at it. A player
+must never have to ask whether this table lets an action be taken back.
 
-**Until the server carries it, undo reads as unavailable rather than as a rule that is on**
-(issue #704). `RoomConfig` has no undo field and the server has no rollback command, so the strip
-says `Undo unavailable` in the plain colour of a fact rather than the green of an allowed rule,
-and the creation dialog draws both answers unpressable with **neither** selected. The colours and
-the choice above are what this surface becomes the day #648 puts the fact on the wire — a client
-may state a table rule only when the table stated it first.
+The fact comes from `RoomConfig.undo_enabled` and from nowhere else (issue #648) — a client may
+state a table rule only when the table stated it first, which is the whole of what #704 was about.
+The strip says `Undo allowed` in green or `No undo` in red, and the creation dialog offers both
+answers with `Not allowed` selected: a table takes nothing back unless somebody asked it to. The
+note under the choice says what it costs as well as what it does — a rollback puts the cards back,
+but nobody unsees a card they were shown — so undo reads as what it is, a rule for casual play and
+for fixing a misclick.
 
 **A seat is a card, and the seats tile the way the board's do** — at most four across, two on a
 phone. Each carries a ready dot, the player's name, a host badge where it applies, the deck, the

@@ -110,3 +110,37 @@ test.describe('a seat called what a player typed', () => {
     expect(overflow.filter((name) => !/panel-body|log|zone-body/.test(name))).toEqual([])
   })
 })
+
+/**
+ * The one control that is not at every table.
+ *
+ * Undo (issue #648) adds a fifth button to the side column's helper strip, which is the only
+ * place in the client where the *number* of controls depends on what the server said. A strip
+ * that grew a row has to take that room from the panel under it — which is allowed to scroll its
+ * own lists — and never from the board, at the sizes where there is least of it to take.
+ */
+for (const size of [
+  { name: 'a phone', width: 390, height: 844 },
+  { name: 'a very short window', width: 1280, height: 480 },
+]) {
+  test.describe(`an undo table on ${size.name}`, () => {
+    test.use({ viewport: { width: size.width, height: size.height } })
+
+    test('fits the extra control without the board scrolling', async ({ page }) => {
+      const view = fixture('gameview-board.json') as Record<string, unknown>
+      await serveFrames(page, [{ ...view, undo: { available: 4, limit: 20 } }])
+      await page.goto('/')
+      await expect(page.getByRole('region', { name: 'Actions' })).toBeVisible()
+
+      expect(await pageFits(page)).toEqual({ x: true, y: true })
+      const overflow = await page.evaluate(() => {
+        const board = document.querySelector('.layout')
+        if (!board) return []
+        return [...board.querySelectorAll<HTMLElement>('*')]
+          .filter((el) => el.scrollHeight > el.clientHeight + 1)
+          .map((el) => el.className)
+      })
+      expect(overflow.filter((name) => !/panel-body|log|zone-body/.test(name))).toEqual([])
+    })
+  })
+}

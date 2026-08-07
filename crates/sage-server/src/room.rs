@@ -53,11 +53,13 @@ mod input;
 mod policy;
 #[cfg(test)]
 mod test_support;
+mod undo;
 
 pub use connection::{serve_connection, serve_spectator_connection};
 pub use handle::{RoomHandle, RoomInput, Seat};
 use policy::SeatStops;
 pub use policy::{AutoPassPolicy, StopPolicy};
+pub use undo::UndoPolicy;
 // `TimerPolicy` is reachable only through `Room::with_timer_policy` (the lobby never
 // re-exports it), so the barrel re-export stays crate-internal — the same reach it
 // had when the enum was defined inline in this module.
@@ -176,6 +178,17 @@ pub struct Room {
     /// it is delivered exactly once and a later resync never re-fires it. Transient
     /// and display-only, like [`Self::auto_passed_seats`]; the game never reads it.
     pending_acks: Vec<Option<ActionAck>>,
+    /// This table's **undo** policy (issue #648). [`UndoPolicy::Off`] by default, so a
+    /// room nobody asked for undo at keeps no history and clones no state.
+    undo: UndoPolicy,
+    /// The restorable **checkpoints**, oldest first: the states the room was in when it
+    /// last put a question to the table, one per accepted transition (issue #648).
+    ///
+    /// Room state by definition — the engine holds no history, and holding it there
+    /// would make the depth of a rollback a rules question instead of a table rule.
+    /// Bounded by [`UndoPolicy`]'s limit and empty at a table without undo.
+    /// An undo pops the last entry, which is also what discards the branch above it.
+    history: Vec<GameState>,
     /// The connected **spectators** (issue #351): each a latest-value sender
     /// the room pushes a redacted [`SpectatorView`] to on every broadcast. Spectators
     /// own no seat and are not held open across disconnects — a sender whose receiver
@@ -207,8 +220,21 @@ impl Room {
             auto_passed_steps: vec![Vec::new(); seat_count],
             auto_passed_from: vec![None; seat_count],
             pending_acks: (0..seat_count).map(|_| None).collect(),
+            undo: UndoPolicy::Off,
+            history: Vec::new(),
             spectators: Vec::new(),
         }
+    }
+
+    /// Set this room's **undo** policy (issue #648). Chainable on [`Room::new`]; the
+    /// default is [`UndoPolicy::Off`], which keeps no checkpoints and puts no undo
+    /// field on any view. The lobby sets it from the table's own
+    /// [`RoomConfig::undo_enabled`](sage_protocol::RoomConfig), so the rule a player
+    /// agreed to before sitting down is the rule the room plays under.
+    #[must_use]
+    pub fn with_undo(mut self, policy: UndoPolicy) -> Self {
+        self.undo = policy;
+        self
     }
 
     /// Set this room's decision-timer policy (issue #263). Chainable on

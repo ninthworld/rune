@@ -62,6 +62,7 @@ fn issue_546_room_config_carries_a_name_and_visibility_and_elides_the_defaults()
         game_setup: "commander".into(),
         name: Some("Casual Commander".into()),
         visibility: RoomVisibility::Private,
+        undo_enabled: false,
     };
     let json = serde_json::to_value(&named).unwrap();
     assert_eq!(
@@ -106,6 +107,7 @@ fn issue_546_lobby_command_update_room_round_trips() {
             game_setup: "commander".into(),
             name: Some("Casual Commander".into()),
             visibility: RoomVisibility::Private,
+            undo_enabled: false,
         },
     });
     let json = serde_json::to_value(&msg).unwrap();
@@ -748,6 +750,11 @@ fn canonical_roomless_lobby_fixture_round_trips_and_matches_typed_fields() {
         .directory
         .iter()
         .all(|room| room.config.visibility == RoomVisibility::Public));
+    // A table rule the directory carries (issue #648): the commander table takes moves
+    // back, the other two do not, and neither of those two spells the default out.
+    assert!(view.directory[2].config.undo_enabled);
+    assert!(!view.directory[0].config.undo_enabled);
+    assert!(!view.directory[1].config.undo_enabled);
 
     assert_eq!(
         view.valid_commands,
@@ -757,5 +764,84 @@ fn canonical_roomless_lobby_fixture_round_trips_and_matches_typed_fields() {
             "join_room".to_string(),
             "spectate_room".to_string(),
         ]
+    );
+}
+
+#[test]
+fn issue_648_room_config_carries_the_undo_rule_and_elides_it_when_off() {
+    // A table that allows undo says so on the wire, and the field is a plain bool
+    // beside the other table rules — nothing about *history* rides the config, which
+    // is the server's alone.
+    let undoable = RoomConfig {
+        seats: 2,
+        game_setup: "standard_2p".into(),
+        undo_enabled: true,
+        ..Default::default()
+    };
+    let json = serde_json::to_value(&undoable).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({ "seats": 2, "game_setup": "standard_2p", "undo_enabled": true })
+    );
+    assert_eq!(
+        serde_json::from_value::<RoomConfig>(json).unwrap(),
+        undoable
+    );
+
+    // Off is the default and elides, so a client that never learned the field makes
+    // exactly the table it always made.
+    let plain = RoomConfig {
+        seats: 2,
+        game_setup: "standard_2p".into(),
+        ..Default::default()
+    };
+    assert_eq!(
+        serde_json::to_value(&plain).unwrap(),
+        serde_json::json!({ "seats": 2, "game_setup": "standard_2p" })
+    );
+    let legacy: RoomConfig =
+        serde_json::from_str(r#"{"seats":2,"game_setup":"standard_2p"}"#).unwrap();
+    assert_eq!(legacy, plain);
+    assert!(!legacy.undo_enabled, "an omitted undo rule means no undo");
+}
+
+#[test]
+fn issue_648_the_undo_rule_reaches_a_room_through_create_and_update_alike() {
+    // Both config-carrying commands take a whole `RoomConfig`, so the rule rides the
+    // field it already had rather than a second, divergent copy — the host edits the
+    // same table rule the creator chose.
+    let config = RoomConfig {
+        seats: 2,
+        game_setup: "standard_2p".into(),
+        undo_enabled: true,
+        ..Default::default()
+    };
+    for command in [
+        LobbyCommand::CreateRoom(CreateRoom {
+            config: config.clone(),
+        }),
+        LobbyCommand::UpdateRoom(UpdateRoom {
+            config: config.clone(),
+        }),
+    ] {
+        let json = serde_json::to_value(&command).unwrap();
+        assert_eq!(json["config"]["undo_enabled"], true);
+        let back: LobbyCommand = serde_json::from_value(json).unwrap();
+        assert_eq!(back, command);
+    }
+
+    // And the directory advertises it, so a table's rules are readable before joining.
+    let summary = RoomSummary {
+        room_id: "r0".into(),
+        config,
+        filled: 1,
+        spectators: 0,
+        state: RoomState::Gathering,
+    };
+    let json = serde_json::to_value(&summary).unwrap();
+    assert_eq!(json["config"]["undo_enabled"], true);
+    assert_eq!(
+        serde_json::from_value::<RoomSummary>(json).unwrap(),
+        summary
     );
 }

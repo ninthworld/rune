@@ -402,6 +402,10 @@ fn game_view_round_trips_through_json() {
         // frame so their defaults ride the exhaustive round trip too.
         format: None,
         commander_identity: Vec::new(),
+        // Undo (issue #648) is a table rule most tables do not enable, so the
+        // exhaustive frame carries the absent case its default reads as: no undo
+        // control at all.
+        undo: None,
     };
 
     let json = serde_json::to_string(&view).unwrap();
@@ -1416,4 +1420,65 @@ fn issue_628_turn_flow_fixture_round_trips_with_its_stops_and_settle_path() {
     // A disconnected seat is a flag on the seat, not an absence of it: the board still shows
     // them, their totals, and their piles.
     assert!(!view.opponents[0].connected);
+
+    // Undo at this table (issue #648): a rule the room enabled, with three of its twenty
+    // checkpoints spent. Both counts ride the fixture because a client renders the control
+    // from them and derives neither.
+    let Some(undo) = view.undo else {
+        panic!("this table allows undo")
+    };
+    assert_eq!(undo.available, 3);
+    assert_eq!(undo.limit, 20);
+}
+
+#[test]
+fn issue_648_undo_availability_rides_the_view_and_is_absent_at_a_table_without_it() {
+    // The table allows undo and two checkpoints are left: presence answers "is undo a
+    // rule here", `available` answers "is there anything to take back", and `limit`
+    // says how deep the room's history goes so a client never promises more.
+    let view = GameView {
+        phase: Phase::PrecombatMain,
+        undo: Some(UndoView {
+            available: 2,
+            limit: 20,
+        }),
+        ..Default::default()
+    };
+    let json = serde_json::to_value(&view).unwrap();
+    assert_eq!(
+        json["undo"],
+        serde_json::json!({ "available": 2, "limit": 20 })
+    );
+    assert_eq!(serde_json::from_value::<GameView>(json).unwrap(), view);
+
+    // Nothing left to restore is still an undo table: the field is present with a zero
+    // count, which is what draws the control unavailable rather than removing it.
+    let exhausted = GameView {
+        phase: Phase::PrecombatMain,
+        undo: Some(UndoView {
+            available: 0,
+            limit: 20,
+        }),
+        ..Default::default()
+    };
+    let json = serde_json::to_value(&exhausted).unwrap();
+    assert_eq!(json["undo"]["available"], 0);
+    assert_eq!(serde_json::from_value::<GameView>(json).unwrap(), exhausted);
+
+    // A table without the rule carries no field at all, so an older server's view —
+    // and every default room — draws no undo control.
+    let plain = GameView {
+        phase: Phase::PrecombatMain,
+        ..Default::default()
+    };
+    let json = serde_json::to_value(&plain).unwrap();
+    assert!(
+        json.get("undo").is_none(),
+        "undo elides when the table has none"
+    );
+    assert_eq!(
+        serde_json::from_value::<GameView>(json).unwrap().undo,
+        None,
+        "an omitted undo means the table does not allow it"
+    );
 }

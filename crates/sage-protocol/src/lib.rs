@@ -63,7 +63,7 @@ pub use log::{GameLogEntry, GameLogEvent, LogBlock, LogDamageTarget, LogEntity};
 pub use presentation::{Color, CommanderIdentity, MatchFormat, COLORS};
 pub use result::{CommanderDamage, CommanderTax, GameOverReason, GameResult};
 pub use spectator::SpectatorView;
-pub use view::{AutoPassedStep, GameView};
+pub use view::{AutoPassedStep, GameView, UndoView};
 
 /// Opaque player identity (server-assigned).
 pub type PlayerId = String;

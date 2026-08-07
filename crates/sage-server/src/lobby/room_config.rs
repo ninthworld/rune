@@ -115,7 +115,8 @@ impl Lobby {
     ///   human or AI, at *any* index, not merely a smaller total — is rejected with
     ///   [`LobbyError::SeatsBelowOccupancy`] carrying the smallest count that keeps
     ///   everyone seated. Growing appends empty, joinable seats.
-    /// - **Readiness follows the change.** Changing the seat count or the format clears
+    /// - **Readiness follows the change.** Changing the seat count, the undo rule
+    ///   (issue #648), or the format clears
     ///   every seat's ready flag: nobody stays ready to a table they did not agree to.
     ///   Changing the **format** additionally clears every submitted deck, because each
     ///   was validated against a format that no longer applies — the alternative is a
@@ -163,6 +164,10 @@ impl Lobby {
 
         let seats_changed = room.config.seats != config.seats;
         let format_changed = room.config.game_setup != config.game_setup;
+        // Undo is a rule about how the game plays (issue #648), so turning it on or off
+        // is the same kind of change a seat count is: nobody stays ready to a table that
+        // now takes moves back — or that no longer will.
+        let undo_changed = room.config.undo_enabled != config.undo_enabled;
         room.config = config;
         // Resize the seat-parallel vectors. Only trailing *empty* seats can be dropped
         // (the occupancy check above guarantees it), and new seats arrive empty.
@@ -181,7 +186,7 @@ impl Lobby {
             for ai in &mut room.ai_seats {
                 *ai = None;
             }
-        } else if seats_changed {
+        } else if seats_changed || undo_changed {
             for gate in &mut room.gate {
                 gate.ready = false;
             }
@@ -723,6 +728,68 @@ mod tests {
                 .await
                 .expect_err("a roomless connection has no table to edit"),
             LobbyError::NotSeated
+        );
+    }
+
+    #[tokio::test]
+    async fn issue_648_the_undo_rule_is_carried_to_every_seat_and_editable_by_the_host() {
+        // Undo is a table rule: chosen at creation, echoed to everyone in the room, and
+        // changed by the host while the table is still gathering — so a player reads
+        // whether this table takes moves back before they sit down, not after.
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom {
+                    config: RoomConfig {
+                        undo_enabled: true,
+                        ..config(2)
+                    },
+                }),
+            )
+            .await
+            .expect("alice creates an undo table");
+        let room_id = alice.view().await.room.expect("alice in room").room_id;
+        let mut bob = Client::connect(&lobby).await;
+        let _ = bob.view().await;
+        lobby
+            .command(&bob.token, LobbyCommand::JoinRoom(JoinRoom { room_id }))
+            .await
+            .expect("bob joins");
+        assert!(
+            bob.view()
+                .await
+                .room
+                .expect("bob in room")
+                .config
+                .undo_enabled,
+            "the rule reaches the seat that joined, not just the one that chose it"
+        );
+
+        // The host turns it off before the game starts, and every seat's readiness goes
+        // with it: nobody stays ready to a table that no longer takes moves back.
+        submit_valid_deck(&lobby, &alice).await;
+        submit_valid_deck(&lobby, &bob).await;
+        lobby
+            .command(&alice.token, LobbyCommand::Ready(Ready { ready: true }))
+            .await
+            .expect("alice readies");
+        assert!(alice.current().room.expect("in room").seats[0].ready);
+        lobby
+            .command(&alice.token, update(config(2)))
+            .await
+            .expect("the host drops the undo rule");
+        let room = alice.current().room.expect("alice in room");
+        assert!(!room.config.undo_enabled, "the table no longer allows undo");
+        assert!(
+            room.seats.iter().all(|seat| !seat.ready),
+            "a changed table rule un-readies every seat"
+        );
+        assert!(
+            room.seats.iter().all(|seat| seat.decked),
+            "the decks are untouched: the format did not change"
         );
     }
 }

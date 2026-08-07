@@ -17,7 +17,7 @@ fails the client suite instead of being silently dropped.
 | Phase | Server to client | Client to server |
 | --- | --- | --- |
 | Lobby | `LobbyView` (and, on request, one `CatalogView`) | tagged `LobbyCommand` |
-| Game | `GameView` | `{"type":"choose_action", ...}` or `{"type":"set_stops", ...}` |
+| Game | `GameView` | `{"type":"choose_action", ...}`, `{"type":"set_stops", ...}`, or `{"type":"undo"}` |
 
 The server sends a complete personalized view after every accepted state change and after
 rejected or stale input. There is no patch or event-stream protocol. The client reconstructs
@@ -71,6 +71,7 @@ redacted before serialization.
 | `commander_tax` | `CommanderTax[]` | Public per-commander tax owed on the next cast from the command zone (CR 903.8, issue #372); omitted when empty |
 | `format` | `MatchFormat?` | The format this match is played under (issue #553); omitted by an older server, which a client MUST read as "unknown format, not Commander" |
 | `commander_identity` | `CommanderIdentity[]` | Public per-seat commander name and colour identity (CR 903.3/903.4, issue #553); omitted when empty, and by an older server |
+| `undo` | `UndoView?` | What **undo** can do at this table right now (issue #648): `{ available, limit }`. Present exactly when the room enabled `undo_enabled`; omitted at every other table, and by an older server |
 
 `command` is each player's command zone (CR 903.6), carried in the same public `ZonePile`
 shape as `graveyards`/`exile` (`{ player_id, cards }`), one entry per player with a card
@@ -117,6 +118,17 @@ colourless commander**, which is a real, empty identity rather than a missing va
 by the same server-side CR 903.4 routine that validated the deck, so what a client renders
 can never disagree with what the format enforced. The list is omitted (defaults to `[]`) in
 a non-commander game and by an older server.
+
+`undo` is what the room’s **undo** rule can do right now (issue #648) — `{ available,
+limit }`, both counts of *checkpoints*, where one checkpoint is one server-accepted
+transition. Its **presence** answers “does this table allow taking an action back”, so it is
+absent entirely at a table whose `RoomConfig.undo_enabled` is off, and `available` answers
+“is there anything left to take back”, so `0` draws the control unavailable rather than
+removing it. `limit` is how many checkpoints the room retains at most; it is on the wire
+because a bound a client cannot see is a bound it would misreport, promising a rollback the
+server never kept the state for. Public and identical for every seat — undo is a table rule,
+not a personal preference — and both counts are the server’s: a client that counted
+transitions itself would be holding load-bearing history across messages.
 
 Per-seat presentation state (issue #553) rides the seat records themselves rather than a
 parallel list. `OpponentView` gains `connected` and `ai`; `SelfView` gains `eliminated`,
@@ -166,7 +178,7 @@ local log. Event names are `spell_cast`, `spell_resolved`, `spell_countered`,
 `life_changed`, `damage_dealt`, `cards_drawn`, `cards_milled`, `cards_exiled`, `cards_discarded`,
 `library_searched`, `optional_applied`, `optional_declined`, `permanent_died`,
 `step_changed`,
-`player_eliminated`, `commander_returned_to_command_zone`, and `game_over`. Named
+`player_eliminated`, `commander_returned_to_command_zone`, `game_over`, and `undone`. Named
 `LogEntity` references have an opaque `id`
 and server-supplied
 `name`; the id may be used for presentational highlighting only. The `name` on every
@@ -217,6 +229,13 @@ is left: a two-player loss produces `game_over` alone, never `player_eliminated`
 exile back to the command zone (CR 903.9a). The commander is designated openly and moves
 between public zones, so the card is named like any other zone-movement event; declining
 the return moves nothing and records no event.
+
+`undone` (with the `player` who asked) marks a **rollback** at a table that allows undo
+(issue #648) — the one event that reports something a player did to the game rather than
+something the game did. It is also the only record of it: the entries the undone transition
+wrote went back with the state that held them, so the window a client renders after a
+rollback is the window as it stood at the restored checkpoint plus this entry. It names no
+"what was taken back", because the state that would describe it no longer exists.
 
 `Phase` is a snake-case enum:
 
@@ -1230,6 +1249,51 @@ and reflects the accepted, *effective* lists back in `GameView.stops` and
 idle seat’s priority is auto-passed) is a server decision; the client only configures where
 to stop and renders the `auto_passed`/`auto_passed_steps` indicators.
 
+### `Undo`
+
+The third in-game client message asks the room to restore the state before its last accepted
+transition (issue #648). It is a bare tag:
+
+```json
+{ "type": "undo" }
+```
+
+It carries nothing, and that is the shape of the feature: *which* state to restore is the
+server’s alone — a message that named one would be a client asserting a game state — and the
+sender is the connection’s own seat. It is a separate message rather than a `ValidAction`
+because an undo is not a play: the rules never offer it, it takes no priority, and it is legal
+for a seat that is not being asked anything. Availability still rides the view (`GameView.undo`),
+so the client renders the control from what the server stated and computes no legality, exactly
+as it does for `set_stops`.
+
+The server is authoritative for everything about it:
+
+- **Who may.** Any seat in the room, at any time during the game, with no vote and no
+  approval from the others. A table that did not want that did not enable the rule.
+- **What a checkpoint is.** One server-accepted transition — the state as it stood when the
+  room last put a question to the table, captured immediately before the action that left it.
+  So one undo takes back one action **and** whatever the settle (ADR 0010) did after it; the
+  pair is what a player experienced as a single move.
+- **What is restored.** The whole authoritative state: hidden zones and library order, the
+  stack and pending choices, priority and pass state, turn and step, mana pools and payments,
+  counters and attachments, continuous-effect inputs, the deterministic RNG position, and the
+  game-over verdict. A rollback restores a whole state, never an enumerated subset of it.
+- **What happens to newer history.** It is discarded. Restoring a checkpoint pops it, so play
+  after a rollback builds a new branch; there is no redo.
+- **How deep.** Bounded (`GameView.undo.limit`); the oldest checkpoint is dropped past it.
+- **When it is refused.** The table does not allow undo, or no earlier checkpoint survives.
+  A refusal changes nothing and re-sends the sender’s current `GameView` with
+  `action_rejected` set — the same non-fatal answer a stale `choose_action` gets.
+
+On success every connected seat and every spectator is pushed the restored state as an
+ordinary full view, and the rollback is recorded in the log as an `undone` event naming the
+player who asked. Undoing the transition that *ended* a game returns the table to live play.
+
+A rollback can return information to a hidden zone that players have already seen — a drawn
+card, a revealed choice. That is inherent, it is why the rule is opt-in per room, and the
+lobby says as much where the table is made: undo is for casual play, testing, and fixing a
+misclick, not for competitive integrity.
+
 ### Game result
 
 When the game ends, `result` is present and `valid_actions` is empty:
@@ -1350,6 +1414,7 @@ catalog's to state.
 | `game_setup` | `GameSetupId` | Opaque id naming the format the room builds its game from |
 | `name` | `string?` | The host's chosen table name (issue #546); omitted when unnamed |
 | `visibility` | `RoomVisibility?` | `public` (default, omitted) or `private` (issue #546) |
+| `undo_enabled` | `boolean?` | Whether any player at this table may take the last action back (issue #648); `false` by default and omitted at that default |
 
 `name` is public, display-only text validated exactly like a `set_name` display name —
 trimmed, non-empty, at most 32 characters, printable — and a blank name normalizes to
@@ -1363,6 +1428,15 @@ A `private` room is **omitted from the public directory for every connection** �
 the whole of what the field does, and it is a server behaviour rather than a label. It
 stays reachable by the `room_id` its host shares out of band, so `join_room` works on it
 exactly as before; its own occupants still see it in their `RoomView`.
+
+`undo_enabled` is a **table rule** (issue #648): chosen when the room is made, editable by
+its host with `update_room` while the room is still gathering, and carried in every
+`RoomView` and `RoomSummary` — so a player reads whether this table takes moves back before
+they sit down. It defaults to `false` and elides at that default, so a client that never
+learned the field creates exactly the table it always created. Changing it clears every
+seat's readiness, exactly as changing the seat count does: nobody stays ready to a table
+whose rules moved under them. It says only what the table *allows*; whether a rollback is
+available at any moment is `GameView.undo`, and the `undo` message is how one is asked for.
 
 Each seat contains:
 
@@ -1484,7 +1558,8 @@ serve both creating and editing a table. The server:
   table appends empty, joinable seats; shrinking is allowed only onto seats that hold
   neither a player nor an AI, at any index. Nobody is evicted by a configuration change.
 
-Readiness follows the change. Changing the **seat count** or the **format** clears every
+Readiness follows the change. Changing the **seat count**, the **undo rule** (issue #648),
+or the **format** clears every
 seat's `ready` flag, because nobody stays ready to a table they did not agree to; changing
 the **format** additionally clears every submitted deck (and empties any AI seat), because
 each deck was validated against a format that no longer applies and must be resubmitted.

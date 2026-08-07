@@ -680,6 +680,8 @@ export const GameLogEvent = z.discriminatedUnion('type', [
     card: LogEntity,
   }),
   z.object({ type: z.literal('game_over'), result: GameResult }),
+  /** A player rolled the table back to an earlier state (issue #648). */
+  z.object({ type: z.literal('undone'), player: PlayerId }),
 ])
 export type GameLogEvent = z.infer<typeof GameLogEvent>
 
@@ -698,6 +700,21 @@ export const AutoPassedStep = z.object({
   turn: z.number(),
 })
 export type AutoPassedStep = z.infer<typeof AutoPassedStep>
+
+/**
+ * What undo can do at this table right now (issue #648).
+ *
+ * `available` is how many earlier checkpoints survive — zero draws the control
+ * unavailable — and `limit` is how many the room holds at most, which is on the wire so
+ * a client never promises a rollback deeper than the server kept. Both are counts of
+ * *checkpoints*: one is one accepted transition, so one undo takes back a whole move
+ * including whatever the settle did after it.
+ */
+export const UndoView = z.object({
+  available: z.number(),
+  limit: z.number(),
+})
+export type UndoView = z.infer<typeof UndoView>
 
 export const GameView = z.object({
   you: PlayerId.optional(),
@@ -743,6 +760,12 @@ export const GameView = z.object({
   commander_tax: z.array(CommanderTax).optional(),
   format: MatchFormat.optional(),
   commander_identity: z.array(CommanderIdentity).optional(),
+  /**
+   * Undo at this table (issue #648), present exactly when the room enabled it — so its
+   * absence is what draws no undo control at all, and its `available` is what draws one
+   * unavailable. Public and identical for every seat.
+   */
+  undo: UndoView.optional(),
 })
 export type GameView = z.infer<typeof GameView>
 
@@ -797,6 +820,11 @@ export type SetStops = z.infer<typeof SetStops>
 export const ClientMessage = z.discriminatedUnion('type', [
   ChooseAction.extend({ type: z.literal('choose_action') }),
   SetStops.extend({ type: z.literal('set_stops') }),
+  /**
+   * Take the last accepted transition back (issue #648). It carries nothing: which state
+   * to restore is the server's alone, and the sender is the connection's own seat.
+   */
+  z.object({ type: z.literal('undo') }),
 ])
 export type ClientMessage = z.infer<typeof ClientMessage>
 
@@ -868,6 +896,15 @@ export const RoomConfig = z.object({
   name: z.string().optional(),
   /** Absent means `public` — the field rides the wire only when private. */
   visibility: RoomVisibility.optional(),
+  /**
+   * Whether any player at this table may take the last accepted transition back (issue
+   * #648). A table rule: chosen when the room is made, editable by its host while the
+   * room is still gathering, and shown to everyone who sits down.
+   *
+   * Absent means no undo — the default, and what every older server's rooms say. Whether
+   * a rollback is available *right now* is `GameView.undo`, never this.
+   */
+  undo_enabled: z.boolean().optional(),
 })
 export type RoomConfig = z.infer<typeof RoomConfig>
 
