@@ -270,6 +270,9 @@ fn settle_offered_play(state: &mut GameState, action: &Action, db: &CardDatabase
     // The freeze is over: whoever was interrupted gets priority back, exactly as when any
     // other question is answered.
     state.interrupted_priority = None;
+    if let Some(request) = answered.question.play_card() {
+        crate::choice::bottom_the_rest(state, request, Some(played));
+    }
     if let Some(resume) = answered.resume {
         crate::resolve::resume_after_choice(state, resume, db);
     }

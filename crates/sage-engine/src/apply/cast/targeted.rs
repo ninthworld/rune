@@ -421,6 +421,7 @@ pub(crate) fn apply_targeted_effect(
         | Effect::Scry { .. }
         | Effect::LookAtTop { .. }
         | Effect::RevealTopAndMayPlay { .. }
+        | Effect::MayCastExiledThisWay { .. }
         | Effect::SearchLibrary { .. }
         | Effect::May { .. } => {}
         // Shrink (or pump) the targeted creature by a count taken **now** (CR 608.2):
@@ -535,6 +536,15 @@ pub(crate) fn apply_targeted_effect(
                         player.exile.extend(cards);
                     }
                 }
+            }
+        }
+        // Dig from the top of the targeted player's library until a card of the class is
+        // exiled, or the library runs out (CR 701.16a). Face up, and recorded with the
+        // identities, because the sentence that follows this one has to find these cards
+        // again and the exile zone cannot tell them from what was already in it.
+        Effect::ExileFromLibraryUntil { class, .. } => {
+            if let Target::Player(seat) = target {
+                dig_until(state, seat, *class, db);
             }
         }
         Effect::ExileGraveyard { .. } => {
@@ -854,4 +864,41 @@ fn copy_spell_onto_stack(
         // payment for an amount read off one to find.
         paid: crate::PaidCost::default(),
     });
+}
+
+/// Exile from the top of `seat`'s library until a card of `class` is exiled, or the library
+/// runs out (CR 701.16a) — the dig both forms of [`Effect::ExileFromLibraryUntil`] perform.
+///
+/// Face up, and recorded with the identities
+/// ([`GameEvent::CardsExiled`](crate::GameEvent)), because the sentence that follows it has
+/// to find these cards again and the exile zone cannot tell them from what was already in
+/// it. *Until* stops at the end of the library as well as at a match, and running a library
+/// out this way is not a loss — CR 704.5b is about drawing.
+pub(super) fn dig_until(
+    state: &mut GameState,
+    seat: crate::id::PlayerId,
+    class: crate::ability::GraveyardCardClass,
+    db: &CardDatabase,
+) {
+    let mut exiled: Vec<crate::id::CardInstance> = Vec::new();
+    while let Some(card) = state
+        .players
+        .get_mut(seat.0)
+        .and_then(|player| player.library.pop())
+    {
+        if let Some(player) = state.players.get_mut(seat.0) {
+            player.exile.push(card);
+        }
+        exiled.push(card);
+        if db.card(card.card).is_some_and(|data| class.matches(data)) {
+            break;
+        }
+    }
+    if !exiled.is_empty() {
+        state.record_event(crate::state::GameEvent::CardsExiled {
+            player: seat,
+            count: u32::try_from(exiled.len()).unwrap_or(u32::MAX),
+            cards: exiled,
+        });
+    }
 }

@@ -103,6 +103,16 @@ pub enum GameLogEvent {
         /// Number of cards put into the graveyard.
         count: u32,
     },
+    /// Cards were exiled from a library, face up (CR 701.16a) — the digging of a card
+    /// that looks for something in a library and exiles what it passes. Card identities
+    /// are absent for the same reason a mill's are: the cards are visible in the exile
+    /// pile on their own, so the count is the fact the log adds.
+    CardsExiled {
+        /// The player whose library they came from.
+        player: PlayerId,
+        /// Number of cards exiled.
+        count: u32,
+    },
     /// A player discarded cards from their hand (CR 701.8). Card identities are
     /// intentionally absent — a hand is hidden, and the cards show up on their own in
     /// the public graveyard. The count is what actually moved.

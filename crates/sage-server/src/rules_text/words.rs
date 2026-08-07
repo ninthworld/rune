@@ -145,7 +145,7 @@ pub(crate) fn optional_cost_phrase(cost: &OptionalCost) -> String {
 /// The class of card an exile cost takes, as the adjective a card writes before "card":
 /// the `creature` of `Exile a creature card from your graveyard`. `None` for the
 /// unrestricted class, which a card writes as plain "a card" with no adjective at all.
-fn graveyard_class_noun(class: GraveyardCardClass) -> Option<&'static str> {
+pub(super) fn graveyard_class_noun(class: GraveyardCardClass) -> Option<&'static str> {
     match class {
         GraveyardCardClass::Any => None,
         GraveyardCardClass::Creature => Some("creature"),

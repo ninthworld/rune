@@ -34,6 +34,7 @@ const SAMPLES: readonly Event[] = [
   { type: 'damage_dealt', target: { kind: 'player', player: 'p1' }, amount: 3 },
   { type: 'cards_drawn', player: 'p0', count: 1 },
   { type: 'cards_milled', player: 'p0', count: 2 },
+  { type: 'cards_exiled', player: 'p1', count: 3 },
   { type: 'cards_discarded', player: 'p0', count: 1 },
   { type: 'library_searched', player: 'p0' },
   { type: 'optional_applied', player: 'p0' },

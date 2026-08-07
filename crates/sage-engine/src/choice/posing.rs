@@ -313,6 +313,47 @@ pub(crate) fn choices_for_effect(
                     zone: crate::choice::PlayZone::LibraryTop,
                     free: *free,
                     declined: crate::choice::DeclineOutcome::Exile,
+                    // Djinn's sentence ends at the offer: nothing goes back.
+                    bottom_after: Vec::new(),
+                }),
+            )])
+        }
+        // The second half of Chaos Wand: offer the card the dig stopped at, and remember
+        // the rest so they go back when the question settles either way.
+        //
+        // Found by reading the log over this resolution's own window, the way every other
+        // "…this way" question is answered — the exile zone cannot tell a card this
+        // resolution put there from one that was already in it.
+        Effect::MayCastExiledThisWay { class, free } => {
+            let exiled: Vec<crate::id::CardInstance> = state
+                .log
+                .iter()
+                .filter(|entry| entry.sequence >= resolution.start)
+                .filter_map(|entry| match &entry.event {
+                    crate::state::GameEvent::CardsExiled { cards, .. } => Some(cards.clone()),
+                    _ => None,
+                })
+                .flatten()
+                .collect();
+            // The digging stopped at the last one — but only if it stopped *at* something.
+            // A library holding none of the class is dug to the bottom, and what is sitting
+            // there is not the card the sentence is about, so there is no offer and the
+            // cards it turned over stay exiled.
+            let card = *exiled.last()?;
+            if !db.card(card.card).is_some_and(|data| class.matches(data)) {
+                return None;
+            }
+            Some(vec![(
+                controller,
+                ChoiceQuestion::PlayCard(crate::choice::PlayCardRequest {
+                    subject: controller,
+                    card,
+                    zone: crate::choice::PlayZone::Exile,
+                    free: *free,
+                    // "Not cast this way" includes the offered card, so declining simply
+                    // leaves it to be bottomed with the others.
+                    declined: crate::choice::DeclineOutcome::Stay,
+                    bottom_after: exiled,
                 }),
             )])
         }

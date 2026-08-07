@@ -114,6 +114,12 @@ impl PlayerRef {
         Self::Controller
     }
 
+    /// A targeted opponent — the serde default for an effect that only ever reaches across
+    /// the table ([`Effect::ExileFromLibraryUntil`](crate::Effect)).
+    pub(super) fn target_opponent() -> Self {
+        Self::TargetOpponent
+    }
+
     /// The [`TargetSpec`] this reference chooses a target for, or `None` when it
     /// names its player without targeting (CR 115.1).
     ///

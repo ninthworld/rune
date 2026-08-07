@@ -163,7 +163,7 @@ clients render the carried entries and do not invent missing history. It is incl
 each complete `GameView`, which means reconnecting clients never need an accumulated
 local log. Event names are `spell_cast`, `spell_resolved`, `spell_countered`,
 `spell_fizzled`, `attackers_declared`, `blockers_declared`, `mulligan`, `hand_kept`,
-`life_changed`, `damage_dealt`, `cards_drawn`, `cards_milled`, `cards_discarded`,
+`life_changed`, `damage_dealt`, `cards_drawn`, `cards_milled`, `cards_exiled`, `cards_discarded`,
 `library_searched`, `optional_applied`, `optional_declined`, `permanent_died`,
 `step_changed`,
 `player_eliminated`, `commander_returned_to_command_zone`, and `game_over`. Named
@@ -176,7 +176,11 @@ re-resolve names against the current board.
 
 A `cards_drawn` event contains only player and count, never a hidden card identity. A
 `cards_milled` event carries the same two fields for cards put from the top of a library
-into its owner's graveyard (CR 701.13). It is deliberately *not* a `cards_drawn`: milling
+into its owner's graveyard (CR 701.13). A `cards_exiled` event carries those same two fields
+for cards exiled **from a library** face up (CR 701.16a) — the digging of a card that looks
+through a library and exiles what it passes. Its identities are absent for a mill's reason
+rather than a draw's: the cards are visible in the exile pile on their own, so the count is
+what the log adds. It is deliberately *not* a `cards_drawn`: milling
 never causes the empty-library loss, and its `count` is what actually moved, so a player
 asked to mill past an empty library logs the smaller number. `cards_discarded` (CR 701.8)
 carries the same player-and-count pair, and for the same reason: a hand is hidden, and the

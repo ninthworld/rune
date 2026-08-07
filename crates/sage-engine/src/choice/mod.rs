@@ -49,7 +49,7 @@ pub(crate) use optional::take_confirmed_effects;
 pub use optional::{confirm_is_payable, ConfirmRequest};
 pub(crate) use outcome::{
     apply_card_name_outcome, apply_choice_outcome, apply_color_outcome, apply_order_outcome,
-    apply_permanent_outcome, discard_to_cost,
+    apply_permanent_outcome, bottom_the_rest, discard_to_cost,
 };
 pub(crate) use permanents::{answer_permanents_is_legal, apply_permanent_choice};
 pub use permanents::{
@@ -120,6 +120,18 @@ pub struct PlayCardRequest {
     /// about the card the offer named and nothing else knows which card that was by the
     /// time the answer arrives.
     pub declined: DeclineOutcome,
+    /// Cards to put on the **bottom of their owner's library, in a random order**, once
+    /// this question is settled either way — the *then put the exiled cards that weren't
+    /// cast this way on the bottom of that library* of Chaos Wand.
+    ///
+    /// The offered card is among them: if it is cast it is on the stack and is skipped, and
+    /// if it is declined it goes back with the rest, which is what makes
+    /// [`DeclineOutcome::Stay`] the right decline for that card. Empty for a card whose
+    /// sentence ends at the offer, like Djinn of Wishes.
+    ///
+    /// Bottomed from the **seeded** stream, so a game replays identically through it
+    /// (ADR 0006).
+    pub bottom_after: Vec<crate::id::CardInstance>,
 }
 
 /// What happens to an offered card the player did not play.
@@ -141,6 +153,14 @@ pub enum DeclineOutcome {
 pub enum PlayZone {
     /// On top of its owner's library, revealed — Djinn of Wishes.
     LibraryTop,
+    /// In exile, where this same resolution just put it — Chaos Wand.
+    ///
+    /// The card may be **another player's**: Chaos Wand digs through a targeted opponent's
+    /// library and offers what it finds to its own controller. Casting a card you do not
+    /// own is ordinary Magic (CR 108.4 — the caster controls the spell and the owner gets
+    /// the card back), and the only thing it costs the engine is that the cast may not
+    /// assume the card is in the caster's own zones.
+    Exile,
 }
 
 /// What one [`PendingChoice`] asks — the shapes of question the engine can pose in the

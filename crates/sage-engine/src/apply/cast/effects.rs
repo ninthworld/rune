@@ -491,6 +491,7 @@ pub(crate) fn apply_effect(
         | Effect::Scry { .. }
         | Effect::LookAtTop { .. }
         | Effect::RevealTopAndMayPlay { .. }
+        | Effect::MayCastExiledThisWay { .. }
         | Effect::SearchLibrary { .. }
         | Effect::May { .. }
         // A conditional is likewise intercepted by the resolve loop, which evaluates it
@@ -556,6 +557,15 @@ pub(crate) fn apply_effect(
                 permanent_source,
                 db,
             );
+        }
+        // The non-targeting form of the dig. Every printed card of this shape targets, so
+        // this is reached only by a definition that named a non-targeting reference; it
+        // does the same thing to each named seat, through the same helper, so the two
+        // forms cannot drift.
+        Effect::ExileFromLibraryUntil { player_ref, class } => {
+            for seat in non_targeting_subjects(state, *player_ref, controller) {
+                super::targeted::dig_until(state, seat, *class, db);
+            }
         }
         // Every card of the named graveyard, at once. An empty graveyard is a legal
         // subject and a resolution that does nothing.

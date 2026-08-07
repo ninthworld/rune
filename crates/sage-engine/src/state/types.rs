@@ -207,6 +207,27 @@ pub enum GameEvent {
         /// only the count.
         cards: Vec<CardInstance>,
     },
+    /// Cards were exiled **from a library**, face up (CR 701.16a) — the digging half of
+    /// Chaos Wand.
+    ///
+    /// [`Self::CardsMilled`]'s sibling in every respect, including the asymmetry: the
+    /// identities are recorded here because exile is a public zone, so naming them leaks
+    /// nothing, and because the resolution that exiled them has to be able to find them
+    /// again. *"Then put the exiled cards that weren't cast this way on the bottom"* is a
+    /// sentence about cards only this record still knows the identity of — the exile zone
+    /// itself cannot tell a card put there by this resolution from one that was already
+    /// in it.
+    ///
+    /// The projection to the wire carries only the count, exactly as a mill's does: the
+    /// cards are visible in the exile pile on their own.
+    CardsExiled {
+        /// The player whose library they came from, and who owns them.
+        player: PlayerId,
+        /// Number of cards that actually moved.
+        count: u32,
+        /// **Which** cards moved, in the order they were exiled — the found card last.
+        cards: Vec<CardInstance>,
+    },
     /// A player discarded cards from their hand (CR 701.8). Card identities are
     /// deliberately absent for the same reason [`Self::CardsDrawn`]'s are — a hand is
     /// hidden, and the cards become visible on their own once they are in the public
