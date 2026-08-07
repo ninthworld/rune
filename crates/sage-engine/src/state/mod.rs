@@ -24,9 +24,9 @@ mod types;
 mod zone;
 
 pub use types::{
-    CommanderDamage, CounterKind, DamageTarget, Duration, EffectAffects, Emblem, GameEvent,
-    GameLogEntry, GameResult, GraveyardCasting, IgnoringHexproof, LoggedIdentity, LoggedPermanent,
-    Modification, Permanent, StaticEffect,
+    CommanderDamage, CounterKind, DamageTarget, Duration, EffectAffects, Emblem, ExilePlaying,
+    GameEvent, GameLogEntry, GameResult, GraveyardCasting, IgnoringHexproof, LoggedIdentity,
+    LoggedPermanent, Modification, Permanent, StaticEffect,
 };
 
 use crate::id::PlayerId;
@@ -79,6 +79,10 @@ pub struct GameState {
     /// [`GraveyardCasting`]. Empty in almost every state, and cleared at the turn
     /// boundary.
     pub graveyard_casting: Vec<GraveyardCasting>,
+    /// Permissions to play cards **exiled this way**, granted this turn — see
+    /// [`ExilePlaying`]. The same per-turn shape as [`Self::graveyard_casting`], empty in
+    /// almost every state, and cleared at the same turn boundary.
+    pub exile_playing: Vec<ExilePlaying>,
     /// Permissions to aim spells and abilities as though hexproof were not there,
     /// granted this turn — see [`IgnoringHexproof`]. The same per-player, per-turn
     /// shape as [`Self::graveyard_casting`], empty in almost every state, and cleared

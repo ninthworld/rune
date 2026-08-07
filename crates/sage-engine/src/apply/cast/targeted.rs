@@ -492,6 +492,7 @@ pub(crate) fn apply_targeted_effect(
         | Effect::DrawCard { .. }
         | Effect::CreateEmblem { .. }
         | Effect::AllowCastingFromGraveyard { .. }
+        | Effect::ExileTopForPlay { .. }
         | Effect::IgnoreHexproof { .. }
         | Effect::CreateReplacement { .. }
         | Effect::PreventDamage { .. }

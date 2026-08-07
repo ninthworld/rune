@@ -129,9 +129,9 @@ pub use stack::{
     AbilityOrigin, AbilitySource, PaidCost, SpellTraitKind, StackId, StackObject, StackObjectKind,
 };
 pub use state::{
-    CommanderDamage, CounterKind, DamageTarget, Duration, EffectAffects, Emblem, GameEvent,
-    GameLogEntry, GameResult, GameState, GraveyardCasting, IgnoringHexproof, LoggedIdentity,
-    LoggedPermanent, Modification, Permanent, StaticEffect,
+    CommanderDamage, CounterKind, DamageTarget, Duration, EffectAffects, Emblem, ExilePlaying,
+    GameEvent, GameLogEntry, GameResult, GameState, GraveyardCasting, IgnoringHexproof,
+    LoggedIdentity, LoggedPermanent, Modification, Permanent, StaticEffect,
 };
 pub use token::{Printed, PrintedFace, TokenData};
 pub use triggers::{collect_triggers, pending_trigger_target_choice, Trigger};

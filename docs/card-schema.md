@@ -1585,6 +1585,32 @@ hand cast uses. The permission is recorded with the turn it was granted on and d
 turn boundary, so "this turn" is a comparison of turn numbers rather than a countdown that
 could drift.
 
+### Playing cards exiled this way
+
+`exile_top_for_play` exiles the top `count` cards of the controller's library and lets them
+**play** those cards for the rest of the turn — Dark-Dweller Oracle:
+
+```json
+{ "kind": "exile_top_for_play", "count": 1 }
+```
+
+One effect rather than an exile beside a permission, and the reason is what the permission has
+to name. *That card* is the card this resolution exiled: only the effect that moved them knows
+which those are, and a second effect running afterwards could not tell them from anything else
+in the zone. So the grant records the **instances** where the graveyard permission above
+records a **class** — a filter over exile would let a player cast something an opponent exiled
+three turns ago, which is a different card's text.
+
+**Play, not cast** (CR 116.2a). A land among them is played under the ordinary one-per-turn
+allowance and sorcery-speed window — it costs the seat its land drop exactly as a hand play
+does — and a spell is cast through the same action, stack object, cost, and timing gates as a
+cast from anywhere else. Only the zone it leaves differs. A library with fewer than `count`
+cards exiles what it has; this is not a draw, and running out is not a loss (CR 701.3d).
+
+Like every other per-turn permission it is recorded with the turn it was granted on and dropped
+at the turn boundary. The cards stay in exile when it lapses — the permission ends, not the
+exile.
+
 ### Ignoring hexproof
 
 `ignore_hexproof` grants a player permission to aim spells and abilities **as though hexproof
