@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "functional_id": "vivien_of_the_arkbow",
+  "name": "Vivien of the Arkbow",
+  "supertypes": [
+    "legendary"
+  ],
+  "types": [
+    "planeswalker"
+  ],
+  "subtypes": [
+    "Vivien"
+  ],
+  "mana_cost": "{4}{G}{G}",
+  "colors": [
+    "green"
+  ],
+  "loyalty": 5,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": 2
+        }
+      ],
+      "effects": [
+        {
+          "kind": "put_counters",
+          "target": "any_creature",
+          "targets": {
+            "up_to": 1
+          },
+          "counter": "plus_one_plus_one",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": -3
+        }
+      ],
+      "effects": [
+        {
+          "kind": "fight",
+          "dealer": "any_creature_you_control",
+          "dealt_to": "any_creature_an_opponent_controls"
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": -9
+        }
+      ],
+      "effects": [
+        {
+          "kind": "pump_all",
+          "affects": {
+            "scope": "creatures_you_control"
+          },
+          "power": 4,
+          "toughness": 4
+        },
+        {
+          "kind": "grant_keyword_all",
+          "affects": {
+            "scope": "creatures_you_control"
+          },
+          "keyword": "trample"
+        }
+      ]
+    }
+  ]
+}

@@ -986,6 +986,10 @@ fn target_phrase(spec: TargetSpec, count: TargetCount) -> String {
             number(u32::from(n)),
             plural_target_noun(spec)
         ),
+        // "up to one target creature", singular and with no "each of" in front of it:
+        // there is no *each* about a group that names at most one, and the noun agrees
+        // with the number the way a printed card writes it.
+        TargetCount::UpTo(1) => format!("up to one {}", target_noun(spec)),
         TargetCount::UpTo(n) => format!(
             "each of up to {} {}",
             number(u32::from(n)),
@@ -1007,6 +1011,7 @@ fn target_subject(spec: TargetSpec, count: TargetCount) -> String {
         TargetCount::Exactly(n) => {
             format!("{} {}", number(u32::from(n)), plural_target_noun(spec))
         }
+        TargetCount::UpTo(1) => format!("up to one {}", target_noun(spec)),
         TargetCount::UpTo(n) => {
             format!(
                 "up to {} {}",
