@@ -104,7 +104,7 @@ use crate::ai::{policy_for, serve_ai_seat, AiKind};
 use crate::format::{DeckError, FormatRegistry};
 use crate::room::{
     serve_connection, serve_spectator_connection, AutoPassPolicy, Room, RoomHandle, Seat,
-    StopPolicy,
+    StopPolicy, UndoPolicy,
 };
 
 mod commands;

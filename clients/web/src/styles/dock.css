@@ -49,9 +49,12 @@
   font-size: 11px;
 }
 
+/* Two across, and the last one on a row takes what is left rather than leaving a
+   hole: the strip holds four controls at most tables and five where undo is a rule
+   (issue #648), and neither count should need its own rule here. */
 .helper-strip {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   padding: 8px 10px;
   background: var(--well);
@@ -498,6 +501,13 @@
 
 .log-result {
   color: #cfe0f4;
+}
+
+/* an undo is the one line that is not the game reporting itself, so it reads as an
+   aside about the table rather than as something that happened in it (issue #648) */
+.log-table {
+  color: #cbbfd8;
+  font-style: italic;
 }
 
 /* the strip is a list, so its steps are steps to a screen reader as well as pills to everyone

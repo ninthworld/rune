@@ -342,6 +342,10 @@ pub(crate) fn personalized_view(
         // from the engine's designations plus the card database, so it belongs in this
         // engine-derived shim rather than on the room.
         commander_identity: commander_identity_view(state, db),
+        // Undo (issue #648) is a table rule and a room-held history — the engine keeps
+        // neither — so, like the format and the stops, it is `None` here and filled in
+        // after projection by the only thing that knows.
+        undo: None,
     }
 }
 

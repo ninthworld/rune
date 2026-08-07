@@ -141,6 +141,21 @@ describe('wire conventions the client depends on', () => {
     expect(single.other_face).toBeUndefined()
   })
 
+  it('reads undo as two separate facts: a table rule, and whether one is available now', () => {
+    // The room's rule (issue #648) rides `RoomConfig`, so the lobby can say what a table
+    // allows before anybody sits down — and absence is "no undo", never "unknown".
+    const lobby = LobbyView.parse(readFixture('lobbyview-open.json'))
+    expect(lobby.directory?.[2]?.config.undo_enabled).toBe(true)
+    expect(lobby.directory?.[0]?.config.undo_enabled).toBeUndefined()
+
+    // Availability rides the game view and is the server's count, never a client's: its
+    // presence draws the control at all, and `available` decides whether it is pressable.
+    const view = GameView.parse(readFixture('gameview-turn.json'))
+    expect(view.undo).toEqual({ available: 3, limit: 20 })
+    // A table without the rule carries no field, which is what draws no control.
+    expect(GameView.parse(readFixture('gameview.json')).undo).toBeUndefined()
+  })
+
   it('tolerates a field a newer server added', () => {
     const fixture = readFixture('gameview.json') as Record<string, unknown>
     const parsed = GameView.parse({ ...fixture, some_future_field: { anything: true } })

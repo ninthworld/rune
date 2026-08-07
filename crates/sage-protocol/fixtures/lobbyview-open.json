@@ -26,7 +26,8 @@
       "config": {
         "seats": 4,
         "game_setup": "commander",
-        "name": "Casual Commander"
+        "name": "Casual Commander",
+        "undo_enabled": true
       },
       "filled": 4,
       "spectators": 3,

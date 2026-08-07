@@ -90,5 +90,9 @@
   "player_names": {
     "p0": "Alice",
     "p1": "Bob"
+  },
+  "undo": {
+    "available": 3,
+    "limit": 20
   }
 }

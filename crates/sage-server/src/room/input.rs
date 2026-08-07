@@ -46,6 +46,11 @@ impl Room {
                         // Captured before the action, because the action's own log
                         // events are part of what a passed seat did not see.
                         let before = self.state.next_log_sequence;
+                        // And the state itself, for the same reason in a different
+                        // sense: this is the position the table was asked about, so it
+                        // is the one an undo returns to (issue #648). A no-op at a
+                        // table without undo.
+                        self.checkpoint();
                         self.state = apply_action(&self.state, &action, &self.db);
                         // Auto-pass any idle priority the action left behind (a no-op
                         // when automation is off), then restart the clock for whatever
@@ -73,6 +78,10 @@ impl Room {
                 }
             }
             ClientMessage::SetStops(set) => self.on_set_stops(seat, set),
+            // Not a play and not an action the engine offered, so it does not go
+            // through `resolve_action` at all: an undo is a table rule the room owns
+            // end to end (issue #648).
+            ClientMessage::Undo => self.on_undo(seat),
         }
     }
 

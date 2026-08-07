@@ -94,6 +94,25 @@ pub struct RoomConfig {
     /// older client that omits it gets today's behaviour.
     #[serde(default, skip_serializing_if = "RoomVisibility::is_public")]
     pub visibility: RoomVisibility,
+    /// Whether any player at this table may **undo** the last accepted transition and
+    /// return the game to the state before it (issue #648).
+    ///
+    /// A **table rule**, in the sense the room screen means: chosen when the room is
+    /// made, changeable by its host only while the room is still gathering, and shown
+    /// to everyone who sits down. Off by default and elided from the wire at that
+    /// default, so a client that never learned the field creates exactly the table it
+    /// always created — one where nothing can be taken back.
+    ///
+    /// It is a **rule about the table, not about the rules**: a rollback restores
+    /// hidden zones and library order along with everything else, but nobody unlearns a
+    /// card they were shown before it. That is why it is opt-in per room, and why a
+    /// client says which way this table answered rather than assuming either.
+    ///
+    /// The room is authoritative for what an undo may do. This field says only that the
+    /// table allows one; whether one is available *right now* is
+    /// [`GameView::undo`](crate::GameView::undo), which the server states per view.
+    #[serde(default, skip_serializing_if = "crate::is_false")]
+    pub undo_enabled: bool,
 }
 
 /// One seat in a room's roster, as seen by any connection. Hidden information
@@ -333,7 +352,8 @@ pub struct CreateRoom {
 /// like [`AddAi`]) and only before the game starts, validates the new config exactly as
 /// [`CreateRoom`] does, and additionally refuses a seat count that would remove an
 /// occupied seat — shrinking is rejected, never silently clamped. On acceptance every
-/// seat's readiness is cleared when the seats or the format changed (nobody stays ready
+/// seat's readiness is cleared when the seats, the format, or the
+/// [`undo_enabled`](RoomConfig::undo_enabled) rule changed (nobody stays ready
 /// to a table they did not agree to), and a changed
 /// [`game_setup`](RoomConfig::game_setup) additionally clears every submitted deck,
 /// since those decks were validated against a format that no longer applies.

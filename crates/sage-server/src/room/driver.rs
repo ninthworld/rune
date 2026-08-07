@@ -30,12 +30,43 @@ impl Room {
     /// has lost). On game over it pushes one final broadcast so every connected seat
     /// sees the finished board, then stops; the lobby reclaims the room afterward
     /// (issue #54).
+    ///
+    /// # A finished game an undo can still reopen (issue #648)
+    /// At a table that allows undo, the transition that ended the game is a checkpoint
+    /// like any other, so "the game is over" is not necessarily the last thing that can
+    /// happen. The room therefore broadcasts the terminal state exactly once and then
+    /// **keeps serving inputs** while a checkpoint survives and somebody is still
+    /// connected to use it; an undo restores a live position and the loop carries on as
+    /// before. It stops the moment either is untrue — no history left, or the last
+    /// connection gone — so a finished table still ends rather than lingering forever.
+    /// With undo off, none of this is reachable and the room stops exactly where it
+    /// always did.
     pub async fn run(mut self, mut inbox: mpsc::Receiver<RoomInput>) {
         // Fast-forward any idle opening priority (a no-op when automation is off),
         // then start the clock on whatever decision actually rests (issue #264).
         self.settle_auto_passes();
         self.arm_deadline();
-        while !self.game_over() {
+        // Whether the current terminal state has already been pushed. A finished game
+        // is broadcast once, not on every input that arrives afterwards; an undo that
+        // makes the game live again clears it, so a *second* ending is announced too.
+        let mut announced_over = false;
+        loop {
+            if self.game_over() {
+                if !announced_over {
+                    // A player has lost: push the terminal state to every connected
+                    // seat as the final broadcast (issue #54).
+                    self.broadcast();
+                    announced_over = true;
+                }
+                if !self.holds_open_for_undo() {
+                    info!(
+                        "game reached a terminal state; room task stopping after final broadcast"
+                    );
+                    return;
+                }
+            } else {
+                announced_over = false;
+            }
             // Copy the deadline out so the timer future borrows nothing of `self`
             // (the input arm needs `&mut self`). A `None` deadline parks forever, so
             // the timer arm simply never fires when no clock is running.
@@ -63,11 +94,16 @@ impl Room {
                 }
             }
         }
-        // A player has lost: the game is over. Push the terminal state to every
-        // connected seat as the final broadcast, then stop — nothing further can
-        // happen, and the lobby will reclaim the room (issue #54).
-        self.broadcast();
-        info!("game reached a terminal state; room task stopping after final broadcast");
+    }
+
+    /// Whether a finished game is worth keeping the room task alive for (issue #648):
+    /// an undo could still reopen it, and somebody is connected to ask for one.
+    ///
+    /// Both halves matter. Without a surviving checkpoint there is nothing a rollback
+    /// could restore; without a connection there is nobody left to request it, and a
+    /// room held open for an empty table would never be reclaimed.
+    fn holds_open_for_undo(&self) -> bool {
+        self.undo_available() && self.seats.iter().any(Option::is_some)
     }
 
     /// Whether the game has reached a terminal state (CR 104.2a).
@@ -113,6 +149,10 @@ impl Room {
         if let Some(action) = timeout_default_action(&self.state, &self.db) {
             let next = apply_action(&self.state, &action, &self.db);
             if next != self.state {
+                // A default the room took is a transition the table was asked about
+                // and did not answer, so it is as undoable as a click (issue #648) —
+                // and arguably the one most worth taking back.
+                self.checkpoint();
                 self.state = next;
                 // The default action can leave idle priority behind, exactly as a
                 // player's action does; settle it before re-arming (a no-op when

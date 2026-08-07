@@ -314,6 +314,46 @@ pub struct GameView {
     /// Server-computed; never derived by the client.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commander_identity: Vec<CommanderIdentity>,
+    /// What **undo** can do at this table right now (issue #648) — see [`UndoView`].
+    ///
+    /// Present exactly when the room was configured with
+    /// [`RoomConfig::undo_enabled`](crate::RoomConfig), so its *presence* answers "does
+    /// this table allow taking an action back" and its
+    /// [`available`](UndoView::available) answers "is there anything left to take
+    /// back". A client draws no undo control without it and computes neither answer:
+    /// how many checkpoints survive is server state, and a client that counted
+    /// transitions itself would be keeping load-bearing history across messages.
+    ///
+    /// Public and identical for every seat — undo is a table rule, and any player may
+    /// use it — so it is not personalized the way [`Self::stops`] is. Omitted (and
+    /// defaulting to `None`) for every room that did not enable undo, which is every
+    /// room by default and every room an older server serves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub undo: Option<UndoView>,
+}
+
+/// What an **undo** would do at this table right now (issue #648): the availability
+/// half of [`GameView::undo`], stated by the server so the client can draw a control
+/// without deriving anything.
+///
+/// The counts are *checkpoints*, not clicks: one checkpoint is one server-accepted
+/// transition, so restoring one takes back a whole action — including whatever the
+/// room's automation settled after it — and never half of one. Repeated undos walk
+/// back through what is left.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UndoView {
+    /// How many earlier checkpoints are still restorable. `0` means the control is
+    /// drawn unavailable: this is the oldest state the room still holds, either
+    /// because nothing has happened yet or because the rest fell off the far end of
+    /// [`limit`](Self::limit).
+    pub available: u32,
+    /// The most checkpoints the room will ever hold at once.
+    ///
+    /// On the wire because history is bounded and a bound a client cannot see is a
+    /// bound it would misreport: "3 left" means something different at a limit of 3
+    /// than at a limit of 50, and a client that assumed the game's whole history was
+    /// undoable would promise a rollback the server cannot perform.
+    pub limit: u32,
 }
 
 /// One position a settle passed the receiver through (issue #455): a step, and the

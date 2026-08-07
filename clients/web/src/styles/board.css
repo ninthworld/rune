@@ -166,6 +166,13 @@ span.phase.phase-current {
 }
 
 .helper-btn {
+  /* half the strip, and the last on a row grows into whatever is left over */
+  flex: 1 1 calc(50% - 2px);
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   background: var(--pane-btn);
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -180,6 +187,15 @@ span.phase.phase-current {
 .helper-btn:hover {
   background: var(--pane-btn-hi);
   color: #d6d8dc;
+}
+
+/* a control the server has said is not available now — dimmed and inert, still
+   readable, and still saying what it is (issue #648) */
+.helper-btn:disabled,
+.helper-btn:disabled:hover {
+  background: var(--pane-btn);
+  color: #6b6f78;
+  cursor: default;
 }
 
 .helper-concede {

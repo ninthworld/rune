@@ -696,6 +696,16 @@ export function Board({
         onPreset={setPace}
         {...(concede ? { onConcede: () => take(concede) } : {})}
         concedeAsked={concede !== undefined && interaction.confirming === concede.id}
+        {...(view.undo ? { undo: view.undo } : {})}
+        // One message, and everything local goes with it (issue #648). A rollback is the one
+        // moment where *every* piece of held interaction is stale at once — the draft names ids
+        // the restored position may not offer, the payment intent names a card that may be back
+        // in hand, and a submission still in flight was answering a question that no longer
+        // exists — so the board drops all of it and renders whatever the server sends back.
+        onUndo={() => {
+          setInteraction(IDLE)
+          send({ type: 'undo' })
+        }}
         surface={surface}
       />
 

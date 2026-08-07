@@ -127,6 +127,13 @@ pub(crate) fn log_entries(state: &GameState, db: &CardDatabase) -> Vec<GameLogEn
                         card: log_card(card.id, card.card, db),
                     }
                 }
+                // A rollback at a table that allows undo (issue #648). Public — every
+                // seat and every spectator is looking at the restored board — and it
+                // names only the player who asked, which is the one fact the board
+                // itself cannot show.
+                GameEvent::Undone { player } => GameLogEvent::Undone {
+                    player: player_id(*player),
+                },
             };
             GameLogEntry {
                 sequence: entry.sequence,

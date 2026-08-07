@@ -13,11 +13,11 @@
  * The same form serves editing a table, because `create_room` and `update_room` both carry a
  * whole `RoomConfig`.
  *
- * **Undo has nothing behind it.** §9.5 names it as a table rule chosen at creation and fixed for
- * the life of the table, and the wire has no field for it. It is drawn where it belongs and
- * cannot be changed, rather than being left out and having to be designed back in — but with
- * **neither answer selected**, because a selected `Allowed` offers a choice that cannot reach
- * `RoomConfig` and tells the player a rule is on when nothing carries it (issue #704).
+ * **Undo is a table rule the wire now carries** (issue #648): it is chosen here, reaches
+ * `RoomConfig.undo_enabled`, and is shown to everyone at the table (§9.5). `Not allowed` is the
+ * selected answer for a new table, because a table takes nothing back unless somebody asked it to
+ * — and the note under it says what the choice costs rather than only what it does, since a
+ * rollback restores hidden zones but nobody unlearns a card they were shown.
  */
 import { useState } from 'react'
 
@@ -46,6 +46,7 @@ export function CreateTable({
   const format = formats.find((entry) => entry.game_setup === setup)
   const [seats, setSeats] = useState(initial?.seats ?? format?.min_seats ?? 2)
   const [open, setOpen] = useState((initial?.visibility ?? 'public') === 'public')
+  const [undo, setUndo] = useState(initial?.undo_enabled ?? false)
 
   // The bounds are the format's own, restated by the stepper rather than decided here.
   const min = format?.min_seats ?? seats
@@ -66,6 +67,7 @@ export function CreateTable({
             game_setup: setup,
             ...(name.trim() === '' ? {} : { name: name.trim() }),
             ...(open ? {} : { visibility: 'private' }),
+            ...(undo ? { undo_enabled: true } : {}),
           })
         }}
       >
@@ -167,24 +169,40 @@ export function CreateTable({
           </div>
 
           <div className="connect-field undo-field">
-            <span className="connect-label">Undo</span>
-            <span className="seg new-seg">
-              <button type="button" className="seg-btn" disabled>
+            <span className="connect-label" id="new-undo">
+              Undo
+            </span>
+            <span className="seg new-seg" role="radiogroup" aria-labelledby="new-undo">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={undo}
+                className={`seg-btn${undo ? ' seg-on' : ''}`}
+                onClick={() => setUndo(true)}
+              >
                 Allowed
               </button>
-              <button type="button" className="seg-btn" disabled>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={!undo}
+                className={`seg-btn${undo ? '' : ' seg-on'}`}
+                onClick={() => setUndo(false)}
+              >
                 Not allowed
               </button>
             </span>
             <span className="new-note">
-              A player may take back an action the game has not answered yet. Not a rule the server
-              carries yet, so no table can be made either way.
+              Any player may take the last action back, without asking the others. For casual play,
+              testing, and fixing a misclick — a rollback puts the cards back, but nobody unsees one
+              they were shown.
             </span>
           </div>
         </div>
         <div className="zone-foot">
           <span className="zone-hint">
-            {setup || 'no format'} · {bounded} seats · {open ? 'anyone may join' : 'invite only'}
+            {setup || 'no format'} · {bounded} seats · {open ? 'anyone may join' : 'invite only'} ·{' '}
+            {undo ? 'undo allowed' : 'no undo'}
           </span>
           <div className="zone-acts">
             <button className="action-done" disabled={setup === ''}>

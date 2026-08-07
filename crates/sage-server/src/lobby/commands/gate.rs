@@ -318,6 +318,11 @@ impl Lobby {
             // with nothing, so an AI-only or mixed game keeps its throughput, and the
             // first `set_stops` a player sends replaces the seed for good.
             .with_stop_policy(StopPolicy::HumanMainPhases)
+            // The table's own undo rule (issue #648), carried from the config every
+            // seat agreed to before readying. Off unless the host asked for it, in
+            // which case the room keeps its bounded checkpoint history and any seat
+            // may roll the game back.
+            .with_undo(UndoPolicy::allowed(room.config.undo_enabled))
             .spawn();
 
         // Hand every seated *human* session off to the in-game contract.

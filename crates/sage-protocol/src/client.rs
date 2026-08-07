@@ -102,6 +102,27 @@ pub enum ClientMessage {
     ChooseAction(ChooseAction),
     /// The player set their priority-stop preferences (issue #264).
     SetStops(SetStops),
+    /// **Undo**: restore the game to the state before the last accepted transition
+    /// (issue #648). Serializes as the bare tag `{"type":"undo"}`.
+    ///
+    /// It carries nothing, and that is the whole shape of the feature. *Which* state to
+    /// restore is never the client's to name — the server holds the checkpoints, so a
+    /// message that named one would be a client asserting a game state. The sender is
+    /// the connection's own seat, and the only thing being said is "take the last one
+    /// back".
+    ///
+    /// A separate message rather than a [`ValidAction`](crate::ValidAction) because an
+    /// undo is not a play: it is not offered by the rules, it takes no priority, and it
+    /// is legal for a seat that is not being asked anything. Availability still rides
+    /// the view — [`GameView::undo`](crate::GameView::undo) — so the client renders the
+    /// control from what the server stated and computes no legality, exactly as it does
+    /// for `set_stops`.
+    ///
+    /// Rejected — the table does not allow undo, or nothing earlier is left to restore —
+    /// the server changes nothing and re-sends the sender's current `GameView` with
+    /// [`action_rejected`](crate::GameView::action_rejected) set, the same non-fatal
+    /// pattern a stale `choose_action` gets.
+    Undo,
 }
 
 #[cfg(test)]
@@ -189,6 +210,18 @@ mod tests {
         let msg = ClientMessage::SetStops(SetStops::default());
         let json = serde_json::to_value(&msg).unwrap();
         assert_eq!(json, serde_json::json!({ "type": "set_stops" }));
+        let back: ClientMessage = serde_json::from_value(json).unwrap();
+        assert_eq!(back, msg);
+    }
+
+    #[test]
+    fn issue_648_undo_is_a_bare_tag_that_names_no_state() {
+        // The whole message: a type and nothing else. Which state to restore is the
+        // server's to know, and the sender is the connection's own seat, so there is
+        // nothing left for the client to say.
+        let msg = ClientMessage::Undo;
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json, serde_json::json!({ "type": "undo" }));
         let back: ClientMessage = serde_json::from_value(json).unwrap();
         assert_eq!(back, msg);
     }

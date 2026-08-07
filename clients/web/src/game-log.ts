@@ -11,6 +11,10 @@
  * scanned rather than read line by line. It is a grouping for the eye and nothing more: a step
  * change divides the log into turns, and damage, deaths, and the result stand out from the
  * traffic around them. Nothing downstream may draw a rules conclusion from it.
+ *
+ * One class is not about the rules at all. An undo (issue #648) is something a *player did to
+ * the table*, and it is the only place the log says so — the entries the rollback took back
+ * went with the state that held them, so this line is the whole record of it.
  */
 import type { GameLogEvent } from './protocol'
 import { phaseLabel } from './turn'
@@ -21,7 +25,8 @@ import { phaseLabel } from './turn'
  * `other` is reserved for an event this build has never heard of — every event the mirror
  * declares gets a real class, which `game-log.test.ts` holds it to.
  */
-export type LogKind = 'step' | 'spell' | 'combat' | 'life' | 'zone' | 'choice' | 'result' | 'other'
+export type LogKind =
+  'step' | 'spell' | 'combat' | 'life' | 'zone' | 'choice' | 'result' | 'table' | 'other'
 
 export function kindOf(event: GameLogEvent): LogKind {
   switch (event.type) {
@@ -54,6 +59,9 @@ export function kindOf(event: GameLogEvent): LogKind {
     case 'player_eliminated':
     case 'game_over':
       return 'result'
+    // Not a rules event: the table went back, at somebody's request.
+    case 'undone':
+      return 'table'
     default:
       return 'other'
   }
@@ -107,6 +115,8 @@ export function describe(event: GameLogEvent, playerName: (id: string) => string
       return `${event.card.name} returns to the command zone`
     case 'game_over':
       return `Game over — ${event.result.winner ? `${playerName(event.result.winner)} wins` : 'no winner'} (${event.result.reason})`
+    case 'undone':
+      return `${playerName(event.player)} undid the previous action`
     default:
       // A newer server may log something this client has no wording for.
       return '(unrecognized log event)'
