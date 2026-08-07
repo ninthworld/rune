@@ -683,6 +683,33 @@ name every opponent. `each_player` is a variant of its own rather than a flag on
 symmetric sweeper hits its own caster. `gain_life`, `lose_life`, and `mill` all take a reference, so both
 shapes exist for each without any of them restating the fizzle rule.
 
+### An attachment's own sentence about its host
+
+An `attachment` block already carries the grants a card prints most often — `power`,
+`toughness`, `keywords`, `restrictions` — and `abilities` **grants** a written-out ability
+to the host. When the sentence belongs to the *attachment* rather than to the creature, put
+it in the card's own `abilities` with the `attached_to` scope instead:
+
+```json
+{ "type": "static", "affects": { "scope": "attached_to" },
+  "modification": { "kind": "does_not_untap" } }
+```
+
+The difference is whose ability it is, and it is observable: a creature that loses all its
+abilities loses a **granted** one and keeps this one, because this one was never its
+(CR 303.4). Use `attachment.abilities` for "enchanted creature has …", and `attached_to`
+for "enchanted creature <does something>".
+
+`does_not_untap` is a **rule modification** (CR 502.4), not a characteristic: the permanent
+is as tapped as it ever was, every selector reads that unchanged, and only the untap step's
+turn-based action reads this. It is continuous, so it is not spent by one untap step the
+way the one-shot skip a resolution sets is — and a creature freed from its Aura untaps
+again with nothing to clear.
+
+`tap_attached` is the matching effect for the trigger beside it: it taps the permanent the
+source is attached to, and **targets nothing**, because the Aura chose its host when it was
+cast (CR 601.2c).
+
 ### Winning the game (CR 104.2b)
 
 `win_the_game` takes the same reference and every printed card fills it with `controller`:

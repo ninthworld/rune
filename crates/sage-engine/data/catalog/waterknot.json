@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "functional_id": "waterknot",
+  "name": "Waterknot",
+  "types": [
+    "enchantment"
+  ],
+  "subtypes": [
+    "Aura"
+  ],
+  "mana_cost": "{1}{U}{U}",
+  "colors": [
+    "blue"
+  ],
+  "attachment": {
+    "kind": "aura",
+    "attach_to": "any_creature"
+  },
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "tap_attached"
+        }
+      ]
+    },
+    {
+      "type": "static",
+      "affects": {
+        "scope": "attached_to"
+      },
+      "modification": {
+        "kind": "does_not_untap"
+      }
+    }
+  ]
+}

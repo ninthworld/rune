@@ -182,6 +182,9 @@ impl Effect {
             // A reflexive ability names nothing here: the ability it creates declares its
             // own slot, and that slot is filled when it goes on the stack (CR 603.3d).
             | Effect::CreateReflexiveTrigger { .. }
+            // An Aura's host was chosen when the Aura was cast; tapping it aims at
+            // nothing (CR 303.4a).
+            | Effect::TapAttached
             | Effect::PreventDamage { .. }
             // A choice over the controller's own library names no target: the library
             // is theirs by definition (CR 115.1).

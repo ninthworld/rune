@@ -46,7 +46,7 @@ pub fn assigns_combat_damage_by(
         .into_iter()
         .filter_map(|modification| match modification {
             RuleModification::AssignsCombatDamageBy { characteristic } => Some(characteristic),
-            RuleModification::AttacksAsThoughNoDefender => None,
+            RuleModification::AttacksAsThoughNoDefender | RuleModification::DoesNotUntap => None,
         })
         .next_back()
         .unwrap_or_default()
@@ -72,6 +72,20 @@ pub fn attacks_as_though_no_defender(
     db: &CardDatabase,
 ) -> bool {
     rule_modifications(state, permanent, db).contains(&RuleModification::AttacksAsThoughNoDefender)
+}
+
+/// Whether the permanent identified by `permanent` **does not untap** during its
+/// controller's untap step (CR 502.4, as modified by [`RuleModification::DoesNotUntap`]).
+///
+/// The single reader is the untap step's turn-based action. Like the two questions above
+/// it, this changes no characteristic: a permanent under it stays exactly as tapped as it
+/// was, and every selector that asks about tapped-ness reads that unchanged answer.
+///
+/// It is asked of the permanent rather than of the effect that grants it, so an Aura that
+/// leaves takes the restriction with it on the very next read — nothing has to be cleared.
+#[must_use]
+pub fn does_not_untap(state: &GameState, permanent: PermanentId, db: &CardDatabase) -> bool {
+    rule_modifications(state, permanent, db).contains(&RuleModification::DoesNotUntap)
 }
 
 /// Every [`RuleModification`] currently applying to the permanent identified by
