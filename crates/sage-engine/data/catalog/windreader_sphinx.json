@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "functional_id": "windreader_sphinx",
+  "name": "Windreader Sphinx",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Sphinx"
+  ],
+  "mana_cost": "{5}{U}{U}",
+  "colors": [
+    "blue"
+  ],
+  "power": 3,
+  "toughness": 7,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "permanent_attacks": {
+          "scope": "any_creature",
+          "keyword": "flying"
+        }
+      },
+      "effects": [
+        {
+          "kind": "may",
+          "effects": [
+            {
+              "kind": "draw_card",
+              "count": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

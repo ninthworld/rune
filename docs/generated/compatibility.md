@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (253)
+## Supported cards (255)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -200,6 +200,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `resplendent_angel` | Resplendent Angel | functional definition |
 | `revitalize` | Revitalize | functional definition |
 | `rhox_oracle` | Rhox Oracle | functional definition |
+| `riddlemaster_sphinx` | Riddlemaster Sphinx | functional definition |
 | `root_snare` | Root Snare | functional definition |
 | `runic_armasaur` | Runic Armasaur | functional definition |
 | `rustwing_falcon` | Rustwing Falcon | functional definition |
@@ -265,6 +266,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `walking_corpse` | Walking Corpse | functional definition |
 | `wall_of_mist` | Wall of Mist | functional definition |
 | `wall_of_vines` | Wall of Vines | functional definition |
+| `windreader_sphinx` | Windreader Sphinx | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
 ## Excluded (51)

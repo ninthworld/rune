@@ -1801,3 +1801,20 @@ fn issue_722_a_reflexive_trigger_reads_as_the_sentence_it_is() {
          it deals damage equal to its power to target creature an opponent controls."
     );
 }
+
+#[test]
+fn issue_706_two_cards_the_vocabulary_could_already_say() {
+    let db = bundled();
+    // An optional effect that targets: the class belongs to the effect the `may` wraps,
+    // and the sentence says so in the order the card prints it.
+    assert_eq!(
+        text_of(&db, "riddlemaster_sphinx"),
+        "Flying\nWhen Riddlemaster Sphinx enters the battlefield, you may return target \
+         creature an opponent controls to its owner's hand."
+    );
+    // A watcher of the whole board's attackers, not of its controller's.
+    assert_eq!(
+        text_of(&db, "windreader_sphinx"),
+        "Flying\nWhenever a creature with flying attacks, you may draw a card."
+    );
+}
