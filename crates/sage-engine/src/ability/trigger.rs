@@ -103,6 +103,52 @@ pub enum TriggerCondition {
         /// Which targeting objects satisfy this condition.
         ObservedTargeting,
     ),
+    /// The source — or the permanent it is **attached to** — **dealt damage** this
+    /// transition (CR 609.7): Surge Mare's `whenever this creature deals damage to an
+    /// opponent` and Rogue's Gloves' `whenever equipped creature deals combat damage to a
+    /// player`.
+    ///
+    /// Read from the [`GameEvent::DamageDealt`](crate::GameEvent) entries this transition
+    /// recorded, which is the only place the *dealer* survives: by the time damage is
+    /// marked, the recipient knows only that it was hit. Prevented damage was never dealt
+    /// (CR 615.1) and records no event, so a shield stops this trigger too, without a
+    /// clause about it here.
+    ///
+    /// Fires once per damage **event**, so a creature striking two blockers at once
+    /// triggers twice — which is what CR 603.6 counts.
+    DealsDamage(
+        /// Which damage satisfies this condition.
+        ObservedDamage,
+    ),
+    /// One or more **cards left a graveyard** this transition — Desecrated Tomb's
+    /// `whenever one or more creature cards leave your graveyard`.
+    ///
+    /// Observed by diffing the graveyard itself, which is what "leave" means and the only
+    /// thing that catches every road out: a card returned to a hand, put onto the
+    /// battlefield, exiled, or shuffled into a library all leave it, and no single effect
+    /// is watched for.
+    ///
+    /// Fires **once** however many left, because the card says `one or more` — the one
+    /// condition here that deliberately does not count.
+    CardsLeaveGraveyard(
+        /// Which graveyard, and which cards in it.
+        ObservedGraveyardExit,
+    ),
+    /// A player **discarded a card** this transition — Fell Specter's `whenever an
+    /// opponent discards a card`.
+    ///
+    /// Read from the [`GameEvent::CardsDiscarded`](crate::GameEvent) entries, so it
+    /// counts cards rather than discard effects: a two-card discard fires it twice, which
+    /// is what a card that says "a card" means.
+    ///
+    /// The ability it fires arrives with **that player already named** — the trigger event
+    /// fixed them, exactly as a delayed ability's "that spell" is fixed (CR 603.7c) — so
+    /// an effect with a targeting player reference acts on the discarder without anybody
+    /// being asked to choose.
+    PlayerDiscards(
+        /// Whose discards satisfy this condition.
+        ObservedDiscard,
+    ),
     /// A permanent matching `observes` was **declared as an attacker** this transition
     /// (CR 508.1), e.g. `Whenever a creature with flying attacks, …` — the counterpart
     /// of [`Self::SelfAttacks`] for an ability watching the rest of the board, and the
@@ -177,6 +223,53 @@ pub enum TriggerCondition {
         /// Whose turn that step has to belong to.
         whose_turn: TurnScope,
     },
+}
+
+/// Which damage satisfies [`TriggerCondition::DealsDamage`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservedDamage {
+    /// Watch the permanent the source is **attached to** rather than the source itself —
+    /// the `equipped creature` of an Equipment whose ability is about its host (CR 301.5).
+    /// `false` watches the source.
+    #[serde(default)]
+    pub by_attached: bool,
+    /// Notice only **combat** damage (CR 510.1). `false` notices damage from any road,
+    /// which is what a card that does not say "combat" means.
+    #[serde(default)]
+    pub combat_only: bool,
+    /// Notice only damage dealt to an **opponent** of the watching ability's controller.
+    /// `false` notices damage to any player *and* to any permanent.
+    #[serde(default)]
+    pub to_opponent: bool,
+    /// Notice only damage dealt to a **player** rather than to a permanent. `false`
+    /// notices both.
+    #[serde(default)]
+    pub to_player: bool,
+}
+
+/// Which cards leaving which graveyard satisfy
+/// [`TriggerCondition::CardsLeaveGraveyard`].
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservedGraveyardExit {
+    /// Notice only cards leaving the watching ability's controller's **own** graveyard —
+    /// the `your graveyard` of every card that prints this. `false` notices any.
+    #[serde(default)]
+    pub yours_only: bool,
+    /// Which cards count. Defaults to any of them.
+    #[serde(default)]
+    pub filter: crate::ability::CardFilter,
+}
+
+/// Whose discards satisfy [`TriggerCondition::PlayerDiscards`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservedDiscard {
+    /// Notice only an **opponent's** discards. `false` notices anyone's, including the
+    /// watching ability's controller's own.
+    #[serde(default)]
+    pub opponents_only: bool,
 }
 
 /// Which objects targeting the source satisfy [`TriggerCondition::SelfBecomesTarget`].

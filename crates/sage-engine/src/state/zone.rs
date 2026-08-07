@@ -711,8 +711,12 @@ impl GameState {
             return 0;
         }
         match damage.recipient {
-            DamageRecipient::Player(player) => self.deal_damage_to_player(player, amount),
-            DamageRecipient::Permanent(id) => self.deal_damage_to_permanent(id, amount, db),
+            DamageRecipient::Player(player) => {
+                self.deal_damage_to_player(player, amount, damage.source)
+            }
+            DamageRecipient::Permanent(id) => {
+                self.deal_damage_to_permanent(id, amount, damage.source, db)
+            }
         }
     }
 
@@ -724,7 +728,12 @@ impl GameState {
     /// The player half of [`Self::deal_damage`], and private for that reason: damage
     /// that skipped the prevention shield would be damage the rules do not allow, so
     /// there is no way to ask for it.
-    fn deal_damage_to_player(&mut self, player: PlayerId, amount: u32) -> u32 {
+    fn deal_damage_to_player(
+        &mut self,
+        player: PlayerId,
+        amount: u32,
+        source: Option<PermanentId>,
+    ) -> u32 {
         let Some(p) = self.players.get_mut(player.0) else {
             return 0;
         };
@@ -733,6 +742,7 @@ impl GameState {
             self.record_event(GameEvent::DamageDealt {
                 target: DamageTarget::Player(player),
                 amount,
+                source,
             });
         }
         amount
@@ -762,7 +772,13 @@ impl GameState {
     /// The **redirection rule is gone** from current rules: damage aimed at a player is
     /// dealt to that player, never moved to a planeswalker they control, so nothing
     /// here looks at where damage was pointed.
-    fn deal_damage_to_permanent(&mut self, id: PermanentId, amount: u32, db: &CardDatabase) -> u32 {
+    fn deal_damage_to_permanent(
+        &mut self,
+        id: PermanentId,
+        amount: u32,
+        source: Option<PermanentId>,
+        db: &CardDatabase,
+    ) -> u32 {
         let is_planeswalker = self
             .battlefield
             .iter()
@@ -770,7 +786,7 @@ impl GameState {
             .and_then(|p| p.printed.face(db))
             .is_some_and(|face| face.has_type(CardType::Planeswalker));
         if !is_planeswalker {
-            return self.mark_damage_on_permanent(id, amount);
+            return self.mark_damage_on_permanent(id, amount, source);
         }
         let Some(perm) = self.battlefield.iter_mut().find(|p| p.id == id) else {
             return 0;
@@ -787,6 +803,7 @@ impl GameState {
             self.record_event(GameEvent::DamageDealt {
                 target: DamageTarget::Permanent(logged),
                 amount,
+                source,
             });
         }
         amount
@@ -799,7 +816,12 @@ impl GameState {
     ///
     /// The marking half of [`Self::deal_damage_to_permanent`]: damage decides between
     /// marking and removing loyalty, and only that seam makes the decision.
-    fn mark_damage_on_permanent(&mut self, id: PermanentId, amount: u32) -> u32 {
+    fn mark_damage_on_permanent(
+        &mut self,
+        id: PermanentId,
+        amount: u32,
+        source: Option<PermanentId>,
+    ) -> u32 {
         let Some(perm) = self.battlefield.iter_mut().find(|p| p.id == id) else {
             return 0;
         };
@@ -809,6 +831,7 @@ impl GameState {
             self.record_event(GameEvent::DamageDealt {
                 target: DamageTarget::Permanent(logged),
                 amount,
+                source,
             });
         }
         amount

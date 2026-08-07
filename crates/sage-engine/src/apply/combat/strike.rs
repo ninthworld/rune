@@ -56,7 +56,7 @@ pub(crate) fn deal_combat_damage(state: &mut GameState, db: &CardDatabase) {
 /// is about the **source**, so it is erased here, where the applier knows what landed.
 fn apply_step(state: &mut GameState, db: &CardDatabase, step: DamageStep, blocked: &[PermanentId]) {
     let (batch, dealers) = combat_damage_and_dealers(state, db, step, blocked);
-    let landed = apply_combat_batch(state, batch, db);
+    let landed = apply_combat_batch(state, batch, &dealers, db);
     for (dealer, assignment) in dealers {
         if landed.get(assignment).copied().unwrap_or(0) > 0 {
             state.note_damage_dealt_by(dealer);
@@ -81,13 +81,26 @@ fn apply_step(state: &mut GameState, db: &CardDatabase, step: DamageStep, blocke
 /// order, so the fourth reader of "was this really dealt" — the note on the creature that
 /// dealt it ([`apply_step`]) — asks the same question off the same answer rather than
 /// re-deriving it from the assignment.
+/// It is also told **who assigned each entry** — the same `(creature, assignment index)`
+/// pairs the attribution note reads.
+///
+/// The dealer travels beside the batch rather than inside it for the reason
+/// [`combat_damage_and_dealers`] gives: an assignment is about what one object *receives*,
+/// and three blockers on one attacker are three assignments from one creature. What needs
+/// it is the damage event, which a trigger watching "whenever this creature deals damage"
+/// reads (CR 609.7) — and which cannot recover the dealer from the recipient.
 pub(crate) fn apply_combat_batch(
     state: &mut GameState,
     batch: Vec<CombatDamage>,
+    dealers: &[(PermanentId, usize)],
     db: &CardDatabase,
 ) -> Vec<u32> {
     let mut landed = Vec::with_capacity(batch.len());
-    for assignment in batch {
+    for (index, assignment) in batch.into_iter().enumerate() {
+        let dealer = dealers
+            .iter()
+            .find(|(_, at)| *at == index)
+            .map(|(id, _)| *id);
         let dealt = match assignment {
             CombatDamage::ToPlayer {
                 player,
@@ -97,8 +110,12 @@ pub(crate) fn apply_combat_batch(
             } => {
                 // Damage to a player is life loss recorded as a `DamageDealt` event
                 // (not a bare life change), so a client can report the hit.
-                let dealt =
-                    state.deal_damage(PendingDamage::to_player(player, amount).in_combat(), db);
+                let dealt = state.deal_damage(
+                    PendingDamage::to_player(player, amount)
+                        .in_combat()
+                        .from(dealer),
+                    db,
+                );
                 // CR 903.10a: combat damage from a commander also accrues to the
                 // per-designation tally that the 21-damage loss reads. Keyed to the
                 // commander's owning player, so it survives the commander's zone
@@ -120,7 +137,9 @@ pub(crate) fn apply_combat_batch(
                 // loyalty from a planeswalker (CR 120.3c/d), recording the
                 // `DamageDealt` event either way.
                 let dealt = state.deal_damage(
-                    PendingDamage::to_permanent(permanent, amount).in_combat(),
+                    PendingDamage::to_permanent(permanent, amount)
+                        .in_combat()
+                        .from(dealer),
                     db,
                 );
                 // CR 702.2b / 704.5h: any nonzero damage from a deathtouch source

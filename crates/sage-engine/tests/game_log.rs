@@ -155,6 +155,7 @@ fn burn_to_a_player_logs_damage_dealt_after_resolution_and_no_life_change() {
             GameEvent::DamageDealt {
                 target: DamageTarget::Player(p),
                 amount: 3,
+                ..
             } if *p == PlayerId(1)
         )
     })
@@ -180,7 +181,7 @@ fn lethal_burn_to_a_creature_logs_nonlethal_damage_then_a_single_death() {
     let state = resolve_top(&state, &db);
 
     let damaged = find(&state, |e| {
-        matches!(e, GameEvent::DamageDealt { target: DamageTarget::Permanent(lp), amount: 3 } if lp.permanent == boar)
+        matches!(e, GameEvent::DamageDealt { target: DamageTarget::Permanent(lp), amount: 3, .. } if lp.permanent == boar)
     })
     .expect("damage to the creature is logged");
     let died = find(

@@ -645,11 +645,11 @@ fn deal_damage_to_target(
 ) {
     let dealt = match target {
         Target::Permanent(id) => state.deal_damage(
-            resolution.damage(PendingDamage::to_permanent(id, amount)),
+            resolution.damage(PendingDamage::to_permanent(id, amount).from(source)),
             db,
         ),
         Target::Player(seat) => state.deal_damage(
-            resolution.damage(PendingDamage::to_player(seat, amount)),
+            resolution.damage(PendingDamage::to_player(seat, amount).from(source)),
             db,
         ),
         Target::Card(_) | Target::Spell(_) => 0,
@@ -780,7 +780,10 @@ fn deal_damage_between_permanents(
     let lifelink =
         crate::characteristics::permanent_has_keyword(state, source, Keyword::Lifelink, db);
     let gains = crate::characteristics::controller_of_id(state, source);
-    let dealt = state.deal_damage(PendingDamage::to_permanent(recipient, amount), db);
+    let dealt = state.deal_damage(
+        PendingDamage::to_permanent(recipient, amount).from(Some(source)),
+        db,
+    );
     // CR 120: the source really dealt this, so the "hasn't dealt damage yet" of a
     // conditional continuous ability stops holding for it here, in the same step.
     if dealt > 0 {

@@ -58,7 +58,11 @@ pub(crate) fn log_entries(state: &GameState, db: &CardDatabase) -> Vec<GameLogEn
                     player: player_id(*player),
                     amount: *amount,
                 },
-                GameEvent::DamageDealt { target, amount } => GameLogEvent::DamageDealt {
+                // The engine also records *who* dealt it, for the triggers that watch a
+                // creature dealing damage. The wire does not carry it: the log says what
+                // was hit and for how much, and adding a source would be a contract
+                // change this change does not need.
+                GameEvent::DamageDealt { target, amount, .. } => GameLogEvent::DamageDealt {
                     target: log_damage_target(target, db),
                     amount: *amount,
                 },

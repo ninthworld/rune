@@ -355,6 +355,11 @@
     "rarity": "rare"
   },
   {
+    "functional_id": "surge_mare",
+    "collector_number": "77",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "tezzeret_artifice_master",
     "collector_number": "79",
     "rarity": "mythic"
@@ -438,6 +443,11 @@
     "functional_id": "epicure_of_blood",
     "collector_number": "95",
     "rarity": "common"
+  },
+  {
+    "functional_id": "fell_specter",
+    "collector_number": "96",
+    "rarity": "uncommon"
   },
   {
     "functional_id": "fraying_omnipotence",
@@ -1060,6 +1070,11 @@
     "rarity": "mythic"
   },
   {
+    "functional_id": "desecrated_tomb",
+    "collector_number": "230",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "diamond_mare",
     "collector_number": "231",
     "rarity": "uncommon"
@@ -1112,6 +1127,11 @@
   {
     "functional_id": "millstone",
     "collector_number": "242",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "rogue_s_gloves",
+    "collector_number": "243",
     "rarity": "uncommon"
   },
   {

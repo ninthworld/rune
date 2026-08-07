@@ -365,7 +365,13 @@ fn collect_from(
             // watching the rest of the board sees one event per qualifying object, and
             // two creatures dying at once must trigger it twice (CR 603.2). The
             // self-conditions can only ever answer 0 or 1.
-            for _ in 0..fire_count(&event, watcher, before, after, db) {
+            // A condition whose sentence says "**that** player" arrives with them already
+            // named — the event fixed the subject, exactly as a delayed ability's "that
+            // spell" is fixed (CR 603.7c) — so one fire is one discarder rather than a
+            // count with nobody attached.
+            let named = named_subjects(&event, watcher, before, after);
+            let fires = fire_count(&event, watcher, before, after, db);
+            for index in 0..fires {
                 out.push(Trigger {
                     // A printed trigger reads nothing about its source's power, and has
                     // no cost that could have recorded one (CR 603.3).
@@ -374,12 +380,41 @@ fn collect_from(
                     controller: watcher.controller,
                     effects: effects.clone(),
                     // A printed trigger names nothing yet: its controller aims it once it
-                    // is on the stack (CR 603.3d).
-                    targets: Vec::new(),
+                    // is on the stack (CR 603.3d). The exception is the one above.
+                    targets: named.get(index).map_or_else(Vec::new, |player| {
+                        vec![crate::ability::Target::Player(*player)]
+                    }),
                 });
             }
         }
     }
+}
+
+/// The players a condition's own sentence names — one per fire, in fire order — for the
+/// conditions whose effects say "**that** player".
+///
+/// Empty for every other condition, which is nearly all of them: a printed trigger arrives
+/// unaimed and is aimed by its controller (CR 603.3d). This exists because one card asks
+/// about a player the *event* identified, and asking its controller to choose them would
+/// be a different card.
+fn named_subjects(
+    event: &TriggerCondition,
+    watcher: Watcher<'_>,
+    before: &GameState,
+    after: &GameState,
+) -> Vec<PlayerId> {
+    let TriggerCondition::PlayerDiscards(observes) = event else {
+        return Vec::new();
+    };
+    events_in(before, after)
+        .filter_map(|event| match event {
+            GameEvent::CardsDiscarded { player, count } => Some((*player, *count)),
+            _ => None,
+        })
+        .filter(|(player, _)| !observes.opponents_only || *player != watcher.controller)
+        // One entry per card, so the list lines up with the fire count above.
+        .flat_map(|(player, count)| std::iter::repeat_n(player, count as usize))
+        .collect()
 }
 
 /// The permanents that entered the battlefield across the diff: present in `after`,
@@ -719,6 +754,78 @@ fn fire_count(
                     })
                     .count()
             }),
+        // CR 609.7: read from the damage events this transition recorded, which is the
+        // only place the dealer survives. Prevented damage records nothing (CR 615.1), so
+        // a shield stops this without a clause about it here.
+        TriggerCondition::DealsDamage(observes) => {
+            let dealer = watcher.permanent().and_then(|perm| {
+                if observes.by_attached {
+                    perm.attached_to
+                } else {
+                    Some(perm.id)
+                }
+            });
+            dealer.map_or(0, |dealer| {
+                events_in(before, after)
+                    .filter(|event| {
+                        let GameEvent::DamageDealt {
+                            target,
+                            source: Some(source),
+                            ..
+                        } = event
+                        else {
+                            return false;
+                        };
+                        *source == dealer
+                            && match target {
+                                crate::state::DamageTarget::Player(seat) => {
+                                    !observes.to_opponent || *seat != watcher.controller
+                                }
+                                crate::state::DamageTarget::Permanent(_) => {
+                                    !(observes.to_player || observes.to_opponent)
+                                }
+                            }
+                    })
+                    .count()
+            })
+        }
+        // Diffing the graveyard is what "leave" means: every road out — a hand, the
+        // battlefield, exile, a library — is a card that was there and is not.
+        TriggerCondition::CardsLeaveGraveyard(observes) => {
+            let left = (0..after.players.len()).any(|seat| {
+                if observes.yours_only && PlayerId(seat) != watcher.controller {
+                    return false;
+                }
+                let now: Vec<crate::id::CardInstanceId> = after.players[seat]
+                    .graveyard
+                    .iter()
+                    .map(|card| card.id)
+                    .collect();
+                before.players.get(seat).is_some_and(|player| {
+                    player.graveyard.iter().any(|card| {
+                        !now.contains(&card.id)
+                            && crate::choice::card_matches_filter(
+                                db,
+                                card.card,
+                                &observes.filter,
+                                None,
+                            )
+                    })
+                })
+            });
+            // `one or more` counts once however many left.
+            usize::from(left)
+        }
+        // Counted per card, not per discard effect (CR 701.8): the recorded count is the
+        // fire count, exactly as a draw watcher's is.
+        TriggerCondition::PlayerDiscards(observes) => events_in(before, after)
+            .filter_map(|event| match event {
+                GameEvent::CardsDiscarded { player, count } => Some((*player, *count)),
+                _ => None,
+            })
+            .filter(|(player, _)| !observes.opponents_only || *player != watcher.controller)
+            .map(|(_, count)| usize::try_from(count).unwrap_or(usize::MAX))
+            .sum(),
         TriggerCondition::SelfAttacks => usize::from(watcher.permanent().is_some_and(|perm| {
             let attacking_in = |state: &GameState| {
                 state

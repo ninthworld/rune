@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "functional_id": "fell_specter",
+  "name": "Fell Specter",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Specter"
+  ],
+  "mana_cost": "{3}{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 1,
+  "toughness": 3,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "discard",
+          "player_ref": "target_opponent",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "type": "triggered",
+      "event": {
+        "player_discards": {
+          "opponents_only": true
+        }
+      },
+      "effects": [
+        {
+          "kind": "lose_life",
+          "player_ref": "target_player",
+          "amount": 2
+        }
+      ]
+    }
+  ]
+}

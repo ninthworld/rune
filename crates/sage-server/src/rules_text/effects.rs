@@ -1152,7 +1152,7 @@ fn take_phrase(min: u32, max: u32, filter: &CardFilter) -> String {
 /// The noun a [`CardFilter`] names, singular or plural, as the words a card would print
 /// — "card" for the unrestricted class, so "discard a **card**" and "up to one **land
 /// card**" both read as one sentence rather than needing a special case per call site.
-fn filter_noun(filter: &CardFilter, plural: bool) -> String {
+pub(super) fn filter_noun(filter: &CardFilter, plural: bool) -> String {
     let card = if plural { "cards" } else { "card" };
     match filter {
         CardFilter::Any => card.to_string(),

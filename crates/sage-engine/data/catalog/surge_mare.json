@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "functional_id": "surge_mare",
+  "name": "Surge Mare",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Horse",
+    "Fish"
+  ],
+  "mana_cost": "{U}{U}",
+  "colors": [
+    "blue"
+  ],
+  "power": 0,
+  "toughness": 5,
+  "restrictions": [
+    {
+      "cant_be_blocked_by": "green"
+    }
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "deals_damage": {
+          "to_opponent": true
+        }
+      },
+      "effects": [
+        {
+          "kind": "may",
+          "effects": [
+            {
+              "kind": "draw_card",
+              "count": 1
+            },
+            {
+              "kind": "discard",
+              "player_ref": "controller",
+              "count": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{1}{U}"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "pump_self",
+          "power": 2,
+          "toughness": -2
+        }
+      ]
+    }
+  ]
+}

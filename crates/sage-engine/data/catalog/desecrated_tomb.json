@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "functional_id": "desecrated_tomb",
+  "name": "Desecrated Tomb",
+  "types": [
+    "artifact"
+  ],
+  "mana_cost": "{3}",
+  "colors": [],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "cards_leave_graveyard": {
+          "yours_only": true,
+          "filter": {
+            "kind": "creature"
+          }
+        }
+      },
+      "effects": [
+        {
+          "kind": "create_token",
+          "token": {
+            "name": "Bat",
+            "types": [
+              "creature"
+            ],
+            "subtypes": [
+              "Bat"
+            ],
+            "colors": [
+              "black"
+            ],
+            "power": 1,
+            "toughness": 1,
+            "keywords": [
+              "flying"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
