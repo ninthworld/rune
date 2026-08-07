@@ -168,7 +168,7 @@ fn issue_722_the_token_count_is_taken_once_on_resolution() {
     assert_eq!(soldiers(&later, &db), made);
 }
 
-/// Tapping and sacrificing her gives every creature you control indestructible.
+/// Sacrificing her protects the creatures **smaller than she was** — and only those.
 #[test]
 fn issue_722_sacrificing_lena_grants_indestructible_to_your_creatures() {
     let db = db();
@@ -177,6 +177,9 @@ fn issue_722_sacrificing_lena_grants_indestructible_to_your_creatures() {
     // that has been here since before the turn began is one whose `{T}` cost is payable
     // (CR 302.6).
     let lena = permanent(&mut state, &db, PlayerId(0), "lena_selfless_champion");
+    // Lena is 3/3. Walking Corpse is a 2/2 — under her power, so protected. Onakke Ogre
+    // is a 3/1 — equal power, so *not* protected, which is the edge the word "less" names.
+    let small = permanent(&mut state, &db, PlayerId(0), "walking_corpse");
     let ogre = permanent(&mut state, &db, PlayerId(0), "onakke_ogre");
     let theirs = permanent(&mut state, &db, PlayerId(1), "walking_corpse");
     state.players[0].turn_began = state.turn;
@@ -201,12 +204,20 @@ fn issue_722_sacrificing_lena_grants_indestructible_to_your_creatures() {
         !state.battlefield.iter().any(|perm| perm.id == lena),
         "Lena was sacrificed to pay for her own ability"
     );
-    // …and what she left behind is indestructible, on your side only.
+    // …and what she left behind is protected only where her power says so. She is gone by
+    // now, so the comparison is against her last known power (CR 608.2h) — a source that
+    // took its number with it must not protect everybody.
     assert!(
-        characteristics(&state, ogre, &db)
+        characteristics(&state, small, &db)
             .keywords
             .contains(&Keyword::Indestructible),
-        "your creature gained indestructible"
+        "a creature with less power than Lena gained indestructible"
+    );
+    assert!(
+        !characteristics(&state, ogre, &db)
+            .keywords
+            .contains(&Keyword::Indestructible),
+        "a creature with power equal to hers did not: the card says *less than*"
     );
     assert!(
         !characteristics(&state, theirs, &db)

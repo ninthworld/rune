@@ -21,8 +21,12 @@ pub(crate) fn paid_cost(
     state: &GameState,
     db: &CardDatabase,
     payment: &[crate::CostPayment],
+    source: Option<crate::PermanentId>,
 ) -> crate::PaidCost {
     crate::PaidCost {
+        // The source's own power, before a cost that sacrifices it takes it away.
+        source_power: source
+            .and_then(|id| crate::characteristics::characteristics(state, id, db).power),
         // The first creature the payment named — see [`PaidCost::sacrificed_power`] for
         // why "the sacrificed creature" is a phrase only a one-creature cost prints.
         sacrificed_power: crate::actions::sacrifices_of(payment)
@@ -205,7 +209,7 @@ pub(crate) fn apply_activate_ability(
     // CR 601.2h: what the payment recorded, read **before** anything it names leaves.
     // Nothing downstream could recover it — the permanents are about to stop being
     // permanents — so this is the one moment the numbers exist.
-    let paid = crate::apply::paid_cost(state, db, payment);
+    let paid = crate::apply::paid_cost(state, db, payment, Some(permanent));
 
     // CR 601.2b: the components of the cost the *player* chose, charged from what the
     // action carried. A discard is the same move a discard made any other way performs
@@ -461,7 +465,7 @@ pub(crate) fn apply_cast_spell(
     // permanents. The card is on the stack a line below and the sacrifices happen a few
     // lines after that; by then the creature whose power `Thud` reads has left, which is
     // exactly why the number is taken here and stored rather than asked for later.
-    let paid = crate::apply::paid_cost(state, db, payment);
+    let paid = crate::apply::paid_cost(state, db, payment, None);
     let id = state.mint_id();
     state.stack.push(StackObject {
         id: StackId(id),

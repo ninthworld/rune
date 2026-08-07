@@ -323,6 +323,7 @@ pub(crate) fn apply_effect(
                 state,
                 affects,
                 controller,
+                resolution.paid.source_power,
                 Modification::PowerToughness {
                     power: *power,
                     toughness: *toughness,
@@ -335,6 +336,7 @@ pub(crate) fn apply_effect(
                 state,
                 affects,
                 controller,
+                resolution.paid.source_power,
                 Modification::GrantKeyword(*keyword),
                 db,
             );
@@ -347,6 +349,7 @@ pub(crate) fn apply_effect(
                 state,
                 affects,
                 controller,
+                resolution.paid.source_power,
                 Modification::GrantRestriction(restriction.clone()),
                 db,
             );
@@ -644,10 +647,11 @@ fn apply_mass_modification(
     state: &mut GameState,
     affects: &MassAffects,
     controller: PlayerId,
+    source_power: Option<i32>,
     modification: Modification,
     db: &CardDatabase,
 ) {
-    for id in permanents_in(state, affects, controller, db) {
+    for id in permanents_in(state, affects, controller, source_power, db) {
         let source = state.mint_id();
         state.static_effects.push(StaticEffect {
             source,
@@ -775,6 +779,7 @@ fn permanents_in(
     state: &GameState,
     affects: &MassAffects,
     controller: PlayerId,
+    source_power: Option<i32>,
     db: &CardDatabase,
 ) -> Vec<PermanentId> {
     let is_creature = |perm: &Permanent| {
@@ -791,7 +796,11 @@ fn permanents_in(
                     // A subtype narrows the class to a lord's tribe ("Dragons you
                     // control"), read off the printed face — the same place every other
                     // subtype question is answered.
-                    MassAffects::CreaturesYouControl { subtype, min_power } => {
+                    MassAffects::CreaturesYouControl {
+                        subtype,
+                        min_power,
+                        below_source_power,
+                    } => {
                         crate::characteristics::controller_of(state, p) == controller
                             && subtype.as_deref().is_none_or(|wanted| {
                                 p.printed
@@ -809,6 +818,16 @@ fn permanents_in(
                                     .power
                                     .is_some_and(|power| power >= min)
                             })
+                            // And the same reading against the *source's* power rather
+                            // than a printed number. A source that is gone has no power to
+                            // compare against, and the honest answer to "less than its
+                            // power" is then nobody — never everybody.
+                            && (!below_source_power
+                                || source_power.is_some_and(|source| {
+                                    crate::characteristics::characteristics(state, p.id, db)
+                                        .power
+                                        .is_some_and(|power| power < source)
+                                }))
                     }
                     MassAffects::EachCreature => true,
                     // Exactly the set declare-attackers produced (CR 508.1a); empty
@@ -912,7 +931,7 @@ fn apply_class_damage(
             }
         }
         DamageSubject::Permanents(affects) => {
-            for id in permanents_in(state, affects, controller, db) {
+            for id in permanents_in(state, affects, controller, resolution.paid.source_power, db) {
                 dealt |= state.deal_damage(
                     resolution.damage(PendingDamage::to_permanent(id, amount)),
                     db,

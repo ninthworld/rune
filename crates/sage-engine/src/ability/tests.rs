@@ -641,6 +641,7 @@ fn the_new_effect_verbs_round_trip_with_their_target_or_class() {
             affects: MassAffects::CreaturesYouControl {
                 subtype: None,
                 min_power: None,
+                below_source_power: false,
             },
             power: 2,
             toughness: 1,
@@ -657,6 +658,7 @@ fn the_new_effect_verbs_round_trip_with_their_target_or_class() {
             affects: MassAffects::CreaturesYouControl {
                 subtype: None,
                 min_power: None,
+                below_source_power: false,
             },
             keyword: Keyword::Trample,
         }
@@ -1123,6 +1125,7 @@ fn issue_735_cost_modification_round_trips_with_its_selectors() {
         MassAffects::CreaturesYouControl {
             subtype: None,
             min_power: Some(4),
+            below_source_power: false,
         }
     );
     assert_eq!(
@@ -1130,6 +1133,7 @@ fn issue_735_cost_modification_round_trips_with_its_selectors() {
         MassAffects::CreaturesYouControl {
             subtype: None,
             min_power: None,
+            below_source_power: false,
         }
     );
 }
