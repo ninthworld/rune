@@ -1324,6 +1324,7 @@ pub(super) fn filter_noun(filter: &CardFilter, plural: bool) -> String {
             }
         }
         CardFilter::CreatureOrLand => format!("creature or land {card}"),
+        CardFilter::ColorOrArtifact { color } => format!("{} or artifact {card}", color.word()),
         CardFilter::Permanent => format!("permanent {card}"),
         CardFilter::Subtype { subtype } => format!("{subtype} {card}"),
         CardFilter::NoncreatureNonland => format!("noncreature, nonland {card}"),
