@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (251)
+## Supported cards (252)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -143,6 +143,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `leonin_warleader` | Leonin Warleader | functional definition |
 | `lich_s_caress` | Lich's Caress | functional definition |
 | `lightning_strike` | Lightning Strike | functional definition |
+| `liliana_s_contract` | Liliana's Contract | functional definition |
 | `liliana_s_spoils` | Liliana's Spoils | functional definition |
 | `liliana_untouched_by_death` | Liliana, Untouched by Death | functional definition |
 | `llanowar_elves` | Llanowar Elves | functional definition |
@@ -281,7 +282,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Auras that enchant a player, or move between hosts | an Aura's enchant restriction is any class the target vocabulary names, so a creature and a land are both hosts, and its grant may be P/T, keywords, combat restrictions, or a written-out ability; but no attachment names a player, and once attached an Aura stays on the host it entered on — nothing moves one |
 | Changing what a permanent is a copy of while it stays on the battlefield | CR 707.4 needs a copy effect created after the entry seam; copiable values are only ever recorded as a permanent enters (CR 614.12) |
 | Combat damage assigned by anything but the assigning creature's own power or toughness | an attacker or blocker assigns its current power, or its current toughness while a continuous effect names that one instead, read at the single place the combat-damage step asks how much a creature assigns; no other characteristic can be named, nothing assigns a fixed amount or a count, and nothing reads another object's characteristic |
-| Conditions other than a permanent count, a mill, a discard, life gained this turn, or what one permanent has attacked, blocked, or damaged | a permanent count is a tally of a class and cannot require its members to have distinct names |
+| Conditions other than a permanent count, a mill, a discard, life gained this turn, or what one permanent has attacked, blocked, or damaged | a condition asks one of six questions — how many permanents a class holds, or how many distinct names are among them; what this resolution milled or discarded; whether the resolving spell was cast from its controller's hand; how much life that controller gained this turn; and whether the ability's own source attacked or blocked — and no other: not the size or contents of a hand, a library, or a graveyard, not a spell's mana value, and never an upper bound |
 | Copying a permanent spell, an ability, or a card in a zone | CR 707 is modelled for a creature named as a permanent enters and for an instant or sorcery on the stack; a copy of a permanent spell would have to become a token (CR 707.10f), and copying an activated or triggered ability or a card outside the stack has no seam |
 | Cost modification of another player's spells, or of an ability's activation cost | a permanent continuously takes generic mana off, or puts it on, the cost of a class of spell its own controller casts (CR 601.2f), read wherever a cast's cost is read; nothing reaches a spell another player casts, no modification applies to an activated ability's cost, and a coloured or colourless requirement is never changed |
 | Costs paid by exiling from anywhere but a graveyard | a cast and an activation each carry the sacrifices, discards, and graveyard exiles their cost names on the action — always a fixed number, and always the payer's own, because a size the payer picks is a decision and belongs to a resolution — and an optional effect asks for its own mid-resolution, from the same vocabulary minus every component that names the source; a cost exiles only out of the payer's own graveyard, never from a hand, a library, or the battlefield |
@@ -301,6 +302,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Gaining control of a permanent for longer than a turn, and exchanging control | a control change is a targeted layer-2 effect the cleanup step ends; no duration outlives the turn and nothing swaps two permanents' controllers |
 | Kicker and other optional additional costs | no optional cost declared on announcement |
 | Losing abilities on a targeted permanent | a printed static ability may take all abilities from a class of permanents, and an until-end-of-turn removal names its own source and may lose named keywords; nothing takes abilities from a permanent an effect *targeted*, and no removal reaching another permanent has a duration shorter than its source's presence |
+| Losing the game outright | an effect may state that a player *wins* the game (CR 104.2b), which is recorded as every other player losing it, because the last seat standing is what winning is; nothing states that a player **loses**, so a card that ends a game from the other direction is unwritable |
 | Mana filtering | mana is produced and spent, never converted; nothing changes the colour of mana already in a pool |
 | Modal double-faced cards, and melding | a card has an ordered list of faces and a permanent turns over between them (CR 712), but the second face is only ever reached by transforming: it carries no mana cost, the catalog validator refuses one, and no announcement offers a card as anything but its front face — so a card whose two faces are two things you may cast is unwritable, and nothing combines two cards into one |
 | Modes beyond one chosen from a spell's printed list | a spell chooses exactly one of between two and four printed modes as it is announced, and the chosen mode alone decides which effects resolve and which targets are asked for; no ability is modal, nothing chooses two modes or repeats one, and a mode carries no cost of its own |
@@ -320,5 +322,4 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | The CR 613.8 dependency rules | continuous effects are ordered by CR 613.7 timestamp alone; the layer-6 walk gates each source with that source's *stored* abilities — until-end-of-turn effects and the attachments on it — and never with another permanent's printed static ability, which is the one place the walk is cut so it cannot recurse, so a permanent silenced by a printed static ability still contributes its own |
 | The legend-rule choice among duplicates | CR 704.5j applies, but which copy survives is a deterministic policy (the newest) rather than the controller's choice |
 | Tokens created as copies of another permanent | create_token authors a token's characteristics inline and nothing points one at another permanent's copiable values; CR 707.8a's two-faced token copy is unbuilt with it |
-| Winning the game outright | a game ends when a player *loses* — at zero or less life, on a draw attempted from an empty library, or on the commander-damage tally — and the last seat standing is what winning is; no effect names a winner or a loser, so nothing a resolution does ends a game directly |
 | X anywhere but a spell's own mana cost | a cast announces X, folds it into the cost as generic mana, and locks it on the stack for the resolution and the generated text to read; nothing announces X for an activation or on a trigger, and the announced value feeds only the amounts a derived amount already feeds — never the counters a permanent enters with, a token count, or a mana-value filter |

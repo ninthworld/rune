@@ -15,6 +15,10 @@ pub enum GameOverReason {
     Decked,
     /// A player conceded (CR 104.3a).
     Concede,
+    /// An effect stated that a player **wins the game** (CR 104.2b), so everyone else
+    /// lost it. The only reason here that describes something a *card* did rather than
+    /// something that happened to the loser.
+    OpponentWon,
     /// A player was dealt 21 or more combat damage over the game by a single
     /// commander (CR 903.10a).
     CommanderDamage,
@@ -113,5 +117,14 @@ mod tests {
         // snake_case `commander_damage`, distinguishable from the other reasons.
         let json = serde_json::to_value(GameOverReason::CommanderDamage).unwrap();
         assert_eq!(json, serde_json::json!("commander_damage"));
+    }
+
+    #[test]
+    fn issue_727_a_win_by_effect_is_its_own_reason_on_the_wire() {
+        // CR 104.2b: the reason a card ended the game, distinguishable from every reason
+        // something happened *to* the loser — a client that says "life reached zero" for
+        // this would be describing a game that did not happen.
+        let json = serde_json::to_value(GameOverReason::OpponentWon).unwrap();
+        assert_eq!(json, serde_json::json!("opponent_won"));
     }
 }

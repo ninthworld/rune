@@ -180,6 +180,7 @@ fn game_over_reason(reason: LossReason) -> GameOverReason {
         LossReason::DrewFromEmptyLibrary => GameOverReason::Decked,
         LossReason::Concede => GameOverReason::Concede,
         LossReason::CommanderDamage => GameOverReason::CommanderDamage,
+        LossReason::OpponentWon => GameOverReason::OpponentWon,
     }
 }
 

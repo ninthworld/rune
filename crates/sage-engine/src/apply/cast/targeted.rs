@@ -375,6 +375,15 @@ pub(crate) fn apply_targeted_effect(
                 state.mill(seat, u32::from(*count));
             }
         }
+        // The same verb aimed at a chosen seat (CR 104.2b). No printed card says "target
+        // player wins the game", but the reference decides whether this targets exactly
+        // as it does for every other player-subject effect, so the targeted spelling
+        // exists and reaches the same one function rather than being quietly ignored.
+        Effect::WinTheGame { .. } => {
+            if let Target::Player(seat) = target {
+                super::effects::win_the_game(state, seat);
+            }
+        }
         // "Tap all creatures target player controls" (CR 502.4 / 611.2c): the chosen
         // seat's creatures, enumerated now. Shares the one tapping function with the
         // non-targeting spelling, so the two cannot disagree about what they tap.

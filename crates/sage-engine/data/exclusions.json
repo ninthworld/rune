@@ -37,7 +37,7 @@
   },
   {
     "name": "Conditions other than a permanent count, a mill, a discard, life gained this turn, or what one permanent has attacked, blocked, or damaged",
-    "blocker": "a permanent count is a tally of a class and cannot require its members to have distinct names"
+    "blocker": "a condition asks one of six questions — how many permanents a class holds, or how many distinct names are among them; what this resolution milled or discarded; whether the resolving spell was cast from its controller's hand; how much life that controller gained this turn; and whether the ability's own source attacked or blocked — and no other: not the size or contents of a hand, a library, or a graveyard, not a spell's mana value, and never an upper bound"
   },
   {
     "name": "Cost modification of another player's spells, or of an ability's activation cost",
@@ -160,8 +160,8 @@
     "blocker": "a selector or a count may bound a permanent's power — at least a printed number, or strictly below the power of the effect's own source, read at resolution and from last known information when that source is already gone; toughness bounds nothing, and no bound compares two permanents neither of which is the source"
   },
   {
-    "name": "Winning the game outright",
-    "blocker": "a game ends when a player *loses* — at zero or less life, on a draw attempted from an empty library, or on the commander-damage tally — and the last seat standing is what winning is; no effect names a winner or a loser, so nothing a resolution does ends a game directly"
+    "name": "Losing the game outright",
+    "blocker": "an effect may state that a player *wins* the game (CR 104.2b), which is recorded as every other player losing it, because the last seat standing is what winning is; nothing states that a player **loses**, so a card that ends a game from the other direction is unwritable"
   },
   {
     "name": "X anywhere but a spell's own mana cost",

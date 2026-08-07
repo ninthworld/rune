@@ -25,6 +25,12 @@ pub enum LossReason {
     DrewFromEmptyLibrary,
     /// CR 104.3a — the player conceded, leaving the game.
     Concede,
+    /// CR 104.2b — an effect stated that **another player wins the game**, so this
+    /// player is no longer in it. The one losing condition that is not about this
+    /// player at all: it is recorded on every other seat by
+    /// [`Effect::WinTheGame`](crate::Effect::WinTheGame), because the engine derives
+    /// a winner from who has lost (CR 104.2a) rather than storing one.
+    OpponentWon,
     /// CR 903.10a — the player was dealt 21 or more combat damage over the game
     /// by a single commander (see
     /// [`GameState::commander_damage`](crate::GameState::commander_damage) and
