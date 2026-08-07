@@ -87,6 +87,21 @@ pub struct Resolution {
     /// there; a look that took two would need a list and nothing about this field would
     /// have to move.
     pub entered: Option<crate::id::PermanentId>,
+    /// The player this resolution's most recent **targeted** effect named — a player it
+    /// aimed at, or the controller of a permanent it aimed at — read by
+    /// [`PlayerRef::ThatPlayer`](crate::PlayerRef) and
+    /// [`MassAffects::CreaturesThatPlayerControls`](crate::MassAffects).
+    ///
+    /// The `its controller` of `Destroy target creature. **Its controller** creates a 2/4
+    /// white Ox`, and the `that player` of `deals 3 damage to target player and 1 damage
+    /// to each creature **that player** controls`. Both are second sentences about a
+    /// choice the first one made, and no slot of their own could name them — a second
+    /// target would be a second choice the card never asks for.
+    ///
+    /// Written **before** the effect that names it is applied, which is the only moment
+    /// that works: a creature about to be destroyed has a controller now and none
+    /// afterwards (CR 608.2h).
+    pub chosen_player: Option<crate::id::PlayerId>,
 }
 
 impl Resolution {
@@ -624,6 +639,8 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         // And nothing has been put onto the battlefield yet, for the same reason and by
         // the same road.
         entered: None,
+        // Nor has anything been aimed at.
+        chosen_player: None,
     };
     let suspended = apply_effects_with_targets(
         state,
@@ -728,6 +745,10 @@ pub(crate) fn apply_effects_with_targets(
     resolution: Resolution,
     db: &CardDatabase,
 ) -> bool {
+    // The frame is the resolution's own, and it *writes* about itself as it goes — what it
+    // sacrificed, what it put onto the battlefield, and now who its last targeted effect
+    // named. Each of those is a fact a later sentence of the same card reads.
+    let mut resolution = resolution;
     // A work queue rather than a walk over a fixed list, because a conditional's chosen
     // branch is *spliced in front of what is left*: the branch then travels through the
     // same targeting, choice-posing, and suspension machinery every other effect does,
@@ -837,6 +858,18 @@ pub(crate) fn apply_effects_with_targets(
             // an "up to two" effect that is the difference between one dead target
             // wasting the whole ability and it doing half its work.
             [group] => {
+                // CR 608.2h: whose it *was* — read before the effect, because a creature
+                // about to be destroyed has a controller now and none afterwards. This is
+                // what a following sentence about "that player" or "its controller" reads.
+                if let Some(target) = taken.first() {
+                    resolution.chosen_player = match target {
+                        Target::Player(seat) => Some(*seat),
+                        Target::Permanent(id) => {
+                            crate::characteristics::controller_of_id(state, *id)
+                        }
+                        _ => resolution.chosen_player,
+                    };
+                }
                 for target in taken {
                     if target_is_legal(
                         group.spec,

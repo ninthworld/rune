@@ -60,10 +60,6 @@
     "blocker": "the one cost an effect asks for mid-resolution belongs to an optional effect and is posed to the asking ability's own controller, never to a player the effect merely names; declining may now splice a consequence of its own onto the remainder — `sacrifice it unless you pay {1}` — but only the controller is ever the one asked, so an effect that acts on an *opponent* unless that opponent pays is unwritable"
   },
   {
-    "name": "Effects acting on the controller of a permanent the same resolution chose",
-    "blocker": "a player-subject effect names its player as the controller, each opponent, each player, a targeted player, or a targeted opponent, each resolved on its own; nothing reads a controller off a permanent another slot in the same resolution is pointed at, so a token created by *that permanent's* controller cannot be written"
-  },
-  {
     "name": "Effects that ask a player to name a type",
     "blocker": "a permanent records the colour and the card its controller named as it entered — the card as a functional identity chosen from the catalog, never a string — but a card or creature type has no recorded identity, only a nonbasic land may be named, and nothing on a spell records a choice at all"
   },

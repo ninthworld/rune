@@ -72,7 +72,7 @@ pub(crate) fn apply_effect(
             abilities,
             player_ref,
         } => {
-            for seat in non_targeting_subjects(state, *player_ref, controller) {
+            for seat in non_targeting_subjects(state, *player_ref, controller, resolution.chosen_player) {
                 let id = state.mint_id();
                 state.emblems.push(crate::state::Emblem {
                     id,
@@ -86,7 +86,7 @@ pub(crate) fn apply_effect(
         // the same cards — so no de-duplication is needed for correctness.
         Effect::AllowCastingFromGraveyard { player_ref, filter } => {
             let turn = state.turn;
-            for seat in non_targeting_subjects(state, *player_ref, controller) {
+            for seat in non_targeting_subjects(state, *player_ref, controller, resolution.chosen_player) {
                 state.graveyard_casting.push(crate::state::GraveyardCasting {
                     player: seat,
                     filter: filter.clone(),
@@ -127,7 +127,7 @@ pub(crate) fn apply_effect(
         // reason — two identical permissions permit the same aims.
         Effect::IgnoreHexproof { player_ref } => {
             let turn = state.turn;
-            for seat in non_targeting_subjects(state, *player_ref, controller) {
+            for seat in non_targeting_subjects(state, *player_ref, controller, resolution.chosen_player) {
                 state.ignoring_hexproof.push(crate::state::IgnoringHexproof {
                     player: seat,
                     turn,
@@ -297,7 +297,7 @@ pub(crate) fn apply_effect(
         // [`apply_targeted_effect`] instead and is a no-op here.
         Effect::GainLife { player_ref, amount } => {
             let delta = i32::try_from(*amount).unwrap_or(i32::MAX);
-            for seat in non_targeting_subjects(state, *player_ref, controller) {
+            for seat in non_targeting_subjects(state, *player_ref, controller, resolution.chosen_player) {
                 state.change_life(seat, delta);
             }
         }
@@ -305,7 +305,7 @@ pub(crate) fn apply_effect(
         // the zero-life state-based action (CR 704.5a) in the SBA loop.
         Effect::LoseLife { player_ref, amount } => {
             let delta = i32::try_from(*amount).unwrap_or(i32::MAX);
-            for seat in non_targeting_subjects(state, *player_ref, controller) {
+            for seat in non_targeting_subjects(state, *player_ref, controller, resolution.chosen_player) {
                 state.change_life(seat, -delta);
             }
         }
@@ -314,7 +314,7 @@ pub(crate) fn apply_effect(
         // reading their own total, which is why the amount is asked about `seat` and
         // not about the controller.
         Effect::LoseLifeByAmount { player_ref, amount } => {
-            for seat in non_targeting_subjects(state, *player_ref, controller) {
+            for seat in non_targeting_subjects(state, *player_ref, controller, resolution.chosen_player) {
                 let lost = crate::condition::derived_amount(
                     state, amount, controller, seat, resolution, db,
                 );
@@ -325,7 +325,7 @@ pub(crate) fn apply_effect(
         // than taken — the game finishes the turn it is in, and the rotation hands the
         // next one over — and last in first out, which is what the queue already does.
         Effect::TakeExtraTurn { player_ref } => {
-            for seat in non_targeting_subjects(state, *player_ref, controller) {
+            for seat in non_targeting_subjects(state, *player_ref, controller, resolution.chosen_player) {
                 state.extra_turns.push(seat);
             }
         }
@@ -334,7 +334,7 @@ pub(crate) fn apply_effect(
         // winner). A subject who has already lost cannot win and is skipped, and a
         // seat that has already lost keeps the reason it lost for.
         Effect::WinTheGame { player_ref } => {
-            for seat in non_targeting_subjects(state, *player_ref, controller) {
+            for seat in non_targeting_subjects(state, *player_ref, controller, resolution.chosen_player) {
                 win_the_game(state, seat);
             }
         }
@@ -342,7 +342,7 @@ pub(crate) fn apply_effect(
         // library into their graveyard. Not a draw — an empty library simply moves
         // fewer cards and never trips the CR 704.5c decking loss.
         Effect::Mill { player_ref, count } => {
-            for seat in non_targeting_subjects(state, *player_ref, controller) {
+            for seat in non_targeting_subjects(state, *player_ref, controller, resolution.chosen_player) {
                 state.mill(seat, u32::from(*count));
             }
         }
@@ -354,7 +354,7 @@ pub(crate) fn apply_effect(
             player_ref,
             skip_next_untap,
         } => {
-            for seat in non_targeting_subjects(state, *player_ref, controller) {
+            for seat in non_targeting_subjects(state, *player_ref, controller, resolution.chosen_player) {
                 tap_creatures_of(state, seat, *skip_next_untap, db);
             }
         }
@@ -376,7 +376,7 @@ pub(crate) fn apply_effect(
             // arrives, so a token this effect creates never counts towards its own
             // number.
             let made = tokens_created(state, *count, count_of.as_ref(), controller, db);
-            for seat in non_targeting_subjects(state, *player_ref, controller) {
+            for seat in non_targeting_subjects(state, *player_ref, controller, resolution.chosen_player) {
                 // Every token this seat creates joins the same attack, answered once:
                 // the tokens are created simultaneously and there is one declaration
                 // for them to join.
@@ -448,6 +448,7 @@ pub(crate) fn apply_effect(
                 affects,
                 controller,
                 resolution.paid.source_power,
+                resolution.chosen_player,
                 Modification::PowerToughness {
                     power: *power,
                     toughness: *toughness,
@@ -461,6 +462,7 @@ pub(crate) fn apply_effect(
                 affects,
                 controller,
                 resolution.paid.source_power,
+                resolution.chosen_player,
                 Modification::GrantKeyword(*keyword),
                 db,
             );
@@ -474,6 +476,7 @@ pub(crate) fn apply_effect(
                 affects,
                 controller,
                 resolution.paid.source_power,
+                resolution.chosen_player,
                 Modification::GrantRestriction(restriction.clone()),
                 db,
             );
@@ -661,7 +664,7 @@ pub(crate) fn apply_effect(
         } => {
             let count = crate::condition::count_permanents(state, count_of, controller, db);
             let delta = i32::try_from(amount_per.saturating_mul(count)).unwrap_or(i32::MAX);
-            for seat in non_targeting_subjects(state, *player_ref, controller) {
+            for seat in non_targeting_subjects(state, *player_ref, controller, resolution.chosen_player) {
                 state.change_life(seat, delta);
             }
         }
@@ -690,14 +693,14 @@ pub(crate) fn apply_effect(
         // does the same thing to each named seat, through the same helper, so the two
         // forms cannot drift.
         Effect::ExileFromLibraryUntil { player_ref, class } => {
-            for seat in non_targeting_subjects(state, *player_ref, controller) {
+            for seat in non_targeting_subjects(state, *player_ref, controller, resolution.chosen_player) {
                 super::targeted::dig_until(state, seat, *class, db);
             }
         }
         // Every card of the named graveyard, at once. An empty graveyard is a legal
         // subject and a resolution that does nothing.
         Effect::ExileGraveyard { player_ref } => {
-            for seat in non_targeting_subjects(state, *player_ref, controller) {
+            for seat in non_targeting_subjects(state, *player_ref, controller, resolution.chosen_player) {
                 if let Some(player) = state.players.get_mut(seat.0) {
                     let cards: Vec<_> = player.graveyard.drain(..).collect();
                     player.exile.extend(cards);
@@ -709,7 +712,7 @@ pub(crate) fn apply_effect(
         // so what is exiled is everything after it — in library order, so the exile pile
         // reads bottom-upward exactly as the library did.
         Effect::ExileLibraryExceptBottom { target } => {
-            for seat in non_targeting_subjects(state, *target, controller) {
+            for seat in non_targeting_subjects(state, *target, controller, resolution.chosen_player) {
                 if let Some(player) = state.players.get_mut(seat.0) {
                     if player.library.len() > 1 {
                         let cards: Vec<_> = player.library.drain(1..).collect();
@@ -809,10 +812,11 @@ fn apply_mass_modification(
     affects: &MassAffects,
     controller: PlayerId,
     source_power: Option<i32>,
+    chosen_player: Option<PlayerId>,
     modification: Modification,
     db: &CardDatabase,
 ) {
-    for id in permanents_in(state, affects, controller, source_power, db) {
+    for id in permanents_in(state, affects, controller, source_power, chosen_player, db) {
         let source = state.mint_id();
         state.static_effects.push(StaticEffect {
             source,
@@ -941,6 +945,7 @@ fn permanents_in(
     affects: &MassAffects,
     controller: PlayerId,
     source_power: Option<i32>,
+    chosen_player: Option<PlayerId>,
     db: &CardDatabase,
 ) -> Vec<PermanentId> {
     // CR 613 layer 4 has already run by the time a resolution asks: an artifact animated
@@ -1014,6 +1019,11 @@ fn permanents_in(
                     // A seat that has lost is no longer an opponent (CR 102.1); its
                     // permanents are on their way off the battlefield in the same SBA
                     // loop, and this is the same exclusion `non_targeting_subjects` makes.
+                    // The class counterpart of `PlayerRef::ThatPlayer`, reading the same
+                    // fact: whose creatures were named by the sentence before this one.
+                    MassAffects::CreaturesThatPlayerControls => chosen_player.is_some_and(|seat| {
+                        crate::characteristics::controller_of(state, p) == seat
+                    }),
                     MassAffects::CreaturesYourOpponentsControl
                     | MassAffects::CreaturesAndPlaneswalkersYourOpponentsControl => {
                         let seat = crate::characteristics::controller_of(state, p);
@@ -1051,8 +1061,12 @@ pub(crate) fn non_targeting_subjects(
     state: &GameState,
     player_ref: PlayerRef,
     controller: PlayerId,
+    chosen: Option<PlayerId>,
 ) -> Vec<PlayerId> {
     match player_ref {
+        // The player a sentence before this one named (CR 608.2h). Nobody, in a resolution
+        // that has aimed at nothing — a phrase that only exists after a choice.
+        PlayerRef::ThatPlayer => chosen.into_iter().collect(),
         PlayerRef::Controller => vec![controller],
         // Every opponent still in the game (CR 102.1) — in a game of three or more
         // this really is all of them, which is the whole reason it is not spelled
@@ -1098,7 +1112,9 @@ fn apply_class_damage(
     match subject {
         DamageSubject::Target(_) => {}
         DamageSubject::Players(player_ref) => {
-            for seat in non_targeting_subjects(state, *player_ref, controller) {
+            for seat in
+                non_targeting_subjects(state, *player_ref, controller, resolution.chosen_player)
+            {
                 // Prevented damage was never dealt (CR 615.1), so a shield is also what
                 // keeps `hasn't dealt damage yet` true — the flag follows the amount that
                 // actually landed rather than the amount that was aimed.
@@ -1109,7 +1125,14 @@ fn apply_class_damage(
             }
         }
         DamageSubject::Permanents(affects) => {
-            for id in permanents_in(state, affects, controller, resolution.paid.source_power, db) {
+            for id in permanents_in(
+                state,
+                affects,
+                controller,
+                resolution.paid.source_power,
+                resolution.chosen_player,
+                db,
+            ) {
                 dealt |= state.deal_damage(
                     resolution.damage(PendingDamage::to_permanent(id, amount).from(source)),
                     db,

@@ -427,6 +427,7 @@ pub(super) fn conjugate(player_ref: PlayerRef, verb: &str) -> String {
         PlayerRef::EachPlayer => format!("each player {verb}s"),
         PlayerRef::TargetPlayer => format!("target player {verb}s"),
         PlayerRef::TargetOpponent => format!("target opponent {verb}s"),
+        PlayerRef::ThatPlayer => format!("that player {verb}s"),
     }
 }
 

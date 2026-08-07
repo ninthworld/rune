@@ -1180,6 +1180,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "transmogrifying_wand",
+    "collector_number": "247",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "cinder_barrens",
     "collector_number": "248",
     "rarity": "common"
@@ -1362,6 +1367,11 @@
   {
     "functional_id": "waterknot",
     "collector_number": "311",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "radiating_lightning",
+    "collector_number": "313",
     "rarity": "common"
   }
 ]

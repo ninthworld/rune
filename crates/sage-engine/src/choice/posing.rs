@@ -156,7 +156,12 @@ pub(crate) fn choices_for_effect(
             let subjects = match target {
                 // A targeting reference names the one seat that was aimed at.
                 Some(Target::Player(seat)) => vec![seat],
-                _ => crate::apply::non_targeting_subjects(state, *player_ref, controller),
+                _ => crate::apply::non_targeting_subjects(
+                    state,
+                    *player_ref,
+                    controller,
+                    resolution.chosen_player,
+                ),
             };
             Some(
                 subjects
@@ -189,7 +194,12 @@ pub(crate) fn choices_for_effect(
         Effect::DiscardByAmount { player_ref, amount } => {
             let subjects = match target {
                 Some(Target::Player(seat)) => vec![seat],
-                _ => crate::apply::non_targeting_subjects(state, *player_ref, controller),
+                _ => crate::apply::non_targeting_subjects(
+                    state,
+                    *player_ref,
+                    controller,
+                    resolution.chosen_player,
+                ),
             };
             Some(
                 subjects
@@ -224,7 +234,12 @@ pub(crate) fn choices_for_effect(
         } => {
             let subjects = match target {
                 Some(Target::Player(seat)) => vec![seat],
-                _ => crate::apply::non_targeting_subjects(state, *player_ref, controller),
+                _ => crate::apply::non_targeting_subjects(
+                    state,
+                    *player_ref,
+                    controller,
+                    resolution.chosen_player,
+                ),
             };
             Some(
                 subjects
