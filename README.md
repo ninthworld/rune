@@ -18,9 +18,10 @@ a real game in a browser.
 The engine plays deterministic multiplayer games to a single winner: casting, targeting, the
 stack, combat with per-attacker targets and player-chosen damage assignment, elimination, common
 keywords, triggers, auras, counters, tokens, planeswalkers, and emblems. How many seats a game
-has is the format's decision, not a global constant — the lobby plumbs 2–8, the seeded
-`starter-1v1` duel seats exactly 2, `standard_ffa` seats 3–4, `commander` seats 2–4, and the
-permissive `standard_2p` catch-all allows the full 2–8 range. The server provides rooms,
+has is the format's decision, not a global constant — the lobby plumbs 2–8, and every format's
+name says which game it seats: `starter-1v1` and `standard_2p` (the web client's `1v1`) seat
+exactly 2, `standard_ffa` seats 3–4, `commander` seats 2–4, and the permissive
+`standard_multiplayer` catch-all is the one that allows the full 2–8 range. The server provides rooms,
 validated decks, reconnect tokens, decision timers, priority automation (the *settle*), and
 spectators.
 

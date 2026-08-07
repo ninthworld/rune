@@ -233,7 +233,10 @@ mod tests {
                 .command(
                     &client.token,
                     LobbyCommand::CreateRoom(CreateRoom {
-                        config: config(seats),
+                        // The full plumbing range is reached through the permissive
+                        // multiplayer catch-all: since #707 the duel formats seat two,
+                        // so the format that seats 2–8 is the one named for it.
+                        config: config_with(seats, "standard_multiplayer"),
                     }),
                 )
                 .await

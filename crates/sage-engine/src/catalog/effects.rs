@@ -418,6 +418,135 @@ pub(super) fn granted_abilities(
         .unwrap_or_default()
 }
 
+/// The ability `type`s that are read **only off an entering object's own printed
+/// abilities**, and are therefore dead the moment they are granted rather than printed
+/// (issue #776).
+///
+/// Every one of them is consulted at a single seam — `begin_battlefield_entry`, through
+/// `abilities_of`/`abilities_of_face` on the *card* — at a moment when no permanent
+/// exists yet to have been granted anything. Nothing later re-asks, so a granted one is
+/// carried by the CR 613 layer-6 fold and never read by anybody.
+///
+/// The list is short because it is the list of questions asked *before* there is a
+/// permanent. A granted `defined_power`, by contrast, is honoured: layer 7a reads the
+/// folded ability list, so a grant reaches it like a printed one.
+const ENTRY_ONLY_ABILITY_TYPES: [&str; 5] = [
+    "enters_tapped",
+    "enters_with_counters",
+    "enters_choosing_color",
+    "enters_naming_card",
+    "enters_as_copy",
+];
+
+/// The `type` of the first granted ability that no read will ever ask for, if this
+/// definition grants one — see [`Violation::GrantedAbilityIsNeverRead`].
+///
+/// Walks every position an ability can be **granted** from, which is deliberately not
+/// the same set as the positions one can be *printed* in: an attachment's grant, the
+/// written-out abilities a `pump` hands to its target, the abilities a `create_emblem`
+/// writes onto the emblem, and the `ability` a static `grant_ability` modification
+/// carries. A printed `enters_tapped` on the card itself is the ordinary, working thing
+/// and is not looked at here.
+pub(super) fn grants_an_unread_ability(
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> Option<String> {
+    granted_ability_objects(object)
+        .into_iter()
+        .filter_map(|ability| ability.get("type").and_then(serde_json::Value::as_str))
+        .find(|kind| ENTRY_ONLY_ABILITY_TYPES.contains(kind))
+        .map(str::to_string)
+}
+
+/// Every ability object this definition hands to something else, at any depth.
+///
+/// The grant positions, and why each is one: an `attachment` grants to its host
+/// ([`granted_abilities`]); an effect's `abilities` array is what a `pump` grants until
+/// end of turn and what a `create_emblem` writes onto an emblem; and a static ability's
+/// `grant_ability` modification carries the one it grants for as long as its source is on
+/// the battlefield.
+fn granted_ability_objects(
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> Vec<&serde_json::Value> {
+    let mut out: Vec<&serde_json::Value> = granted_abilities(object).iter().collect();
+    for effect in every_effect(object) {
+        out.extend(
+            effect
+                .get("abilities")
+                .and_then(serde_json::Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default(),
+        );
+    }
+    // A static ability's layer-6 grant. Read off every ability position that could hold a
+    // static — the card's own list, and the ones it grants away, since an attachment may
+    // grant a static that itself grants.
+    let statics = object
+        .get("abilities")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter()
+        .chain(granted_abilities(object).iter());
+    for ability in statics {
+        if let Some(granted) = ability
+            .get("modification")
+            .filter(|modification| {
+                modification.get("kind").and_then(serde_json::Value::as_str)
+                    == Some("grant_ability")
+            })
+            .and_then(|modification| modification.get("ability"))
+        {
+            out.push(granted);
+        }
+    }
+    out
+}
+
+/// Whether any cost this definition names discards **zero** cards — an activation cost
+/// component or the cost of accepting a `you may …`. See
+/// [`Violation::DiscardCostIsFree`].
+///
+/// A discard cost states its count as a bare number, and `0` is the shape a defaulted or
+/// mistyped field lands on. The `additional_cost` half of the same rule is checked by
+/// [`validate_definition`] against [`Violation::AdditionalCostIsUnpayable`], which is
+/// where that cost lives.
+pub(super) fn names_a_free_discard(object: &serde_json::Map<String, serde_json::Value>) -> bool {
+    fn is_free_discard(component: &serde_json::Value) -> bool {
+        component.get("kind").and_then(serde_json::Value::as_str) == Some("discard")
+            && component.get("count").and_then(serde_json::Value::as_u64) == Some(0)
+    }
+    // Every activation cost on every ability the definition prints or grants…
+    let activation = ability_objects(object)
+        .into_iter()
+        .flat_map(|ability| {
+            ability
+                .get("cost")
+                .and_then(serde_json::Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default()
+        })
+        .any(is_free_discard);
+    // …and the cost an optional effect charges for saying yes, wherever it sits.
+    let optional = every_effect(object)
+        .into_iter()
+        .filter_map(|effect| effect.get("cost"))
+        .any(is_free_discard);
+    activation || optional
+}
+
+/// Every ability object a definition names: the ones it prints, and the ones it grants.
+fn ability_objects(object: &serde_json::Map<String, serde_json::Value>) -> Vec<&serde_json::Value> {
+    let mut out: Vec<&serde_json::Value> = object
+        .get("abilities")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter()
+        .collect();
+    out.extend(granted_ability_objects(object));
+    out
+}
+
 /// Every effect a definition authors at the top level of an ability or of its spell
 /// effects, in file order.
 ///

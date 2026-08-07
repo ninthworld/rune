@@ -151,6 +151,16 @@
   color: #8b8f98;
 }
 
+/* which spell or ability this entry is (issue #715) — the server's own sentence for it.
+   Wrapped, never clipped: it is here precisely to tell two abilities of one card apart, and a
+   sentence cut off at the width of a panel may not have reached the part that differs. */
+.stack-detail {
+  font-size: 11px;
+  line-height: 1.3;
+  color: #a7abb4;
+  overflow-wrap: anywhere;
+}
+
 .stack-target {
   font-size: 11px;
   color: #8aa8cc;

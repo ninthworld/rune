@@ -46,6 +46,7 @@ import {
   answer,
   arm,
   ask,
+  choose,
   clear,
   disarm,
   fill,
@@ -200,11 +201,20 @@ export function Board({
       const targets = lines
         .filter((line) => line.kind === 'targeting' && line.direction === 'from')
         .flatMap((line) => line.ends.map((end) => end.name))
+      const face = stackFace(item)
+      // The server's own sentence for this object, kept only where it says something the name
+      // above it does not: a spell's description is its card's name (plus a chosen mode or X),
+      // and repeating that under itself is noise. An ability's names which ability it is, which
+      // is the whole of issue #715 item 4 — and the comparison is a plain string one, not this
+      // client parsing the sentence for structure.
+      const description = item.description?.trim() ?? ''
+      const detail = description === '' || description === face.name ? undefined : description
       return {
         item,
-        face: stackFace(item),
+        face,
         who: item.controller === undefined ? '' : label(item.controller),
-        kind: stackFace(item).markers[0] ?? 'On the stack',
+        kind: face.markers[0] ?? 'On the stack',
+        ...(detail === undefined ? {} : { detail }),
         targets,
       }
     })
@@ -469,6 +479,17 @@ export function Board({
         case 'fill': {
           const slot = current.slots.find((each) => each.slot === gesture.slot)
           if (slot) setInteraction(fill(interaction, slot, id, current.slots))
+          return
+        }
+        // The two halves of a blocker-first declaration (issue #772): naming the creature, and
+        // then naming the attacker whose slot it answers. The second fills that slot with the
+        // creature rather than with the attacker that was clicked, which is the whole inversion.
+        case 'choose':
+          setInteraction(choose(interaction, gesture.id))
+          return
+        case 'assign': {
+          const slot = current.slots.find((each) => each.slot === gesture.slot)
+          if (slot) setInteraction(fill(interaction, slot, gesture.id, current.slots))
           return
         }
       }

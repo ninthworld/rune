@@ -290,7 +290,10 @@ carve-out, which is the strongest form it could take.
 - Whose priority it is, and what is being asked.
 - That an action is available, and a fixed place to take it.
 - Every seat's life total.
-- The top item of a non-empty stack, by name.
+- The top item of a non-empty stack, by name — and **which** spell or ability it is, in the
+  server's own words, because a permanent with three abilities otherwise puts three entries on the
+  stack that a player cannot tell apart (issue #715). It wraps rather than clips: this line exists
+  to distinguish two sentences, and the part that differs may be at the end of one.
 - The ability to identify any drawn object in one gesture.
 - **No region of the board ever grows a scrollbar, and no region of the board ever scrolls
   vertically.** A board you have to scroll *down* to see is not a board: the vertical extent is the
@@ -961,6 +964,26 @@ means only that. Then the next attacker. The pairing is not the client's to work
 states which attacker each slot belongs to — and neither is the sequence: a slot about a choice the
 same action asks you to make simply is not a question until that choice is made.
 
+**Blocking is the same question from the other end, so it is asked from the other end.** The server
+publishes one slot per *attacker*, each listing the blockers that may legally block it — that is
+right, because legality is per pair and per pair is the server's to judge — but a defender does not
+think attacker-first. They think *this creature stops that one*. And a creature able to block two
+attackers appears in both slots, so a single click on it could mean either and meant whichever came
+first: a player could declare a block and not say what it blocked.
+
+**So a blocker is picked, and then the attacker it blocks is named.** Clicking your creature holds
+it; the board then lights only the attackers whose own slots list it, every other eligible blocker
+goes quiet, and the next click puts that creature into that attacker's slot. Clicking it again puts
+it back. A creature only one attacker lists is not asked about at all — one legal block is one
+click, because a question with a single answer is not a question. Nothing here is a legality this
+client worked out: which slots name a creature is the whole of the rule, and it is the server's
+list.
+
+The two directions are the same mechanism read from opposite ends — the attacker is *aimed* because
+it was chosen in a slot of its own; the blocker is *assigned* because it is an answer several slots
+would take — and they are exclusive: a board being asked what a blocker blocks is not also being
+asked what an attacker attacks.
+
 Two consequences follow, and both are the point:
 
 - **An arrow is drawn per choice, as it is made** (§6.6), so the declaration is read as a picture
@@ -1059,6 +1082,17 @@ and pans and an arrow leaves its row immediately. It takes no pointer events at 
   tones from the same stated ids, and they disappear with the draft. It is still not the client
   stating anything about the game: every end is a `subject` the server named and a `candidate` it
   enumerated, and the picture is of the message about to be sent.
+- **An outline is measured, so it follows the layout until the layout stops moving** (issue #715).
+  A ring is a box read from the page, and a box can still be travelling when it is read: a card
+  flying between zones (§6.8) moves for a third of a second without changing size, and a row
+  re-flowing around a card that left moves its neighbours without a render. Neither is a resize and
+  neither is a repaint anybody announces, which is how an outline came to sit where a card had been
+  and stay there until an unrelated hover redrew the board. The overlay therefore keeps
+  re-measuring for a bounded run of frames after every change and stops as soon as two readings
+  agree — an idle table measures nothing, and no outline outlives the geometry it was drawn from.
+- **An arrow ends on the permanent, not on the pile it sits in.** A permanent with an Equipment
+  behind it is drawn as one group, but the group is not what a spell targeted: each card in it is
+  ringed only when it is itself the thing being pointed at.
 
 ---
 
@@ -1442,6 +1476,13 @@ beside the words that say the same thing (§5.5).
 **Undo is a table rule**, named here because it is the first of its kind: chosen at creation, fixed
 for the life of the table, and visible to everyone at it. A player must never have to ask whether
 this table lets an action be taken back.
+
+**Until the server carries it, undo reads as unavailable rather than as a rule that is on**
+(issue #704). `RoomConfig` has no undo field and the server has no rollback command, so the strip
+says `Undo unavailable` in the plain colour of a fact rather than the green of an allowed rule,
+and the creation dialog draws both answers unpressable with **neither** selected. The colours and
+the choice above are what this surface becomes the day #648 puts the fact on the wire — a client
+may state a table rule only when the table stated it first.
 
 **A seat is a card, and the seats tile the way the board's do** — at most four across, two on a
 phone. Each carries a ready dot, the player's name, a host badge where it applies, the deck, the

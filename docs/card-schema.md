@@ -248,6 +248,15 @@ card varies it:
 artifacts is paid by two and refused by one, because over-paying a cost is not something a
 player may choose to do.
 
+**A cost of nothing is refused, in all three places a count is written.** Zero on an
+`additional_cost` is `Violation::AdditionalCostIsUnpayable`; zero on a `discard` component
+of an activation cost, or on the `cost` an optional effect charges for saying yes, is
+`Violation::DiscardCostIsFree`. The first has been checked since it was written and the
+other two carried the claim — *at least one on every printed card* — in a doc comment with
+nothing behind it, which is how a card comes to read as charging a card and cost nothing
+(issue #776). The `"any"` sacrifice is not this: its legal payments include zero, but the
+player may pay more, so it is a real cost.
+
 **A cost is never a number the payer picks.** `Sacrifice any number of lands` is a
 *decision*, and a decision needs a resolution to be asked during — so it is authored as an
 effect (`{"kind": "sacrifice"}` with no `amount`, see *Amounts derived from something
@@ -904,7 +913,12 @@ which they have to be: the face has no cost whose pips could imply them.
 Every rule the schema applies to a face is applied to **both** faces — a back face that is
 a creature needs power and toughness, a back face that is a planeswalker needs `loyalty`,
 and a `restrictions` list on a non-creature back face is refused exactly as it is on the
-front.
+front. That now includes every rule about the *effects and costs* a face authors: an `{X}`
+in an activation cost, a spell trait needing an X, an amount reading a sacrifice nothing
+performs, a selector naming a card nothing named, and a grant of an entry-only ability.
+Four of those read the top-level object until issue #776, which is exactly the failure the
+face split exists to prevent — a rule enforced on the front of a card and silently
+unenforced on the back.
 
 Turning a permanent over is one effect, `transform_self` (CR 701.28a), and it is *the same
 object*: counters, marked damage, attachments, and combat state all survive it (CR 712.a),
@@ -1930,6 +1944,18 @@ battlefield, with nothing ever put on the stack — an anthem or a lord:
     through. Two static abilities on one card share their source's timestamp and apply in the
     order the card lists them, which is how "lose all abilities **and** have …" is written as
     two entries and still means one thing.
+
+    **Five ability types may not be granted** (`Violation::GrantedAbilityIsNeverRead`):
+    `enters_tapped`, `enters_with_counters`, `enters_choosing_color`, `enters_naming_card`,
+    and `enters_as_copy`. Each is read at one seam — a permanent arriving — off the *card*'s
+    own printed abilities, at a moment when no permanent exists to have been granted
+    anything. The fold would carry one happily and nothing would ever ask for it, so the
+    grant is refused where it is written rather than doing nothing where it is played. The
+    rule is about the **grant**, never the ability: printed on the card itself each is the
+    ordinary working thing. A granted `defined_power` is fine — layer 7a reads the folded
+    list, so a grant reaches it exactly as a printed one does. This applies wherever an
+    ability is granted: an attachment's `abilities`, a `pump`'s, an emblem's, and this
+    `grant_ability`.
 - `condition` is the optional `as long as …` clause. Absent is unconditional, which is
   what every anthem and lord says:
 
@@ -2778,6 +2804,15 @@ The build and loader reject:
 - two variable-arity (`up_to`) target groups in one ability or spell;
 - a `create_token` describing an object that could not be a permanent, or a creature token
   with no power/toughness;
+- an `{X}` in an activation cost, a spell trait needing an X the face's cost does not
+  print, an amount reading a sacrifice the face never performs, and a selector naming a
+  card the face never named — each asked of **each** face since issue #776, because each
+  is about what one face prints and each used to read the front face alone;
+- a **granted** `enters_tapped`, `enters_with_counters`, `enters_choosing_color`,
+  `enters_naming_card`, or `enters_as_copy` — read only off an entering object's own
+  printed abilities, so a granted one is asked for by nobody (issue #776);
+- a `discard` cost of zero cards, on an activation cost or on an optional effect's `cost`
+  (issue #776);
 - unresolved printing references or duplicate collector numbers; and
 - disagreement between a scripted definition and `src/scripted.rs`.
 

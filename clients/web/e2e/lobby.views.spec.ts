@@ -264,12 +264,23 @@ test.describe('the lobby', () => {
     await expect(
       form.getByRole('radiogroup', { name: 'Format' }).getByRole('radio'),
     ).not.toHaveCount(0)
+
+    // Undo is drawn where §9.5 puts it and offers nothing: neither answer is pressable and
+    // neither is selected, because a chosen `Allowed` would state a rule `RoomConfig` cannot
+    // carry (issue #704). Pinned until #648 puts the field on the wire.
+    const undo = form.locator('.undo-field')
+    await expect(undo.getByRole('button', { name: 'Allowed', exact: true })).toBeDisabled()
+    await expect(undo.getByRole('button', { name: 'Not allowed' })).toBeDisabled()
+    await expect(undo.locator('.seg-on')).toHaveCount(0)
+
     await form.getByRole('button', { name: 'Create the table' }).click()
 
     await expect.poll(() => messages(socket.sent, 'create_room')).toHaveLength(1)
     const config = messages(socket.sent, 'create_room')[0]?.config as Record<string, unknown>
     expect(typeof config.game_setup).toBe('string')
     expect(typeof config.seats).toBe('number')
+    // And nothing about undo reaches the wire, because there is no field for it to reach.
+    expect(config.undo_enabled).toBeUndefined()
   })
 })
 
@@ -287,6 +298,10 @@ test.describe('the table room', () => {
     // Chosen when the table was made, and shown where it is played — including that it is not
     // open to anyone.
     await expect(page.locator('.room-facts')).toContainText('Invite only')
+    // A table never claims undo: nothing on the wire says whether it is allowed, so the strip
+    // states it is unavailable and does not colour it as a rule (issue #704, pinned until #648).
+    await expect(page.locator('.room-facts')).toContainText('Undo unavailable')
+    await expect(page.locator('.room-facts')).not.toContainText('Undo allowed')
 
     // Every seat carries its own state, on the seat rather than summarised underneath.
     await expect(table).toContainText('Practice bot')
