@@ -281,7 +281,22 @@ pub enum Effect {
         /// effect enum already reserves the `kind` tag for its own discriminant.
         counter: CounterKind,
         /// How many counters of that kind to place on each target.
+        ///
+        /// Ignored when [`count_amount`](Self::PutCounters::count_amount) is present,
+        /// which is where the number comes from then.
+        #[serde(default)]
         count: u32,
+        /// Where the number comes from when the card does not print one — the `X +1/+1
+        /// counters, where X is your life total` of a planeswalker's ultimate.
+        ///
+        /// A field rather than a second verb, for the reason
+        /// [`Effect::SearchLibrary`]'s `take_amount` is one: a twin variant would
+        /// duplicate the target, the arity and the counter kind, and the number is the
+        /// *same* number this effect already carries. Taken **once**, as the effect
+        /// resolves (CR 608.2), and applied identically to every target still legal — a
+        /// card that names two creatures gives each of them the same X.
+        #[serde(default)]
+        count_amount: Option<DerivedAmount>,
     },
     /// Give the single creature this effect targets `+power`/`+toughness`
     /// **until end of turn** — the pump-spell verb (e.g. `Target creature gets

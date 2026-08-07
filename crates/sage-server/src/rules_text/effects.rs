@@ -76,6 +76,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 )
             }
             DerivedAmount::LifeGainedThisTurn
+            | DerivedAmount::YourLifeTotal
             | DerivedAmount::MilledThisWay { .. }
             | DerivedAmount::GreatestManaValue { .. }
             | DerivedAmount::SacrificedThisWay
@@ -153,11 +154,24 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             targets,
             counter,
             count,
-        } => format!(
-            "put {} on {}",
-            counters(*counter, *count),
-            target_phrase(*target, *targets)
-        ),
+            count_amount,
+        } => {
+            // "X +1/+1 counters, where X is your life total" — the letter in quantity
+            // position and the source named after it, which is how a card prints an
+            // amount it does not know when it is printed.
+            let what = match count_amount {
+                None => counters(*counter, *count),
+                Some(_) => format!("X {} counters", crate::rules_text::counter_symbol(*counter)),
+            };
+            let clause = format!("put {what} on {}", target_phrase(*target, *targets));
+            match count_amount {
+                None => clause,
+                Some(amount) => format!(
+                    "{clause}, where X is {}",
+                    amount_noun(amount, PlayerRef::Controller)
+                ),
+            }
+        }
         // One effect, one target, one sentence: the keywords a pump also grants are
         // granted to the same creature, so they read as a second verb on the same
         // subject rather than as a sentence with a subject of its own.
@@ -1028,6 +1042,7 @@ fn count_subject(count: &PermanentCount) -> String {
 fn amount_noun(amount: &DerivedAmount, subject: PlayerRef) -> String {
     match amount {
         DerivedAmount::LifeGainedThisTurn => "the amount of life you gained this turn".to_string(),
+        DerivedAmount::YourLifeTotal => "your life total".to_string(),
         // "milled this way" is the wording the intervening-if clause already uses for the
         // same window; one phrase, so the yes-or-no and the count cannot describe the
         // same mill two ways.

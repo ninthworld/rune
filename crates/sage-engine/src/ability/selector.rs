@@ -145,6 +145,18 @@ pub enum DerivedAmount {
     /// instead. Life the *same resolution* gained a moment ago is included — a card that
     /// gains one life and then reads this means it.
     LifeGainedThisTurn,
+    /// The effect's controller's **life total** (CR 118.1) — the `where X is your life
+    /// total` of a planeswalker's ultimate.
+    ///
+    /// [`Self::LifeGainedThisTurn`]'s neighbour and its opposite in one respect: that one
+    /// reads the turn's *events* because a net could not answer it, and this one reads the
+    /// total itself because the total **is** the question. Taken once, when the effect
+    /// applies (CR 608.2), so life lost afterwards takes nothing back.
+    ///
+    /// A negative total counts as **zero**: a player at less than nothing has already lost
+    /// to the state-based actions (CR 704.5a), and no card means "put minus three
+    /// counters" by this phrase.
+    YourLifeTotal,
     /// How many cards **this resolution milled** that match `filter` — the `for each land
     /// card put into their graveyard this way` of a mill-and-draw.
     ///
