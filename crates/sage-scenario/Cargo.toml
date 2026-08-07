@@ -1,0 +1,51 @@
+[package]
+name = "sage-scenario"
+description = "SAGE contributor tool: run the web client against an exact, disposable game position"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# Development-only. Nothing here is part of a shipped server or client: it exists so a
+# maintainer or an agent can open the real client at a hand-authored position and play it.
+publish = false
+
+[dependencies]
+sage-engine = { path = "../sage-engine" }
+sage-protocol = { path = "../sage-protocol" }
+sage-server = { path = "../sage-server" }
+# The scenario file format. A contributor authors these by hand (or asks an agent to),
+# so the format has to carry comments and read as prose — which JSON cannot do, and
+# which is why this is the one crate in the workspace that takes a TOML parser. It is
+# MIT/Apache like the rest of the graph (deny.toml), and it reaches no shipped binary:
+# `sage-server`, `sage-cli`, and `sage-engine` do not depend on this crate.
+toml = { version = "0.8", default-features = false, features = ["parse"] }
+serde = { version = "1", features = ["derive"] }
+# Async transport stack — the same choice recorded for the server in
+# docs/decisions/0008-tokio-websocket-server.md, reused rather than re-decided.
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "net",
+    "macros",
+    "signal",
+    "sync",
+    "io-util",
+    "process",
+    "time",
+] }
+tokio-tungstenite = { version = "0.24", default-features = false, features = [
+    "handshake",
+] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+# The live test drives the runner the way the browser does: a real client-side WebSocket
+# to the loopback address it printed, and the JSON protocol over it.
+tokio-tungstenite = { version = "0.24", default-features = false, features = [
+    "connect",
+    "handshake",
+] }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+serde_json = "1"
+
+[lints]
+workspace = true
