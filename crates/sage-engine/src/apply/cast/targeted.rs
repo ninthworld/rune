@@ -375,6 +375,52 @@ pub(crate) fn apply_targeted_effect(
                 state.mill(seat, u32::from(*count));
             }
         }
+        // CR 613 layers 4 and 7b, as one sentence: the types are added and the base power
+        // and toughness set, both keyed to this one permanent and both lasting exactly as
+        // long as the card says. Two effects rather than one because they are two layers,
+        // and the fold reads them where each layer sits.
+        Effect::Animate {
+            types,
+            subtypes,
+            power,
+            toughness,
+            until_end_of_turn,
+            ..
+        } => {
+            if let Target::Permanent(id) = target {
+                let duration = if *until_end_of_turn {
+                    crate::state::Duration::UntilEndOfTurn
+                } else {
+                    crate::state::Duration::WhileOnBattlefield
+                };
+                // Keyed to the *source* where the duration is "as long as this remains",
+                // so the effect ends when the source leaves — which is what that phrase
+                // means and what the pruning already does for every attachment's grant.
+                let timestamp = source.map_or_else(|| state.mint_id(), |perm| perm.0);
+                if !types.is_empty() || !subtypes.is_empty() {
+                    state.static_effects.push(crate::state::StaticEffect {
+                        source: timestamp,
+                        affects: crate::state::EffectAffects::SpecificPermanent(id),
+                        modification: crate::state::Modification::AddTypes {
+                            types: types.clone(),
+                            subtypes: subtypes.clone(),
+                        },
+                        duration,
+                    });
+                }
+                if let (Some(power), Some(toughness)) = (power, toughness) {
+                    state.static_effects.push(crate::state::StaticEffect {
+                        source: timestamp,
+                        affects: crate::state::EffectAffects::SpecificPermanent(id),
+                        modification: crate::state::Modification::SetBasePowerToughness {
+                            power: *power,
+                            toughness: *toughness,
+                        },
+                        duration,
+                    });
+                }
+            }
+        }
         // "It deals damage equal to its power" (CR 609.7): the dealer is the ability's own
         // source, and its power is read *now* (CR 608.2) — or, for a source that is no
         // longer on the battlefield, from what was last known of it (CR 608.2h), which is

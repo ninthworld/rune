@@ -295,6 +295,11 @@ pub enum TargetSpec {
     /// Any artifact on the battlefield. Never a planeswalker — no printing in the
     /// bundled catalog is both, and a card that wants either says so with its own spec.
     AnyArtifact,
+    /// Any artifact the object's controller controls — "target artifact you control", the
+    /// class an animation spell names. Not restricted to artifact *creatures*
+    /// ([`Self::AnyArtifactCreatureYouControl`]), which is the whole point of a card that
+    /// turns one into a creature.
+    AnyArtifactYouControl,
     /// Any enchantment on the battlefield. Never a planeswalker, for
     /// [`Self::AnyArtifact`]'s reason.
     AnyEnchantment,

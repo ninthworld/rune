@@ -41,6 +41,10 @@ pub(super) fn current_keywords(
             Modification::GrantRestriction(_)
             | Modification::GrantAbility(_)
             | Modification::PowerToughness { .. }
+            // Layers 4 and 7b change what a permanent is and how big it is; neither
+            // adds or removes an ability.
+            | Modification::AddTypes { .. }
+            | Modification::SetBasePowerToughness { .. }
             // A rule modification adds and removes no keyword — that is the whole of
             // what distinguishes an as-though permission from
             // [`Modification::LoseKeyword`] above it.
@@ -80,6 +84,8 @@ pub(super) fn current_restrictions(
             | Modification::LoseKeyword(_)
             | Modification::GrantAbility(_)
             | Modification::PowerToughness { .. }
+            | Modification::AddTypes { .. }
+            | Modification::SetBasePowerToughness { .. }
             | Modification::ModifyRule(_)
             | Modification::GainControl(_) => {}
         }
@@ -160,6 +166,8 @@ fn fold_abilities(printed: Vec<Ability>, effects: Vec<StaticEffect>) -> Vec<Abil
             // contributes nothing to the set.
             | Modification::ModifyRule(_)
             | Modification::PowerToughness { .. }
+            | Modification::AddTypes { .. }
+            | Modification::SetBasePowerToughness { .. }
             | Modification::GainControl(_) => {}
         }
     }

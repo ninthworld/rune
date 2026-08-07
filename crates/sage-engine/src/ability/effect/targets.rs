@@ -87,7 +87,8 @@ impl Effect {
             Effect::Fight {
                 dealer, dealt_to, ..
             } => vec![TargetGroup::single(*dealer), TargetGroup::single(*dealt_to)],
-            Effect::Tap { target }
+            Effect::Animate { target, .. }
+            | Effect::Tap { target }
             // A creature dealing its own power names only what it is dealt to: the dealer
             // is the ability's source, never a slot (CR 609.7).
             | Effect::SelfDealsDamage { target }

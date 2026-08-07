@@ -124,6 +124,8 @@ fn rule_modifications(
             // Every other modification is in a layer, and is read from the computed
             // characteristics rather than from here.
             Modification::PowerToughness { .. }
+            | Modification::AddTypes { .. }
+            | Modification::SetBasePowerToughness { .. }
             | Modification::GrantKeyword(_)
             | Modification::LoseKeyword(_)
             | Modification::GrantAbility(_)

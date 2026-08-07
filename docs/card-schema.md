@@ -795,6 +795,38 @@ for the effect it wraps (CR 601.2c), and a declined offer drops them.
 battlefield-to-graveyard seam a death takes, so dies triggers fire and the death is logged
 exactly as any other. It is the resolution-time counterpart of the `sacrifice_this` *cost*.
 
+### Becoming something else (CR 613 layers 4 and 7b)
+
+`animate` is the two layers a card prints as one sentence — the types a permanent gains,
+and the base power and toughness it takes on:
+
+```json
+{ "kind": "animate", "target": "any_artifact_you_control",
+  "types": ["creature"], "power": 5, "toughness": 5 }
+```
+
+| Field | Means |
+| --- | --- |
+| `types`, `subtypes` | what it gains at **layer 4**, *in addition* to what it is |
+| `power`, `toughness` | the base it takes on at **layer 7b** |
+| `until_end_of_turn` | the duration; absent is `for as long as` the source remains on the battlefield |
+
+**Layer 4 runs before everything that asks.** An artifact animated into a creature is in
+every class of creatures: an anthem pumps it, it can be declared as an attacker, and a
+sweeper kills it. Nothing about those rules knows it was ever not a creature.
+
+**Layer 7b is a base, not a total.** Counters and anthems fold onto it at 7c, so an
+animated 5/5 with a `+1/+1` counter is a 6/6. It also *gives* P/T to a permanent that
+printed none, which is the whole point on an artifact.
+
+Nothing **removes** a type: every printed card in this catalog says "in addition to its
+other types", and the exclusion list names the replacing form rather than this pretending
+to cover it.
+
+An **attachment** grants the same layer-4 addition through `types`/`subtypes` in its own
+block, beside the power, keywords and restrictions it already grants — that is where
+`is a Knight in addition to its other types` goes.
+
 ### An attachment's own sentence about its host
 
 An `attachment` block already carries the grants a card prints most often — `power`,

@@ -174,10 +174,33 @@ pub fn characteristics(
     // **not** a copiable value (CR 707.2), so they are the copying permanent's own and are
     // folded onto the copied power here, at layer 7c, well after layer 1.
     let counter_delta = pt_counter_delta(perm);
+    // CR 613 **layer 4**: types and subtypes a continuous effect adds, folded before
+    // anything below asks what this permanent *is*. That ordering is the whole content of
+    // the layer: an artifact animated into a creature is inside an anthem's class at 7c,
+    // can be declared as an attacker, and dies to a creature sweeper.
+    //
+    // Gathered from the stored effects and the attachments alone — the same two sources
+    // layer 6 bottoms out on — because the third, a printed static ability, is collected
+    // by reading each source permanent's abilities, and asking for those from inside this
+    // computation would not terminate.
+    let (added_types, added_subtypes) = added_types(state, perm, db);
+    let mut types = face.types().to_vec();
+    for card_type in added_types {
+        if !types.contains(&card_type) {
+            types.push(card_type);
+        }
+    }
+    let mut subtypes = face.subtypes().to_vec();
+    for subtype in added_subtypes {
+        if !subtypes.contains(&subtype) {
+            subtypes.push(subtype);
+        }
+    }
     // CR 613 layer 7c (after counters, ADR 0005 §3): static `+X/+Y` modifiers in
-    // force apply in timestamp order. `is_creature` gates anthem-style selectors;
-    // current type equals printed type until the type layers (1–6) land.
-    let is_creature = face.has_type(CardType::Creature);
+    // force apply in timestamp order. `is_creature` gates anthem-style selectors, and it
+    // is the **current** type — layer 4 above has already run, which is what puts an
+    // animated artifact inside an anthem's class.
+    let is_creature = types.contains(&CardType::Creature);
     let (static_power, static_toughness) = static_pt_delta(state, perm, is_creature, db);
     // CR 613 layer 6, the non-keyword half: the accessor answers an empty list for a
     // permanent that has lost all its abilities. Computed before layer 7 because 7a
@@ -188,19 +211,30 @@ pub fn characteristics(
     // *its* answer. Absent on all but a handful of cards, and then the printed seed
     // stands.
     let base_power = defined_power(state, perm, &abilities, db);
+    // CR 613 **layer 7b**: a base power and toughness a continuous effect *sets*, after
+    // the characteristic-defining abilities of 7a and before the counters and modifiers
+    // of 7c. It also gives P/T to a permanent that printed none, which is the whole point
+    // on an animated artifact — without it, "becomes a creature" would make something
+    // that attacks for nothing.
+    let set_base = set_base_pt(state, perm, db);
+    let seed_power = set_base
+        .map(|(power, _)| power)
+        .or(base_power)
+        .or(face.power());
+    let seed_toughness = set_base
+        .map(|(_, toughness)| toughness)
+        .or(face.toughness());
     Characteristics {
         supertypes: face.supertypes().to_vec(),
-        types: face.types().to_vec(),
-        subtypes: face.subtypes().to_vec(),
+        types,
+        subtypes,
         mana_cost: face.mana_cost().to_string(),
-        power: face.power().map(|printed| {
-            base_power
-                .unwrap_or(printed)
-                .saturating_add(counter_delta)
+        power: seed_power.map(|base| {
+            base.saturating_add(counter_delta)
                 .saturating_add(static_power)
         }),
-        toughness: face.toughness().map(|t| {
-            t.saturating_add(counter_delta)
+        toughness: seed_toughness.map(|base| {
+            base.saturating_add(counter_delta)
                 .saturating_add(static_toughness)
         }),
         // Printed starting loyalty (CR 306.5b), carried through untouched: no layer

@@ -48,10 +48,10 @@ pub(crate) fn turn_began_for(state: &GameState, player: PlayerId) -> u32 {
 /// continuous effects are future work, so the printed types are authoritative
 /// here (as they are in [`crate::resolve::target_is_legal`]).
 #[must_use]
-pub(super) fn is_creature(perm: &Permanent, db: &CardDatabase) -> bool {
-    perm.printed
-        .face(db)
-        .is_some_and(|face| face.has_type(CardType::Creature))
+pub(super) fn is_creature(state: &GameState, perm: &Permanent, db: &CardDatabase) -> bool {
+    crate::characteristics::characteristics(state, perm.id, db)
+        .types
+        .contains(&CardType::Creature)
 }
 
 /// Whether the summoning-sickness restriction of CR 302.6 currently applies to
@@ -72,7 +72,7 @@ pub fn summoning_sickness_restricts(
     perm: &Permanent,
     db: &CardDatabase,
 ) -> bool {
-    is_creature(perm, db)
+    is_creature(state, perm, db)
         && has_summoning_sickness(perm, state)
         && !has_keyword(state, perm, Keyword::Haste, db)
 }

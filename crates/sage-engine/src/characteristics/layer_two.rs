@@ -37,6 +37,8 @@ pub fn controller_of(state: &GameState, perm: &Permanent) -> PlayerId {
         .filter_map(|effect| match effect.modification {
             Modification::GainControl(player) => Some((effect.timestamp(), player)),
             Modification::PowerToughness { .. }
+            | Modification::AddTypes { .. }
+            | Modification::SetBasePowerToughness { .. }
             | Modification::GrantKeyword(_)
             | Modification::GrantRestriction(_)
             // Losing abilities is layer 6 and never touches control: a permanent with

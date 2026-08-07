@@ -750,6 +750,40 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 clauses("it", &trigger.effects),
             )
         }
+        // CR 613 layers 4 and 7b, in the order the card prints them: what it becomes,
+        // then how big, then for how long.
+        Effect::Animate {
+            target,
+            types,
+            subtypes,
+            power,
+            toughness,
+            until_end_of_turn,
+        } => {
+            let mut what: Vec<String> = subtypes.clone();
+            what.extend(types.iter().map(|kind| card_type_word(*kind).to_string()));
+            let becomes = if what.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " becomes {} {}",
+                    super::indefinite_article(&what[0]),
+                    what.join(" ")
+                )
+            };
+            let size = match (power, toughness) {
+                (Some(power), Some(toughness)) => {
+                    format!(" with base power and toughness {power}/{toughness}")
+                }
+                _ => String::new(),
+            };
+            let how_long = if *until_end_of_turn {
+                " until end of turn".to_string()
+            } else {
+                format!(" for as long as {source} remains on the battlefield")
+            };
+            format!("{}{becomes}{size}{how_long}", target_noun(*target))
+        }
         // CR 701.17: the source names itself, and a card that has just told you what it
         // is says "it" rather than repeating its own name.
         Effect::SacrificeSelf => "sacrifice it".to_string(),

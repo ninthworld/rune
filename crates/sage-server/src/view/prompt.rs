@@ -182,6 +182,7 @@ pub(crate) fn target_spec_prompt(spec: TargetSpec) -> String {
         TargetSpec::AnotherCreatureYouControl => {
             "Choose another target creature you control".to_string()
         }
+        TargetSpec::AnyArtifactYouControl => "Choose target artifact you control".to_string(),
         TargetSpec::AnyCreatureDefendingPlayerControls => {
             "Choose target creature defending player controls".to_string()
         }
