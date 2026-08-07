@@ -1833,3 +1833,15 @@ fn issue_706_a_target_relative_to_the_attacker_says_what_it_is_relative_to() {
         "Whenever Star-Crowned Stag attacks, tap target creature defending player controls."
     );
 }
+
+#[test]
+fn issue_706_an_aura_that_taps_its_host_and_keeps_it_there() {
+    let db = bundled();
+    // The enchant line, the trigger that names its host without targeting it, and the
+    // rule the Aura modifies — three sentences, in the order the card prints them.
+    assert_eq!(
+        text_of(&db, "waterknot"),
+        "When Waterknot enters the battlefield, tap enchanted creature.\nEnchanted \
+         creature doesn't untap during its controller's untap step.\nEnchant creature."
+    );
+}

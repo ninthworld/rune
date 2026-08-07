@@ -553,6 +553,11 @@ fn static_subject(affects: &StaticAffects, source: &str) -> String {
         // A class of one reads as the card's own name, which is how a printed card
         // refers to itself in a standing statement.
         StaticAffects::Source => source.to_string(),
+        // The other class of one, and it is *not* the card's name: an attachment's
+        // sentence about its host names the host by what it is to the attachment
+        // (CR 303.4). Only an Aura prints this today; an Equipment would say "equipped
+        // creature", which is a fact about the attachment kind rather than the selector.
+        StaticAffects::AttachedTo => "enchanted creature".to_string(),
         StaticAffects::CreaturesYouControl {
             subtype,
             except_this,
@@ -639,7 +644,8 @@ fn named_card_class_noun(class: NamedCardClass) -> &'static str {
 /// there is no wording right for both numbers.
 fn subject_is_plural(affects: &StaticAffects) -> bool {
     match affects {
-        StaticAffects::Source => false,
+        // Both classes of one are singular: one card's name, one enchanted creature.
+        StaticAffects::Source | StaticAffects::AttachedTo => false,
         StaticAffects::CreaturesYouControl { .. }
         | StaticAffects::PermanentsYourOpponentsControl { .. } => true,
     }
@@ -772,6 +778,16 @@ fn static_verb(modification: &StaticModification, plural: bool) -> String {
         StaticModification::GrantKeyword { keyword } => {
             let verb = if plural { "have" } else { "has" };
             format!("{verb} {}", keyword_word(*keyword))
+        }
+        // The card's own words, and they name the step: a permanent under this is not
+        // "tapped" by anything, it simply is not untapped by the one rule that would have.
+        StaticModification::DoesNotUntap => {
+            let (verb, possessive) = if plural {
+                ("don't", "their")
+            } else {
+                ("doesn't", "its")
+            };
+            format!("{verb} untap during {possessive} controller's untap step")
         }
         // "Rather than their power" is stated even though it is implied, because it is
         // the whole content of the ability: without it the sentence claims a creature

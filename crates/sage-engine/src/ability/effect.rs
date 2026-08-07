@@ -1500,6 +1500,18 @@ pub enum Effect {
         /// What may be dealt to. One slot, chosen when the ability goes on the stack.
         target: TargetSpec,
     },
+    /// **Tap the permanent this ability's source is attached to** (CR 303.4) — the `tap
+    /// enchanted creature` of an Aura that arrives holding its host down.
+    ///
+    /// A self-referential effect, like [`Self::PumpSelf`], and it targets nothing: the
+    /// card does not print the word *target*, because the Aura already chose what it
+    /// enchants when it was cast (CR 601.2c). Aiming again would be a second choice the
+    /// card never asks for, and one the player could point somewhere else.
+    ///
+    /// Does nothing for a source that is attached to nothing, or that is no longer on the
+    /// battlefield at all — an Aura whose host left has no enchanted creature, and the
+    /// sentence has nothing to be about.
+    TapAttached,
     /// The referenced player **wins the game** (CR 104.2b) — the payoff of a card that
     /// ends the game on its own terms rather than by reducing anyone to zero.
     ///

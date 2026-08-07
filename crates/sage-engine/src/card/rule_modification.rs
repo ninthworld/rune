@@ -55,6 +55,20 @@ pub enum RuleModification {
         /// Which of the creature's own characteristics the amount is read from.
         characteristic: DamageCharacteristic,
     },
+    /// CR 502.4, modified: the permanent **does not untap** during its controller's
+    /// untap step — Waterknot's `enchanted creature doesn't untap during its controller's
+    /// untap step`.
+    ///
+    /// Read in exactly one place, the untap step's turn-based action, and it is not a
+    /// characteristic of any kind: the permanent is tapped or untapped exactly as it was,
+    /// every selector that asks reads that, and only the one rule that would have untapped
+    /// it reads this.
+    ///
+    /// Distinct from [`Permanent::skips_untap`](crate::Permanent::skips_untap), which is a
+    /// one-shot flag a resolution sets and the next untap step spends. This is continuous:
+    /// it lasts as long as whatever grants it, so a creature freed from the Aura untaps in
+    /// the very next untap step with nothing to clear.
+    DoesNotUntap,
     /// CR 702.3b, applied **as though** it were absent (CR 609.4): the creature may be
     /// declared as an attacker even though it has defender — Novice Knight's `can attack
     /// as though it didn't have defender`.

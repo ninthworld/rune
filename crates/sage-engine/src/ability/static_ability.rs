@@ -47,6 +47,25 @@ pub enum StaticAffects {
     /// permanent and so has no source to affect; a `source` static on one applies to
     /// nothing, which is the honest answer rather than a panic.
     Source,
+    /// The permanent this source is **attached to** — the "enchanted creature" of an Aura
+    /// and the "equipped creature" of an Equipment (CR 303.4, CR 301.5).
+    ///
+    /// A class of one, like [`Self::Source`], and the other half of what an attachment
+    /// grants. [`Attachment`](crate::Attachment)'s own fields cover the grants a card
+    /// prints most often — power and toughness, keywords, combat restrictions — and this
+    /// covers the ones they cannot: a static ability of the *attachment* that speaks
+    /// about its host.
+    ///
+    /// It is deliberately not the same thing as putting the ability in
+    /// [`Attachment::abilities`](crate::Attachment), which **grants** it to the host. The
+    /// difference is whose ability it is, and it is visible: a creature that loses all
+    /// abilities loses a granted one and keeps this one, because this one was never its.
+    /// Waterknot's `enchanted creature doesn't untap` is the Aura's sentence about the
+    /// creature, not the creature's sentence about itself.
+    ///
+    /// Applies to nothing while the source is attached to nothing, and nothing at all for
+    /// an emblem, which can be attached to nothing at all.
+    AttachedTo,
     /// Permanents controlled by an **opponent** of the source's controller — the first
     /// class a static ability names that its own controller does not control.
     ///
@@ -189,6 +208,10 @@ pub enum StaticModification {
         /// Which of the creature's own characteristics the amount comes from.
         characteristic: DamageCharacteristic,
     },
+    /// **No layer**: the affected permanents do not untap during their controller's
+    /// untap step (CR 502.4, modified). The `enchanted creature doesn't untap` of an Aura
+    /// that holds a creature down.
+    DoesNotUntap,
     /// **No layer**: the affected permanents may attack as though they did not have
     /// defender (CR 702.3b applied as though absent, CR 609.4).
     ///
@@ -279,6 +302,9 @@ impl StaticModification {
             }
             StaticModification::AttacksAsThoughNoDefender => {
                 crate::Modification::ModifyRule(RuleModification::AttacksAsThoughNoDefender)
+            }
+            StaticModification::DoesNotUntap => {
+                crate::Modification::ModifyRule(RuleModification::DoesNotUntap)
             }
         }
     }

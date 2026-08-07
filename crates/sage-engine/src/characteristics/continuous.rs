@@ -170,6 +170,14 @@ fn static_affects_match(
         // A class of one. An emblem has no source permanent, so a `source` static on one
         // applies to nothing — which is what `None == Some(perm.id)` says.
         StaticAffects::Source => source.permanent == Some(perm.id),
+        // The other class of one: whatever the source is attached to right now. Read off
+        // the source's own [`Permanent::attached_to`], so an Aura that has moved — or one
+        // whose host has left — affects whatever it is on now, which is nothing.
+        StaticAffects::AttachedTo => source
+            .permanent
+            .and_then(|id| state.battlefield.iter().find(|p| p.id == id))
+            .and_then(|attachment| attachment.attached_to)
+            .is_some_and(|host| host == perm.id),
         // The first class a static ability names that reaches past its own controller.
         // Everything about it is re-asked here, on this read: who controls `perm` right
         // now (layer 2, applied before this one), what it is, and what the source named

@@ -100,7 +100,7 @@ pub(crate) fn active_player_over_hand_size(state: &GameState, db: &CardDatabase)
 /// a no-op.
 fn perform_turn_based_actions(state: &mut GameState, db: &CardDatabase) {
     match state.step {
-        Step::Untap => untap_active_players_permanents(state),
+        Step::Untap => untap_active_players_permanents(state, db),
         Step::Draw => draw_for_turn(state),
         Step::CombatDamage => deal_combat_damage(state, db),
         Step::EndCombat => remove_creatures_from_combat(state),
@@ -116,7 +116,14 @@ fn perform_turn_based_actions(state: &mut GameState, db: &CardDatabase) {
 /// as it is and **spends the flag here**, whether or not it was tapped: the card named
 /// one untap step, this is that step, and a flag left set would go on skipping every
 /// untap step for the rest of the game.
-fn untap_active_players_permanents(state: &mut GameState) {
+///
+/// A permanent under a **continuous** don't-untap effect
+/// ([`RuleModification::DoesNotUntap`](crate::RuleModification::DoesNotUntap)) stays as it
+/// is too, and spends nothing: the effect lasts as long as its source does, so the
+/// question is asked again next turn and answers itself. The two are separate for exactly
+/// that reason — one is a card that named a single untap step, the other is a card that
+/// holds a creature down until it leaves.
+fn untap_active_players_permanents(state: &mut GameState, db: &CardDatabase) {
     let active = state.active_player;
     // CR 613 layer 2, taken before the mutable walk: a creature someone gained control
     // of untaps in *their* untap step, not its owner's. Collected up front because the
@@ -127,12 +134,24 @@ fn untap_active_players_permanents(state: &mut GameState) {
         .filter(|perm| crate::characteristics::controller_of(state, perm) == active)
         .map(|perm| perm.id)
         .collect();
+    // Asked before the mutable walk, for the reason the control answer is: it reads the
+    // whole state, including the attachments and static abilities that grant it.
+    let held: Vec<crate::id::PermanentId> = theirs
+        .iter()
+        .filter(|id| crate::characteristics::does_not_untap(state, **id, db))
+        .copied()
+        .collect();
     for perm in &mut state.battlefield {
         if !theirs.contains(&perm.id) {
             continue;
         }
         if perm.skips_untap {
             perm.skips_untap = false;
+            continue;
+        }
+        // CR 502.4 as a continuous effect modifies it: nothing is spent, and the
+        // permanent is asked again next turn.
+        if held.contains(&perm.id) {
             continue;
         }
         perm.tapped = false;

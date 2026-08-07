@@ -1253,5 +1253,10 @@
     "functional_id": "riddlemaster_sphinx",
     "collector_number": "287",
     "rarity": "rare"
+  },
+  {
+    "functional_id": "waterknot",
+    "collector_number": "311",
+    "rarity": "common"
   }
 ]

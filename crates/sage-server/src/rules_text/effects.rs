@@ -729,6 +729,9 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 clauses("it", &trigger.effects),
             )
         }
+        // CR 303.4: the Aura chose its host at cast, so the sentence says which creature
+        // without naming a target.
+        Effect::TapAttached => "tap enchanted creature".to_string(),
         // CR 609.7: the dealer is the ability's own source, so the sentence says "it" and
         // the amount is not a number the card prints.
         Effect::SelfDealsDamage { target } => {

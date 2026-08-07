@@ -208,6 +208,18 @@ pub(crate) fn apply_effect(
         // Aimed at a chosen permanent, so it is applied through [`apply_targeted_effect`]
         // and this arm is never the one that runs it.
         Effect::SelfDealsDamage { .. } => {}
+        // CR 303.4: the permanent this Aura is on, which it chose when it was cast. A
+        // source that is attached to nothing — or that has left — taps nothing.
+        Effect::TapAttached => {
+            let host = permanent_source
+                .and_then(|id| state.battlefield.iter().find(|perm| perm.id == id))
+                .and_then(|perm| perm.attached_to);
+            if let Some(host) = host {
+                if let Some(perm) = state.battlefield.iter_mut().find(|perm| perm.id == host) {
+                    perm.tapped = true;
+                }
+            }
+        }
         Effect::DrawCard { count } => draw_cards(state, controller, u32::from(*count)),
         // The same draw, with the number taken off the game instead of off the card
         // (CR 608.2) — once, here, so a mill this same resolution performed is what the

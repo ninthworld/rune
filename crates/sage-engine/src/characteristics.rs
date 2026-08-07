@@ -50,7 +50,9 @@ use layer_seven::*;
 use layer_six::*;
 pub(crate) use layer_six::{current_abilities, stored_abilities};
 pub use layer_two::{controller_of, controller_of_id};
-pub use rules_modifying::{assigns_combat_damage_by, attacks_as_though_no_defender};
+pub use rules_modifying::{
+    assigns_combat_damage_by, attacks_as_though_no_defender, does_not_untap,
+};
 
 use crate::ability::{Ability, StaticAffects, StaticCondition};
 use crate::card::{
