@@ -26,6 +26,7 @@ pub mod compat;
 mod condition;
 mod copy;
 mod cost_modification;
+pub mod coverage;
 mod delayed;
 #[cfg(test)]
 mod fixtures;
