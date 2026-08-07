@@ -434,6 +434,11 @@ pub(crate) fn apply_cast_spell(
         .players
         .get(controller.0)
         .is_some_and(|p| p.command.iter().any(|c| c.id == card.id));
+    // Asked before the caster's own zones are borrowed: a card another seat owns, offered
+    // by a resolution (CR 108.4, issue #787). Chaos Wand digs through an opponent's library
+    // and lets its controller cast what it finds, so the caster's zones do not hold it.
+    let offered_elsewhere = offered_from_another_seat(state, card.id);
+    let mut take_elsewhere = false;
     {
         let Some(player) = state.players.get_mut(controller.0) else {
             return;
@@ -478,10 +483,18 @@ pub(crate) fn apply_cast_spell(
             // the card the pending question named — nothing else makes a library card
             // castable — so this moves it and lets the ordinary path take over.
             player.library.remove(pos);
+        } else if offered_elsewhere {
+            // Lifted after this borrow ends, below. Scoped to exactly the offered card:
+            // nothing else makes another player's card castable, and the offer path and the
+            // legality gate both re-check it against the same pending question.
+            take_elsewhere = true;
         } else {
             return;
         }
         player.mana_pool = new_pool;
+    }
+    if take_elsewhere {
+        take_offered_card(state, card.id);
     }
     // CR 601.2h: what the payment records, read while the permanents it names are still
     // permanents. The card is on the stack a line below and the sacrifices happen a few
@@ -552,5 +565,35 @@ fn pay_additional_cost(
     // `action_is_legal` has already established that.
     for permanent in crate::actions::sacrifices_of(payment) {
         state.move_permanent_to_graveyard(permanent);
+    }
+}
+
+/// Whether `card` is the card a pending [`ChoiceQuestion::PlayCard`] is offering, and it
+/// belongs to a seat other than the one casting it (CR 108.4).
+///
+/// The narrow question the cast path asks before reaching outside the caster's own zones —
+/// narrow because the answer is only ever "yes" for the single card a resolution has put on
+/// offer.
+fn offered_from_another_seat(state: &GameState, card: crate::id::CardInstanceId) -> bool {
+    crate::pending_player_choice(state)
+        .and_then(|pending| pending.question.play_card())
+        .is_some_and(|request| request.card.id == card)
+}
+
+/// Lift the offered card out of whichever seat's zone holds it.
+///
+/// Only exile and libraries are searched, which are the two zones a
+/// [`PlayZone`](crate::PlayZone) names; a card that is somehow in neither is left alone and
+/// the cast does nothing, which is the same honest no-op every other missing card gets.
+fn take_offered_card(state: &mut GameState, card: crate::id::CardInstanceId) {
+    for player in &mut state.players {
+        if let Some(pos) = player.exile.iter().position(|c| c.id == card) {
+            player.exile.remove(pos);
+            return;
+        }
+        if let Some(pos) = player.library.iter().position(|c| c.id == card) {
+            player.library.remove(pos);
+            return;
+        }
     }
 }

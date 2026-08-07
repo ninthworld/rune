@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "functional_id": "chaos_wand",
+  "name": "Chaos Wand",
+  "types": [
+    "artifact"
+  ],
+  "mana_cost": "{3}",
+  "colors": [],
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{4}"
+        },
+        {
+          "kind": "tap"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "exile_from_library_until",
+          "player_ref": "target_opponent",
+          "class": "instant_or_sorcery"
+        },
+        {
+          "kind": "may_cast_exiled_this_way",
+          "free": true,
+          "class": "instant_or_sorcery"
+        }
+      ]
+    }
+  ]
+}

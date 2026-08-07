@@ -1681,6 +1681,40 @@ Declining exiles it, which is the other half of the printed sentence and rides o
 rather than on the effects that follow — by the time the answer arrives, nothing else knows
 which card was offered.
 
+### Digging through a library, and casting what is found
+
+`exile_from_library_until` and `may_cast_exiled_this_way` are the two halves of Chaos Wand,
+and they are two effects because the first has to **happen** before the second knows what to
+offer:
+
+```json
+{ "kind": "exile_from_library_until", "player_ref": "target_opponent",
+  "class": "instant_or_sorcery" },
+{ "kind": "may_cast_exiled_this_way", "class": "instant_or_sorcery", "free": true }
+```
+
+The dig exiles from the top of the named player's library, face up, until a card of `class`
+is exiled or the library runs out — *until* stops at the end as well as at a match, and
+running a library out this way is not a loss.
+
+The offer finds those cards again by reading the log over this resolution's own window
+(`cards_exiled`), the way every other *…this way* question is answered. The exile zone
+itself could not answer: it cannot tell a card this resolution put there from one that was
+already in it. **`class` is stated on the offer too**, and it is not redundant — it decides
+whether there is an offer at all. A library holding none of the class is dug to the bottom,
+and the last card turned over is then just the bottom card rather than the thing the sentence
+was about; without it, running a library out would offer whatever happened to be underneath.
+
+**Three of the four clauses cross the table.** The exile comes off the *targeted* player's
+library; the card offered belongs to them while the ability's **controller** is the one who
+may cast it (CR 108.4 — the caster controls the spell, the owner gets the card back); and
+what is not cast goes back on the bottom of *their* library, in a random order drawn from the
+seeded stream. The cast reaches outside the caster's own zones for **exactly** the card a
+pending offer names, and for nothing else.
+
+"The exiled cards that weren't cast this way" includes the offered card when the offer is
+declined, which is why its decline leaves it where it is rather than exiling it.
+
 ### Ignoring hexproof
 
 `ignore_hexproof` grants a player permission to aim spells and abilities **as though hexproof

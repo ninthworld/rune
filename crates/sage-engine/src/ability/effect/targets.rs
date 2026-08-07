@@ -124,6 +124,8 @@ impl Effect {
             | Effect::DiscardByAmount { player_ref, .. }
             | Effect::Sacrifice { player_ref, .. }
             | Effect::ExileGraveyard { player_ref }
+            // Digging through a library names its owner the same way emptying one does.
+            | Effect::ExileFromLibraryUntil { player_ref, .. }
             // Emptying a library names its owner the same way a graveyard's does.
             | Effect::ExileLibraryExceptBottom { target: player_ref }
             // And a mass tap names whose creatures the same way: "tap all creatures
@@ -177,6 +179,7 @@ impl Effect {
             | Effect::Scry { .. }
             | Effect::LookAtTop { .. }
             | Effect::RevealTopAndMayPlay { .. }
+            | Effect::MayCastExiledThisWay { .. }
             | Effect::SearchLibrary { .. }
             // A conditional declares no slot: it has two branches and one flat target
             // list, so a group named in either one could not be paired back onto the

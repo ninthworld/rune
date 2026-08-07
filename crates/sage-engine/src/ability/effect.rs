@@ -1220,6 +1220,54 @@ pub enum Effect {
         #[serde(default)]
         free: bool,
     },
+    /// **A player exiles cards from the top of their library until one of `class` is
+    /// exiled** — the digging half of Chaos Wand.
+    ///
+    /// The first effect that reaches **another player's** library. The exile is face up
+    /// (CR 701.16a) and recorded with its identities
+    /// ([`GameEvent::CardsExiled`](crate::GameEvent)), which is what lets the sentence that
+    /// follows it find the cards again.
+    ///
+    /// A library holding none of that class is dug through to the bottom: *until* stops at
+    /// the end of the library as well as at a match, and running a library out this way is
+    /// not a loss (CR 704.5b is about drawing).
+    ExileFromLibraryUntil {
+        /// Whose library is dug through. Defaults to a targeted opponent, which is the
+        /// only thing a printed card of this shape says.
+        #[serde(default = "PlayerRef::target_opponent")]
+        player_ref: PlayerRef,
+        /// The class the digging stops at.
+        #[serde(default)]
+        class: crate::ability::GraveyardCardClass,
+    },
+    /// **You may cast the card this resolution just exiled; then the rest go on the bottom
+    /// of their owner's library in a random order** (CR 608.2f) — the second half of Chaos
+    /// Wand, and its own effect because the first half has to *happen* before this one
+    /// knows what to offer.
+    ///
+    /// It finds them the way every other *…this way* question does: by reading the log over
+    /// this resolution's own window ([`GameEvent::CardsExiled`](crate::GameEvent)). The
+    /// exile zone itself could not answer — it cannot tell a card this resolution put there
+    /// from one that was already in it — and the resolution carries no list, which is what
+    /// keeps [`Resolution`](crate::Resolution) a `Copy` of plain numbers.
+    ///
+    /// The card offered is the **last** one exiled, which is the one the digging stopped
+    /// at; everything before it is what goes back. The caster is this effect's controller
+    /// and the owner is whoever was dug through, which is ordinary Magic (CR 108.4).
+    MayCastExiledThisWay {
+        /// The class *that card* names — the same one the dig stopped at.
+        ///
+        /// Stated here rather than inferred from the dig, because it is what decides
+        /// whether there is an offer at all: a library holding none of the class is dug to
+        /// the bottom, and the last card turned over is then just the bottom card rather
+        /// than the thing the sentence was about. Without this, running a library out would
+        /// offer whatever happened to be underneath.
+        #[serde(default)]
+        class: crate::ability::GraveyardCardClass,
+        /// Whether it is cast **without paying its mana cost**.
+        #[serde(default)]
+        free: bool,
+    },
     /// Let the referenced player aim spells and abilities **as though hexproof were not
     /// there** for the rest of the turn (`Creatures your opponents control with hexproof
     /// can be the targets of spells and abilities you control as though they didn't have

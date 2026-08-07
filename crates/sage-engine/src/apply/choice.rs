@@ -362,9 +362,13 @@ fn decline_offered_play(state: &mut GameState, db: &CardDatabase) {
                     }
                 }
             }
-            // Nothing to do: the card is where it was, which is the whole of the branch.
+            // Nothing to do: the card is where it was, which is the whole of the branch —
+            // and for Chaos Wand that means it goes back with the rest, below.
             crate::choice::DeclineOutcome::Stay => {}
         }
+        // Whatever the sentence said to put back goes back now. Nothing was played, so
+        // every card the offer named is still there to bottom.
+        crate::choice::bottom_the_rest(state, request, None);
     }
     if let Some(resume) = answered.resume {
         crate::resolve::resume_after_choice(state, resume, db);

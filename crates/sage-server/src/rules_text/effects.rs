@@ -622,6 +622,30 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         // played rather than cast).
         // Three sentences where the card prints three, in its order: what is revealed,
         // what you may do with it, and what happens if you don't.
+        // Two sentences, in the card's order: what the digging does, and where it stops.
+        Effect::ExileFromLibraryUntil { player_ref, class } => {
+            let noun = super::words::graveyard_class_noun(*class)
+                .map_or_else(|| "card".to_string(), |class| format!("{class} card"));
+            format!(
+                "{} {} cards from the top of {} library until {} {noun}",
+                subject_pronoun(*player_ref),
+                conjugate(*player_ref, "exile"),
+                possessive_pronoun(*player_ref),
+                conjugate(*player_ref, "exile"),
+            )
+        }
+        // The offer, and what becomes of everything it passed over.
+        Effect::MayCastExiledThisWay { free, .. } => {
+            let price = if *free {
+                " without paying its mana cost"
+            } else {
+                ""
+            };
+            format!(
+                "you may cast that card{price}. Then put the exiled cards that weren't cast \
+                 this way on the bottom of that library in a random order"
+            )
+        }
         Effect::RevealTopAndMayPlay { free } => {
             let price = if *free {
                 " without paying its mana cost"

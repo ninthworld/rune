@@ -40,6 +40,7 @@ export function kindOf(event: GameLogEvent): LogKind {
       return 'life'
     case 'cards_drawn':
     case 'cards_milled':
+    case 'cards_exiled':
     case 'cards_discarded':
     case 'library_searched':
     case 'permanent_died':
@@ -86,6 +87,8 @@ export function describe(event: GameLogEvent, playerName: (id: string) => string
       return `${playerName(event.player)} draws ${event.count}`
     case 'cards_milled':
       return `${playerName(event.player)} mills ${event.count}`
+    case 'cards_exiled':
+      return `${playerName(event.player)} exiles ${event.count} from their library`
     case 'cards_discarded':
       return `${playerName(event.player)} discards ${event.count}`
     case 'library_searched':

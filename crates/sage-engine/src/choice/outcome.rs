@@ -408,3 +408,58 @@ pub(crate) fn apply_permanent_outcome(
         }
     }
 }
+
+/// Put the cards a [`PlayCardRequest`] named on the **bottom of their owner's library, in a
+/// random order** — the *then put the exiled cards that weren't cast this way on the bottom
+/// of that library* of Chaos Wand (issue #787).
+///
+/// `played` is the card the player took the offer on, if they did: it is on the stack and
+/// must not be swept back. Everything else the request named goes back wherever it currently
+/// is, which for this card is exile.
+///
+/// The order is drawn from the **seeded** stream (ADR 0006), so the same seed replays the
+/// same bottom order and nobody learns anything about the library's future by watching.
+///
+/// The owner is whoever the cards belong to — not the player who was offered them. Chaos
+/// Wand digs through an opponent's library and puts what it did not cast back into *that*
+/// library.
+pub(crate) fn bottom_the_rest(
+    state: &mut GameState,
+    request: &crate::choice::PlayCardRequest,
+    played: Option<crate::id::CardInstanceId>,
+) {
+    let mut rest: Vec<CardInstance> = request
+        .bottom_after
+        .iter()
+        .copied()
+        .filter(|card| Some(card.id) != played)
+        .collect();
+    if rest.is_empty() {
+        return;
+    }
+    // Lift them out of whichever pile they are sitting in. Only the owner's zones are
+    // searched, because a card being put back into a library is being put back into its
+    // owner's (CR 400.3).
+    let mut owners: Vec<crate::id::PlayerId> = Vec::new();
+    for (index, player) in state.players.iter_mut().enumerate() {
+        let before = player.exile.len() + player.library.len();
+        player
+            .exile
+            .retain(|card| !rest.iter().any(|c| c.id == card.id));
+        player
+            .library
+            .retain(|card| !rest.iter().any(|c| c.id == card.id));
+        if player.exile.len() + player.library.len() != before {
+            owners.push(crate::id::PlayerId(index));
+        }
+    }
+    let mut rng = SplitMix64::new(state.rng_seed);
+    rng.shuffle(&mut rest);
+    state.rng_seed = rng.state();
+    // Every card this effect exiled came off one library, so there is exactly one owner to
+    // put them back under; a stray card whose owner cannot be found is dropped rather than
+    // handed to somebody it does not belong to.
+    if let Some(owner) = owners.first().copied() {
+        put_on_bottom(state, owner, rest);
+    }
+}

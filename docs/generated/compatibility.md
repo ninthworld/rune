@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (249)
+## Supported cards (250)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -47,6 +47,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `catalyst_elemental` | Catalyst Elemental | functional definition |
 | `cavalry_drillmaster` | Cavalry Drillmaster | functional definition |
 | `centaur_courser` | Centaur Courser | functional definition |
+| `chaos_wand` | Chaos Wand | functional definition |
 | `child_of_night` | Child of Night | functional definition |
 | `cinder_barrens` | Cinder Barrens | functional definition |
 | `cleansing_nova` | Cleansing Nova | functional definition |
@@ -303,7 +304,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Modal double-faced cards, and melding | a card has an ordered list of faces and a permanent turns over between them (CR 712), but the second face is only ever reached by transforming: it carries no mana cost, the catalog validator refuses one, and no announcement offers a card as anything but its front face — so a card whose two faces are two things you may cast is unwritable, and nothing combines two cards into one |
 | Modes beyond one chosen from a spell's printed list | a spell chooses exactly one of between two and four printed modes as it is announced, and the chosen mode alone decides which effects resolve and which targets are asked for; no ability is modal, nothing chooses two modes or repeats one, and a mode carries no cost of its own |
 | Optional costs paid by spending the asking permanent itself | an optional effect's cost is mana, a permanent the chooser picks, or a discard; a cost that names the source — tapping it, sacrificing it, moving its loyalty, removing counters from it — is unwritable, because the question is answered from a queue that carries no source |
-| Playing a card from a zone other than the hand, the command zone, or a permitted graveyard | a graveyard is reached three ways — a one-turn permission to cast from it, a continuous permission to play lands from it, and an activated or triggered ability that returns its own card out of it — exile is reached by a one-turn permission naming the very cards an effect exiled, a continuous permission lets a player cast from their hand without paying a mana cost, and a resolution may hand its controller the top card of their library to play on the spot (CR 608.2f); nothing reaches another player's library, no permission to cast for free outlives the resolution that granted it except from the hand, and no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure) exists |
+| Playing a card from a zone other than the hand, the command zone, or a permitted graveyard | a graveyard is reached three ways — a one-turn permission to cast from it, a continuous permission to play lands from it, and an activated or triggered ability that returns its own card out of it — exile is reached by a one-turn permission naming the very cards an effect exiled, a continuous permission lets a player cast from their hand without paying a mana cost, and a resolution may hand its controller a card to play on the spot (CR 608.2f), off their own library or out of the exile it just dug from another player's; no permission to cast for free outlives the resolution that granted it except from the hand, and no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure) exists |
 | Prohibiting counters from being put on a permanent or a player | counters reach a permanent from an effect, from its own entry, and from a planeswalker's loyalty, and each of those writes them with nothing to consult first; no continuous effect refuses a counter, and a player bears no counters at all |
 | Protection | there is no protection layer: nothing stops a spell, a block, an aura, or damage by a quality the way CR 702.16 does |
 | Reflexive triggers, and conditional branches that choose a target | an optional effect declares the target group of the one effect it wraps, but a conditional's branches, a wrapper over two targeting effects, and a "when you do" aimed after a cost is paid have no group one announcement could fill |

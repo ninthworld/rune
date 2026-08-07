@@ -655,6 +655,7 @@ export const GameLogEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('damage_dealt'), target: LogDamageTarget, amount: z.number() }),
   z.object({ type: z.literal('cards_drawn'), player: PlayerId, count: z.number() }),
   z.object({ type: z.literal('cards_milled'), player: PlayerId, count: z.number() }),
+  z.object({ type: z.literal('cards_exiled'), player: PlayerId, count: z.number() }),
   z.object({ type: z.literal('cards_discarded'), player: PlayerId, count: z.number() }),
   z.object({ type: z.literal('library_searched'), player: PlayerId }),
   z.object({ type: z.literal('optional_applied'), player: PlayerId }),

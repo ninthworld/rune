@@ -985,6 +985,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "chaos_wand",
+    "collector_number": "228",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "crucible_of_worlds",
     "collector_number": "229",
     "rarity": "mythic"

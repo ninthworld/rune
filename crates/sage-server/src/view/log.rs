@@ -68,6 +68,10 @@ pub(crate) fn log_entries(state: &GameState, db: &CardDatabase) -> Vec<GameLogEn
                 },
                 // The engine records *which* cards were milled so a condition can read them;
                 // the wire carries only the count, exactly as a draw and a discard do.
+                GameEvent::CardsExiled { player, count, .. } => GameLogEvent::CardsExiled {
+                    player: player_id(*player),
+                    count: *count,
+                },
                 GameEvent::CardsMilled { player, count, .. } => GameLogEvent::CardsMilled {
                     player: player_id(*player),
                     count: *count,
