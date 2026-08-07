@@ -63,6 +63,7 @@ fn issue_151_dies_trigger_fires_from_a_destroy_effect_cr_701_7() {
         &mut state,
         lurker,
         vec![Effect::Destroy {
+            targets: crate::ability::TargetCount::default(),
             target: TargetSpec::AnyCreature,
         }],
         vec![Target::Permanent(lurker)],
@@ -133,6 +134,7 @@ fn issue_151_dies_trigger_is_a_synthetic_stack_entry_resolving_after_priority_cr
         &mut state,
         lurker,
         vec![Effect::Destroy {
+            targets: crate::ability::TargetCount::default(),
             target: TargetSpec::AnyCreature,
         }],
         vec![Target::Permanent(lurker)],

@@ -1390,6 +1390,11 @@
     "rarity": "rare"
   },
   {
+    "functional_id": "liliana_the_necromancer",
+    "collector_number": "291",
+    "rarity": "mythic"
+  },
+  {
     "functional_id": "sarkhan_dragonsoul",
     "collector_number": "296",
     "rarity": "mythic"

@@ -1058,6 +1058,7 @@ fn issue_725_an_optional_effect_that_targets_reads_as_the_card_prints_it() {
         optional_effect_question(
             None,
             &[Effect::Destroy {
+                targets: sage_engine::TargetCount::default(),
                 target: TargetSpec::AnyArtifactOrEnchantment,
             }]
         ),
@@ -2052,5 +2053,17 @@ fn issue_706_three_planeswalkers_state_their_three_amounts() {
          creature an opponent controls.\n\
          −9: Creatures you control get +4/+4 until end of turn and creatures you control \
          gain trample until end of turn."
+    );
+}
+
+#[test]
+fn issue_706_an_ultimate_that_names_two_classes_states_both() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "liliana_the_necromancer"),
+        "+1: Target player loses 2 life.\n\
+         −1: Return target creature card in your graveyard to its owner's hand.\n\
+         −7: Destroy each of up to two target creatures and put each of up to two \
+         target creature cards in a graveyard onto the battlefield under your control."
     );
 }

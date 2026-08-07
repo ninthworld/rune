@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (291)
+## Supported cards (292)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -156,6 +156,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `lightning_strike` | Lightning Strike | functional definition |
 | `liliana_s_contract` | Liliana's Contract | functional definition |
 | `liliana_s_spoils` | Liliana's Spoils | functional definition |
+| `liliana_the_necromancer` | Liliana, the Necromancer | functional definition |
 | `liliana_untouched_by_death` | Liliana, Untouched by Death | functional definition |
 | `llanowar_elves` | Llanowar Elves | functional definition |
 | `loxodon_line_breaker` | Loxodon Line Breaker | functional definition |

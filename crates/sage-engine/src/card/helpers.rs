@@ -488,6 +488,7 @@ mod tests {
         assert_eq!(
             murder.spell_effects,
             vec![Effect::Destroy {
+                targets: crate::ability::TargetCount::default(),
                 target: TargetSpec::AnyCreature
             }]
         );
