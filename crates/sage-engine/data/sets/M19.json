@@ -735,6 +735,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "lightning_mare",
+    "collector_number": "151",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "lightning_strike",
     "collector_number": "152",
     "rarity": "uncommon"
