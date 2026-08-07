@@ -123,7 +123,11 @@ export const pageFits = (page: Page) =>
 export const openSide = async (page: Page) => {
   // Wait for the board first. Asking before a game view has arrived reads "no column" rather
   // than "not yet", which is a no-op that then fails assertions in a test about something else.
-  await expect(page.getByRole('region', { name: 'Actions' })).toBeVisible()
+  // Either band will do: the bar is the dock at a seat and the watching strip in its place.
+  const bar = page
+    .getByRole('region', { name: 'Actions' })
+    .or(page.getByRole('region', { name: 'Watching' }))
+  await expect(bar.first()).toBeVisible()
   const toggle = page.getByTitle('Stack, log and chat')
   if ((await toggle.getAttribute('aria-expanded')) === 'true') return
   await toggle.click()

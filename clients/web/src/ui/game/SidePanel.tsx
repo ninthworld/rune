@@ -90,7 +90,11 @@ export function SidePanel({
   log: readonly GameLogEntry[]
   label(id: string): string
   preset?: StopPreset
-  onPreset(preset: StopPreset): void
+  /**
+   * Absent for a reader with no seat: pace is a preference the server stores against one, and a
+   * spectator has none. With no concede either, the strip is not drawn empty — it is not drawn.
+   */
+  onPreset?(preset: StopPreset): void
   /** Absent when the server is not currently offering the action. */
   onConcede?(): void
   concedeAsked: boolean
@@ -113,24 +117,27 @@ export function SidePanel({
         )}
       </div>
 
-      <div className="helper-strip" role="group" aria-label="Pace">
-        {PRESETS.map((entry) => (
-          <button
-            key={entry}
-            className={`helper-btn${preset === entry ? ' view-on' : ''}`}
-            title={presetWording(entry)}
-            aria-pressed={preset === entry}
-            onClick={() => onPreset(entry)}
-          >
-            {PRESET_LABELS[entry]}
-          </button>
-        ))}
-        {onConcede && (
-          <button className="helper-btn helper-concede" onClick={onConcede}>
-            {concedeAsked ? 'Yes, concede the game' : 'Concede'}
-          </button>
-        )}
-      </div>
+      {(onPreset || onConcede) && (
+        <div className="helper-strip" role="group" aria-label="Pace">
+          {onPreset &&
+            PRESETS.map((entry) => (
+              <button
+                key={entry}
+                className={`helper-btn${preset === entry ? ' view-on' : ''}`}
+                title={presetWording(entry)}
+                aria-pressed={preset === entry}
+                onClick={() => onPreset(entry)}
+              >
+                {PRESET_LABELS[entry]}
+              </button>
+            ))}
+          {onConcede && (
+            <button className="helper-btn helper-concede" onClick={onConcede}>
+              {concedeAsked ? 'Yes, concede the game' : 'Concede'}
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="panel">
         <div className="panel-tabs">
