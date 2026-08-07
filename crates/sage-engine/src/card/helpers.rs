@@ -297,10 +297,20 @@ pub(crate) fn spell_matches_class(
         // A power bound that no printed power can satisfy excludes the card rather than
         // defaulting it to zero: "a creature spell with power 4 or greater" is a question
         // about a number the card has, and a card with none is not an answer.
-        ObservedSpell::Creature { min_power } => {
+        ObservedSpell::Creature {
+            min_power,
+            max_power,
+        } => {
             data.has_type(CardType::Creature)
                 && min_power.is_none_or(|min| data.power.is_some_and(|power| power >= min))
+                && max_power.is_none_or(|max| data.power.is_some_and(|power| power <= max))
         }
+        // CR 303.4: the attachment block is what makes a card an Aura here, so it is what
+        // the class asks about.
+        ObservedSpell::Aura => data
+            .attachment
+            .as_ref()
+            .is_some_and(|attachment| attachment.kind == crate::card::AttachmentKind::Aura),
         // CR 105.2: a spell *is* each of its colours, so a gold spell satisfies a
         // watcher of any one of them and a colourless spell satisfies none.
         ObservedSpell::ChosenColor => chosen.is_some_and(|color| data.colors.contains(&color)),

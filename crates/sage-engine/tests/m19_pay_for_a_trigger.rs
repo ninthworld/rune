@@ -200,7 +200,6 @@ fn skyrider_patrol_buys_a_counter_and_a_keyword_for_one_creature() {
 
     // The step trigger fires as the game *crosses into* begin combat, so the walk has to
     // do the crossing rather than the setup asserting it.
-    let mut state = state;
     for _ in 0..8 {
         if pending_player_choice(&state).is_some() {
             break;

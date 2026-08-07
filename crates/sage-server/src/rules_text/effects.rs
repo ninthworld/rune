@@ -1227,6 +1227,9 @@ fn mass_subject(source: &str, affects: &MassAffects) -> String {
         MassAffects::CreaturesYourOpponentsControl => {
             "creatures your opponents control".to_string()
         }
+        MassAffects::CreaturesAndPlaneswalkersYourOpponentsControl => {
+            "creatures and planeswalkers your opponents control".to_string()
+        }
         MassAffects::CreaturesWithoutFlying => "creatures without flying".to_string(),
         MassAffects::AttackingCreatures => "attacking creatures".to_string(),
     }
@@ -1258,6 +1261,12 @@ fn mass_recipient(source: &str, affects: &MassAffects) -> String {
         MassAffects::EachCreature => "each creature".to_string(),
         MassAffects::CreaturesYourOpponentsControl => {
             "each creature your opponents control".to_string()
+        }
+        // The card prints this one as a single breath about the seat and its board —
+        // "each opponent and each creature and planeswalker they control" — so the
+        // possessive is *they*, not *your opponents*, wherever it follows that seat.
+        MassAffects::CreaturesAndPlaneswalkersYourOpponentsControl => {
+            "each creature and planeswalker they control".to_string()
         }
         MassAffects::CreaturesWithoutFlying => "each creature without flying".to_string(),
         MassAffects::AttackingCreatures => "each attacking creature".to_string(),

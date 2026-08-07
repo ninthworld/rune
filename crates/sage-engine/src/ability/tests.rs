@@ -1093,7 +1093,10 @@ fn issue_735_cost_modification_round_trips_with_its_selectors() {
     assert_eq!(
         serde_json::from_str::<Ability>(json).unwrap(),
         Ability::CostModifier {
-            spells: ObservedSpell::Creature { min_power: Some(4) },
+            spells: ObservedSpell::Creature {
+                min_power: Some(4),
+                max_power: None,
+            },
             modification: CostModification::Reduce { generic: 2 },
         }
     );
@@ -1106,7 +1109,10 @@ fn issue_735_cost_modification_round_trips_with_its_selectors() {
         )
         .unwrap(),
         Ability::CostModifier {
-            spells: ObservedSpell::Creature { min_power: None },
+            spells: ObservedSpell::Creature {
+                min_power: None,
+                max_power: None,
+            },
             modification: CostModification::Increase { generic: 1 },
         }
     );

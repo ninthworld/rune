@@ -80,8 +80,8 @@
     "blocker": "a resolution shuffles its own source in and nothing else: the destination is reachable — a targeted permanent can be put on top of a library — but the shuffle variant is self-referential, so a card that shuffles a permanent it targeted away is unwritable"
   },
   {
-    "name": "Abilities that trigger on a loyalty ability being activated",
-    "blocker": "an observed activation is filtered by who activated it and by the source's card type, so \"whenever a player activates a loyalty ability\" cannot be told from any other activation that used the stack (CR 606.1)"
+    "name": "Abilities that trigger on a **loyalty** ability specifically",
+    "blocker": "an observed activation is filtered by who activated it and by the source's card type and printed subtype — `an ability of a Sarkhan planeswalker` — but nothing asks whether the ability activated was a *loyalty* ability rather than any other (CR 606.1), so a walker's mana ability would satisfy the same watcher"
   },
   {
     "name": "Effects that exile a permanent until the source that exiled it leaves the battlefield",

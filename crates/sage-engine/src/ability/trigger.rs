@@ -198,6 +198,18 @@ pub struct ObservedTargeting {
     /// both, which is what "a spell or ability" means.
     #[serde(default)]
     pub spells_only: bool,
+    /// Notice only objects the watching ability's **own controller** put on the stack —
+    /// the `whenever **you** cast an Aura spell that targets this creature` of a card
+    /// that rewards you for suiting it up. The mirror of
+    /// [`Self::opponents_only`](Self::opponents_only), and a card that says neither
+    /// notices anyone's.
+    #[serde(default)]
+    pub controller_only: bool,
+    /// Notice only spells of this class — the `Aura spell` half of the same sentence.
+    /// Absent notices every spell, and an ability is never in a class of spells, so a
+    /// class implies [`Self::spells_only`] without restating it.
+    #[serde(default)]
+    pub class: Option<ObservedSpell>,
 }
 
 /// Which step a [`TriggerCondition::BeginningOfStep`] watches the beginning of.
@@ -393,6 +405,11 @@ pub struct ObservedActivation {
     /// layer that would change a permanent's types is not implemented.
     #[serde(default)]
     pub source_types: Vec<CardType>,
+    /// Restrict to activations whose source carries this printed subtype — the
+    /// `a **Sarkhan** planeswalker` of a card that watches one walker rather than all of
+    /// them. Absent notices every subtype.
+    #[serde(default)]
+    pub source_subtype: Option<String>,
 }
 
 /// Whose activation an [`ObservedActivation`] notices, relative to the watching
@@ -449,9 +466,14 @@ pub enum ObservedSpell {
     /// battlefield — the difference is what the object *is*, not a choice either
     /// selector made.
     ///
-    /// Only a lower bound exists, because only a lower bound is printed on a card the
-    /// catalog defines; an upper one arrives with the card that needs it.
+    /// The upper bound arrived with the card that needed it: Sarkhan's Unsealing prints
+    /// `power 4, 5, or 6` on one ability and `power 7 or greater` on the next, which is
+    /// one class with both bounds and one with only the lower.
     Creature {
+        /// The greatest printed power a matching creature spell may have. Absent matches
+        /// every power at or above the lower bound.
+        #[serde(default)]
+        max_power: Option<i32>,
         /// The least printed power a matching creature spell may have. Absent matches
         /// every creature spell, including one with no printed power at all.
         #[serde(default)]
@@ -459,6 +481,11 @@ pub enum ObservedSpell {
     },
     /// An instant **or** sorcery spell — one class, as a card writes it.
     InstantOrSorcery,
+    /// An **Aura** spell (CR 303.4) — an enchantment whose card carries an Aura
+    /// attachment. Read off the card's own attachment block rather than off its printed
+    /// subtypes, because that block is what makes it an Aura in this engine: a card that
+    /// said "Aura" in its subtypes and attached to nothing would not be one.
+    Aura,
     /// A spell of the **chosen color** — the class a card names *after* its controller
     /// has answered the choice made as it entered
     /// ([`Ability::EntersChoosingColor`](crate::Ability)).

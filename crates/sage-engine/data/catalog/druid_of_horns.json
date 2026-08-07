@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "functional_id": "druid_of_horns",
+  "name": "Druid of Horns",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Druid"
+  ],
+  "mana_cost": "{3}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 2,
+  "toughness": 3,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "self_becomes_target": {
+          "controller_only": true,
+          "class": "aura"
+        }
+      },
+      "effects": [
+        {
+          "kind": "create_token",
+          "token": {
+            "name": "Beast",
+            "types": [
+              "creature"
+            ],
+            "subtypes": [
+              "Beast"
+            ],
+            "colors": [
+              "green"
+            ],
+            "power": 3,
+            "toughness": 3
+          }
+        }
+      ]
+    }
+  ]
+}
