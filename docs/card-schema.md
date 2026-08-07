@@ -1797,11 +1797,24 @@ Three consequences follow, and each is enforced:
   the ability: one that returns its own card from a graveyard fires only from a graveyard,
   and every other ability fires only from the others, so nothing can fire twice. The "you"
   of such a trigger is the seat whose graveyard the card is in.
-- **An activated ability's cost is mana and nothing else.** A card in a zone is not a
-  permanent: it cannot be tapped, sacrificed, or have counters removed. A definition that
-  authors this effect outside an activated or triggered ability — on a spell's own
-  effects, or on an ability handed to an emblem — or beside an activation cost of any
-  other kind, fails the build (`GraveyardAbilityCannotFunction`).
+- **An activated ability's cost is what a card in a graveyard can actually pay**: mana,
+  `exile_from_graveyard`, and `discard`. It may **not** tap, sacrifice, or spend counters —
+  a card in a zone is not a permanent and has none of those to give. A definition that
+  authors this effect outside an activated or triggered ability — on a spell's own effects,
+  or on an ability handed to an emblem — or beside an activation cost of a forbidden kind,
+  fails the build (`GraveyardAbilityCannotFunction`).
+
+  The rule used to be "mana and nothing else", on the reasoning above. The premise is
+  right and the conclusion was too broad: exiling cards from *that same graveyard* is
+  exactly what such a card can pay with, and discarding comes out of a hand the card's zone
+  has nothing to do with. Bone Dragon is the card that showed it (issue #723).
+
+  A cost that exiles from the graveyard the source is lying in takes `"another": true`
+  where the card says **other** — `Exile seven other cards from your graveyard`. Without it
+  a card could pay for its own return by exiling itself, which exiles the card it was about
+  to bring back: a card that reads as recursive and never is. The exclusion is applied in
+  the one candidate enumeration the offer, the prompt, the payment gate, and the
+  server's automatic payment all share, so no road reaches a different answer.
 
 The card does not move when the ability is activated — only when it resolves — so removing
 it in response leaves an ability that resolves and does nothing.

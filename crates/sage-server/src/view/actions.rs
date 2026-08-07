@@ -425,6 +425,11 @@ fn valid_action_view(
         Action::ActivateAbility {
             permanent, index, ..
         } => activation_payment_prompts(state, db, *permanent, *index),
+        // The same for an ability activated from a graveyard (CR 113.6): the parts of its
+        // cost the player picks, on the same slot shape (issue #723).
+        Action::ActivateAbilityFromGraveyard { card, index, .. } => {
+            graveyard_activation_payment_prompts(state, db, *card, *index)
+        }
         _ => Vec::new(),
     };
     // One-gesture mana: mark the activation of a mana ability

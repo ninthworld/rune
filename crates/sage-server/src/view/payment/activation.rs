@@ -133,6 +133,88 @@ fn activator(state: &GameState, permanent: PermanentId) -> PlayerId {
 /// every client that has not learned these slots, including the terminal one and both
 /// automated players — the server pays, over the whole cost rather than topping up a
 /// partial answer, for the reason [`bind_payment`] does not top up either.
+/// The cost slots a **graveyard** activation poses (issue #723) — the graveyard twin of
+/// [`activation_payment_prompts`].
+///
+/// One slot, on the same shape every other chosen cost uses: a graveyard is a public pile, so
+/// the candidates are ids the client already draws. The list is the engine's and already
+/// excludes the source when the cost says *other*, so the card the ability is about to return
+/// is never offered as a way to pay for returning it.
+pub(crate) fn graveyard_activation_payment_prompts(
+    state: &GameState,
+    db: &CardDatabase,
+    card: sage_engine::CardInstance,
+    index: usize,
+) -> Vec<Prompt> {
+    let Some(exile) = sage_engine::graveyard_activation_exile_cost(state, db, card, index) else {
+        return Vec::new();
+    };
+    vec![Prompt::SelectFromZone {
+        slot: EXILE_SLOT.to_string(),
+        // The cost's own words, from the same writer that puts them on the card — so
+        // "Exile seven other cards from your graveyard" is one string rather than two.
+        prompt: sage_engine::abilities_of(db, card.card)
+            .get(index)
+            .and_then(|ability| match ability {
+                sage_engine::Ability::Activated { cost, .. } => cost
+                    .iter()
+                    .find(|component| matches!(component, Cost::ExileFromGraveyard { .. }))
+                    .map(crate::rules_text::cost_symbol),
+                _ => None,
+            })
+            .unwrap_or_else(|| "Exile cards from your graveyard".to_string()),
+        zone: "graveyard".to_string(),
+        owner: player_id(state.priority),
+        count: u32::from(exile.count),
+        min: None,
+        candidates: exile.candidates.into_iter().map(card_entity_id).collect(),
+    }]
+}
+
+/// The payment a **graveyard** activation carries, bound from the slots a client answered —
+/// the graveyard twin of [`bind_activation_payment`] (issue #723).
+///
+/// Only the exile slot exists here: a card in a graveyard has no permanent to sacrifice, and a
+/// discard is possible but no card prints one yet. Everything else is the same contract — an
+/// answer that does not match the engine's own candidate list falls back to the payment the
+/// server assembles (ADR 0010), so a forged or stale id never becomes a payment.
+///
+/// The candidate list is the engine's, and it already excludes the source when the cost says
+/// *other*, so a client cannot pay for a card's return by exiling that card.
+pub(crate) fn bind_graveyard_activation_payment(
+    state: &GameState,
+    db: &CardDatabase,
+    card: sage_engine::CardInstance,
+    index: usize,
+    targets: &[TargetChoice],
+) -> Vec<CostPayment> {
+    let fallback = || {
+        sage_engine::auto_graveyard_activation_payment(state, db, card, index).unwrap_or_default()
+    };
+    let mut chosen = Vec::new();
+    match sage_engine::graveyard_activation_exile_cost(state, db, card, index) {
+        Some(cost) => {
+            let answered = chosen_for(targets, EXILE_SLOT);
+            if answered.len() != usize::from(cost.count) {
+                return fallback();
+            }
+            for id in answered {
+                let Some(picked) = cost
+                    .candidates
+                    .iter()
+                    .find(|candidate| card_entity_id(**candidate) == *id)
+                else {
+                    return fallback();
+                };
+                chosen.push(CostPayment::Exile(*picked));
+            }
+        }
+        None if !chosen_for(targets, EXILE_SLOT).is_empty() => return fallback(),
+        None => {}
+    }
+    chosen
+}
+
 pub(crate) fn bind_activation_payment(
     state: &GameState,
     db: &CardDatabase,

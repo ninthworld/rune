@@ -193,6 +193,15 @@ pub enum Action {
     /// [`AbilitySource::GraveyardCard`](crate::AbilitySource), any player may respond,
     /// and it resolves through [`crate::resolve`]. Only where the source *is* differs.
     ActivateAbilityFromGraveyard {
+        /// The components of the cost the **player picks** — which cards to exile from
+        /// that graveyard, which to discard (CR 601.2b). Empty for an ability whose cost
+        /// is mana alone, which is every such ability the catalog held before Bone Dragon
+        /// (issue #723).
+        ///
+        /// The graveyard twin of [`Self::ActivateAbility`]'s field, and exact in the same
+        /// way: an ability that asks for nothing accepts no payment, and one that asks is
+        /// paid by precisely what it names.
+        payment: Vec<CostPayment>,
         /// The specific card in the priority holder's graveyard whose ability is
         /// activated. Names the physical copy, so two identical cards in one graveyard
         /// stay individually addressable — and so the one that comes back is the one
@@ -661,6 +670,7 @@ impl Action {
                     card: *card,
                     index: *index,
                     targets: Vec::new(),
+                    payment: Vec::new(),
                 }
             }
             // A cast drops its **announcement choices**, its target selection, and its

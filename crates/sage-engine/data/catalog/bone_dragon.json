@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "functional_id": "bone_dragon",
+  "name": "Bone Dragon",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Dragon",
+    "Skeleton"
+  ],
+  "mana_cost": "{3}{B}{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 5,
+  "toughness": 4,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{3}{B}{B}"
+        },
+        {
+          "kind": "exile_from_graveyard",
+          "count": 7,
+          "another": true
+        }
+      ],
+      "effects": [
+        {
+          "kind": "return_self_from_graveyard",
+          "destination": "battlefield_tapped"
+        }
+      ]
+    }
+  ]
+}

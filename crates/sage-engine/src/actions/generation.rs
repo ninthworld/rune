@@ -706,13 +706,14 @@ fn offer_graveyard_activations(
             };
             let groups: Vec<crate::ability::TargetGroup> =
                 effects.iter().flat_map(Effect::target_groups).collect();
-            if graveyard_cost_payable(state, seat, cost)
+            if graveyard_cost_payable(state, db, seat, card.id, cost)
                 && groups_are_fillable(&groups, state, seat, db)
             {
                 actions.push(Action::ActivateAbilityFromGraveyard {
                     card,
                     index,
                     targets: Vec::new(),
+                    payment: Vec::new(),
                 });
             }
         }

@@ -73,8 +73,9 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
             card,
             index,
             targets,
+            payment,
         } => {
-            apply_activate_ability_from_graveyard(&mut next, *card, *index, targets, db);
+            apply_activate_ability_from_graveyard(&mut next, *card, *index, targets, payment, db);
         }
         // CR 601.2, in order and in one step: the payment's mana abilities are activated
         // first, then the cost is paid and the spell goes on the stack. Both halves have

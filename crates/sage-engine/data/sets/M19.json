@@ -370,6 +370,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "bone_dragon",
+    "collector_number": "88",
+    "rarity": "mythic"
+  },
+  {
     "functional_id": "child_of_night",
     "collector_number": "89",
     "rarity": "common"

@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (247)
+## Supported cards (248)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -39,6 +39,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `blood_divination` | Blood Divination | functional definition |
 | `boggart_brute` | Boggart Brute | functional definition |
 | `bogstomper` | Bogstomper | functional definition |
+| `bone_dragon` | Bone Dragon | functional definition |
 | `bone_to_ash` | Bone to Ash | functional definition |
 | `brawl_bash_ogre` | Brawl-Bash Ogre | functional definition |
 | `bristling_boar` | Bristling Boar | functional definition |

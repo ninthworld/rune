@@ -223,6 +223,7 @@ fn talons_offer(card: CardInstance) -> Action {
         card,
         index: 0,
         targets: Vec::new(),
+        payment: Vec::new(),
     }
 }
 

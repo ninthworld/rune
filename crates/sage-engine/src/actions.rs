@@ -27,9 +27,10 @@ pub use generation::valid_actions;
 pub(crate) use legality::action_is_legal;
 pub use payment::{
     activation_discard_cost, activation_exile_cost, activation_sacrifice_cost,
-    auto_activation_payment, auto_payment, discard_cost, is_plain_mana_source, mana_ability_pips,
-    payment_pips, payment_sources, remaining_cost_pips, sacrifice_cost, DiscardCost, ExileCost,
-    PaymentPip, SacrificeCost,
+    auto_activation_payment, auto_graveyard_activation_payment, auto_payment, discard_cost,
+    graveyard_activation_exile_cost, is_plain_mana_source, mana_ability_pips, payment_pips,
+    payment_sources, remaining_cost_pips, sacrifice_cost, DiscardCost, ExileCost, PaymentPip,
+    SacrificeCost,
 };
 pub(crate) use payment::{
     apply_payment, chosen_costs_are_payable, payment_covers_activation, payment_covers_cast,

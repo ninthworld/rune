@@ -61,17 +61,33 @@ pub(crate) fn cost_symbol(cost: &Cost) -> String {
         Cost::Discard { count } => {
             format!("Discard {} cards", number(u32::from(*count)))
         }
-        Cost::ExileFromGraveyard { class, count } => {
+        Cost::ExileFromGraveyard {
+            class,
+            count,
+            another,
+        } => {
             // "a card", "a creature card", "two creature cards" — the class is an
             // adjective before the noun, and an unrestricted cost simply has none.
             let noun = match graveyard_class_noun(*class) {
                 Some(class) => format!("{class} card"),
                 None => "card".to_string(),
             };
+            // "another card", "seven other cards" — English puts the word before the
+            // noun and inflects it with the count, exactly as a card prints it.
             let subject = if *count == 1 {
-                format!("{} {noun}", indefinite_article(&noun))
+                let word = if *another {
+                    "another"
+                } else {
+                    indefinite_article(&noun)
+                };
+                format!("{word} {noun}")
             } else {
-                format!("{} {}", number(u32::from(*count)), plural(&noun))
+                let counted = format!("{} {}", number(u32::from(*count)), plural(&noun));
+                if *another {
+                    format!("{} other {}", number(u32::from(*count)), plural(&noun))
+                } else {
+                    counted
+                }
             };
             format!("Exile {subject} from your graveyard")
         }

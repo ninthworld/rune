@@ -122,36 +122,55 @@ pub(crate) fn graveyard_ability(
     Some(ability)
 }
 
-/// Whether `seat` can pay `cost` for an ability activated from their graveyard.
+/// Whether `seat` can pay `cost` for an ability activated from their graveyard, where
+/// `source` is the card in that graveyard whose ability it is.
 ///
-/// The graveyard counterpart of [`cost_payable`], and deliberately narrower: a card in a
-/// graveyard is not a permanent, so there is nothing to tap, nothing to sacrifice, and no
-/// counters to remove. Mana is the only component such a cost can have, and **every other
-/// component is unpayable** rather than ignored — an ability authored with a `{T}` it
-/// cannot pay is not offered at all, instead of being offered for free. The catalog
-/// validator rejects that authoring outright ([`crate::Violation`]); this is the second,
+/// The graveyard counterpart of [`cost_payable`], and narrower — but narrower by what a
+/// card in a graveyard can actually pay rather than by zone. A card there is not a
+/// permanent, so there is nothing to tap, nothing to sacrifice, and no counters to spend;
+/// those stay unpayable, and an ability authored with a `{T}` is not offered at all rather
+/// than offered for free.
+///
+/// **Exiling from that same graveyard, and discarding, are payable** (issue #723). The old
+/// rule was mana and nothing else, on the reasoning that a card in a zone has nothing to
+/// pay with — true of tapping and sacrificing, and false of these two, which is what
+/// refused Bone Dragon. The catalog validator draws the same line; this is the second,
 /// independent gate that holds for a database assembled in a test.
 ///
 /// Mana affordability goes through the same [`ManaPool::can_pay`] the battlefield path
-/// uses over the same `{...}` notation, so the offer and the charge cannot disagree.
-pub(crate) fn graveyard_cost_payable(state: &GameState, seat: PlayerId, cost: &[Cost]) -> bool {
+/// uses over the same `{...}` notation, so the offer and the charge cannot disagree — and
+/// the exile count goes through the same candidate enumeration the payment gate uses,
+/// including the *other* exclusion, for exactly the same reason.
+pub(crate) fn graveyard_cost_payable(
+    state: &GameState,
+    db: &CardDatabase,
+    seat: PlayerId,
+    source: crate::id::CardInstanceId,
+    cost: &[Cost],
+) -> bool {
     cost.iter().all(|c| match c {
         Cost::Mana { mana } => state.players.get(seat.0).is_some_and(|player| {
             player
                 .mana_pool
                 .can_pay(&crate::mana::parse_mana_cost(mana))
         }),
+        // Payable from a graveyard: the cards are in the very zone the source is in.
+        Cost::ExileFromGraveyard { count, .. } => {
+            super::payment::exile_candidates_for(state, db, seat, c, Some(source)).len()
+                >= usize::from(*count)
+        }
+        // And a discard is paid out of a hand, which has nothing to do with the source's
+        // zone at all.
+        Cost::Discard { count } => state
+            .players
+            .get(seat.0)
+            .is_some_and(|player| player.hand.len() >= usize::from(*count)),
+        // A card in a graveyard is not a permanent: nothing to tap, sacrifice, or spend.
         Cost::Tap
         | Cost::Loyalty { .. }
         | Cost::SacrificeThis
         | Cost::RemoveCounters { .. }
-        // A chosen sacrifice, discard, or graveyard exile is refused here for the same
-        // reason as the rest: the catalog validator lets a graveyard ability charge mana
-        // and nothing else, and this is the second, independent gate that holds for a
-        // database assembled in a test.
-        | Cost::Sacrifice { .. }
-        | Cost::ExileFromGraveyard { .. }
-        | Cost::Discard { .. } => false,
+        | Cost::Sacrifice { .. } => false,
     })
 }
 

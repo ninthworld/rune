@@ -343,6 +343,13 @@ pub(super) fn graveyard_ability_is_bad(
             continue;
         }
         on_abilities += here;
+        // What a card **in a graveyard** can actually pay. The rule used to be "mana and
+        // nothing else", reasoning that a card in a zone has nothing to tap, sacrifice, or
+        // spend counters from. That is true of those three and false of the other two: a
+        // card in a graveyard can exile cards from *that same graveyard*, and its
+        // controller can discard from a hand the card's zone has nothing to do with. The
+        // premise was right and the conclusion over-general, which is what refused Bone
+        // Dragon (issue #723).
         let payable = ability
             .get("cost")
             .and_then(serde_json::Value::as_array)
@@ -350,7 +357,10 @@ pub(super) fn graveyard_ability_is_bad(
             .unwrap_or_default()
             .iter()
             .all(|component| {
-                component.get("kind").and_then(serde_json::Value::as_str) == Some("mana")
+                matches!(
+                    component.get("kind").and_then(serde_json::Value::as_str),
+                    Some("mana" | "exile_from_graveyard" | "discard")
+                )
             });
         if !payable {
             return true;

@@ -215,6 +215,16 @@ pub enum Cost {
         /// How many cards are exiled. At least one on every printed card.
         #[serde(default = "one")]
         count: u8,
+        /// Whether the source itself is excluded — the **other** of `Exile seven other
+        /// cards from your graveyard` (issue #723).
+        ///
+        /// It matters only where the source is *in* that graveyard, which is exactly the
+        /// ability that prints it: a card paying to return itself must not be allowed to
+        /// pay with itself, or it exiles the card it was about to bring back and the
+        /// ability does nothing. The [`Cost::Sacrifice::another`] of the battlefield side,
+        /// one zone over.
+        #[serde(default)]
+        another: bool,
     },
     /// **Discard `count` cards** from the activating player's hand (CR 601.2b / 701.8) —
     /// the `{T}, Discard a card:` of a rummaging creature, authored as
