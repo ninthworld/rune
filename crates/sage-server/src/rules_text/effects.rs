@@ -613,6 +613,22 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             filter_noun(filter, true),
             possessive_pronoun(*player_ref),
         ),
+        // Two sentences because the card prints two, and in its order: what moves, then
+        // what you may do with it. "That card" and "those cards" is the permission naming
+        // exactly what this effect exiled (CR 116.2a — *play*, since a land among them is
+        // played rather than cast).
+        Effect::ExileTopForPlay { count } => {
+            if *count == 1 {
+                "exile the top card of your library. Until end of turn, you may play that card"
+                    .to_string()
+            } else {
+                format!(
+                    "exile the top {} cards of your library. Until end of turn, you may play \
+                     those cards",
+                    number(u32::from(*count)),
+                )
+            }
+        }
         Effect::IgnoreHexproof { player_ref } => format!(
             "spells and abilities {} control may target as though hexproof were not there \
              this turn",

@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "functional_id": "dark_dweller_oracle",
+  "name": "Dark-Dweller Oracle",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Goblin",
+    "Shaman"
+  ],
+  "mana_cost": "{1}{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 1,
+  "toughness": 2,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{1}"
+        },
+        {
+          "kind": "sacrifice",
+          "card_type": "creature"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "exile_top_for_play",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

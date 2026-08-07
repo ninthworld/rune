@@ -572,6 +572,10 @@ pub(super) fn number(count: u32) -> String {
         3 => "three".to_string(),
         4 => "four".to_string(),
         5 => "five".to_string(),
+        // Six and seven arrived with the cards that print them — "exile the top seven
+        // cards of your library" — and a card writing a digit there would read wrong.
+        6 => "six".to_string(),
+        7 => "seven".to_string(),
         n => n.to_string(),
     }
 }

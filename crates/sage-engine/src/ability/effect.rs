@@ -1179,6 +1179,31 @@ pub enum Effect {
         #[serde(default)]
         filter: CardFilter,
     },
+    /// **Exile the top `count` cards of the controller's library, and let them play those
+    /// cards for the rest of the turn** — Dark-Dweller Oracle's `{1}, Sacrifice a
+    /// creature: Exile the top card of your library. Until end of turn, you may play that
+    /// card.`
+    ///
+    /// One effect rather than an exile and a permission written side by side, and the
+    /// reason is what the permission has to name. *That card* is the card this resolution
+    /// exiled: only the effect that moved them knows which those are, and by the time a
+    /// second effect ran they would be indistinguishable from everything else in the zone.
+    /// So the grant records the instances ([`ExilePlaying`](crate::ExilePlaying)) and a
+    /// card that reached exile any other way is untouched.
+    ///
+    /// **Play, not cast** (CR 116.2a): a land among them is played under the ordinary
+    /// one-per-turn allowance and sorcery-speed window, and a spell is cast through the
+    /// same action, stack object, cost, and timing gates as a cast from hand. Only the
+    /// zone it leaves differs — the same promise
+    /// [`Self::AllowCastingFromGraveyard`] makes.
+    ///
+    /// A library with fewer than `count` cards exiles what it has: this is not a draw and
+    /// running out is not a loss (CR 701.3d).
+    ExileTopForPlay {
+        /// How many cards are exiled from the top. Defaults to one.
+        #[serde(default = "one")]
+        count: u8,
+    },
     /// Let the referenced player aim spells and abilities **as though hexproof were not
     /// there** for the rest of the turn (`Creatures your opponents control with hexproof
     /// can be the targets of spells and abilities you control as though they didn't have

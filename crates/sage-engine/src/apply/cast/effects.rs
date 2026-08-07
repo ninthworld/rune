@@ -94,6 +94,33 @@ pub(crate) fn apply_effect(
                 });
             }
         }
+        // Exile from the top, and a permission naming exactly what was exiled. The two
+        // are one effect because only this resolution knows which cards *"that card"*
+        // means — see [`Effect::ExileTopForPlay`].
+        Effect::ExileTopForPlay { count } => {
+            let turn = state.turn;
+            let Some(player) = state.players.get_mut(controller.0) else {
+                return;
+            };
+            // The top of a library is its last element, so taking from the top is popping.
+            // A library with fewer cards exiles what it has (CR 701.3d) — this is not a
+            // draw, and running out is not a loss.
+            let mut exiled = Vec::new();
+            for _ in 0..*count {
+                let Some(card) = player.library.pop() else {
+                    break;
+                };
+                exiled.push(card.id);
+                player.exile.push(card);
+            }
+            if !exiled.is_empty() {
+                state.exile_playing.push(crate::state::ExilePlaying {
+                    player: controller,
+                    cards: exiled,
+                    turn,
+                });
+            }
+        }
         // The same permission shape at the targeting gate instead of the casting one:
         // recorded per seat with the turn it was granted on, and idempotent for the same
         // reason — two identical permissions permit the same aims.

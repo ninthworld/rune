@@ -76,10 +76,17 @@ pub(crate) fn apply_play_land(state: &mut GameState, card: CardInstance, db: &Ca
         let Some(player) = state.players.get_mut(controller.0) else {
             return;
         };
+        // The three zones a land can be played from, and the offer decides which are
+        // reachable: the hand always, a graveyard under a continuous permission (CR 305.9
+        // — Crucible of Worlds), and exile under a per-turn one naming that very card
+        // ([`Effect::ExileTopForPlay`], issue #723). A card in none of them is a play the
+        // offer never made, and doing nothing is the honest answer to it.
         if let Some(pos) = player.hand.iter().position(|&c| c.id == card.id) {
             player.hand.remove(pos);
         } else if let Some(pos) = player.graveyard.iter().position(|&c| c.id == card.id) {
             player.graveyard.remove(pos);
+        } else if let Some(pos) = player.exile.iter().position(|&c| c.id == card.id) {
+            player.exile.remove(pos);
         } else {
             return;
         }
@@ -439,6 +446,12 @@ pub(crate) fn apply_cast_spell(
             // back to the graveyard down the ordinary path, and if it resolves as a
             // permanent it enters the battlefield.
             player.graveyard.remove(pos);
+        } else if let Some(pos) = player.exile.iter().position(|&c| c.id == card.id) {
+            // The same, one zone over: a card cast from exile under a per-turn permission
+            // naming that very card ([`Effect::ExileTopForPlay`], issue #723). It leaves
+            // exile for the stack exactly as a hand cast does, and everything downstream —
+            // countering, fizzling, resolving as a permanent — is the ordinary path.
+            player.exile.remove(pos);
         } else {
             return;
         }

@@ -265,6 +265,15 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                     actions.push(Action::PlayLand { card });
                 }
             }
+            // And a land among the cards a permission granted this turn named
+            // ([`Effect::ExileTopForPlay`]). *Play* is the word the card uses and the
+            // rule it means (CR 116.2a): this costs the seat its land drop for the turn
+            // exactly as a hand play does, because the allowance above is shared.
+            for &card in &player.exile {
+                if is_land(db, card.card) && exile_playing_allows(state, priority, card.id) {
+                    actions.push(Action::PlayLand { card });
+                }
+            }
         }
 
         // What this seat could tap for, enumerated once and asked once per card below.
@@ -343,6 +352,36 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 continue;
             }
             if !graveyard_casting_allows(state, priority, card.card, db) {
+                continue;
+            }
+            let timing_ok = castable_at_instant_speed(data) || sorcery_speed;
+            let base_cost = cast_cost(state, db, card, None).map(|(cost, _)| cost);
+            if timing_ok
+                && base_cost
+                    .as_ref()
+                    .is_some_and(|cost| payable.covers(cost, spend_purpose(data)))
+                && additional_cost_is_payable(state, priority, data, card.id, db)
+                && cast_is_announceable(state, db, data, priority)
+            {
+                actions.push(Action::CastSpell {
+                    card,
+                    mode: None,
+                    x: None,
+                    targets: Vec::new(),
+                    payment: Vec::new(),
+                });
+            }
+        }
+
+        // Cast a card from **exile**, while a permission granted this turn names that
+        // very card ([`Effect::ExileTopForPlay`]). The graveyard loop above, one zone
+        // over: the same [`Action::CastSpell`], the same stack object, the same cost and
+        // timing gates, and only the zone the card leaves differs.
+        for &card in &player.exile {
+            let Some(data) = db.card(card.card) else {
+                continue;
+            };
+            if !is_castable_spell(data) || !exile_playing_allows(state, priority, card.id) {
                 continue;
             }
             let timing_ok = castable_at_instant_speed(data) || sorcery_speed;
@@ -504,6 +543,28 @@ fn graveyard_casting_allows(
         permission.player == seat
             && permission.turn == state.turn
             && crate::choice::card_matches_filter(db, card, &permission.filter, None)
+    })
+}
+
+/// Whether a permission granted **this turn** lets `seat` play the exiled card `card`
+/// ([`Effect::ExileTopForPlay`]).
+///
+/// [`graveyard_casting_allows`]'s sibling, with the one difference that matters: it asks
+/// whether the permission **named this instance**, not whether the card matches a class.
+/// *You may play that card* means the card the effect exiled, so a card that reached exile
+/// any other way — an opponent's exile effect, a cost paid by exiling — is not offered.
+///
+/// The turn comparison is belt-and-braces the same way: the turn boundary clears the list,
+/// so an entry from an earlier turn should never be here to find.
+fn exile_playing_allows(
+    state: &GameState,
+    seat: crate::id::PlayerId,
+    card: crate::id::CardInstanceId,
+) -> bool {
+    state.exile_playing.iter().any(|permission| {
+        permission.player == seat
+            && permission.turn == state.turn
+            && permission.cards.contains(&card)
     })
 }
 

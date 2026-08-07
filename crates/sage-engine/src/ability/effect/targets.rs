@@ -161,6 +161,7 @@ impl Effect {
             // its player without targeting.
             | Effect::CreateEmblem { .. }
             | Effect::AllowCastingFromGraveyard { .. }
+            | Effect::ExileTopForPlay { .. }
             // A hexproof-ignoring permission names its player the same way, and for the
             // same reason: it is a fact about a seat, not about an object.
             | Effect::IgnoreHexproof { .. }

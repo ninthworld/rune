@@ -560,6 +560,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "dark_dweller_oracle",
+    "collector_number": "134",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "dismissive_pyromancer",
     "collector_number": "136",
     "rarity": "uncommon"

@@ -396,6 +396,37 @@ pub struct GraveyardCasting {
     pub turn: u32,
 }
 
+/// A permission to **play cards exiled this way**, granted for one turn
+/// ([`Effect::ExileTopForPlay`](crate::Effect)) — Dark-Dweller Oracle's `{1}, Sacrifice a
+/// creature:`.
+///
+/// [`GraveyardCasting`]'s sibling, and raw stored state for the same reason (ADR 0005 §1):
+/// nothing else in [`GameState`](crate::GameState) records it and no snapshot of the zones
+/// could recover it. It carries the [`turn`](Self::turn) it was granted on rather than a
+/// duration, and the turn boundary drops every entry.
+///
+/// **It names cards, where the graveyard permission names a class.** That difference is the
+/// whole of it: a card says *you may play **that card** this turn*, meaning the one this
+/// effect just exiled — not every card that happens to be in exile. A filter over the exile
+/// zone would let a player cast something an opponent exiled three turns ago, which is a
+/// different card's text. So the grant records the instances it created, and a card that
+/// reaches exile by any other road is unaffected.
+///
+/// **Play, not cast** (CR 116.2a). A land named here is *played*, under the same
+/// one-per-turn allowance and sorcery-speed window a hand play obeys; a spell is cast
+/// through the same action, stack object, and timing gates as a cast from anywhere else.
+/// Only the zone it leaves differs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExilePlaying {
+    /// The player who may play them — the one the effect resolved for.
+    pub player: PlayerId,
+    /// The exiled cards this permission names, by instance: exactly what the granting
+    /// effect put there, and nothing else in the zone.
+    pub cards: Vec<crate::id::CardInstanceId>,
+    /// The turn the permission was granted on; it lapses when that turn ends.
+    pub turn: u32,
+}
+
 /// A permission to aim spells and abilities **as though hexproof were not there**,
 /// granted to one player for one turn ([`Effect::IgnoreHexproof`](crate::Effect)) —
 /// Detection Tower's `{1}, {T}`.
