@@ -47,10 +47,13 @@ pub(crate) fn condition_holds(
     condition: &Condition,
     controller: PlayerId,
     source: Option<PermanentId>,
-    resolution_start: u64,
+    resolution: crate::resolve::Resolution,
     db: &CardDatabase,
 ) -> bool {
+    let resolution_start = resolution.start;
     match condition {
+        // What the resolution knows about itself, rather than about the board.
+        Condition::CastFromHand => resolution.cast_from_hand,
         Condition::ControlsAtLeast { permanents, count } => {
             count_permanents(state, permanents, controller, db) >= *count
         }

@@ -555,6 +555,11 @@
     "rarity": "rare"
   },
   {
+    "functional_id": "apex_of_power",
+    "collector_number": "129",
+    "rarity": "mythic"
+  },
+  {
     "functional_id": "banefire",
     "collector_number": "130",
     "rarity": "rare"

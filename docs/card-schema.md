@@ -1612,6 +1612,12 @@ in the zone. So the grant records the **instances** where the graveyard permissi
 records a **class** — a filter over exile would let a player cast something an opponent exiled
 three turns ago, which is a different card's text.
 
+`cast_only` narrows the permission to **casting spells**, which is the difference between two
+printed sentences: *you may play that card* lets a land among them be played, and *you may cast
+spells from among them* does not — a land Apex of Power exiles simply stays there. It is
+recorded on the permission, because two of them can be in force at once and each says its own
+thing.
+
 **Play, not cast** (CR 116.2a). A land among them is played under the ordinary one-per-turn
 allowance and sorcery-speed window — it costs the seat its land drop exactly as a hand play
 does — and a spell is cast through the same action, stack object, cost, and timing gates as a
@@ -1714,6 +1720,23 @@ pending offer names, and for nothing else.
 
 "The exiled cards that weren't cast this way" includes the offered card when the offer is
 declined, which is why its decline leaves it where it is rather than exiling it.
+
+### Asking where a spell was cast from
+
+`cast_from_hand` is a `condition` about the **resolving object** rather than about the board —
+the *if this spell was cast from your hand* of a card that pays out only when it was played the
+ordinary way:
+
+```json
+{ "kind": "conditional", "condition": { "kind": "cast_from_hand" },
+  "then": [{ "kind": "add_mana_any_color", "amount": 10, "same_color": true }] }
+```
+
+Read off what the resolution knows about itself. By the time a spell resolves its card is on the
+stack and every road that put it there ends in the same place, so the zone is recorded on the
+stack object as the spell is cast (CR 601.2a) and travels with it. `false` for an ability, which
+is not cast at all, and for a spell cast from a graveyard, from exile, from the command zone, or
+off a library.
 
 ### Ignoring hexproof
 

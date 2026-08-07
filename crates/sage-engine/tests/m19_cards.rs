@@ -1871,6 +1871,7 @@ fn essence_scatter_counters_a_creature_spell_but_not_an_instant() {
             card: creature,
             mode: None,
             x: None,
+            from_hand: true,
         },
         targets: Vec::new(),
     });
@@ -1885,6 +1886,7 @@ fn essence_scatter_counters_a_creature_spell_but_not_an_instant() {
             card: burn,
             mode: None,
             x: None,
+            from_hand: true,
         },
         targets: vec![Target::Player(PlayerId(0))],
     });
@@ -1952,6 +1954,7 @@ fn bone_to_ash_counters_a_creature_spell_and_replaces_itself() {
             card: creature,
             mode: None,
             x: None,
+            from_hand: true,
         },
         targets: Vec::new(),
     });

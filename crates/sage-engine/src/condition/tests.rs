@@ -89,7 +89,10 @@ fn asked_about(state: &GameState, db: &CardDatabase, source: PermanentId) -> boo
         &Condition::AttackedOrBlockedThisTurn,
         PlayerId(0),
         Some(source),
-        state.next_log_sequence,
+        crate::resolve::Resolution {
+            start: state.next_log_sequence,
+            ..Default::default()
+        },
         db,
     )
 }
@@ -160,7 +163,10 @@ fn issue_727_a_condition_about_a_source_that_is_not_a_permanent_is_false() {
         &Condition::AttackedOrBlockedThisTurn,
         PlayerId(0),
         None,
-        state.next_log_sequence,
+        crate::resolve::Resolution {
+            start: state.next_log_sequence,
+            ..Default::default()
+        },
         db,
     ));
 }

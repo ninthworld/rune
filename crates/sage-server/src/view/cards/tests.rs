@@ -567,6 +567,7 @@ fn issue_333_aura_attachment_projects_into_the_view() {
             card: aura,
             mode: None,
             x: None,
+            from_hand: true,
         },
         targets: vec![Target::Permanent(host)],
     });

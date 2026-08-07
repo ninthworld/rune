@@ -829,7 +829,7 @@ fn copy_spell_onto_stack(
     let Some(original) = state.stack.iter().find(|o| o.id == id) else {
         return;
     };
-    let StackObjectKind::Spell { card, mode, x } = original.kind else {
+    let StackObjectKind::Spell { card, mode, x, .. } = original.kind else {
         return;
     };
     let Some(data) = db.card(card.card) else {

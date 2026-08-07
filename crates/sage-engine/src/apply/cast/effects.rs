@@ -97,7 +97,7 @@ pub(crate) fn apply_effect(
         // Exile from the top, and a permission naming exactly what was exiled. The two
         // are one effect because only this resolution knows which cards *"that card"*
         // means — see [`Effect::ExileTopForPlay`].
-        Effect::ExileTopForPlay { count } => {
+        Effect::ExileTopForPlay { count, cast_only } => {
             let turn = state.turn;
             let Some(player) = state.players.get_mut(controller.0) else {
                 return;
@@ -118,6 +118,7 @@ pub(crate) fn apply_effect(
                     player: controller,
                     cards: exiled,
                     turn,
+                    cast_only: *cast_only,
                 });
             }
         }

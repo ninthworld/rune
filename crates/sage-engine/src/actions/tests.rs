@@ -385,6 +385,7 @@ fn issue_147_instant_castable_with_a_nonempty_stack_and_off_turn_cr_117_1a() {
             card: other,
             mode: None,
             x: None,
+            from_hand: true,
         },
         targets: Vec::new(),
     });
@@ -433,6 +434,7 @@ fn issue_147_sorcery_not_offered_off_turn_or_mid_stack_cr_304_1() {
             card: other,
             mode: None,
             x: None,
+            from_hand: true,
         },
         targets: Vec::new(),
     });
@@ -464,6 +466,7 @@ fn issue_147_artifact_and_enchantment_cast_at_sorcery_speed_and_enter_battlefiel
                 card: other,
                 mode: None,
                 x: None,
+                from_hand: true,
             },
             targets: Vec::new(),
         });
@@ -660,6 +663,7 @@ fn counterspell_over_a_creature_spell() -> (GameState, CardInstance, StackId) {
             card: boar,
             mode: None,
             x: None,
+            from_hand: true,
         },
         targets: Vec::new(),
     });

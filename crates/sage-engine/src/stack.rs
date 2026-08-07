@@ -111,6 +111,14 @@ pub enum StackObjectKind {
         /// generates for the object on the stack. Nothing re-derives it from the cost,
         /// because by the time the spell is here the cost is already paid and gone.
         x: Option<u32>,
+        /// Whether it was cast **from its controller's hand** (CR 601.2a).
+        ///
+        /// Recorded because a card can ask — *if this spell was cast from your hand* — and
+        /// by the time it resolves the zone it came from is not recoverable from anywhere:
+        /// the card is on the stack, and every road that put it there ends in the same
+        /// place. The ordinary answer is `true`; a cast from a graveyard, from exile, from
+        /// the command zone, or off a library says so.
+        from_hand: bool,
     },
     /// A **copy of a spell** (CR 707.10): a spell on the stack that was never cast and
     /// has no card behind it.

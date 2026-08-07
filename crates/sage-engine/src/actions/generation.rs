@@ -301,7 +301,11 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             // rule it means (CR 116.2a): this costs the seat its land drop for the turn
             // exactly as a hand play does, because the allowance above is shared.
             for &card in &player.exile {
-                if is_land(db, card.card) && exile_playing_allows(state, priority, card.id) {
+                // A land only where the permission says *play*, not *cast spells from
+                // among them* (CR 116.2a): a land Apex of Power exiled stays in exile.
+                if is_land(db, card.card)
+                    && exile_playing_allows(state, priority, card.id, Permits::Any)
+                {
                     actions.push(Action::PlayLand { card });
                 }
             }
@@ -412,7 +416,9 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             let Some(data) = db.card(card.card) else {
                 continue;
             };
-            if !is_castable_spell(data) || !exile_playing_allows(state, priority, card.id) {
+            if !is_castable_spell(data)
+                || !exile_playing_allows(state, priority, card.id, Permits::Spells)
+            {
                 continue;
             }
             let timing_ok = castable_at_instant_speed(data) || sorcery_speed;
@@ -591,12 +597,26 @@ fn exile_playing_allows(
     state: &GameState,
     seat: crate::id::PlayerId,
     card: crate::id::CardInstanceId,
+    permits: Permits,
 ) -> bool {
     state.exile_playing.iter().any(|permission| {
         permission.player == seat
             && permission.turn == state.turn
             && permission.cards.contains(&card)
+            // A cast-only permission answers a cast and refuses a land play.
+            && (matches!(permits, Permits::Spells) || !permission.cast_only)
     })
+}
+
+/// What is being asked of an exile permission: may this **spell** be cast, or may this
+/// **card** be played? The difference is a land, and the two printed sentences that make
+/// it — *you may play that card* against *you may cast spells from among them*.
+#[derive(Clone, Copy)]
+enum Permits {
+    /// A cast. Every permission allows one.
+    Spells,
+    /// A play, which a cast-only permission refuses.
+    Any,
 }
 
 /// Whether an activation offer is restricted to mana abilities — the difference between
