@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "functional_id": "rupture_spire",
+  "name": "Rupture Spire",
+  "types": [
+    "land"
+  ],
+  "mana_cost": "",
+  "colors": [],
+  "abilities": [
+    {
+      "type": "enters_tapped"
+    },
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "may",
+          "cost": {
+            "kind": "mana",
+            "mana": "{1}"
+          },
+          "effects": [],
+          "otherwise": [
+            {
+              "kind": "sacrifice_self"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "tap"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "add_mana_any_color",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

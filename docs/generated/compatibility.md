@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (258)
+## Supported cards (259)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -204,6 +204,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `riddlemaster_sphinx` | Riddlemaster Sphinx | functional definition |
 | `root_snare` | Root Snare | functional definition |
 | `runic_armasaur` | Runic Armasaur | functional definition |
+| `rupture_spire` | Rupture Spire | functional definition |
 | `rustwing_falcon` | Rustwing Falcon | functional definition |
 | `sai_master_thopterist` | Sai, Master Thopterist | functional definition |
 | `salvager_of_secrets` | Salvager of Secrets | functional definition |
@@ -296,7 +297,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Damage prevention beyond a blanket shield for the turn | a shield prevents all damage — or all combat damage — for the rest of the turn, consulted at the one seam damage is dealt, and a spell may declare its own damage unpreventable to defeat it; nothing prevents a fixed amount, names a recipient or a source, redirects damage, or lasts anything but the turn |
 | Delayed triggers that wait for anything but the next spell cast | a resolution may leave one delayed trigger behind, the single condition it can wait for is the next spell of a named class its controller casts, firing spends it (CR 603.7b), and the turn boundary clears it; nothing waits for a step, a zone change, or an attack declaration, and no delayed trigger outlives the turn that created it |
 | Effects acting on the controller of a permanent the same resolution chose | a player-subject effect names its player as the controller, each opponent, each player, a targeted player, or a targeted opponent, each resolved on its own; nothing reads a controller off a permanent another slot in the same resolution is pointed at, so a token created by *that permanent's* controller cannot be written |
-| Effects that act on a player unless that player pays | the one cost an effect asks for mid-resolution belongs to an optional effect, it is posed to the asking ability's own controller and never to a player the effect merely names, and declining splices nothing onto the remainder — the game continues exactly as if the effect were absent; no effect is reached because a payment was refused |
+| Effects that act on a player unless that player pays | the one cost an effect asks for mid-resolution belongs to an optional effect and is posed to the asking ability's own controller, never to a player the effect merely names; declining may now splice a consequence of its own onto the remainder — `sacrifice it unless you pay {1}` — but only the controller is ever the one asked, so an effect that acts on an *opponent* unless that opponent pays is unwritable |
 | Effects that ask a player to name a type | a permanent records the colour and the card its controller named as it entered — the card as a functional identity chosen from the catalog, never a string — but a card or creature type has no recorded identity, only a nonbasic land may be named, and nothing on a spell records a choice at all |
 | Effects that change a permanent's types, or set its base power and toughness | CR 613 layer 1 copies a permanent's copiable values and layer 7a lets a characteristic-defining ability say what its power is, but nothing between them applies: every card type and subtype the engine reads is the printed one, no effect adds or removes a type, no layer-7b effect sets a base power and toughness, and no layer 7d switches the two |
 | Effects that exile a permanent until the source that exiled it leaves the battlefield | an exile moves the permanent an effect targeted one way and records nothing about what moved it; there is no linked-object reference (CR 610.3) and no effect watching for a source's departure, so nothing an exile removes ever comes back |

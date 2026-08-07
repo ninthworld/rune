@@ -808,6 +808,24 @@ pub enum Effect {
         /// object's frame — the same controller and the same source permanent the
         /// enclosing effects resolve in.
         effects: Vec<Effect>,
+        /// What happens **instead**, when the offer is declined — the `unless` half of
+        /// `sacrifice it unless you pay {1}`. Empty for a plain `you may`, where
+        /// declining means nothing happens at all.
+        ///
+        /// It is the same effect list in the same frame, so the branch not taken costs
+        /// nothing to express: a card with a consequence and a card without one are one
+        /// shape with one field different.
+        ///
+        /// Its presence changes when the question is **asked**. A `you may pay` whose
+        /// cost the controller cannot afford is normally not posed at all — there is no
+        /// decision — but with a consequence attached there is still something to
+        /// happen, so the branch is taken rather than the effect skipped. A player who
+        /// cannot pay is not asked; they are told.
+        ///
+        /// It may not target. The offer's targets belong to the accepted branch
+        /// (CR 601.2c chose them for that effect), and a declined offer drops them.
+        #[serde(default)]
+        otherwise: Vec<Effect>,
     },
     /// **You get an emblem with** `abilities` (CR 114) — the planeswalker ultimate's
     /// verb, and the only way an [`Emblem`](crate::Emblem) is ever created.
@@ -1500,6 +1518,17 @@ pub enum Effect {
         /// What may be dealt to. One slot, chosen when the ability goes on the stack.
         target: TargetSpec,
     },
+    /// **Sacrifice this ability's own source** (CR 701.17) — the `sacrifice it` of a land
+    /// that asks for a toll on the way in.
+    ///
+    /// Self-referential, like [`Self::TapAttached`] beside it, and the counterpart of the
+    /// `sacrifice_this` *cost*: a cost is paid as an ability is activated, and this
+    /// happens in the middle of a resolution. It chooses nothing and asks nothing — the
+    /// permanent is named by the sentence, so there is no class and no decision — which
+    /// is exactly what separates it from [`Self::Sacrifice`].
+    ///
+    /// A source that has already left the battlefield sacrifices nothing.
+    SacrificeSelf,
     /// **Tap the permanent this ability's source is attached to** (CR 303.4) — the `tap
     /// enchanted creature` of an Aura that arrives holding its host down.
     ///

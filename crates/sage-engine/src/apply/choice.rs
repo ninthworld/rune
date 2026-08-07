@@ -329,14 +329,16 @@ pub(crate) fn apply_answer_confirm(state: &mut GameState, accept: bool, db: &Car
         return;
     };
     let mut owed = None;
-    if let Some(accepted) = taken {
-        let mut effects = accepted.effects;
+    if let Some(mut taken) = taken {
+        let mut effects = taken.effects;
         effects.append(&mut resume.effects);
         resume.effects = effects;
-        let mut targets = request.targets.clone();
-        targets.append(&mut resume.targets);
-        resume.targets = targets;
-        owed = accepted.payment;
+        // The branch's own targets, which is the offer's on an acceptance and none on a
+        // decline — an `unless` branch may not aim at anything (CR 601.2c chose the
+        // offer's targets for the effect it wraps).
+        taken.targets.append(&mut resume.targets);
+        resume.targets = taken.targets;
+        owed = taken.payment;
     }
     // The payment was established as answerable before the acceptance was recorded, so
     // `pose_choices` queues it; the `else` is the honest handling of a question that

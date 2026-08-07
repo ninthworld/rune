@@ -552,7 +552,8 @@ pub(crate) fn apply_targeted_effect(
         // object; the ability it creates is what aims at one.
         | Effect::CreateReflexiveTrigger { .. }
         // Self-referential: applied by [`apply_effect`], never aimed.
-        | Effect::TapAttached => {}
+        | Effect::TapAttached
+        | Effect::SacrificeSelf => {}
         // "Target player's graveyard": the targeting form of the same verb, routed here
         // for the reason a targeted mill is — the reference chose a seat, and this is
         // where a chosen seat arrives.

@@ -42,6 +42,14 @@ pub struct ConfirmRequest {
     /// the battlefield while the question sits owed, and an exclusion that quietly
     /// stopped excluding would let a creature eat itself to pump its own corpse.
     pub source: Option<crate::id::PermanentId>,
+    /// The effects applied **instead**, when the offer is declined — the `unless` half of
+    /// `sacrifice it unless you pay`. Empty for a plain `you may`, where declining is the
+    /// end of it.
+    ///
+    /// Carried on the request rather than left behind in the remainder for
+    /// [`Self::effects`]' reason: the two branches belong to the offer, and exactly one of
+    /// them is spliced onto the front of what is left.
+    pub otherwise: Vec<Effect>,
     /// The effects applied on acceptance, in order. They are spliced onto the front of
     /// the suspended remainder rather than applied here, so accepting resumes down
     /// exactly one code path and an accepted effect that poses a *further* choice
@@ -120,6 +128,33 @@ fn cost_is_payable_from_pool(
 /// A picked payment has no such gap. Tapping a land cannot conjure a creature to
 /// sacrifice or a card to discard, so "could they pay" and "can they pay" are one
 /// question there, asked of the payment's own candidate set.
+/// Whether `player` could pay `cost` right now, by any means available to them —
+/// including mana abilities they have not activated yet (CR 605.3a).
+///
+/// The half of [`cost_could_be_paid`] that asks about a cost rather than about a whole
+/// request, for the one caller that has the cost before the request exists: the resolution
+/// deciding whether `unless you pay` is a question at all.
+#[must_use]
+pub(crate) fn optional_cost_could_be_paid(
+    state: &GameState,
+    player: PlayerId,
+    cost: &OptionalCost,
+    db: &CardDatabase,
+) -> bool {
+    cost_could_be_paid(
+        state,
+        player,
+        &ConfirmRequest {
+            cost: Some(cost.clone()),
+            source: None,
+            effects: Vec::new(),
+            otherwise: Vec::new(),
+            targets: Vec::new(),
+        },
+        db,
+    )
+}
+
 pub(super) fn cost_could_be_paid(
     state: &GameState,
     player: PlayerId,
@@ -213,16 +248,20 @@ fn payment_is_available(
 /// An accepted offer: the effects to splice onto the front of the suspended remainder,
 /// and the payment the acceptance has not made yet.
 pub(crate) struct Accepted {
-    /// The wrapped effects, in printed order.
+    /// The branch that was taken, in printed order — the wrapped effects on an
+    /// acceptance, the `unless` effects on a decline that has one.
     pub effects: Vec<Effect>,
+    /// The targets that branch carries. The accepted branch takes the offer's, chosen at
+    /// announcement (CR 601.2c); a declined one carries none, and may not target.
+    pub targets: Vec<Target>,
     /// The selection the cost still owes — a sacrifice or a discard — or `None` when the
     /// cost was mana (already charged) or there was no cost. The caller poses it and
     /// hangs the remainder behind it, so the payment happens before the effects it bought.
     pub payment: Option<(PlayerId, ChoiceQuestion)>,
 }
 
-/// Answer the pending yes-or-no: hand the accepted effects back to be spliced onto the
-/// front of the suspended remainder, or `None` for a decline.
+/// Answer the pending yes-or-no: hand the branch that was taken back to be spliced onto
+/// the front of the suspended remainder, or `None` when nothing was.
 ///
 /// Charging for the acceptance happens here too, because the charge and the answer are
 /// one act — a `yes` that could not pay would be a `no` that had already moved cards.
@@ -242,7 +281,7 @@ pub(crate) fn take_confirmed_effects(
 ) -> Option<Accepted> {
     if !accept {
         state.record_event(GameEvent::OptionalDeclined { player: chooser });
-        return None;
+        return declined(request);
     }
     let payment = optional_payment_question(chooser, request);
     let paid = match (&request.cost, &payment) {
@@ -254,12 +293,29 @@ pub(crate) fn take_confirmed_effects(
     };
     if !paid {
         state.record_event(GameEvent::OptionalDeclined { player: chooser });
-        return None;
+        return declined(request);
     }
     state.record_event(GameEvent::OptionalApplied { player: chooser });
     Some(Accepted {
         effects: request.effects.clone(),
+        targets: request.targets.clone(),
         payment,
+    })
+}
+
+/// What a **declined** offer leaves behind: its `unless` branch, or nothing at all.
+///
+/// The branch carries no targets. The offer's targets were chosen for the effect it
+/// wraps (CR 601.2c) and go with it, so a declined offer drops them — an `unless` branch
+/// that could aim would be a second announcement nobody made.
+fn declined(request: &ConfirmRequest) -> Option<Accepted> {
+    if request.otherwise.is_empty() {
+        return None;
+    }
+    Some(Accepted {
+        effects: request.otherwise.clone(),
+        targets: Vec::new(),
+        payment: None,
     })
 }
 

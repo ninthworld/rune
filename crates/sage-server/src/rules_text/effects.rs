@@ -398,8 +398,22 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         // card", "you may sacrifice another creature. If you do, …" — because that is how
         // the condition is written on every card that has one, and running it together
         // with "and" would read as though both halves happened.
-        Effect::May { cost, effects } => {
+        Effect::May {
+            cost,
+            effects,
+            otherwise,
+        } => {
             let what = clauses(source, effects);
+            // With a consequence attached, the card prints it the other way round —
+            // "sacrifice it unless you pay {1}" — because the consequence is what
+            // happens and the payment is what avoids it. Cards that print the pair
+            // this way never also print a "if you do" half, and none of them targets.
+            if !otherwise.is_empty() {
+                let cost = cost
+                    .as_ref()
+                    .map_or_else(|| "you do".to_string(), optional_cost_phrase);
+                return format!("{} unless you {cost}", clauses(source, otherwise));
+            }
             match cost {
                 Some(cost) => format!("you may {}. If you do, {what}", optional_cost_phrase(cost)),
                 None => format!("you may {}", without_you(&what)),
@@ -729,6 +743,9 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 clauses("it", &trigger.effects),
             )
         }
+        // CR 701.17: the source names itself, and a card that has just told you what it
+        // is says "it" rather than repeating its own name.
+        Effect::SacrificeSelf => "sacrifice it".to_string(),
         // CR 303.4: the Aura chose its host at cast, so the sentence says which creature
         // without naming a target.
         Effect::TapAttached => "tap enchanted creature".to_string(),
