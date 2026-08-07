@@ -664,6 +664,10 @@ pub(crate) fn apply_effect(
         | Effect::Fight { .. }
         // And one slot per seat arrives with all of them, so it is a no-op here too.
         | Effect::SacrificeChosenPerPlayer { .. }
+        // Both counter-clearing verbs name what they clear in a slot, so both arrive with
+        // a chosen target and are applied there.
+        | Effect::RemoveAllCounters { .. }
+        | Effect::PlayerLosesAllCounters { .. }
         | Effect::Restrict { .. } => {}
         // X is taken **once, on resolution** (CR 608.2), from the board as it stands
         // then — a creature that dies afterwards does not take the life back. The count

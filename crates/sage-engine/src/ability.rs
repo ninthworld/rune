@@ -100,8 +100,26 @@ pub enum Ability {
     Triggered {
         /// The condition that causes this ability to trigger.
         event: TriggerCondition,
-        /// Effects produced when the triggered ability resolves.
+        /// Effects produced when the triggered ability resolves. Empty for a **modal**
+        /// ability, whose effects live in the mode that was chosen.
+        #[serde(default)]
         effects: Vec<Effect>,
+        /// The modes this ability chooses between as it is put onto the stack
+        /// (CR 603.3c) — `choose one —` on a trigger rather than on a spell.
+        ///
+        /// Empty for every ability that is not modal, which is nearly all of them, and an
+        /// ability with modes has no [`effects`](Self::Triggered::effects) of its own:
+        /// the two are alternatives, exactly as they are on a card
+        /// ([`CardData::spell_effects_for_mode`](crate::CardData::spell_effects_for_mode)).
+        ///
+        /// **The mode is chosen when the ability goes on the stack, not when it
+        /// resolves**, and that is observable rather than pedantic: an opponent responding
+        /// to this trigger can see which of the two it is doing. It travels the same road
+        /// a trigger's targets do — the ability arrives on the stack unanswered, its
+        /// controller answers before anyone gets priority, and the answer is recorded on
+        /// the stack object.
+        #[serde(default)]
+        modes: Vec<crate::card::SpellMode>,
     },
     /// A **self-replacement** (CR 614.1c): this permanent enters the battlefield
     /// **tapped** (e.g. a tapped dual land). Unlike a triggered ability it changes

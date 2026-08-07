@@ -101,6 +101,7 @@ fn dragon_enters(state: &GameState, db: &CardDatabase) -> GameState {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Player(PlayerId(1))],
         },
         db,

@@ -103,7 +103,7 @@ impl GameState {
     /// Returns whether any counter was actually placed. A caller that needs to know reads
     /// it; the rest ignore it, because a counter that was not placed is simply not there
     /// and every later question about it answers itself.
-    pub(crate) fn put_counters_on_permanent(
+    pub fn put_counters_on_permanent(
         &mut self,
         id: PermanentId,
         kind: super::CounterKind,

@@ -501,7 +501,7 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         StackObjectKind::Ability { .. } => (None, None),
     };
     let effects: Vec<Effect> = match &object.kind {
-        StackObjectKind::Ability { effects, .. } => effects.clone(),
+        kind @ StackObjectKind::Ability { .. } => kind.ability_effects(),
         StackObjectKind::Spell { card, .. } => spell_effects_of(db, card.card, announced_mode),
         // CR 707.2: a copy has the copiable values of what it copied, and rules text is
         // one of them — so a copy's effects are read from the copied card exactly as the

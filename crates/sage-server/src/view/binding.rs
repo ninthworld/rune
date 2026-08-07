@@ -274,8 +274,12 @@ pub(crate) fn bind_ability_targets(
         // Aiming a trigger (CR 603.3d) binds through the same per-slot candidate
         // path as a cast or an activation — the engine offers one target slot per
         // effect either way, so there is nothing trigger-specific about the mapping.
-        Action::ChooseTriggerTargets { ability, .. } => Some(Action::ChooseTriggerTargets {
+        // The mode comes from the offer, not from the answer: a modal trigger is
+        // advertised once per mode (CR 603.3c), so which action the client sent back is
+        // already which mode it chose.
+        Action::ChooseTriggerTargets { ability, mode, .. } => Some(Action::ChooseTriggerTargets {
             ability: *ability,
+            mode: *mode,
             targets: chosen,
         }),
         _ => None,

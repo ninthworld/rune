@@ -142,6 +142,8 @@ fn tap_ability_targeting(state: &mut GameState, source: PermanentId, target: Tar
             effects: vec![Effect::Tap {
                 target: TargetSpec::AnyCreature,
             }],
+            modes: Vec::new(),
+            mode: None,
         },
         targets: vec![target],
     });
@@ -298,6 +300,8 @@ fn issue_148_spell_on_stack_target_is_legal_only_while_the_spell_is_on_the_stack
             source: crate::stack::AbilitySource::Permanent(crate::id::PermanentId(1)),
             origin: AbilityOrigin::Activated,
             effects: vec![Effect::DrawCard { count: 1 }],
+            modes: Vec::new(),
+            mode: None,
         },
         targets: Vec::new(),
     });
@@ -425,6 +429,8 @@ fn issue_149_put_counters_ability_lands_on_its_target_cr_122() {
                 counter: CounterKind::PlusOnePlusOne,
                 count: 1,
             }],
+            modes: Vec::new(),
+            mode: None,
         },
         targets: vec![Target::Permanent(creature)],
     });

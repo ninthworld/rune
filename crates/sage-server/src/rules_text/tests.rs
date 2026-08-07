@@ -2128,3 +2128,16 @@ fn issue_706_a_trigger_with_one_slot_per_seat_names_the_seats_collectively() {
          puts it onto the battlefield if it's a permanent card."
     );
 }
+
+#[test]
+fn issue_706_a_modal_trigger_prints_its_bullets_under_the_trigger() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "suncleanser"),
+        "When Suncleanser enters the battlefield, choose one —\n\
+         • Remove all counters from target creature. It can't have counters put on it \
+         for as long as Suncleanser remains on the battlefield.\n\
+         • Target opponent loses all counters. That player can't get counters for as \
+         long as Suncleanser remains on the battlefield."
+    );
+}

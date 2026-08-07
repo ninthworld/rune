@@ -1696,6 +1696,52 @@ pub enum Effect {
         /// What each card becomes while it is face down.
         values: TokenData,
     },
+    /// **Remove all counters from the targeted permanent, and forbid it any more** for as
+    /// long as this effect's source remains on the battlefield — Suncleanser's first mode.
+    ///
+    /// Two halves of one sentence, and one effect rather than two because the second half
+    /// is not something that happens: it is a continuous effect the first half's
+    /// resolution creates (CR 611.2b), keyed to the same permanent and lasting as long as
+    /// the source does. Splitting them would mean a second target slot naming the same
+    /// object, which the card does not ask for.
+    ///
+    /// The prohibition is a
+    /// [`RuleModification::CannotHaveCountersPut`](crate::RuleModification), applied at
+    /// the one counter seam every road to a counter runs through — so it forbids a
+    /// `+1/+1` counter from a spell, from an activated ability, and from a state-based
+    /// action equally, without any of them knowing it exists.
+    RemoveAllCounters {
+        /// What may be aimed at.
+        target: TargetSpec,
+        /// Whether the permanent is also forbidden further counters for as long as the
+        /// source remains on the battlefield.
+        ///
+        /// A field rather than an assumption because the two sentences are separable on a
+        /// printed card: removing counters is a common effect and forbidding them is a
+        /// rare one, and an effect that only clears counters authors `false`.
+        #[serde(default)]
+        then_forbid: bool,
+    },
+    /// **The player this effect names loses all counters, and is forbidden any more** for
+    /// as long as the source remains on the battlefield — Suncleanser's second mode.
+    ///
+    /// The player-side twin of [`Self::RemoveAllCounters`], and identical in shape because
+    /// a player's counters and a permanent's are one mechanism: the same removal, the same
+    /// [`RuleModification::CannotHaveCountersPut`](crate::RuleModification), and the same
+    /// single seam enforcing it.
+    ///
+    /// Nothing in the bundled catalog gives a player a counter, so today both halves are
+    /// correct and inert: there is nothing to remove and nothing to forbid. That is a fact
+    /// about the catalog rather than about this effect — the day a card hands out a poison
+    /// counter, this stops it with no change here.
+    PlayerLosesAllCounters {
+        /// Whose counters — `target_opponent` on the one card that prints it.
+        player_ref: PlayerRef,
+        /// Whether that player is also forbidden further counters for as long as the
+        /// source remains on the battlefield.
+        #[serde(default)]
+        then_forbid: bool,
+    },
     /// **For each player, one chosen permanent that player controls is sacrificed** —
     /// and each player who lost one reveals the top card of their library and puts it
     /// onto the battlefield if it is a permanent card. Vaevictis Asmadi, the Dire's

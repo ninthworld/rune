@@ -422,6 +422,7 @@ fn issue_604_an_etb_trigger_can_pose_a_choice_to_a_seat_that_never_had_priority(
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Player(PlayerId(1))],
         },
         &db,

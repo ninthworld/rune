@@ -79,6 +79,7 @@ fn triggered_etb_draw_round_trips() {
         Ability::Triggered {
             event: TriggerCondition::SelfEntersBattlefield,
             effects: vec![Effect::DrawCard { count: 1 }],
+            modes: Vec::new(),
         }
     );
     assert!(!is_mana_ability(&ability));
@@ -96,6 +97,7 @@ fn issue_151_triggered_dies_draw_round_trips() {
         Ability::Triggered {
             event: TriggerCondition::SelfDies,
             effects: vec![Effect::DrawCard { count: 1 }],
+            modes: Vec::new(),
         }
     );
     assert!(!is_mana_ability(&ability));
@@ -120,6 +122,7 @@ fn issue_607_step_trigger_round_trips_with_its_step_and_scope() {
                 player_ref: PlayerRef::Controller,
                 amount: 1
             }],
+            modes: Vec::new(),
         }
     );
     assert!(!is_mana_ability(&ability));
@@ -192,6 +195,7 @@ fn issue_738_an_entry_colour_choice_round_trips_and_reads_back_by_name() {
                 player_ref: crate::ability::PlayerRef::Controller,
                 amount: 1,
             }],
+            modes: Vec::new(),
         }
     );
 }
@@ -780,6 +784,7 @@ fn the_attacks_trigger_authors_its_condition_as_a_bare_tag() {
                 player_ref: PlayerRef::Controller,
                 amount: 2
             }],
+            modes: Vec::new(),
         }
     );
 }

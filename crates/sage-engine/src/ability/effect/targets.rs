@@ -180,7 +180,10 @@ impl Effect {
             // trigger event rather than by a player (CR 603.7c) — but it is a slot, so the
             // CR 608.2b re-check applies to it like any other.
             | Effect::CopySpell { target, .. }
-            | Effect::ReturnToHand { target } => vec![TargetGroup::single(*target)],
+            | Effect::ReturnToHand { target }
+            // Clearing a permanent's counters names it in one slot; the prohibition that
+            // follows is about the same object and asks for nothing further.
+            | Effect::RemoveAllCounters { target, .. } => vec![TargetGroup::single(*target)],
             // A player-subject effect targets exactly when its reference does
             // (CR 115.1) — "target opponent loses 2 life" fills a slot, "each
             // opponent loses 2 life" fills none. One answer, from the reference.
@@ -204,6 +207,8 @@ impl Effect {
             | Effect::DiscardByAmount { player_ref, .. }
             | Effect::Sacrifice { player_ref, .. }
             | Effect::ExileGraveyard { player_ref }
+            // And clearing a player's names them the same way their graveyard is named.
+            | Effect::PlayerLosesAllCounters { player_ref, .. }
             // Digging through a library names its owner the same way emptying one does.
             | Effect::ExileFromLibraryUntil { player_ref, .. }
             // Emptying a library names its owner the same way a graveyard's does.

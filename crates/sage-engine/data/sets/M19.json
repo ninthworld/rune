@@ -190,6 +190,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "suncleanser",
+    "collector_number": "39",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "take_vengeance",
     "collector_number": "40",
     "rarity": "common"

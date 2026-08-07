@@ -351,6 +351,7 @@ mod tests {
             vec![Ability::Triggered {
                 event: crate::ability::TriggerCondition::SelfDies,
                 effects: vec![Effect::DrawCard { count: 1 }],
+                modes: Vec::new(),
             }]
         );
     }

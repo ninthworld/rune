@@ -134,6 +134,9 @@ pub(crate) fn delayed_triggers_fired(
                 effects: pending.trigger.effects.clone(),
                 // "That spell", fixed by the event rather than chosen (CR 603.7c).
                 targets: vec![Target::Spell(spell.id)],
+                // A delayed ability is never modal: the sentence that created it already
+                // said what it will do.
+                modes: Vec::new(),
             },
         ));
     }

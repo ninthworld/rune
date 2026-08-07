@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "functional_id": "suncleanser",
+  "name": "Suncleanser",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Cleric"
+  ],
+  "mana_cost": "{1}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 1,
+  "toughness": 4,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "modes": [
+        {
+          "effects": [
+            {
+              "kind": "remove_all_counters",
+              "target": "any_creature",
+              "then_forbid": true
+            }
+          ]
+        },
+        {
+          "effects": [
+            {
+              "kind": "player_loses_all_counters",
+              "player_ref": "target_opponent",
+              "then_forbid": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

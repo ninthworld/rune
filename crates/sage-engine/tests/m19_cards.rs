@@ -955,6 +955,7 @@ fn aim_pending_trigger(state: &GameState, db: &CardDatabase) -> GameState {
     let ability = pending_trigger_target_choice(state).expect("a trigger is waiting to be aimed");
     let requirement_form = Action::ChooseTriggerTargets {
         ability,
+        mode: None,
         targets: Vec::new(),
     };
     let targets: Vec<Target> = target_requirements(state, db, &requirement_form)
@@ -967,7 +968,11 @@ fn aim_pending_trigger(state: &GameState, db: &CardDatabase) -> GameState {
         .collect();
     let after = apply_action(
         state,
-        &Action::ChooseTriggerTargets { ability, targets },
+        &Action::ChooseTriggerTargets {
+            ability,
+            mode: None,
+            targets,
+        },
         db,
     );
     assert_ne!(&after, state, "the choice was rejected");
@@ -1006,6 +1011,7 @@ fn vampire_sovereign_is_aimed_by_its_controller_before_anyone_acts() {
         &db,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: Vec::new(),
         },
     );
@@ -1099,6 +1105,7 @@ fn skeleton_archer_finally_deals_its_damage() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![opponent],
         },
         &db,

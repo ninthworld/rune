@@ -230,6 +230,16 @@ pub enum Action {
         /// The stack object being aimed — a triggered ability owed targets, as
         /// reported by [`crate::pending_trigger_target_choice`].
         ability: crate::stack::StackId,
+        /// The **mode** chosen for a modal triggered ability (CR 603.3c), as an index into
+        /// its modes; `None` for every ability that is not modal.
+        ///
+        /// Answered by the same action as the targets, and it has to be: the mode is what
+        /// says how many target slots there are and what each may aim at, so the two
+        /// cannot be two questions in sequence without the first one's answer being
+        /// invisible to the second. That is the same ordering a modal *cast* has, where
+        /// mode and targets are both fields of [`Self::CastSpell`] (CR 601.2b before
+        /// CR 601.2c).
+        mode: Option<u8>,
         /// One target per slot the ability's effects declare, in that order; the same
         /// parameterized representation [`Self::ActivateAbility`] uses.
         targets: Vec<Target>,
@@ -685,8 +695,12 @@ impl Action {
                 targets: Vec::new(),
                 payment: Vec::new(),
             },
-            Action::ChooseTriggerTargets { ability, .. } => Action::ChooseTriggerTargets {
+            // The mode is part of the requirement form rather than cleared with the
+            // targets: a modal trigger is advertised once **per mode**, exactly as a modal
+            // cast is, because the slots differ between them.
+            Action::ChooseTriggerTargets { ability, mode, .. } => Action::ChooseTriggerTargets {
                 ability: *ability,
+                mode: *mode,
                 targets: Vec::new(),
             },
             // The mulligan keep's bottom selection is cleared the same way, so its

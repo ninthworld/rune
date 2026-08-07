@@ -154,6 +154,7 @@ fn salvager_of_secrets_takes_back_an_instant_or_sorcery_and_nothing_else() {
         &db,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: Vec::new(),
         },
     );
@@ -169,6 +170,7 @@ fn salvager_of_secrets_takes_back_an_instant_or_sorcery_and_nothing_else() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Card(sorcery.id)],
         },
         &db,

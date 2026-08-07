@@ -480,6 +480,7 @@ fn cavalry_drillmaster_pumps_and_grants_first_strike_to_one_creature() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(ogre)],
         },
         &db,

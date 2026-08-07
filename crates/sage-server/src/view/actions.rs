@@ -261,9 +261,9 @@ fn valid_action_view(
         // to aim it (CR 603.3d). Labeled with the ability's own sentence so the
         // player is choosing for something they can read, and subject-bound to its
         // source permanent so the board highlights what is asking.
-        Action::ChooseTriggerTargets { ability, .. } => (
+        Action::ChooseTriggerTargets { ability, mode, .. } => (
             "choose_targets".to_string(),
-            trigger_label(state, db, *ability),
+            trigger_label(state, db, *ability, *mode),
             trigger_subject(state, *ability),
             ability_requirements(state, db, action),
         ),

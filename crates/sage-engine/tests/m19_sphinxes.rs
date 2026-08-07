@@ -125,6 +125,7 @@ fn riddlemaster_sphinx_aims_first_and_asks_second() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(mine)],
         },
         &db,
@@ -139,6 +140,7 @@ fn riddlemaster_sphinx_aims_first_and_asks_second() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(victim)],
         },
         &db,
@@ -175,6 +177,7 @@ fn riddlemaster_sphinx_may_decline_after_aiming() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(victim)],
         },
         &db,

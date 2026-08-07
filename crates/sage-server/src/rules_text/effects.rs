@@ -145,6 +145,37 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 sacrifice
             }
         }
+        // Two sentences on the printed card, and two here: the removal, then the
+        // prohibition that outlives it. `for as long as` names the source's stay on the
+        // battlefield, which is what the duration measures.
+        Effect::RemoveAllCounters {
+            target,
+            then_forbid,
+        } => {
+            let removal = format!("remove all counters from {}", target_noun(*target));
+            if *then_forbid {
+                format!(
+                    "{removal}. It can't have counters put on it for as long as \
+                     {source} remains on the battlefield"
+                )
+            } else {
+                removal
+            }
+        }
+        Effect::PlayerLosesAllCounters {
+            player_ref,
+            then_forbid,
+        } => {
+            let removal = format!("{} all counters", conjugate(*player_ref, "lose"));
+            if *then_forbid {
+                format!(
+                    "{removal}. That player can't get counters for as long as \
+                     {source} remains on the battlefield"
+                )
+            } else {
+                removal
+            }
+        }
         Effect::GainLife { player_ref, amount } => {
             format!("{} {amount} life", conjugate(*player_ref, "gain"))
         }

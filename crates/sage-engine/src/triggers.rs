@@ -48,6 +48,12 @@ pub struct Trigger {
     /// trigger has no cost to pay (CR 603.3). A **reflexive** ability writes the entering
     /// creature's power here, so a creature killed in response still deals its damage.
     pub paid: crate::stack::PaidCost,
+    /// The modes this ability chooses between as it is put onto the stack (CR 603.3c),
+    /// carried from its printed [`Ability::Triggered`](crate::Ability).
+    ///
+    /// Empty for every ability that is not modal — which is every delayed and every
+    /// reflexive one too, neither of which any printed card writes modally.
+    pub modes: Vec<crate::card::SpellMode>,
 }
 
 /// The object a trigger condition is being evaluated for, reduced to what the
@@ -341,8 +347,15 @@ pub fn pending_trigger_target_choice(state: &GameState) -> Option<StackId> {
             // groups' minimums rather than counting slots is what keeps an "up to N"
             // group — which is satisfied by nothing at all — from leaving a trigger
             // permanently unaimed and the game frozen on a question with no answer.
-            StackObjectKind::Ability { effects, .. } => {
-                crate::ability::minimum_targets(effects, state.players.len()) > object.targets.len()
+            kind @ StackObjectKind::Ability { .. } => {
+                // A **mode** is owed for the same reason and at the same moment as a
+                // target (CR 603.3c beside CR 603.3d), and answering both is one action:
+                // the mode is what says how many target slots there are, so a modal
+                // ability with no mode chosen declares none and would otherwise look
+                // fully answered.
+                kind.owes_mode()
+                    || crate::ability::minimum_targets(&kind.ability_effects(), state.players.len())
+                        > object.targets.len()
             }
             // A **copy of a spell** whose controller may choose new targets (CR 707.10c)
             // is in exactly the same position as an unaimed trigger: it is on the stack,
@@ -403,7 +416,12 @@ fn collect_from(
         if crate::ability::is_hand_ability(&ability) != watcher.is_hand_card() {
             continue;
         }
-        if let Ability::Triggered { event, effects } = ability {
+        if let Ability::Triggered {
+            event,
+            effects,
+            modes,
+        } = ability
+        {
             // A condition reports *how many times* it was met, not whether: an ability
             // watching the rest of the board sees one event per qualifying object, and
             // two creatures dying at once must trigger it twice (CR 603.2). The
@@ -432,6 +450,10 @@ fn collect_from(
                     // A printed trigger names nothing yet: its controller aims it once it
                     // is on the stack (CR 603.3d). The exception is the one above.
                     targets: named.get(index).map_or_else(Vec::new, |named| vec![*named]),
+                    // And chooses nothing yet either, for the same reason and at the same
+                    // moment: a modal trigger's mode is chosen as it goes on the stack
+                    // (CR 603.3c), by the same player, before anyone else acts.
+                    modes: modes.clone(),
                 });
             }
         }

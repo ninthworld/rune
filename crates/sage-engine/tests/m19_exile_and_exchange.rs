@@ -97,6 +97,7 @@ fn cage(state: &GameState, db: &CardDatabase, victim: PermanentId) -> (GameState
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(victim)],
         },
         db,

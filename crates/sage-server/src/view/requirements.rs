@@ -425,24 +425,40 @@ pub(crate) fn graveyard_ability_label(
 /// The label for aiming a triggered ability: the ability's own sentence, drawn from
 /// the effects it carries on the stack ([`effects_description`]) — the same words the
 /// stack entry shows, so the prompt and the stack cannot describe it differently.
-pub(crate) fn trigger_label(state: &GameState, db: &CardDatabase, ability: StackId) -> String {
+pub(crate) fn trigger_label(
+    state: &GameState,
+    db: &CardDatabase,
+    ability: StackId,
+    mode: Option<u8>,
+) -> String {
     state
         .stack
         .iter()
         .find(|o| o.id == ability)
         .and_then(|o| match &o.kind {
             StackObjectKind::Ability {
-                source, effects, ..
-            } => Some(effects_description(
-                &source
+                source,
+                effects,
+                modes,
+                ..
+            } => {
+                let name = source
                     .permanent()
                     .and_then(|id| state.battlefield.iter().find(|p| p.id == id))
                     .map_or_else(
                         || "This ability's source".to_string(),
                         |p| permanent_name(state, p, db),
-                    ),
-                effects,
-            )),
+                    );
+                // A **modal** trigger is advertised once per mode, so each offer is
+                // labelled with the mode it would take rather than with the ability they
+                // share — the two rows are the choice, and two identical labels would be
+                // no choice at all (CR 603.3c).
+                let chosen = mode.and_then(|index| modes.get(usize::from(index)));
+                Some(match chosen {
+                    Some(chosen) => crate::rules_text::mode_text(&name, chosen),
+                    None => effects_description(&name, effects),
+                })
+            }
             // A copy of a spell being re-aimed (CR 707.10c) is labelled by the spell it
             // copies, which is exactly what a player is choosing targets for.
             StackObjectKind::SpellCopy { card, .. } => {

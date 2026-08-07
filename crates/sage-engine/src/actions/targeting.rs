@@ -115,12 +115,25 @@ pub(crate) fn action_target_groups(
         // A trigger's slots are the target groups of the effects it carries on the
         // stack — read from the object itself, since a triggered ability's effects
         // were copied there when it triggered and are what will resolve.
-        Action::ChooseTriggerTargets { ability, .. } => state
+        Action::ChooseTriggerTargets {
+            ability,
+            mode: chosen,
+            ..
+        } => state
             .stack
             .iter()
             .find(|o| o.id == *ability)
             .map(|o| match &o.kind {
-                crate::stack::StackObjectKind::Ability { effects, .. } => effects
+                // A **modal** ability's slots are the ones the mode *this action names*
+                // declares — not the one the stack object holds, which is still unanswered
+                // while this action is being judged. The mode and the targets are one
+                // answer, so the mode has to be read from the answer.
+                kind @ crate::stack::StackObjectKind::Ability { .. } if kind.owes_mode() => chosen
+                    .map_or_else(Vec::new, |index| {
+                        mode_target_groups(state, db, *ability, index)
+                    }),
+                kind @ crate::stack::StackObjectKind::Ability { .. } => kind
+                    .ability_effects()
                     .iter()
                     .flat_map(|effect| effect.target_groups(state.players.len()))
                     .collect(),
@@ -139,6 +152,40 @@ pub(crate) fn action_target_groups(
             .unwrap_or_default(),
         _ => Vec::new(),
     }
+}
+
+/// The [`TargetGroup`]s a **modal** triggered ability declares under `mode` — the slots
+/// that mode's effects would ask for, read without the mode having been chosen yet.
+///
+/// The trigger counterpart of
+/// [`CardData::cast_target_groups`](crate::CardData::cast_target_groups) taking a mode: a
+/// modal object declares no slots until one is picked, so the offer has to ask "and what
+/// would *this* mode target" for each in turn. Empty for an id that is not on the stack,
+/// is not an ability, or names a mode the ability does not have.
+pub(crate) fn mode_target_groups(
+    state: &GameState,
+    _db: &CardDatabase,
+    ability: crate::stack::StackId,
+    mode: u8,
+) -> Vec<TargetGroup> {
+    state
+        .stack
+        .iter()
+        .find(|object| object.id == ability)
+        .map(|object| match &object.kind {
+            crate::stack::StackObjectKind::Ability { modes, .. } => modes
+                .get(usize::from(mode))
+                .map(|chosen| {
+                    chosen
+                        .effects
+                        .iter()
+                        .flat_map(|effect| effect.target_groups(state.players.len()))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        })
+        .unwrap_or_default()
 }
 
 /// The player whose seat `action` is taken from, and therefore the frame of

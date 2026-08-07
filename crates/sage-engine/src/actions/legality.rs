@@ -296,11 +296,17 @@ fn targets_fill_groups(
     if chosen.len() < minimum || chosen.len() > maximum {
         return false;
     }
+    let counts = crate::ability::group_target_counts(groups, chosen);
+    // Every chosen target has to *belong* to a slot. `group_target_counts` pairs by kind
+    // and leaves a target no group could have named unpaired — which, without this, was
+    // silently accepted: the unpaired target filled no slice, so nothing ever checked it,
+    // and the count test above was satisfied by its mere presence. Aiming a
+    // creature-only slot at a player was legal and then did nothing on resolution.
+    if counts.iter().sum::<usize>() != chosen.len() {
+        return false;
+    }
     let mut rest = chosen;
-    for (group, take) in groups
-        .iter()
-        .zip(crate::ability::group_target_counts(groups, chosen))
-    {
+    for (group, take) in groups.iter().zip(counts) {
         let (slice, remaining) = rest.split_at(take.min(rest.len()));
         rest = remaining;
         if !all_unique(slice) {

@@ -91,8 +91,12 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
             crate::actions::apply_payment(&mut next, db, payment);
             apply_cast_spell(&mut next, *card, *mode, *x, targets, payment, db);
         }
-        Action::ChooseTriggerTargets { ability, targets } => {
-            apply_choose_trigger_targets(&mut next, *ability, targets);
+        Action::ChooseTriggerTargets {
+            ability,
+            mode,
+            targets,
+        } => {
+            apply_choose_trigger_targets(&mut next, *ability, *mode, targets);
         }
         Action::AnswerChoice { chosen } => apply_answer_choice(&mut next, chosen, db),
         Action::AnswerConfirm { accept } => apply_answer_confirm(&mut next, *accept, db),
@@ -161,6 +165,9 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
                 source_power: pending.source_power,
                 ..crate::PaidCost::default()
             },
+            // A reflexive ability is never modal (CR 603.11): it is the consequence of a
+            // choice already made, not a further one.
+            modes: Vec::new(),
         });
     }
     for trigger in collected {
@@ -210,6 +217,12 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
                 // `apply_activate_ability` (issue #579).
                 origin: AbilityOrigin::Triggered,
                 effects: trigger.effects,
+                // A **modal** trigger arrives with its modes and no answer, exactly as it
+                // arrives with target slots and nothing in them (CR 603.3c/603.3d). Both
+                // are answered by its controller before anyone gets priority, and both
+                // are "owed" purely by being unanswered — there is no flag either way.
+                modes: trigger.modes,
+                mode: None,
             },
             // A trigger arrives **unaimed** (CR 603.3d): the game put it here, so its
             // controller has had no chance to choose. When it declares target slots,

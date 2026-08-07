@@ -214,6 +214,7 @@ fn issue_706_each_player_sacrifices_the_permanent_chosen_for_them() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(mine), Target::Permanent(theirs)],
         },
         &db,
@@ -255,6 +256,7 @@ fn issue_706_a_slot_can_only_name_its_own_seats_permanents() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(theirs), Target::Permanent(theirs)],
         },
         &db,
@@ -269,6 +271,7 @@ fn issue_706_a_slot_can_only_name_its_own_seats_permanents() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(mine), Target::Permanent(theirs)],
         },
         &db,
@@ -297,6 +300,7 @@ fn issue_706_a_target_lost_in_response_does_not_spare_the_others() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(mine), Target::Permanent(theirs)],
         },
         &db,
@@ -343,6 +347,7 @@ fn issue_706_a_revealed_permanent_card_replaces_what_was_sacrificed() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(mine), Target::Permanent(theirs)],
         },
         &db,
@@ -388,6 +393,7 @@ fn issue_706_a_revealed_nonpermanent_card_stays_on_top() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(mine), Target::Permanent(theirs)],
         },
         &db,

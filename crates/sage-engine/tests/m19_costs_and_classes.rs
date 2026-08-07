@@ -328,6 +328,7 @@ fn meteor_golem_can_only_aim_at_a_nonland_permanent_an_opponent_controls() {
         &db,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: Vec::new(),
         },
     );
@@ -348,6 +349,7 @@ fn meteor_golem_can_only_aim_at_a_nonland_permanent_an_opponent_controls() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(their_creature)],
         },
         &db,
@@ -397,6 +399,7 @@ fn aethershield_artificer_shields_only_an_artifact_creature_you_control() {
         &db,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: Vec::new(),
         },
     );

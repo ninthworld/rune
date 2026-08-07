@@ -731,6 +731,54 @@ pub(crate) fn apply_targeted_effect(
                 }
             }
         }
+        // Clear the targeted permanent's counters, and — when the card says so — forbid it
+        // any more for as long as this ability's source is on the battlefield (CR 611.2b).
+        //
+        // The removal is unconditional: the prohibition is about counters being *put on*,
+        // so a permanent already under one still loses what it has.
+        Effect::RemoveAllCounters { then_forbid, .. } => {
+            if let Target::Permanent(id) = target {
+                if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
+                    perm.counters.clear();
+                }
+                if *then_forbid {
+                    if let Some(from) = source {
+                        state.static_effects.push(StaticEffect {
+                            // Keyed to the **source**, not to the permanent it is about:
+                            // `for as long as this creature remains on the battlefield` is
+                            // a duration measured by the source, and the state-based-action
+                            // loop ends the effect by finding the source gone.
+                            source: from.0,
+                            affects: EffectAffects::SpecificPermanent(id),
+                            modification: Modification::ModifyRule(
+                                crate::card::RuleModification::CannotHaveCountersPut,
+                            ),
+                            duration: Duration::WhileOnBattlefield,
+                        });
+                    }
+                }
+            }
+        }
+        // The player-side twin, aimed at a seat rather than at an object.
+        Effect::PlayerLosesAllCounters { then_forbid, .. } => {
+            if let Target::Player(seat) = target {
+                if let Some(player) = state.players.get_mut(seat.0) {
+                    player.counters.clear();
+                }
+                if *then_forbid {
+                    if let Some(from) = source {
+                        state.static_effects.push(StaticEffect {
+                            source: from.0,
+                            affects: EffectAffects::SpecificPlayer(seat),
+                            modification: Modification::ModifyRule(
+                                crate::card::RuleModification::CannotHaveCountersPut,
+                            ),
+                            duration: Duration::WhileOnBattlefield,
+                        });
+                    }
+                }
+            }
+        }
         // A fight declares two target groups, so the resolve path routes it to
         // [`apply_multi_target_effect`] with both of its targets at once; one target on
         // its own says nothing about which slot it filled, so this arm stays empty.
