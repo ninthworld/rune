@@ -749,6 +749,31 @@ pub(crate) fn apply_effects_with_targets(
             continue;
         }
 
+        // CR 608.2: `sacrifice it unless you pay {1}` with no way at all to pay is not a
+        // decision, and posing it would be asking a question whose only answer is no. The
+        // consequence is spliced in front of what is left instead — the same road a
+        // conditional's branch takes, so the branch that happens travels through the same
+        // machinery whether a player chose it or the board did.
+        //
+        // "No way at all" is asked of the *potential* pool (untapped lands included),
+        // because a player owing this question may still activate mana abilities
+        // (CR 605.3a). An offer they could pay by tapping something is a real offer.
+        if let Effect::May {
+            cost: Some(cost),
+            otherwise,
+            ..
+        } = &effect
+        {
+            if !otherwise.is_empty()
+                && !crate::choice::optional_cost_could_be_paid(state, controller, cost, db)
+            {
+                for nested in otherwise.iter().rev() {
+                    queue.push_front(nested.clone());
+                }
+                continue;
+            }
+        }
+
         // An effect's groups take as many stored targets as the announcement gave them
         // (CR 601.2c) — no group for a class-subject effect, one for nearly every
         // targeting one, and two for an effect whose slots do not share a spec.

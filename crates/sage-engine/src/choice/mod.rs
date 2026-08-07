@@ -45,6 +45,7 @@ mod permanents;
 mod posing;
 
 use optional::cost_could_be_paid;
+pub(crate) use optional::optional_cost_could_be_paid;
 pub(crate) use optional::take_confirmed_effects;
 pub use optional::{confirm_is_payable, ConfirmRequest};
 pub(crate) use outcome::{

@@ -1125,6 +1125,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "rupture_spire",
+    "collector_number": "255",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "stone_quarry",
     "collector_number": "256",
     "rarity": "common"

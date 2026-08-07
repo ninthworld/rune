@@ -208,6 +208,14 @@ pub(crate) fn apply_effect(
         // Aimed at a chosen permanent, so it is applied through [`apply_targeted_effect`]
         // and this arm is never the one that runs it.
         Effect::SelfDealsDamage { .. } => {}
+        // CR 701.17: the source itself, through the one battlefield→graveyard seam a
+        // death takes — so a sacrifice fires the dies triggers and logs the death exactly
+        // as any other does. A source that has already left sacrifices nothing.
+        Effect::SacrificeSelf => {
+            if let Some(id) = permanent_source {
+                state.move_permanent_to_graveyard(id);
+            }
+        }
         // CR 303.4: the permanent this Aura is on, which it chose when it was cast. A
         // source that is attached to nothing — or that has left — taps nothing.
         Effect::TapAttached => {

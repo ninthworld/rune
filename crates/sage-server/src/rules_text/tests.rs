@@ -1845,3 +1845,15 @@ fn issue_706_an_aura_that_taps_its_host_and_keeps_it_there() {
          creature doesn't untap during its controller's untap step.\nEnchant creature."
     );
 }
+
+#[test]
+fn issue_706_a_toll_reads_as_the_consequence_and_the_way_out_of_it() {
+    let db = bundled();
+    // The card prints the consequence first and the payment as the way to avoid it,
+    // which is the other order from "you may pay {1}. If you do, …".
+    assert_eq!(
+        text_of(&db, "rupture_spire"),
+        "Rupture Spire enters the battlefield tapped.\nWhen Rupture Spire enters the \
+         battlefield, sacrifice it unless you pay {1}.\n{T}: Add one mana of any color."
+    );
+}

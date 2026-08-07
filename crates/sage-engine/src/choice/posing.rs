@@ -421,12 +421,17 @@ pub(crate) fn choices_for_effect(
         }
         // The one question the *controller* always answers, whoever else the ability
         // names: an optional effect is theirs to take or leave (CR 608.2).
-        Effect::May { cost, effects } => Some(vec![(
+        Effect::May {
+            cost,
+            effects,
+            otherwise,
+        } => Some(vec![(
             controller,
             ChoiceQuestion::Confirm(ConfirmRequest {
                 cost: cost.clone(),
                 source: source_permanent,
                 effects: effects.clone(),
+                otherwise: otherwise.clone(),
                 targets: targets.to_vec(),
             }),
         )]),

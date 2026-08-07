@@ -57,7 +57,7 @@
   },
   {
     "name": "Effects that act on a player unless that player pays",
-    "blocker": "the one cost an effect asks for mid-resolution belongs to an optional effect, it is posed to the asking ability's own controller and never to a player the effect merely names, and declining splices nothing onto the remainder — the game continues exactly as if the effect were absent; no effect is reached because a payment was refused"
+    "blocker": "the one cost an effect asks for mid-resolution belongs to an optional effect and is posed to the asking ability's own controller, never to a player the effect merely names; declining may now splice a consequence of its own onto the remainder — `sacrifice it unless you pay {1}` — but only the controller is ever the one asked, so an effect that acts on an *opponent* unless that opponent pays is unwritable"
   },
   {
     "name": "Effects acting on the controller of a permanent the same resolution chose",

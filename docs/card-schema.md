@@ -683,6 +683,35 @@ name every opponent. `each_player` is a variant of its own rather than a flag on
 symmetric sweeper hits its own caster. `gain_life`, `lose_life`, and `mill` all take a reference, so both
 shapes exist for each without any of them restating the fizzle rule.
 
+### `unless you pay` — an optional effect with a consequence
+
+`may` takes an `otherwise` branch: what happens **instead** when the offer is declined.
+
+```json
+{ "kind": "may", "cost": { "kind": "mana", "mana": "{1}" }, "effects": [],
+  "otherwise": [ { "kind": "sacrifice_self" } ] }
+```
+
+That is `sacrifice it unless you pay {1}` — the consequence is what happens, and the
+payment is the way to avoid it, which is why the generated sentence prints them in that
+order rather than as "you may pay {1}. If you do, …".
+
+Its presence changes **when the question is asked**. A `you may pay` whose cost the
+controller cannot afford is normally not posed at all — there is no decision — but with a
+consequence attached there is still something to happen, so the branch is taken instead
+and the resolution moves on. A player who cannot pay is not asked; they are told.
+
+"Cannot afford" is asked of the *potential* pool, not the floating one: a player owing this
+question may still activate mana abilities (CR 605.3a), so a toll payable by tapping a land
+is a real question and is posed.
+
+The `otherwise` branch **may not target**. The offer's targets were chosen at announcement
+for the effect it wraps (CR 601.2c), and a declined offer drops them.
+
+`sacrifice_self` is the effect beside it: the source sacrifices itself, through the same
+battlefield-to-graveyard seam a death takes, so dies triggers fire and the death is logged
+exactly as any other. It is the resolution-time counterpart of the `sacrifice_this` *cost*.
+
 ### An attachment's own sentence about its host
 
 An `attachment` block already carries the grants a card prints most often — `power`,
