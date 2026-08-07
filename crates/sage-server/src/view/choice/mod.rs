@@ -450,7 +450,13 @@ fn choice_prompt_text(state: &GameState, request: &ChoiceRequest, min: u32, max:
     } else {
         format!("up to {max} {cards}")
     };
-    match request.outcome {
+    match &request.outcome {
+        // What they will be is worth saying, because the cards stop being what they are:
+        // a player choosing which to turn down is choosing what to lose sight of.
+        ChoiceOutcome::PutOntoBattlefieldFaceDown(values) => format!(
+            "Choose {how_many} to put onto the battlefield face down as {}",
+            crate::rules_text::face_down_noun(values)
+        ),
         ChoiceOutcome::Discard => {
             // Whose hand it is matters here and nowhere else: this is the one choice a
             // player can be asked to make about a zone that is not theirs.

@@ -678,10 +678,17 @@ pub enum ChoiceZone {
 /// The aftermath belongs to the *request* rather than to the answer because it happens
 /// whether or not anything was chosen: a search that finds nothing still shuffles
 /// (CR 701.19c), and a look that takes nothing still bottoms what it looked at.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ChoiceOutcome {
     /// The chosen cards go from the subject's hand to their graveyard (CR 701.8).
     Discard,
+    /// The chosen cards go from the subject's hand onto the battlefield **face down**
+    /// (CR 708.2), as whatever the effect that put them there says they are.
+    ///
+    /// The reason this enum is no longer `Copy`: what a face-down permanent *is* travels
+    /// with the question, because the card it came from says nothing about it — that is
+    /// the whole of being face down.
+    PutOntoBattlefieldFaceDown(Box<crate::token::TokenData>),
     /// The chosen cards go to the bottom of the subject's library in the order they
     /// were chosen (the first chosen ends up deepest); every looked-at card not chosen
     /// stays on top in the order it was already in. This is scry (CR 701.17).

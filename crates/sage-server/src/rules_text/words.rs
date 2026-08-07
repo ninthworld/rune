@@ -539,7 +539,36 @@ pub(super) fn restriction_predicate(restriction: &CombatRestriction) -> String {
 ///
 /// `tapped` is an adjective inside the phrase rather than a word before it, because
 /// that is where a card puts it: *create two **tapped** 1/1 white Cat creature tokens*.
-pub(super) fn token_noun(token: &TokenData, count: u32, tapped: bool) -> String {
+/// What a **face-down** permanent is, as the plural noun a card prints for it: `5/5
+/// artifact creatures`.
+///
+/// [`token_noun`]'s neighbour, and deliberately not the same function: a face-down card
+/// is not a token, so the word must not appear, and the sentence that carries it is about
+/// several cards at once rather than a count of objects being created.
+pub(crate) fn face_down_noun(values: &TokenData) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if let (Some(power), Some(toughness)) = (values.power, values.toughness) {
+        parts.push(format!("{power}/{toughness}"));
+    }
+    parts.extend(values.colors.iter().map(|color| color.word().to_string()));
+    parts.extend(values.subtypes.iter().cloned());
+    // The last type carries the plural, where a card puts it: "artifact creature**s**".
+    let types: Vec<String> = values
+        .types
+        .iter()
+        .map(|kind| kind.display().to_lowercase())
+        .collect();
+    for (index, kind) in types.iter().enumerate() {
+        if index + 1 == types.len() {
+            parts.push(format!("{kind}s"));
+        } else {
+            parts.push(kind.clone());
+        }
+    }
+    parts.join(" ")
+}
+
+pub(crate) fn token_noun(token: &TokenData, count: u32, tapped: bool) -> String {
     let mut parts: Vec<String> = Vec::new();
     if tapped {
         parts.push("tapped".to_string());

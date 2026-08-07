@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "functional_id": "tezzeret_cruel_machinist",
+  "name": "Tezzeret, Cruel Machinist",
+  "supertypes": [
+    "legendary"
+  ],
+  "types": [
+    "planeswalker"
+  ],
+  "subtypes": [
+    "Tezzeret"
+  ],
+  "mana_cost": "{4}{U}{U}",
+  "colors": [
+    "blue"
+  ],
+  "loyalty": 4,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": 1
+        }
+      ],
+      "effects": [
+        {
+          "kind": "draw_card",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": 0
+        }
+      ],
+      "effects": [
+        {
+          "kind": "animate",
+          "target": "any_artifact_you_control",
+          "types": [
+            "creature"
+          ],
+          "power": 5,
+          "toughness": 5,
+          "until_your_next_turn": true
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": -7
+        }
+      ],
+      "effects": [
+        {
+          "kind": "put_hand_onto_battlefield_face_down",
+          "values": {
+            "name": "",
+            "types": [
+              "artifact",
+              "creature"
+            ],
+            "subtypes": [],
+            "colors": [],
+            "power": 5,
+            "toughness": 5
+          }
+        }
+      ]
+    }
+  ]
+}

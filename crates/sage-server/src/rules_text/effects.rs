@@ -55,6 +55,13 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 damage_recipient(source, subject)
             )
         }
+        // Two sentences where the card prints two: what goes down, and what they are once
+        // they are down.
+        Effect::PutHandOntoBattlefieldFaceDown { values } => format!(
+            "put any number of cards from your hand onto the battlefield face down. \
+             They're {}",
+            face_down_noun(values)
+        ),
         Effect::Destroy { target, targets } => {
             format!("destroy {}", target_phrase(*target, *targets))
         }
@@ -858,6 +865,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             power,
             toughness,
             until_end_of_turn,
+            until_your_next_turn,
         } => {
             // Colour first, then subtype, then type — the order a card prints them in:
             // "a black Zombie", "an artifact creature".
@@ -879,7 +887,9 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 }
                 _ => String::new(),
             };
-            let how_long = if *until_end_of_turn {
+            let how_long = if *until_your_next_turn {
+                " until your next turn".to_string()
+            } else if *until_end_of_turn {
                 " until end of turn".to_string()
             } else {
                 format!(" for as long as {source} remains on the battlefield")

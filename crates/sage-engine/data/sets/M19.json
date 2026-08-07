@@ -1390,6 +1390,11 @@
     "rarity": "mythic"
   },
   {
+    "functional_id": "tezzeret_cruel_machinist",
+    "collector_number": "286",
+    "rarity": "mythic"
+  },
+  {
     "functional_id": "riddlemaster_sphinx",
     "collector_number": "287",
     "rarity": "rare"

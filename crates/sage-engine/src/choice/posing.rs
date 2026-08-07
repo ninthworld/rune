@@ -279,6 +279,22 @@ pub(crate) fn choices_for_effect(
                     .collect(),
             )
         }
+        // "Any number of cards from your hand": the open form of a hand selection, so the
+        // floor is none and the ceiling is whatever the hand holds — which the bounds
+        // clamp, exactly as they clamp a search with no printed ceiling.
+        Effect::PutHandOntoBattlefieldFaceDown { values } => Some(vec![(
+            controller,
+            ChoiceQuestion::Cards(ChoiceRequest {
+                caused_by: Some(controller),
+                subject: controller,
+                zone: ChoiceZone::Hand,
+                filter: CardFilter::Any,
+                source_card,
+                min: 0,
+                max: u32::MAX,
+                outcome: ChoiceOutcome::PutOntoBattlefieldFaceDown(Box::new(values.clone())),
+            }),
+        )]),
         Effect::Scry { count } => Some(vec![(
             controller,
             ChoiceQuestion::Cards(ChoiceRequest {

@@ -27,7 +27,25 @@ pub(crate) fn apply_choice_outcome(
     chosen: &[CardInstanceId],
     db: &CardDatabase,
 ) -> ChoiceAftermath {
-    match request.outcome {
+    match &request.outcome {
+        ChoiceOutcome::PutOntoBattlefieldFaceDown(values) => {
+            for id in chosen {
+                let Some(player) = state.players.get_mut(request.subject.0) else {
+                    break;
+                };
+                let Some(pos) = player.hand.iter().position(|card| card.id == *id) else {
+                    continue;
+                };
+                let card = player.hand.remove(pos);
+                state.put_card_onto_battlefield_face_down(
+                    card,
+                    request.subject,
+                    values.as_ref().clone(),
+                    db,
+                );
+            }
+            ChoiceAftermath::default()
+        }
         ChoiceOutcome::Discard => {
             discard_chosen(state, request.subject, chosen, request.caused_by, db);
             ChoiceAftermath::default()
@@ -37,11 +55,11 @@ pub(crate) fn apply_choice_outcome(
             ChoiceAftermath::default()
         }
         ChoiceOutcome::TakeAndBottomRest { destination, order } => {
-            take_and_bottom_rest(state, request, chosen, destination, order, db)
+            take_and_bottom_rest(state, request, chosen, *destination, *order, db)
         }
         ChoiceOutcome::TakeAndShuffle(destination) => ChoiceAftermath {
             next: None,
-            entered: take_and_shuffle(state, request, chosen, destination, db),
+            entered: take_and_shuffle(state, request, chosen, *destination, db),
         },
     }
 }

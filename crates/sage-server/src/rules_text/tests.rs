@@ -2102,3 +2102,16 @@ fn issue_706_a_card_that_pays_with_itself_and_triggers_from_a_hand() {
          creature token with flying."
     );
 }
+
+#[test]
+fn issue_706_a_walker_that_turns_cards_down_states_what_they_become() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "tezzeret_cruel_machinist"),
+        "+1: Draw a card.\n\
+         0: Target artifact you control becomes a creature with base power and toughness \
+         5/5 until your next turn.\n\
+         −7: Put any number of cards from your hand onto the battlefield face down. \
+         They're 5/5 artifact creatures."
+    );
+}

@@ -294,6 +294,48 @@ impl GameState {
         )
     }
 
+    /// Put `card` onto the battlefield **face down** (CR 708.2), as `values`.
+    ///
+    /// [`Self::put_card_onto_battlefield`]'s sibling, and the same seam in every respect
+    /// that matters: the arrival runs through the CR 614 replacement layer and collects
+    /// its entry triggers like any other. What differs is what arrives — a permanent whose
+    /// characteristics are the ones the effect wrote down and whose *card* is still
+    /// underneath, which is why a face-down permanent that dies reaches a graveyard where
+    /// a token would cease to exist (CR 708.4, CR 111.7).
+    ///
+    /// The card's own abilities are not read: a face-down permanent has none, because the
+    /// characteristics it carries have none.
+    pub(crate) fn put_card_onto_battlefield_face_down(
+        &mut self,
+        card: crate::id::CardInstance,
+        controller: PlayerId,
+        values: crate::token::TokenData,
+        db: &CardDatabase,
+    ) -> Option<PermanentId> {
+        self.begin_battlefield_entry(
+            PendingEntry {
+                object: EnteringObject::FaceDownCard {
+                    card,
+                    values: Box::new(values),
+                },
+                face: crate::card::Face::Front,
+                controller,
+                tapped: false,
+                attacking: None,
+                attached_to: None,
+                counters: Vec::new(),
+                announced_x: None,
+                cast: false,
+                applied: Vec::new(),
+                chosen_color: None,
+                named_card: None,
+                copied: None,
+                counter_placed: false,
+            },
+            db,
+        )
+    }
+
     /// [`Self::put_card_onto_battlefield`], for a card arriving on a face other than its
     /// front (CR 712.4a) — `return it to the battlefield transformed`.
     ///
@@ -601,7 +643,7 @@ impl GameState {
         // per-object id is minted from the same counter to keep the identity fields
         // uniform (ADR 0015).
         let instance = match &entry.object {
-            EnteringObject::Card(card) => card.id,
+            EnteringObject::Card(card) | EnteringObject::FaceDownCard { card, .. } => card.id,
             EnteringObject::Token(_) => CardInstanceId(self.mint_id()),
         };
         let entered_turn = self.turn;
