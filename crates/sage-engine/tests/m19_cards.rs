@@ -1422,6 +1422,7 @@ fn guttersnipe_burns_each_opponent_when_its_controller_casts_an_instant() {
             GameEvent::DamageDealt {
                 target: DamageTarget::Player(PlayerId(1)),
                 amount: 2,
+                ..
             }
         )),
         "it is recorded as damage — the event life loss would never produce"

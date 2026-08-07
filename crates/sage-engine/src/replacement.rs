@@ -589,6 +589,15 @@ pub struct PendingDamage {
     /// combat-damage step, which includes a trampler's excess and a blocker's swing
     /// back. Damage from a spell, an ability, or a fight (CR 701.12) is not.
     pub combat: bool,
+    /// The **permanent that is dealing it** (CR 609.7), or `None` for damage whose source
+    /// is a spell — nothing on the battlefield dealt it.
+    ///
+    /// Carried for the reason [`Self::combat`] is: by the time the amount is being
+    /// marked, nothing about the recipient could say where it came from, and the one
+    /// thing that has to know is the trigger watching a creature deal damage. Deathtouch
+    /// and lifelink read the source through their own path, which predates this and is
+    /// unchanged.
+    pub source: Option<PermanentId>,
     /// Whether **no prevention shield may apply** to this damage (CR 615.1) — the
     /// `the damage can't be prevented` a spell declares about its own damage.
     ///
@@ -611,6 +620,7 @@ impl PendingDamage {
             recipient: DamageRecipient::Player(player),
             amount,
             combat: false,
+            source: None,
             unpreventable: false,
         }
     }
@@ -623,6 +633,7 @@ impl PendingDamage {
             recipient: DamageRecipient::Permanent(permanent),
             amount,
             combat: false,
+            source: None,
             unpreventable: false,
         }
     }
@@ -644,6 +655,15 @@ impl PendingDamage {
     #[must_use]
     pub fn unpreventable(mut self) -> Self {
         self.unpreventable = true;
+        self
+    }
+
+    /// The same damage, dealt **by** `source` (CR 609.7) — a modifier for the same reason
+    /// [`Self::in_combat`] is one: where the damage came from is one fact about it, and
+    /// every road that has an answer sets it the same way.
+    #[must_use]
+    pub fn from(mut self, source: Option<PermanentId>) -> Self {
+        self.source = source;
         self
     }
 }

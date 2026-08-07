@@ -704,6 +704,39 @@ A cost the controller cannot pay is never posed, exactly as `may`'s is not — a
 the question: mana abilities are the one thing CR 605.3a keeps available while a choice is
 owed, which is how a cost is paid in a step whose pool started empty.
 
+### Damage, a graveyard, and a discard — three events with no board trace
+
+`deals_damage` watches damage the source, or the permanent it is **attached to**, dealt
+(CR 609.7):
+
+```json
+{ "type": "triggered",
+  "event": { "deals_damage": { "by_attached": true, "combat_only": true, "to_player": true } },
+  "effects": [ { "kind": "may", "effects": [ { "kind": "draw_card", "count": 1 } ] } ] }
+```
+
+| Field | Means |
+| --- | --- |
+| `by_attached` | watch the **equipped/enchanted** creature rather than the source itself |
+| `combat_only` | only combat damage (CR 510.1) |
+| `to_player` | only damage to a player, never to a permanent |
+| `to_opponent` | only damage to an **opponent** |
+
+It reads the recorded damage event, which now carries **who dealt it** — engine-internal,
+since the wire's log says what was hit and for how much. That is the only place the dealer
+survives: by the time damage is marked, the recipient knows it was hit and nothing else.
+Prevented damage records no event (CR 615.1), so a shield stops these triggers with no
+clause about it anywhere.
+
+`cards_leave_graveyard` fires **once** however many left, because that is what `one or
+more` means. It is observed by diffing the graveyard, which catches every road out at once
+— a hand, the battlefield, exile, a library — rather than watching any one effect.
+
+`player_discards` counts **cards**, not discard effects, and the ability it fires arrives
+with **that player already named**: the event fixed them, so an effect with a
+`target_player` reference acts on the discarder and nobody is asked to choose. That is the
+same filled-slot road a delayed ability's "that spell" takes (CR 603.7c).
+
 ### Becoming the target (CR 603.6e)
 
 `self_becomes_target` fires when an object naming this permanent as a target is **put on

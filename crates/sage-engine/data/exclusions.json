@@ -12,12 +12,12 @@
     "blocker": "a permanent notices an object put on the stack naming it as a target (CR 603.6e), narrowed to spells alone and to an opponent's objects; a *player* is never the subject — nothing watches for \"whenever you become the target\" — and no trigger reads the targets of an object that was already on the stack"
   },
   {
-    "name": "Abilities that trigger on damage being dealt",
-    "blocker": "damage is dealt at one seam, and the only thing that reads it afterwards is the flag a permanent carries for whether it has dealt any yet — a question a continuous ability may ask about its own source and nothing else; no trigger condition reads that flag or the damage beside it, so nothing fires on a creature dealing damage or on a player being dealt it"
+    "name": "Abilities that trigger on damage being **received**",
+    "blocker": "a permanent notices damage *it* — or the permanent it is attached to — dealt (CR 609.7), narrowed to combat damage and to a player or an opponent, read from the recorded event that now carries its dealer; nothing watches damage being taken, so a creature that grows when it is dealt damage is unwritable, and no amount is read off the damage either way"
   },
   {
-    "name": "Abilities that trigger on a card leaving a graveyard",
-    "blocker": "the zone changes a trigger observes are a permanent entering the battlefield and a permanent leaving it for a graveyard, both read by diffing the battlefield; no condition names a zone, so a card moving out of a graveyard — or into or out of a hand, a library, or exile — is watched by nothing"
+    "name": "Abilities that trigger on a card entering or leaving a hand, a library, or exile",
+    "blocker": "cards leaving a graveyard are noticed by diffing it — every road out at once, counted as the one-or-more a card prints — and a permanent entering the battlefield or leaving it for a graveyard is read the same way; no condition names a hand, a library, or exile, so nothing watches a card moving into or out of one"
   },
   {
     "name": "Attack requirements",

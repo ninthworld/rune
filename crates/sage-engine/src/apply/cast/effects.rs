@@ -1043,7 +1043,7 @@ fn apply_class_damage(
                 // keeps `hasn't dealt damage yet` true — the flag follows the amount that
                 // actually landed rather than the amount that was aimed.
                 dealt |= state.deal_damage(
-                    resolution.damage(PendingDamage::to_player(seat, amount)),
+                    resolution.damage(PendingDamage::to_player(seat, amount).from(source)),
                     db,
                 ) > 0;
             }
@@ -1051,7 +1051,7 @@ fn apply_class_damage(
         DamageSubject::Permanents(affects) => {
             for id in permanents_in(state, affects, controller, resolution.paid.source_power, db) {
                 dealt |= state.deal_damage(
-                    resolution.damage(PendingDamage::to_permanent(id, amount)),
+                    resolution.damage(PendingDamage::to_permanent(id, amount).from(source)),
                     db,
                 ) > 0;
             }

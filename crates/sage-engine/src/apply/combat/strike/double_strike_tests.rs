@@ -297,7 +297,7 @@ fn issue_399_double_strike_regular_step_honors_order_over_survivors_only_cr_510_
         }],
         "the first-strike step spends all lethal on the first-ordered survivor"
     );
-    apply_combat_batch(&mut walk, first, &db);
+    apply_combat_batch(&mut walk, first, &[], &db);
     run_state_based_actions(&mut walk, &db); // CR 510.5: SBAs between the two steps
     assert!(!alive(&walk, o2), "o2 died in the first-strike step");
 
@@ -327,7 +327,7 @@ fn issue_399_double_strike_regular_step_honors_order_over_survivors_only_cr_510_
         )),
         "o1, last in the order, receives no attacker damage"
     );
-    apply_combat_batch(&mut walk, regular, &db);
+    apply_combat_batch(&mut walk, regular, &[], &db);
     run_state_based_actions(&mut walk, &db);
 
     assert!(
@@ -444,7 +444,7 @@ fn issue_399_double_strike_trample_carries_over_in_both_steps_cr_702_19e() {
         ],
         "first-strike step: lethal to each blocker in order, then 1 tramples over"
     );
-    apply_combat_batch(&mut walk, first, &db);
+    apply_combat_batch(&mut walk, first, &[], &db);
     run_state_based_actions(&mut walk, &db);
     assert!(
         !alive(&walk, boar_a) && !alive(&walk, boar_b),

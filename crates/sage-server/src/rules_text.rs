@@ -261,6 +261,43 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                 }
                 TriggerCondition::SelfDies => format!("When {source} dies"),
                 TriggerCondition::SelfAttacks => format!("Whenever {source} attacks"),
+                // CR 609.7. The subject is the source or its host, and the two narrowings
+                // trail it where the card prints them.
+                TriggerCondition::DealsDamage(observes) => {
+                    let who = if observes.by_attached {
+                        "equipped creature".to_string()
+                    } else {
+                        source.to_string()
+                    };
+                    let kind = if observes.combat_only {
+                        "combat damage"
+                    } else {
+                        "damage"
+                    };
+                    let whom = if observes.to_opponent {
+                        " to an opponent"
+                    } else if observes.to_player {
+                        " to a player"
+                    } else {
+                        ""
+                    };
+                    format!("Whenever {who} deals {kind}{whom}")
+                }
+                // "One or more" is the card's own words for a condition that fires once
+                // however many left.
+                TriggerCondition::CardsLeaveGraveyard(observes) => format!(
+                    "Whenever one or more {} leave {} graveyard",
+                    plural(&filter_noun(&observes.filter, true)),
+                    if observes.yours_only { "your" } else { "a" }
+                ),
+                TriggerCondition::PlayerDiscards(observes) => format!(
+                    "Whenever {} discards a card",
+                    if observes.opponents_only {
+                        "an opponent"
+                    } else {
+                        "a player"
+                    }
+                ),
                 // CR 603.6e. Both narrowings are printed where the card prints them:
                 // the class of object first, then whose it has to be.
                 TriggerCondition::SelfBecomesTarget(observes) => {

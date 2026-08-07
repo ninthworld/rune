@@ -177,6 +177,13 @@ pub enum GameEvent {
         target: DamageTarget,
         /// How much damage.
         amount: u32,
+        /// The permanent that dealt it (CR 609.7), or `None` for a spell's damage.
+        ///
+        /// **Engine-internal**: the wire's `damage_dealt` carries the target and the
+        /// amount, and the projection drops this. It exists because a trigger watching
+        /// *this creature deals damage* has nowhere else to read it from — by the time
+        /// the damage is marked, the recipient knows only that it was hit.
+        source: Option<PermanentId>,
     },
     /// A player drew cards; individual hidden cards are deliberately not recorded.
     CardsDrawn {

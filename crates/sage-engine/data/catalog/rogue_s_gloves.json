@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "functional_id": "rogue_s_gloves",
+  "name": "Rogue's Gloves",
+  "types": [
+    "artifact"
+  ],
+  "subtypes": [
+    "Equipment"
+  ],
+  "mana_cost": "{2}",
+  "colors": [],
+  "attachment": {
+    "kind": "equipment",
+    "attach_to": "any_creature_you_control",
+    "equip": "{2}"
+  },
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "deals_damage": {
+          "by_attached": true,
+          "combat_only": true,
+          "to_player": true
+        }
+      },
+      "effects": [
+        {
+          "kind": "may",
+          "effects": [
+            {
+              "kind": "draw_card",
+              "count": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

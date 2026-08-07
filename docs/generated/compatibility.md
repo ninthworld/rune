@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (267)
+## Supported cards (271)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -64,6 +64,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `declare_dominance` | Declare Dominance | functional definition |
 | `demon_of_catastrophes` | Demon of Catastrophes | functional definition |
 | `departed_deckhand` | Departed Deckhand | functional definition |
+| `desecrated_tomb` | Desecrated Tomb | functional definition |
 | `detection_tower` | Detection Tower | functional definition |
 | `diamond_mare` | Diamond Mare | functional definition |
 | `diregraf_ghoul` | Diregraf Ghoul | functional definition |
@@ -89,6 +90,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `essence_scatter` | Essence Scatter | functional definition |
 | `exclusion_mage` | Exclusion Mage | functional definition |
 | `explosive_apparatus` | Explosive Apparatus | functional definition |
+| `fell_specter` | Fell Specter | functional definition |
 | `field_creeper` | Field Creeper | functional definition |
 | `fiery_finish` | Fiery Finish | functional definition |
 | `fire_elemental` | Fire Elemental | functional definition |
@@ -204,6 +206,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `revitalize` | Revitalize | functional definition |
 | `rhox_oracle` | Rhox Oracle | functional definition |
 | `riddlemaster_sphinx` | Riddlemaster Sphinx | functional definition |
+| `rogue_s_gloves` | Rogue's Gloves | functional definition |
 | `root_snare` | Root Snare | functional definition |
 | `runic_armasaur` | Runic Armasaur | functional definition |
 | `rupture_spire` | Rupture Spire | functional definition |
@@ -243,6 +246,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `sun_sentinel` | Sun Sentinel | functional definition |
 | `supreme_phantom` | Supreme Phantom | functional definition |
 | `sure_strike` | Sure Strike | functional definition |
+| `surge_mare` | Surge Mare | functional definition |
 | `suspicious_bookcase` | Suspicious Bookcase | functional definition |
 | `swamp` | Swamp | functional definition |
 | `take_vengeance` | Take Vengeance | functional definition |
@@ -289,9 +293,9 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | --- | --- |
 | Abilities that trigger on a **loyalty** ability specifically | an observed activation is filtered by who activated it and by the source's card type and printed subtype — `an ability of a Sarkhan planeswalker` — but nothing asks whether the ability activated was a *loyalty* ability rather than any other (CR 606.1), so a walker's mana ability would satisfy the same watcher |
 | Abilities that trigger on a **player** becoming the target of a spell or ability | a permanent notices an object put on the stack naming it as a target (CR 603.6e), narrowed to spells alone and to an opponent's objects; a *player* is never the subject — nothing watches for "whenever you become the target" — and no trigger reads the targets of an object that was already on the stack |
-| Abilities that trigger on a card leaving a graveyard | the zone changes a trigger observes are a permanent entering the battlefield and a permanent leaving it for a graveyard, both read by diffing the battlefield; no condition names a zone, so a card moving out of a graveyard — or into or out of a hand, a library, or exile — is watched by nothing |
+| Abilities that trigger on a card entering or leaving a hand, a library, or exile | cards leaving a graveyard are noticed by diffing it — every road out at once, counted as the one-or-more a card prints — and a permanent entering the battlefield or leaving it for a graveyard is read the same way; no condition names a hand, a library, or exile, so nothing watches a card moving into or out of one |
 | Abilities that trigger on a mana ability being activated | the activation condition watches the objects a transition put on the stack, which a mana ability never reaches (CR 605.3a) |
-| Abilities that trigger on damage being dealt | damage is dealt at one seam, and the only thing that reads it afterwards is the flag a permanent carries for whether it has dealt any yet — a question a continuous ability may ask about its own source and nothing else; no trigger condition reads that flag or the damage beside it, so nothing fires on a creature dealing damage or on a player being dealt it |
+| Abilities that trigger on damage being **received** | a permanent notices damage *it* — or the permanent it is attached to — dealt (CR 609.7), narrowed to combat damage and to a player or an opponent, read from the recorded event that now carries its dealer; nothing watches damage being taken, so a creature that grows when it is dealt damage is unwritable, and no amount is read off the damage either way |
 | Abilities that trigger on someone else drawing a card | the draw trigger condition observes only its own controller's draws |
 | Attack requirements | a block requirement is maximised over the whole declaration (CR 509.1c), but nothing can force a creature into the attacker declaration (CR 508.1d) — and the one requirement modeled is that every creature able to block an attacker does so, never that one particular creature blocks |
 | Auras that enchant a player, or move between hosts | an Aura's enchant restriction is any class the target vocabulary names, so a creature and a land are both hosts, and its grant may be P/T, keywords, combat restrictions, or a written-out ability; but no attachment names a player, and once attached an Aura stays on the host it entered on — nothing moves one |
