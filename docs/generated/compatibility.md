@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (273)
+## Supported cards (274)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -154,6 +154,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `loxodon_line_breaker` | Loxodon Line Breaker | functional definition |
 | `luminous_bonds` | Luminous Bonds | functional definition |
 | `macabre_waltz` | Macabre Waltz | functional definition |
+| `magistrate_s_scepter` | Magistrate's Scepter | functional definition |
 | `make_a_stand` | Make a Stand | functional definition |
 | `manalith` | Manalith | functional definition |
 | `marauder_s_axe` | Marauder's Axe | functional definition |
@@ -287,7 +288,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `windreader_sphinx` | Windreader Sphinx | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (51)
+## Excluded (50)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
@@ -338,7 +339,6 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Shuffling anything but the effect's own source into a library | a resolution shuffles its own source in and nothing else: the destination is reachable — a targeted permanent can be put on top of a library — but the shuffle variant is self-referential, so a card that shuffles a permanent it targeted away is unwritable |
 | Static abilities that affect a class of the source's controller's own noncreature permanents, or a class of tokens | the continuous-effect selector names the source, one class of that controller's creatures, or permanents an opponent controls filtered by card type and by the card name the source was given as it entered; it cannot name a class of the controller's own noncreature permanents, and nothing anywhere filters a class by token-ness |
 | Static abilities that select by a keyword a permanent was granted | a printed static ability's class may be filtered by keyword, and the keyword is read off the **printed** face: the selector is evaluated from inside the CR 613 layer-6 fold that is computing the affected permanent's keyword set, so it cannot ask for the answer being produced — a creature *granted* defender falls outside a class that names defender, exactly as the printed-subtype read beside it already does |
-| Taking an extra turn | the turn structure hands the next turn to a player already owed one, but nothing puts a player on that list: no effect in the vocabulary reaches the turn order, and none skips a turn or a step either |
 | Target specs that name a blocker, or the planeswalker a source is attacking | a target spec may narrow to a creature that is **attacking** and, relative to the ability's own source, to the creatures of the player that source is attacking (CR 508.1a); nothing narrows to a creature that is *blocking*, nothing names the attacker a blocker is blocking or the blocker of an attacker, and the planeswalker a source is attacking is resolved to its controller rather than named as a target |
 | The CR 613.8 dependency rules | continuous effects are ordered by CR 613.7 timestamp alone; the layer-6 walk gates each source with that source's *stored* abilities — until-end-of-turn effects and the attachments on it — and never with another permanent's printed static ability, which is the one place the walk is cut so it cannot recurse, so a permanent silenced by a printed static ability still contributes its own |
 | The legend-rule choice among duplicates | CR 704.5j applies, but which copy survives is a deterministic policy (the newest) rather than the controller's choice |

@@ -854,6 +854,16 @@ again with nothing to clear.
 source is attached to, and **targets nothing**, because the Aura chose its host when it was
 cast (CR 601.2c).
 
+### Taking an extra turn (CR 720.1)
+
+```json
+{ "kind": "take_extra_turn", "player_ref": "controller" }
+```
+
+The turn is **queued**, not taken: the game finishes the turn it is in and the rotation
+hands the next one to whoever was named. Extra turns are taken last in, first out, which
+is what the queue already did — nothing about the rotation changed for this.
+
 ### Winning the game (CR 104.2b)
 
 `win_the_game` takes the same reference and every printed card fills it with `controller`:

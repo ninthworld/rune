@@ -180,10 +180,6 @@
     "blocker": "a target spec may narrow to a creature that is **attacking** and, relative to the ability's own source, to the creatures of the player that source is attacking (CR 508.1a); nothing narrows to a creature that is *blocking*, nothing names the attacker a blocker is blocking or the blocker of an attacker, and the planeswalker a source is attacking is resolved to its controller rather than named as a target"
   },
   {
-    "name": "Taking an extra turn",
-    "blocker": "the turn structure hands the next turn to a player already owed one, but nothing puts a player on that list: no effect in the vocabulary reaches the turn order, and none skips a turn or a step either"
-  },
-  {
     "name": "The CR 613.8 dependency rules",
     "blocker": "continuous effects are ordered by CR 613.7 timestamp alone; the layer-6 walk gates each source with that source's *stored* abilities — until-end-of-turn effects and the attachments on it — and never with another permanent's printed static ability, which is the one place the walk is cut so it cannot recurse, so a permanent silenced by a printed static ability still contributes its own"
   },

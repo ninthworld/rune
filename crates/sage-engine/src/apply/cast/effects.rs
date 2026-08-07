@@ -272,6 +272,14 @@ pub(crate) fn apply_effect(
                 state.change_life(seat, -i32::try_from(lost).unwrap_or(i32::MAX));
             }
         }
+        // CR 720.1: the named player takes an extra turn after this one. Queued rather
+        // than taken — the game finishes the turn it is in, and the rotation hands the
+        // next one over — and last in first out, which is what the queue already does.
+        Effect::TakeExtraTurn { player_ref } => {
+            for seat in non_targeting_subjects(state, *player_ref, controller) {
+                state.extra_turns.push(seat);
+            }
+        }
         // CR 104.2b: the referenced player wins the game, which the engine says by
         // making every other player in it lose (CR 104.2a — the survivor is the
         // winner). A subject who has already lost cannot win and is skipped, and a

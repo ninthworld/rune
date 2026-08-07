@@ -1115,6 +1115,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "magistrate_s_scepter",
+    "collector_number": "238",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "manalith",
     "collector_number": "239",
     "rarity": "common"

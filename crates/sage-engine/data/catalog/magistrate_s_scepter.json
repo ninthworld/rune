@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "functional_id": "magistrate_s_scepter",
+  "name": "Magistrate's Scepter",
+  "types": [
+    "artifact"
+  ],
+  "mana_cost": "{4}",
+  "colors": [],
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{4}"
+        },
+        {
+          "kind": "tap"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "put_counters_on_self",
+          "counter": "charge",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "tap"
+        },
+        {
+          "kind": "remove_counters",
+          "counter": "charge",
+          "count": 3
+        }
+      ],
+      "effects": [
+        {
+          "kind": "take_extra_turn",
+          "player_ref": "controller"
+        }
+      ]
+    }
+  ]
+}
