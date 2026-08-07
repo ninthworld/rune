@@ -524,7 +524,7 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         .iter()
         .zip(crate::ability::group_target_counts(
             &groups,
-            object.targets.len(),
+            &object.targets,
         ))
         .flat_map(|(group, count)| std::iter::repeat_n(group.spec, count))
         .collect();
@@ -796,16 +796,21 @@ pub(crate) fn apply_effects_with_targets(
         // targeting one, and two for an effect whose slots do not share a spec.
         let groups = effect.target_groups();
         let taken: Vec<Target> = {
-            // The remaining queue's groups still owe their minimums; whatever is left
-            // over belongs to this effect, up to its groups' summed maximum.
-            let later: usize = queue
+            // Which of the remaining targets were announced for *this* effect's groups —
+            // the same pairing the announcement and the fizzle check use, over the
+            // remaining effects rather than over the whole object. Reading it here rather
+            // than counting is what lets two variable-arity groups be told apart at all
+            // ([`crate::ability::group_target_counts`]).
+            let remaining: Vec<Target> = targets.iter().copied().collect();
+            let all: Vec<crate::ability::TargetGroup> = groups
                 .iter()
-                .flat_map(Effect::target_groups)
-                .map(|g| usize::from(g.min))
+                .copied()
+                .chain(queue.iter().flat_map(Effect::target_groups))
+                .collect();
+            let take: usize = crate::ability::group_target_counts(&all, &remaining)
+                .into_iter()
+                .take(groups.len())
                 .sum();
-            let available = targets.len().saturating_sub(later);
-            let capacity: usize = groups.iter().map(|g| usize::from(g.max)).sum();
-            let take = available.min(capacity);
             (0..take).filter_map(|_| targets.pop_front()).collect()
         };
 

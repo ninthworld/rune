@@ -481,6 +481,102 @@ pub enum Target {
     Spell(StackId),
 }
 
+/// What kind of object a [`Target`] names — the one structural fact about a target that
+/// never changes while it is chosen.
+///
+/// The pairing of an object's flat target list back onto the groups that were announced
+/// ([`group_target_counts`]) is done by this and nothing else, deliberately. Legality
+/// cannot be used for it: a target that has become illegal must still pair with the group
+/// it was chosen for, or the CR 608.2b fizzle check would be asking about the wrong slot.
+/// What a target *is* survives everything that could happen to it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TargetKind {
+    /// A seat.
+    Player,
+    /// A permanent on the battlefield.
+    Permanent,
+    /// A card in a zone that is not the battlefield.
+    Card,
+    /// An object on the stack.
+    Spell,
+}
+
+impl Target {
+    /// What kind of object this target names.
+    #[must_use]
+    pub fn kind(self) -> TargetKind {
+        match self {
+            Target::Player(_) => TargetKind::Player,
+            Target::Permanent(_) => TargetKind::Permanent,
+            Target::Card(_) => TargetKind::Card,
+            Target::Spell(_) => TargetKind::Spell,
+        }
+    }
+}
+
+impl TargetSpec {
+    /// Whether a target of `kind` could have been chosen for this spec.
+    ///
+    /// A structural question, not a legality one — "could this slot ever hold a
+    /// permanent", never "is this permanent a legal choice right now". Two specs name
+    /// **two** kinds apiece and are the reason this returns a predicate rather than one
+    /// kind: `any target` is CR 115.4's creature, player, or planeswalker, and `any player
+    /// or planeswalker` names its two outright.
+    ///
+    /// Exhaustive with no wildcard, so a new spec has to say what it names.
+    #[must_use]
+    pub fn names(self, kind: TargetKind) -> bool {
+        match self {
+            // The player specs, and the two that name a player *or* a permanent.
+            Self::AnyPlayer | Self::AnyOpponent => kind == TargetKind::Player,
+            Self::AnyPlayerOrPlaneswalker | Self::AnyTarget => {
+                matches!(kind, TargetKind::Player | TargetKind::Permanent)
+            }
+            // A card in a graveyard is the one spec that names a card rather than an
+            // object on the battlefield.
+            Self::CardInGraveyard { .. } => kind == TargetKind::Card,
+            // The two that name an object on the stack.
+            Self::SpellOnStack | Self::CreatureSpellOnStack => kind == TargetKind::Spell,
+            // Everything else names a permanent.
+            Self::AnyPermanent
+            | Self::AnyNonlandPermanent
+            | Self::AnyNonlandPermanentAnOpponentControls
+            | Self::AnyPermanentWithManaValue { .. }
+            | Self::AnyCreature
+            | Self::AnyColorlessCreature
+            | Self::AnyCreatureYouControl
+            | Self::AnyCreatureAnOpponentControls
+            | Self::AnotherCreatureYouControl
+            | Self::AnyCreatureWithFlying
+            | Self::AnyArtifactCreatureYouControl
+            | Self::AnyTappedCreature
+            | Self::AnotherAttackingCreature
+            | Self::AnyCreatureDefendingPlayerControls
+            | Self::AnyArtifact
+            | Self::AnyArtifactYouControl
+            | Self::AnyEnchantment
+            | Self::AnyArtifactOrEnchantment
+            | Self::AnyLand
+            | Self::AnyCreatureOrPlaneswalker
+            | Self::AnyArtifactEnchantmentOrCreatureWithFlying => kind == TargetKind::Permanent,
+        }
+    }
+
+    /// Whether this spec and `other` could ever name the same object — the test that
+    /// decides whether two variable-arity groups on one object can be told apart.
+    #[must_use]
+    pub fn overlaps(self, other: Self) -> bool {
+        [
+            TargetKind::Player,
+            TargetKind::Permanent,
+            TargetKind::Card,
+            TargetKind::Spell,
+        ]
+        .into_iter()
+        .any(|kind| self.names(kind) && other.names(kind))
+    }
+}
+
 /// The **fewest** targets a legal announcement of `effects` must choose (CR 601.2c) —
 /// the sum of every declared group's minimum.
 ///
@@ -510,30 +606,46 @@ pub fn maximum_targets(effects: &[Effect]) -> usize {
 /// in effect order — the pairing every path that walks stored targets alongside effects
 /// needs (announcement, the CR 608.2b resolution re-check, the legality gate).
 ///
-/// Fixed groups take exactly their size. The slack — the targets chosen beyond every
-/// group's minimum — all belongs to the **one** variable-arity group an object may
-/// declare, a limit the catalog validator enforces
-/// ([`Violation::TwoVariableTargetGroups`](crate::Violation)) precisely so this pairing
-/// is exact rather than a guess. With no variable group the slack is zero and every
-/// group takes its fixed size, which is what every object authored before "up to two
-/// target creatures" existed does.
+/// Each chosen target goes to the **first group that could have named it** and is not
+/// already full ([`TargetSpec::names`]). That is exact rather than a guess for the two
+/// shapes an object can have:
+///
+/// - one variable-arity group, however many fixed ones: the slack can only belong to the
+///   one group that has any, so kinds never have to be compared;
+/// - two variable groups whose specs name **different kinds** of object — `destroy up to
+///   two target creatures. Put up to two creature cards from graveyards onto the
+///   battlefield` — where a permanent can only be the first group's and a card can only
+///   be the second's.
+///
+/// Two variable groups that name the *same* kind would be genuinely ambiguous, and the
+/// catalog validator refuses them
+/// ([`Violation::TwoVariableTargetGroups`](crate::Violation)) for that reason and no
+/// other.
+///
+/// Pairing on kind rather than on legality is what makes this survive a resolution: a
+/// target that has become illegal must still pair with the group it was announced for, or
+/// the CR 608.2b re-check would be asking about the wrong slot.
 #[must_use]
-pub fn target_counts(effects: &[Effect], chosen: usize) -> Vec<usize> {
+pub fn target_counts(effects: &[Effect], chosen: &[Target]) -> Vec<usize> {
     let groups: Vec<TargetGroup> = effects.iter().flat_map(Effect::target_groups).collect();
     group_target_counts(&groups, chosen)
 }
 
 /// [`target_counts`] over groups a caller already has in hand.
 #[must_use]
-pub fn group_target_counts(groups: &[TargetGroup], chosen: usize) -> Vec<usize> {
-    let minimum: usize = groups.iter().map(|g| usize::from(g.min)).sum();
-    let mut slack = chosen.saturating_sub(minimum);
-    groups
-        .iter()
-        .map(|group| {
-            let extra = slack.min(usize::from(group.max) - usize::from(group.min));
-            slack -= extra;
-            usize::from(group.min) + extra
-        })
-        .collect()
+pub fn group_target_counts(groups: &[TargetGroup], chosen: &[Target]) -> Vec<usize> {
+    let mut counts = vec![0usize; groups.len()];
+    for target in chosen {
+        let kind = target.kind();
+        let slot = groups.iter().enumerate().find(|(index, group)| {
+            counts[*index] < usize::from(group.max) && group.spec.names(kind)
+        });
+        // A target no group could have named is left unpaired: it is one the announcement
+        // should never have accepted, and dropping it here is what keeps it from silently
+        // shifting every slot after it.
+        if let Some((index, _)) = slot {
+            counts[index] += 1;
+        }
+    }
+    counts
 }
