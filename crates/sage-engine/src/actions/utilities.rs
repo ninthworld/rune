@@ -410,6 +410,26 @@ pub(crate) fn cast_cost(
 /// (CR 202.3b), so a spell with `{X}` prices here at X = 0 — the same floor the offer
 /// gate uses, with each announceable value's own price enumerated by
 /// [`crate::x_options`].
+///
+/// **It does not take an `x`, and that is the answer rather than an omission**
+/// (issue #776). The question was whether this should be parameterised by an announced
+/// value, since every road that reads a cast's price comes through here. It should not:
+/// X is announced *as part of casting* (CR 601.2b), so at the moment each of these
+/// callers asks, no value exists to pass.
+///
+/// - The **offer** and the **legality gate** ask whether the spell is castable at all,
+///   which is the X = 0 floor — a caster who can afford more announces more, and a
+///   caster who cannot afford the floor cannot cast it at any value.
+/// - The **payment search** and the **charge** work from the announced action, which
+///   carries its own X, and price it through [`crate::x_options`] — the one place a
+///   value and a price are paired.
+/// - The **view** and the **pips** render the printed cost, which is what the card says.
+///
+/// So a value belongs to an *announcement*, and a price for one belongs to
+/// [`crate::x_options`]; this function answers the question that has no announcement
+/// behind it. What the player is *shown* while paying an announced X is a separate,
+/// still-open surface question — issue #776 item 5, in the client's §6.7 — and not a
+/// reason to widen this signature.
 #[must_use]
 pub fn total_cast_cost(
     state: &GameState,

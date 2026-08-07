@@ -31,13 +31,18 @@ use tokio_tungstenite::tungstenite::Message;
 
 use crate::{write_flush, write_str, ConfigError, SessionError, WsRead, WsWrite};
 
-/// Default seat count for a room created with `--create` but no `--seats`. The
-/// engine is two-player, so two seats is the natural default.
+/// Default seat count for a room created with `--create` but no `--seats`. A duel is
+/// the natural default, and it is the seat count [`DEFAULT_GAME_SETUP`] allows.
 const DEFAULT_SEATS: u8 = 2;
 
 /// Default game-setup id when `--game-setup` is not given. The catalogue of setups is
 /// the server's; it treats the id as opaque and validates it, so the CLI only needs a
 /// sensible placeholder here.
+///
+/// `standard_2p` seats **exactly two** (issue #707). `--seats` above two needs a format
+/// that seats them — `standard_ffa` for 3–4, `standard_multiplayer` for anything up to
+/// eight — and the server rejects the mismatch rather than quietly opening a room the
+/// format's name misdescribes.
 const DEFAULT_GAME_SETUP: &str = "standard_2p";
 
 /// What an `--agent`-mode connection should do about a room: create one with a
@@ -88,7 +93,8 @@ impl LobbyConfig {
     /// unit-tested without touching process globals.
     ///
     /// Flags: `--create` opens a room, `--seats <n>` (default 2) and `--game-setup
-    /// <id>` (default `standard_2p`) configure it; `--room <id>` joins one instead;
+    /// <id>` (default `standard_2p`, which seats exactly two — see
+    /// [`DEFAULT_GAME_SETUP`]) configure it; `--room <id>` joins one instead;
     /// `--deck <a,b,c>` submits a decklist; `--no-auto-ready` disables readying up
     /// automatically (the default is to ready once decked).
     ///

@@ -216,9 +216,25 @@ mod tests {
                 "ffa-4",
                 "standard_2p",
                 "standard_ffa",
+                "standard_multiplayer",
                 "starter-1v1"
             ]
         );
+
+        // Issue #707: the two duel ids advertise exactly two seats, and the one format
+        // that advertises the lobby's full 2–8 range is the one whose name does not
+        // promise a duel. A client reads the range off the catalog, so this is where the
+        // contradiction was visible to a player.
+        for id in ["1v1", "standard_2p"] {
+            let duel = find(id);
+            assert_eq!(
+                (duel.min_seats, duel.max_seats),
+                (2, 2),
+                "{id} seats a duel"
+            );
+        }
+        let multi = find("standard_multiplayer");
+        assert_eq!((multi.min_seats, multi.max_seats), (2, 8));
     }
 
     #[test]

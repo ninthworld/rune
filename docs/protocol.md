@@ -1325,6 +1325,18 @@ requires the setup id to exist in the server format registry, and rejects a seat
 outside the chosen format's own range (issue #349). Two-player formats and 3–4 seat
 free-for-all formats both start real games.
 
+**A format's name and its advertised seat range describe the same game** (issue #707). A
+`game_setup` naming a duel — `starter-1v1`, `standard_2p`, `1v1` — advertises `2..=2` and
+rejects a third seat; `standard_ffa` and `ffa-4` advertise `3..=4`; `commander` advertises
+`2..=4`; and the permissive catch-all that spans the lobby's whole `2..=8` plumbing is
+`standard_multiplayer`, named for what it seats. **Migration:** before #707 `standard_2p` and
+`1v1` both resolved to that permissive format and would open a room seating up to eight. A
+client that asks for more than two seats on either id is now rejected with
+`SeatCountForFormat` rather than silently opening a table its name misdescribes; the room it
+wanted is created by naming `standard_multiplayer`. A client reads every range off
+`CatalogView` and needs no change to keep working, because the ranges were always the
+catalog's to state.
+
 | `RoomConfig` field | Type | Meaning |
 | --- | --- | --- |
 | `seats` | `number` | Seat count, validated into `2..=8` and against the format's own range |

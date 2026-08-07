@@ -1477,6 +1477,13 @@ beside the words that say the same thing (§5.5).
 for the life of the table, and visible to everyone at it. A player must never have to ask whether
 this table lets an action be taken back.
 
+**Until the server carries it, undo reads as unavailable rather than as a rule that is on**
+(issue #704). `RoomConfig` has no undo field and the server has no rollback command, so the strip
+says `Undo unavailable` in the plain colour of a fact rather than the green of an allowed rule,
+and the creation dialog draws both answers unpressable with **neither** selected. The colours and
+the choice above are what this surface becomes the day #648 puts the fact on the wire — a client
+may state a table rule only when the table stated it first.
+
 **A seat is a card, and the seats tile the way the board's do** — at most four across, two on a
 phone. Each carries a ready dot, the player's name, a host badge where it applies, the deck, the
 state in words, and — on your own seat only — `Edit` and `Change`. Your seat is ringed the way the

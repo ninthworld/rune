@@ -15,7 +15,9 @@
  *
  * **Undo has nothing behind it.** §9.5 names it as a table rule chosen at creation and fixed for
  * the life of the table, and the wire has no field for it. It is drawn where it belongs and
- * cannot be changed, rather than being left out and having to be designed back in.
+ * cannot be changed, rather than being left out and having to be designed back in — but with
+ * **neither answer selected**, because a selected `Allowed` offers a choice that cannot reach
+ * `RoomConfig` and tells the player a rule is on when nothing carries it (issue #704).
  */
 import { useState } from 'react'
 
@@ -164,10 +166,10 @@ export function CreateTable({
             </span>
           </div>
 
-          <div className="connect-field">
+          <div className="connect-field undo-field">
             <span className="connect-label">Undo</span>
             <span className="seg new-seg">
-              <button type="button" className="seg-btn seg-on" disabled>
+              <button type="button" className="seg-btn" disabled>
                 Allowed
               </button>
               <button type="button" className="seg-btn" disabled>
@@ -175,8 +177,8 @@ export function CreateTable({
               </button>
             </span>
             <span className="new-note">
-              A player may take back an action the game has not answered yet. Not yet a rule the
-              server carries, so every table plays the same way.
+              A player may take back an action the game has not answered yet. Not a rule the server
+              carries yet, so no table can be made either way.
             </span>
           </div>
         </div>

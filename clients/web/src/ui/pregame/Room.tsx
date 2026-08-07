@@ -7,9 +7,12 @@
  *
  * **A table's rules are chosen when it is made and shown where it is played.** The strip under
  * the title carries them plainly, and a rule that changes how the game plays is drawn in its own
- * colour. Two of them — the mulligan and the clock — and undo are not on the wire; they are
+ * colour. Three of them — the mulligan, the clock, and undo — are not on the wire; they are
  * drawn as what every table currently does, unpressable, rather than left out and having to be
- * designed back in the day the server carries them.
+ * designed back in the day the server carries them. **Undo is drawn as unavailable, not as a
+ * rule that is on**: `RoomConfig` has no undo field, so a table that said `Undo allowed` was
+ * telling a player a gameplay rule existed when nothing behind it did (issue #704). The green
+ * "allowed" of §9.5 is what this becomes once #648 puts the fact on the wire.
  *
  * **A seat shows what its player brought, and both seats are drawn the same way** (§9.7): the deck's
  * colours, and the commander it was built around. Your own comes from the draft on this device;
@@ -139,7 +142,9 @@ export function Room({
           {format && format.min_deck_size > 0 && (
             <span className="fact">{format.min_deck_size} card minimum</span>
           )}
-          <span className="fact fact-on">Undo allowed</span>
+          {/* Not a table rule yet: the wire carries no undo field, so this states what is true of
+              every table today rather than colouring a rule the server never sent (issue #704). */}
+          <span className="fact">Undo unavailable</span>
         </div>
 
         <div
