@@ -275,6 +275,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "omniscience",
+    "collector_number": "65",
+    "rarity": "mythic"
+  },
+  {
     "functional_id": "one_with_the_machine",
     "collector_number": "66",
     "rarity": "rare"

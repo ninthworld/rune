@@ -210,6 +210,30 @@ pub fn plays_lands_from_graveyard(
     )
 }
 
+/// Whether `player` may **cast spells from their hand without paying their mana costs**
+/// (CR 601.2b), the permission
+/// [`PlayerModification::CastFromHandWithoutPaying`](crate::ability::PlayerModification)
+/// grants — Omniscience.
+///
+/// Derived on every read exactly as [`plays_lands_from_graveyard`] is, and for the same
+/// reason: the permission begins when its source reaches the battlefield and ends when it
+/// leaves, so there is nothing to store and nothing to prune (ADR 0005 §1). A spell
+/// already on the stack stays cast if the Omniscience is destroyed in response — the
+/// permission decides what may be *offered and charged*, never what has already happened.
+#[must_use]
+pub fn casts_from_hand_without_paying(
+    state: &crate::GameState,
+    player: crate::PlayerId,
+    db: &crate::CardDatabase,
+) -> bool {
+    has_player_static(
+        state,
+        player,
+        db,
+        crate::ability::PlayerModification::CastFromHandWithoutPaying,
+    )
+}
+
 /// Whether any object `player` controls carries the player-subject static ability
 /// `modification` (CR 604.3).
 ///

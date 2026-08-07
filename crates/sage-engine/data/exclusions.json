@@ -29,7 +29,7 @@
   },
   {
     "name": "Playing a card from a zone other than the hand, the command zone, or a permitted graveyard",
-    "blocker": "a graveyard is reached three ways — a one-turn permission to cast from it, a continuous permission to play lands from it, and an activated or triggered ability that returns its own card out of it — and exile is reached by a one-turn permission naming the very cards an effect exiled; nothing is played off the top of a library, there is no way to cast without paying a mana cost, and no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure) exists"
+    "blocker": "a graveyard is reached three ways — a one-turn permission to cast from it, a continuous permission to play lands from it, and an activated or triggered ability that returns its own card out of it — exile is reached by a one-turn permission naming the very cards an effect exiled, and a continuous permission lets a player cast from their hand without paying a mana cost; nothing is played off the top of a library, no permission to cast for free reaches any zone but the hand, and no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure) exists"
   },
   {
     "name": "Combat damage assigned by anything but the assigning creature's own power or toughness",

@@ -112,8 +112,8 @@ pub use mana::{
 pub use mulligan::{bottom_requirement, BottomRequirement, MulliganState, PlayerMulligan};
 pub use phase::Step;
 pub use player::{
-    maximum_hand_size, over_hand_size, plays_lands_from_graveyard, LossReason, Player,
-    MAX_HAND_SIZE, STARTING_LIFE,
+    casts_from_hand_without_paying, maximum_hand_size, over_hand_size, plays_lands_from_graveyard,
+    LossReason, Player, MAX_HAND_SIZE, STARTING_LIFE,
 };
 pub use replacement::{
     pending_replacement_options, DamageFilter, DamageRecipient, EnteringFilter, EnteringObject,
