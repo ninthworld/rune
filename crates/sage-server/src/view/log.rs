@@ -192,6 +192,7 @@ fn game_over_reason(reason: LossReason) -> GameOverReason {
         LossReason::Concede => GameOverReason::Concede,
         LossReason::CommanderDamage => GameOverReason::CommanderDamage,
         LossReason::OpponentWon => GameOverReason::OpponentWon,
+        LossReason::Poison => GameOverReason::Poison,
     }
 }
 

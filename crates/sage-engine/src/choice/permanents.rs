@@ -201,9 +201,7 @@ pub(crate) fn apply_permanent_choice(
         // the same two lines every other deferred entry answer is (CR 614.12).
         PermanentOutcome::CounterOnEntry { counter, entry } => {
             for &id in chosen {
-                if let Some(perm) = state.battlefield.iter_mut().find(|perm| perm.id == id) {
-                    *perm.counters.entry(*counter).or_insert(0) += 1;
-                }
+                state.put_counters_on_permanent(id, *counter, 1, db);
             }
             let mut entry = entry.clone();
             entry.counter_placed = true;

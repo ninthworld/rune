@@ -409,6 +409,17 @@ pub enum CounterKind {
     /// on — which changes nothing here, because a counter has never been more than a
     /// name and a count, and who reads it is the reader's business.
     Phylactery,
+    /// A **poison** counter (CR 122.1a, CR 704.5d): the first counter kind that goes on a
+    /// **player** rather than on a permanent, and the first with a state-based action of
+    /// its own — ten of them and that player loses the game.
+    ///
+    /// Nothing in the bundled catalog gives one out. It exists because a player's counters
+    /// had to be *some* kind to be modelled at all, and poison is the one the rules define
+    /// without any card having to: the alternative was inventing a placeholder kind, which
+    /// would have been a name nobody printed sitting in the vocabulary forever. The
+    /// prohibition Suncleanser applies is written against a player's counters as a whole,
+    /// so it covers this one and every kind that joins it.
+    Poison,
 }
 
 /// An **emblem** (CR 114): a marker a player owns, whose only characteristics are its
@@ -872,6 +883,16 @@ pub enum EffectAffects {
     /// (and is pruned by the state-based-actions loop, so no modifier outlives
     /// its permanent).
     SpecificPermanent(PermanentId),
+    /// The single **player** in this seat — the first thing a continuous effect can be
+    /// about that is not an object at all (CR 109.1: a player is not a permanent).
+    ///
+    /// It exists for a prohibition rather than for a characteristic: `that player can't
+    /// get counters for as long as this creature remains on the battlefield` is a
+    /// continuous effect that modifies a rule (CR 613.1e), and every other part of the
+    /// [`StaticEffect`] machinery already does exactly what it needs — a source, a
+    /// duration, and pruning when the source leaves the battlefield. Nothing that reads a
+    /// permanent's characteristics ever matches this, because no permanent is a player.
+    SpecificPlayer(PlayerId),
 }
 
 /// The continuous modification a [`StaticEffect`] performs. The variant fixes

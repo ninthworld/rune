@@ -64,6 +64,14 @@ export interface Seat {
   isYou: boolean
   /** Absent when the server projected no totals for this seat at all. */
   life?: number
+  /**
+   * Counters on the **player** (CR 122.1a) — poison, and whatever joins it.
+   *
+   * Empty for every seat in every game the bundled catalog can currently produce, which
+   * is why the bar draws nothing at all rather than an empty slot: a chip that is always
+   * there and always blank is a hole in the seat cluster.
+   */
+  counters: readonly { kind: string; count: number }[]
   librarySize?: number
   /** An opponent's hand is a count. Yours is `my_hand`, and is not counted here. */
   handSize?: number
@@ -107,6 +115,7 @@ export function seats(view: GameView): readonly Seat[] {
       named: isNamed(view, id),
       isYou,
       life: seat?.life,
+      counters: list(seat?.counters),
       librarySize: seat?.library_size,
       handSize: opponent?.hand_size,
       // The pile wins over the count. A graveyard is a public zone, so when the view itemizes

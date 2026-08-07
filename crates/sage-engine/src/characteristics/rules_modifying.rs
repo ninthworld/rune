@@ -46,7 +46,9 @@ pub fn assigns_combat_damage_by(
         .into_iter()
         .filter_map(|modification| match modification {
             RuleModification::AssignsCombatDamageBy { characteristic } => Some(characteristic),
-            RuleModification::AttacksAsThoughNoDefender | RuleModification::DoesNotUntap => None,
+            RuleModification::AttacksAsThoughNoDefender
+            | RuleModification::DoesNotUntap
+            | RuleModification::CannotHaveCountersPut => None,
         })
         .next_back()
         .unwrap_or_default()
@@ -86,6 +88,47 @@ pub fn attacks_as_though_no_defender(
 #[must_use]
 pub fn does_not_untap(state: &GameState, permanent: PermanentId, db: &CardDatabase) -> bool {
     rule_modifications(state, permanent, db).contains(&RuleModification::DoesNotUntap)
+}
+
+/// Whether counters **can't be put on** the permanent identified by `permanent`
+/// (CR 614.1b, as stated by [`RuleModification::CannotHaveCountersPut`]).
+///
+/// The single reader is the counter seam
+/// ([`GameState::put_counters_on_permanent`](crate::GameState)), which is what makes the
+/// prohibition one fact rather than one per road a counter could arrive by. Asked of the
+/// permanent rather than of the effect granting it, so a source that leaves the
+/// battlefield stops forbidding anything on the very next read.
+///
+/// It says nothing about the counters already there, and nothing about removing them: the
+/// rule it modifies is the one that would have put a counter on.
+#[must_use]
+pub fn cannot_have_counters_put_on(
+    state: &GameState,
+    permanent: PermanentId,
+    db: &CardDatabase,
+) -> bool {
+    rule_modifications(state, permanent, db).contains(&RuleModification::CannotHaveCountersPut)
+}
+
+/// The player-side twin: whether the player in `seat` **can't get counters**
+/// (CR 614.1b).
+///
+/// Read straight off [`GameState::static_effects`](crate::GameState) rather than through
+/// [`rule_modifications`], because that function is about a permanent from its first line
+/// — it looks one up on the battlefield and reads its printed face. A player has neither.
+/// What the two share is the part that matters: an effect keyed to a source with
+/// [`Duration::WhileOnBattlefield`](crate::Duration) stops applying the moment its source
+/// is gone, and the state-based-action loop prunes it with nothing here to clear.
+///
+/// Printed static abilities are not a second source here, and could not be: a printed
+/// ability applies to a class of objects, and no class of objects contains a player.
+#[must_use]
+pub fn player_cannot_get_counters(state: &GameState, seat: crate::id::PlayerId) -> bool {
+    state.static_effects.iter().any(|effect| {
+        effect.affects == crate::state::EffectAffects::SpecificPlayer(seat)
+            && effect.modification
+                == crate::state::Modification::ModifyRule(RuleModification::CannotHaveCountersPut)
+    })
 }
 
 /// Every [`RuleModification`] currently applying to the permanent identified by

@@ -577,6 +577,7 @@ mod tests {
             library_size: 0,
             graveyard_size: 0,
             statuses: vec![],
+            counters: vec![],
             eliminated: false,
             connected: true,
             ai: false,

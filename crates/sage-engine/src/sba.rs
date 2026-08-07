@@ -12,6 +12,9 @@ use crate::resolve::target_is_legal;
 use crate::state::{EffectAffects, GameEvent, GameState, Permanent};
 use crate::CardDatabase;
 
+/// How many poison counters make a player lose the game (CR 704.5d).
+pub const POISON_LOSS_THRESHOLD: u32 = 10;
+
 /// Run state-based actions to a fixed point: keep applying them until a full
 /// pass changes nothing (CR 704.3). Pure over the owned state. Takes `db` for
 /// the current-toughness read the lethal-damage check needs (CR 704.5g).
@@ -84,6 +87,21 @@ pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) 
                     player.has_lost = true;
                     player.loss_reason = Some(LossReason::DrewFromEmptyLibrary);
                 }
+                changed = true;
+            }
+            // CR 704.5d: a player with ten or more poison counters loses the game. Read
+            // rather than flagged, like the life check above it and unlike the empty-draw
+            // flag beside it — the counters are still there afterwards, so there is
+            // nothing to consume and the guard on `has_lost` is what makes the pass reach
+            // a fixed point.
+            if player
+                .counters
+                .get(&crate::state::CounterKind::Poison)
+                .is_some_and(|&count| count >= POISON_LOSS_THRESHOLD)
+                && !player.has_lost
+            {
+                player.has_lost = true;
+                player.loss_reason = Some(LossReason::Poison);
                 changed = true;
             }
         }
@@ -331,6 +349,10 @@ pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) 
                         state.battlefield.iter().any(|perm| perm.id == id)
                     }
                     EffectAffects::CreaturesControlledBy(_) => true,
+                    // A player is in the game or has left it, and a seat that left takes
+                    // its permanents with it — so this effect is kept exactly while its
+                    // *source* is, which the check above already made.
+                    EffectAffects::SpecificPlayer(_) => true,
                 }
         });
         if state.static_effects.len() != before {

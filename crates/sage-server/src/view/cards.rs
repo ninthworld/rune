@@ -76,6 +76,23 @@ pub(crate) fn permanent_counters(perm: &sage_engine::Permanent) -> Vec<Counter> 
         .collect()
 }
 
+/// Projects a **player's** stored engine counters into the wire [`Counter`] list.
+///
+/// The player-side twin of [`permanent_counters`], and identical in every respect that
+/// matters: the same `BTreeMap<CounterKind, _>` iteration order, the same names, and an
+/// empty `Vec` for a player with none — which is every player in every game the bundled
+/// catalog can produce, so the wire shape is unchanged until a card gives one out.
+pub(crate) fn player_counters(player: &sage_engine::Player) -> Vec<Counter> {
+    player
+        .counters
+        .iter()
+        .map(|(&kind, &count)| Counter {
+            kind: counter_kind_str(kind).to_owned(),
+            count,
+        })
+        .collect()
+}
+
 /// Map the engine's turn [`Step`] onto the protocol [`Phase`]. The two enums are
 /// deliberately decoupled (`sage-engine` never depends on `sage-protocol`), so the
 /// mapping is written out here.

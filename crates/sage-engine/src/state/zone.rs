@@ -90,6 +90,57 @@ impl GameState {
         Some(perm)
     }
 
+    /// Put `count` counters of `kind` on the permanent `id` — **the** counter seam for a
+    /// permanent, and the one place a `can't have counters put on it` prohibition is
+    /// applied (CR 614.1b: a prohibition is the event replaced with nothing).
+    ///
+    /// Every road that adds a counter to a permanent ends here: an effect that puts them
+    /// on a target, one that puts them on its own source, an activated ability's charge,
+    /// the state-based action that grows a creature, the entry replacement that gives a
+    /// permanent counters as it arrives. That is what makes the prohibition one fact
+    /// rather than one per road.
+    ///
+    /// Returns whether any counter was actually placed. A caller that needs to know reads
+    /// it; the rest ignore it, because a counter that was not placed is simply not there
+    /// and every later question about it answers itself.
+    pub(crate) fn put_counters_on_permanent(
+        &mut self,
+        id: PermanentId,
+        kind: super::CounterKind,
+        count: u32,
+        db: &CardDatabase,
+    ) -> bool {
+        if count == 0 || crate::characteristics::cannot_have_counters_put_on(self, id, db) {
+            return false;
+        }
+        let Some(perm) = self.battlefield.iter_mut().find(|perm| perm.id == id) else {
+            return false;
+        };
+        *perm.counters.entry(kind).or_insert(0) += count;
+        true
+    }
+
+    /// The player-side counterpart: put `count` counters of `kind` on the player in
+    /// `seat`, unless an effect forbids that player getting counters (CR 614.1b).
+    ///
+    /// The same seam and the same shape, because a player's counters and a permanent's
+    /// are the same mechanism — the only difference is what is being asked about.
+    pub fn put_counters_on_player(
+        &mut self,
+        seat: PlayerId,
+        kind: super::CounterKind,
+        count: u32,
+    ) -> bool {
+        if count == 0 || crate::characteristics::player_cannot_get_counters(self, seat) {
+            return false;
+        }
+        let Some(player) = self.players.get_mut(seat.0) else {
+            return false;
+        };
+        *player.counters.entry(kind).or_insert(0) += count;
+        true
+    }
+
     /// Put `card` into `owner`'s graveyard — **the** graveyard seam, and the one place a
     /// card's own `if this would be put into a graveyard from anywhere` replacement is
     /// applied (CR 614.1c).

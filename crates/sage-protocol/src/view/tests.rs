@@ -217,6 +217,7 @@ fn issue_345_multiplayer_combat_and_elimination_fields_round_trip_and_elide() {
         library_size: 0,
         graveyard_size: 0,
         statuses: vec![],
+        counters: vec![],
         eliminated: true,
         connected: true,
         ai: false,
@@ -278,6 +279,7 @@ fn game_view_round_trips_through_json() {
         me: SelfView {
             life: 18,
             library_size: 52,
+            counters: vec![],
             eliminated: false,
             connected: true,
             ai: false,
@@ -290,6 +292,7 @@ fn game_view_round_trips_through_json() {
             library_size: 53,
             graveyard_size: 0,
             statuses: vec!["monarch".into()],
+            counters: vec![],
             eliminated: false,
             connected: true,
             ai: false,

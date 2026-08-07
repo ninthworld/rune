@@ -467,10 +467,41 @@ span.phase.phase-current {
   overflow-wrap: anywhere;
 }
 
+/* life and the seat's counters on one line; the row is only as tall as the life
+   number, so a seat with no counters is laid out exactly as it was before */
+.player-vitals {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
 .player-life {
   font-size: 17px;
   font-weight: 700;
   color: #e8e0c8;
+}
+
+/* a counter is a count, so it reads as one: the number at full size, the kind carried
+   by the chip's colour and its title rather than by a word that would need fitting */
+.player-counter {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.45;
+  color: #0d1108;
+  background: #7f9b3f;
+  border: 1px solid #a9c65e;
+}
+
+/* poison is the only kind a player can hold today (CR 704.5d); a kind with no colour of
+   its own falls back to the rule above rather than disappearing */
+.player-counter[data-counter='poison'] {
+  color: #0b1207;
+  background: #6f9440;
+  border-color: #9bc267;
 }
 
 .focus-btn {

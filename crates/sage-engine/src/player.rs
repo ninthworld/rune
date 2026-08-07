@@ -1,8 +1,11 @@
 //! Per-player state and its private zones.
 
+use std::collections::BTreeMap;
+
 use crate::commander::CommanderState;
 use crate::id::CardInstance;
 use crate::mana::ManaPool;
+use crate::state::CounterKind;
 use crate::zone::Zone;
 
 /// Life total every player starts a game with.
@@ -36,6 +39,9 @@ pub enum LossReason {
     /// [`GameState::commander_damage`](crate::GameState::commander_damage) and
     /// [`COMMANDER_DAMAGE_LOSS_THRESHOLD`](crate::commander::COMMANDER_DAMAGE_LOSS_THRESHOLD)).
     CommanderDamage,
+    /// CR 704.5d — the player had ten or more poison counters when state-based actions
+    /// were checked.
+    Poison,
 }
 
 /// A single player's state: their life total and the zones they own.
@@ -109,6 +115,19 @@ pub struct Player {
     /// is stored rather than computed. Compared against `entered_turn` by
     /// `crate::combat::has_summoning_sickness`.
     pub turn_began: u32,
+    /// Counters on this **player** (CR 122.1a), keyed by kind and mapped to how many are
+    /// present — the player-side counterpart of
+    /// [`Permanent::counters`](crate::Permanent).
+    ///
+    /// Raw stored state like a permanent's, and read the same way: a kind absent from the
+    /// map means zero of it, a present entry is a positive count. The one kind with a rule
+    /// attached is [`CounterKind::Poison`](crate::CounterKind), which the state-based
+    /// action loop reads (CR 704.5d).
+    ///
+    /// A player's counters and a permanent's are deliberately the same mechanism rather
+    /// than two: everything the rules say about putting counters on things, removing them,
+    /// and forbidding them is written once and asks only *what* it is being put on.
+    pub counters: BTreeMap<CounterKind, u32>,
 }
 
 impl Player {

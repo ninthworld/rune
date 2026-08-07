@@ -120,6 +120,8 @@ pub(crate) fn personalized_view(
             library_size: count(player.library.len()),
             graveyard_size: count(player.graveyard.len()),
             statuses: Vec::new(),
+            // A player's counters are as public as their life total (CR 122.1a).
+            counters: player_counters(player),
             // Eliminated state (CR 800.4a, issue #342/#345): an opponent who left the
             // game. Additive — false (and omitted) in a two-player game.
             eliminated: player.has_lost,
@@ -246,6 +248,7 @@ pub(crate) fn personalized_view(
         .map(|player| SelfView {
             life: player.life,
             library_size: count(player.library.len()),
+            counters: player_counters(player),
             // Local elimination (CR 800.4a, issue #553): the receiver's own seat may be
             // out while the game continues, which `result` (game over only) cannot say.
             eliminated: player.has_lost,
@@ -388,6 +391,7 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
             library_size: count(player.library.len()),
             graveyard_size: count(player.graveyard.len()),
             statuses: Vec::new(),
+            counters: player_counters(player),
             eliminated: player.has_lost,
             // Room knowledge; the room overlays it after projection (issue #553).
             connected: true,

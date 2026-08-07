@@ -211,6 +211,7 @@ pub(crate) fn counter_symbol(kind: CounterKind) -> &'static str {
         CounterKind::Wish => "wish",
         CounterKind::Corpse => "corpse",
         CounterKind::Phylactery => "phylactery",
+        CounterKind::Poison => "poison",
     }
 }
 

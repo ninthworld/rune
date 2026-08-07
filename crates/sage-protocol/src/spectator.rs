@@ -132,6 +132,7 @@ mod tests {
                     library_size: 33,
                     graveyard_size: 2,
                     statuses: vec![],
+                    counters: vec![],
                     eliminated: false,
                     connected: true,
                     ai: false,
@@ -143,6 +144,7 @@ mod tests {
                     library_size: 0,
                     graveyard_size: 7,
                     statuses: vec![],
+                    counters: vec![],
                     // A held-open, disconnected seat is public presentation state; an
                     // eliminated one need not be connected at all (issue #553).
                     eliminated: true,
@@ -156,6 +158,7 @@ mod tests {
                     library_size: 34,
                     graveyard_size: 1,
                     statuses: vec![],
+                    counters: vec![],
                     eliminated: false,
                     connected: true,
                     ai: true,

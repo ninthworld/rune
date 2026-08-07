@@ -69,6 +69,24 @@ pub enum RuleModification {
     /// it lasts as long as whatever grants it, so a creature freed from the Aura untaps in
     /// the very next untap step with nothing to clear.
     DoesNotUntap,
+    /// CR 121.2 / CR 614.1b, applied as a prohibition: counters **can't be put on** the
+    /// object this effect applies to — Suncleanser's `it can't have counters put on it for
+    /// as long as this creature remains on the battlefield`, and the same clause aimed at
+    /// a player.
+    ///
+    /// Read in exactly one place per kind of thing it can be about:
+    /// [`cannot_have_counters_put_on`](crate::characteristics::cannot_have_counters_put_on)
+    /// for a permanent, and
+    /// [`player_cannot_get_counters`](crate::characteristics::player_cannot_get_counters)
+    /// for a player. Both readers sit behind the single counter seam
+    /// (`GameState::put_counters_on_permanent` and its player-side twin), which is what
+    /// makes this one fact rather than one per effect that puts a counter somewhere.
+    ///
+    /// A prohibition, not a removal: counters already there stay exactly where they are,
+    /// and a permanent under it keeps whatever its counters were doing to its
+    /// characteristics. It also does not stop counters being *removed* — the rule it
+    /// modifies is the one that would have put them on.
+    CannotHaveCountersPut,
     /// CR 702.3b, applied **as though** it were absent (CR 609.4): the creature may be
     /// declared as an attacker even though it has defender — Novice Knight's `can attack
     /// as though it didn't have defender`.

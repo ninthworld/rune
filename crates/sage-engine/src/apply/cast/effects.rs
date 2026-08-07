@@ -575,9 +575,7 @@ pub(crate) fn apply_effect(
         }
         Effect::PutCountersOnSelf { counter, count, .. } => {
             if let Some(id) = permanent_source {
-                if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
-                    *perm.counters.entry(*counter).or_insert(0) += *count;
-                }
+                state.put_counters_on_permanent(id, *counter, *count, db);
             }
         }
         // The self-referential effect whose source is a **card in a graveyard** rather

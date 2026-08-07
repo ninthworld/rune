@@ -201,9 +201,7 @@ pub(crate) fn apply_targeted_effect(
                 ),
             };
             if let Target::Permanent(id) = target {
-                if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
-                    *perm.counters.entry(*counter).or_insert(0) += count;
-                }
+                state.put_counters_on_permanent(id, *counter, count, db);
             }
         }
         // Pump the targeted creature until end of turn (CR 514.2): add a
