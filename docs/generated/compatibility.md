@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (292)
+## Supported cards (293)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -181,6 +181,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `murder` | Murder | functional definition |
 | `mystic_archaeologist` | Mystic Archaeologist | functional definition |
 | `naturalize` | Naturalize | functional definition |
+| `nexus_of_fate` | Nexus of Fate | functional definition |
 | `nicol_bolas_the_ravager` | Nicol Bolas, the Ravager | functional definition |
 | `nightmare_s_thirst` | Nightmare's Thirst | functional definition |
 | `novice_knight` | Novice Knight | functional definition |
@@ -347,7 +348,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Playing a card from a zone other than the hand, the command zone, or a permitted graveyard | a graveyard is reached three ways — a one-turn permission to cast from it, a continuous permission to play lands from it, and an activated or triggered ability that returns its own card out of it — exile is reached by a one-turn permission naming the very cards an effect exiled, which may permit playing them or only casting the spells among them, a continuous permission lets a player cast from their hand without paying a mana cost, and a resolution may hand its controller a card to play on the spot (CR 608.2f), off their own library or out of the exile it just dug from another player's; no permission to cast for free outlives the resolution that granted it except from the hand, and no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure) exists |
 | Prohibiting counters from being put on a permanent or a player | counters reach a permanent from an effect, from its own entry, and from a planeswalker's loyalty, and each of those writes them with nothing to consult first; no continuous effect refuses a counter, and a player bears no counters at all |
 | Protection | there is no protection layer: nothing stops a spell, a block, an aura, or damage by a quality the way CR 702.16 does |
-| Replacement effects other than one modifying a permanent entering the battlefield | the entering object's own self-replacements and a one-shot replacement an ability created for the turn are collected, ordered by the affected permanent's controller (CR 616.1), and applied once each (CR 614.5); damage is reached only by a prevention shield, and no other event can be replaced — not a permanent leaving the battlefield, a draw, or life gained — no permanent carries a static replacement ability, and the only substitution an entry can be given is exile |
+| Replacement effects other than one modifying a battlefield entry or a card's own arrival in a graveyard | the entering object's own self-replacements and a one-shot replacement an ability created for the turn are collected, ordered by the affected permanent's controller (CR 616.1), and applied once each (CR 614.5), and a card may replace its **own** arrival in a graveyard from anywhere by being shuffled into its owner's library; damage is reached only by a prevention shield, and no other event can be replaced — not a permanent leaving the battlefield, a draw, or life gained — no permanent carries a static replacement ability that reaches another object, and the only substitution an entry can be given is exile |
 | Rules that apply as though a permanent lacked a keyword other than defender | one as-though permission is modeled — attacking as though the creature did not have defender (CR 609.4), granted as a continuous effect that is in no layer and read only at the attacker declaration, so the keyword itself is untouched everywhere else; no other keyword can be ignored by a rule, and nothing applies as though a permanent had a keyword it does not |
 | Selectors that filter by toughness | a selector or a count may bound a permanent's power — at least a printed number, or strictly below the power of the effect's own source, read at resolution and from last known information when that source is already gone; toughness bounds nothing, and no bound compares two permanents neither of which is the source |
 | Shuffling anything but the effect's own source into a library | a resolution shuffles its own source in and nothing else: the destination is reachable — a targeted permanent can be put on top of a library — but the shuffle variant is self-referential, so a card that shuffles a permanent it targeted away is unwritable |

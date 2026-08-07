@@ -262,7 +262,7 @@ pub(crate) fn apply_effect(
         // as any other does. A source that has already left sacrifices nothing.
         Effect::SacrificeSelf => {
             if let Some(id) = permanent_source {
-                state.move_permanent_to_graveyard(id);
+                state.move_permanent_to_graveyard(id, db);
             }
         }
         // CR 303.4: the permanent this Aura is on, which it chose when it was cast. A
@@ -354,7 +354,7 @@ pub(crate) fn apply_effect(
         // fewer cards and never trips the CR 704.5c decking loss.
         Effect::Mill { player_ref, count } => {
             for seat in non_targeting_subjects(state, *player_ref, controller, resolution.chosen_player) {
-                state.mill(seat, u32::from(*count));
+                state.mill(seat, u32::from(*count), db);
             }
         }
         // CR 502.4 / 611.2c: every creature the referenced player controls **right now**

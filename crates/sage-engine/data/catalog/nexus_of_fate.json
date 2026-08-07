@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "functional_id": "nexus_of_fate",
+  "name": "Nexus of Fate",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{5}{U}{U}",
+  "colors": [
+    "blue"
+  ],
+  "spell_effects": [
+    {
+      "kind": "take_extra_turn",
+      "player_ref": "controller"
+    }
+  ],
+  "abilities": [
+    {
+      "type": "shuffled_into_library_instead_of_graveyard"
+    }
+  ]
+}

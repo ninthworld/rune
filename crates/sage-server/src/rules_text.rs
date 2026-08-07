@@ -410,6 +410,12 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
         // once the permanent is already there. Every ability of the card that reads the
         // answer calls it "the chosen color", so this sentence is what gives that phrase
         // its referent.
+        // A self-replacement on the card wherever it is, so the sentence names the card
+        // rather than "this permanent": it is as true in a hand as on the battlefield.
+        Ability::ShuffledIntoLibraryInsteadOfGraveyard => format!(
+            "If {source} would be put into a graveyard from anywhere, reveal {source} \
+             and shuffle it into its owner's library instead."
+        ),
         Ability::EntersChoosingColor => {
             format!("As {source} enters the battlefield, choose a color.")
         }

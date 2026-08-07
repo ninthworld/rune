@@ -162,6 +162,20 @@ pub enum Ability {
         #[serde(default)]
         card_type: Option<crate::card_type::CardType>,
     },
+    /// A **self-replacement on the card itself** (CR 614.1c): if this card would be put
+    /// into a graveyard from anywhere, it is revealed and shuffled into its owner's
+    /// library instead — Nexus of Fate.
+    ///
+    /// The first ability in the vocabulary that functions in **every** zone. The others
+    /// are read off a permanent, a spell on the stack, or a card in a graveyard; this one
+    /// has to apply to the card wherever it is, because "from anywhere" is what the card
+    /// says and each zone it could be leaving reaches the graveyard by its own road: a
+    /// creature dying, a spell countered, a spell that resolved, a discard, a mill.
+    ///
+    /// It is therefore applied at the single seam every one of those roads ends at
+    /// ([`GameState::put_card_in_graveyard`](crate::GameState)) rather than at any of
+    /// them, which is what keeps "from anywhere" one fact rather than five.
+    ShuffledIntoLibraryInsteadOfGraveyard,
     /// A choice made **as this permanent enters** (CR 614.12): its controller names one
     /// of the five colors, and the answer is kept on the permanent for as long as it is
     /// on the battlefield — the "chosen color" every later ability of the card reads.

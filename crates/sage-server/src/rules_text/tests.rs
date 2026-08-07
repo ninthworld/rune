@@ -2067,3 +2067,14 @@ fn issue_706_an_ultimate_that_names_two_classes_states_both() {
          target creature cards in a graveyard onto the battlefield under your control."
     );
 }
+
+#[test]
+fn issue_706_a_card_that_replaces_its_own_graveyard_entry_says_so() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "nexus_of_fate"),
+        "Take an extra turn after this one.\n\
+         If Nexus of Fate would be put into a graveyard from anywhere, reveal Nexus of \
+         Fate and shuffle it into its owner's library instead."
+    );
+}

@@ -29,7 +29,7 @@ pub(crate) fn apply_choice_outcome(
 ) -> ChoiceAftermath {
     match request.outcome {
         ChoiceOutcome::Discard => {
-            discard_chosen(state, request.subject, chosen);
+            discard_chosen(state, request.subject, chosen, db);
             ChoiceAftermath::default()
         }
         ChoiceOutcome::BottomChosen => {
@@ -68,15 +68,25 @@ pub(crate) struct ChoiceAftermath {
 /// graveyard move is what keeps that true as discards grow triggers and replacements.
 /// It exists only because the cost path has already *chosen* the cards — they arrive in
 /// the payment — so it needs the second half of a choice without the first.
-pub(crate) fn discard_to_cost(state: &mut GameState, subject: PlayerId, chosen: &[CardInstanceId]) {
-    discard_chosen(state, subject, chosen);
+pub(crate) fn discard_to_cost(
+    state: &mut GameState,
+    subject: PlayerId,
+    chosen: &[CardInstanceId],
+    db: &CardDatabase,
+) {
+    discard_chosen(state, subject, chosen, db);
 }
 
 /// Move the chosen cards from the subject's hand to their graveyard (CR 701.8) and log
 /// how many moved — never which, since a hand is hidden and a count is all the other
 /// seats are entitled to. (The graveyard itself is public, so the cards become visible
 /// there on their own.)
-fn discard_chosen(state: &mut GameState, subject: PlayerId, chosen: &[CardInstanceId]) {
+fn discard_chosen(
+    state: &mut GameState,
+    subject: PlayerId,
+    chosen: &[CardInstanceId],
+    db: &CardDatabase,
+) {
     let mut discarded = 0u32;
     for id in chosen {
         let Some(player) = state.players.get_mut(subject.0) else {
@@ -86,7 +96,7 @@ fn discard_chosen(state: &mut GameState, subject: PlayerId, chosen: &[CardInstan
             continue;
         };
         let card = player.hand.remove(pos);
-        player.graveyard.push(card);
+        state.put_card_in_graveyard(subject, card, db);
         discarded += 1;
     }
     if discarded > 0 {

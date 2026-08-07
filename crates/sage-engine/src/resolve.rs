@@ -555,9 +555,7 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         // CR 707.10a: a copy that fizzles has no card to put anywhere and simply ceases
         // to exist, which is what happening nothing at all amounts to.
         if let StackObjectKind::Spell { card, .. } = object.kind {
-            if let Some(player) = state.players.get_mut(object.controller.0) {
-                player.graveyard.push(card);
-            }
+            state.put_card_in_graveyard(object.controller, card, db);
             // CR 608.2b: a spell removed for all-targets-illegal fizzled; log it so a
             // client can distinguish it from a spell that resolved or was countered.
             state.record_event(GameEvent::SpellFizzled {
@@ -715,8 +713,8 @@ pub(crate) fn put_resolved_spell_in_its_final_zone(
             spell.announced_x,
             db,
         );
-    } else if let Some(player) = state.players.get_mut(controller.0) {
-        player.graveyard.push(card);
+    } else {
+        state.put_card_in_graveyard(controller, card, db);
     }
 }
 

@@ -136,8 +136,8 @@
     "blocker": "there is no protection layer: nothing stops a spell, a block, an aura, or damage by a quality the way CR 702.16 does"
   },
   {
-    "name": "Replacement effects other than one modifying a permanent entering the battlefield",
-    "blocker": "the entering object's own self-replacements and a one-shot replacement an ability created for the turn are collected, ordered by the affected permanent's controller (CR 616.1), and applied once each (CR 614.5); damage is reached only by a prevention shield, and no other event can be replaced — not a permanent leaving the battlefield, a draw, or life gained — no permanent carries a static replacement ability, and the only substitution an entry can be given is exile"
+    "name": "Replacement effects other than one modifying a battlefield entry or a card's own arrival in a graveyard",
+    "blocker": "the entering object's own self-replacements and a one-shot replacement an ability created for the turn are collected, ordered by the affected permanent's controller (CR 616.1), and applied once each (CR 614.5), and a card may replace its **own** arrival in a graveyard from anywhere by being shuffled into its owner's library; damage is reached only by a prevention shield, and no other event can be replaced — not a permanent leaving the battlefield, a draw, or life gained — no permanent carries a static replacement ability that reaches another object, and the only substitution an entry can be given is exile"
   },
   {
     "name": "Selectors that filter by toughness",

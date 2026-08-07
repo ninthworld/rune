@@ -1420,6 +1420,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "nexus_of_fate",
+    "collector_number": "306",
+    "rarity": "mythic"
+  },
+  {
     "functional_id": "waterknot",
     "collector_number": "311",
     "rarity": "common"
