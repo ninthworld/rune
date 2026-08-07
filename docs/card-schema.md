@@ -904,6 +904,37 @@ again with nothing to clear.
 source is attached to, and **targets nothing**, because the Aura chose its host when it was
 cast (CR 601.2c).
 
+### Exiling until the source leaves (CR 610.3)
+
+```json
+{ "kind": "exile_until_source_leaves", "target": "any_nonland_permanent_an_opponent_controls" }
+```
+
+The engine's first **linked** ability: what was exiled and what exiled it are recorded
+together, because "until this leaves the battlefield" is a sentence about one particular
+card and nothing about the exile zone could say which exile a creature is waiting on. Two
+Cages are two links, and one of them dying returns exactly one creature.
+
+The card returns when the source leaves — whatever takes it — and it returns under its
+**owner's** control (CR 610.3b), not the exiler's. A source that is no longer on the
+battlefield exiles nothing at all: "until this leaves" said by something that has already
+left would take the exiled permanent with it in the same breath.
+
+### Exchanging control (CR 701.10)
+
+```json
+{ "kind": "exchange_control", "first": "any_creature", "second": "any_creature" }
+```
+
+Two slots, each its own class, exactly as `fight` has — and all or nothing: if either
+object is an illegal target, or the two are already controlled by the same player, **no
+control changes at all** (CR 701.10c).
+
+An exchange has **no duration**. It is written as two layer-2 effects, each keyed to the
+permanent it is about, so each lasts as long as that permanent does. That keying is not
+decoration: a `WhileOnBattlefield` effect ends when *its source* leaves, so one keyed to a
+freshly minted id would be ended by the very next state-based-action pass.
+
 ### Taking an extra turn (CR 720.1)
 
 ```json

@@ -1597,6 +1597,42 @@ pub enum Effect {
         #[serde(default)]
         until_end_of_turn: bool,
     },
+    /// **Exchange control** of the two permanents this effect names (CR 701.10) —
+    /// Switcheroo's `Exchange control of two target creatures.`
+    ///
+    /// The one effect beside [`Self::Fight`] whose two slots are not interchangeable in
+    /// the sense that matters: each creature goes to the *other's* controller, so the
+    /// pair is the effect and half of it is nothing. CR 701.10c says so outright — if
+    /// either object is an illegal target, or the two are controlled by the same player,
+    /// no control changes at all.
+    ///
+    /// It is written as two CR 613 layer-2 effects because that is what a control change
+    /// is here, and an exchange is not a duration: the two swap **indefinitely**, so both
+    /// last as long as their permanents do rather than until end of turn.
+    ExchangeControl {
+        /// What the first slot may name.
+        first: TargetSpec,
+        /// What the second may name. The same class on every printed card, and a field of
+        /// its own for [`Self::Fight`]'s reason: two slots, stated separately.
+        second: TargetSpec,
+    },
+    /// **Exile the permanent this effect targets until the source leaves the
+    /// battlefield** (CR 610.3) — Hieromancer's Cage's `exile target nonland permanent an
+    /// opponent controls until this enchantment leaves the battlefield`.
+    ///
+    /// The first **linked** effect in the engine: what was exiled and what exiled it are
+    /// recorded together ([`ExiledUntil`](crate::ExiledUntil)), because the return is a
+    /// sentence about *this* card and no snapshot of exile could say which exile it meant.
+    ///
+    /// The card comes back **when the source leaves**, whatever takes it — destroyed,
+    /// bounced, exiled in turn — and comes back to the battlefield under its **owner's**
+    /// control (CR 610.3b), not the Cage controller's. A source that leaves in the same
+    /// action that exiled the card returns it immediately, which is the honest reading of
+    /// a linked ability whose partner is already gone.
+    ExileUntilSourceLeaves {
+        /// What may be exiled.
+        target: TargetSpec,
+    },
     /// The referenced player **takes an extra turn** after this one (CR 720.1) —
     /// Magistrate's Scepter's payoff for three charge counters.
     ///

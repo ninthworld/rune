@@ -276,6 +276,35 @@ pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) 
                 changed = true;
             }
         }
+        // CR 610.3: a card exiled "until this leaves the battlefield" comes back the
+        // moment its source is gone — whatever took it. Checked here rather than at the
+        // seams a permanent can leave by, because there are four of them and this is the
+        // pass that already asks "what is no longer there".
+        let returning: Vec<crate::state::ExiledUntil> = state
+            .exiled_until
+            .iter()
+            .filter(|link| !state.battlefield.iter().any(|perm| perm.id == link.source))
+            .copied()
+            .collect();
+        if !returning.is_empty() {
+            state
+                .exiled_until
+                .retain(|link| state.battlefield.iter().any(|perm| perm.id == link.source));
+            for link in returning {
+                // CR 610.3b: back to the battlefield under its **owner's** control.
+                let card = state.players.get_mut(link.owner.0).and_then(|player| {
+                    player
+                        .exile
+                        .iter()
+                        .position(|card| card.id == link.card)
+                        .map(|pos| player.exile.remove(pos))
+                });
+                if let Some(card) = card {
+                    state.put_card_onto_battlefield(card, link.owner, false, None, db);
+                    changed = true;
+                }
+            }
+        }
         // Prune any continuous effect keyed to a specific permanent that has now
         // left the battlefield (destroyed above, or removed by another effect this
         // action). A permanent-specific modifier — a pump — has nothing to apply to

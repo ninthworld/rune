@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (277)
+## Supported cards (279)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -124,6 +124,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `havoc_devils` | Havoc Devils | functional definition |
 | `herald_of_faith` | Herald of Faith | functional definition |
 | `heroic_reinforcements` | Heroic Reinforcements | functional definition |
+| `hieromancer_s_cage` | Hieromancer's Cage | functional definition |
 | `highland_game` | Highland Game | functional definition |
 | `highland_lake` | Highland Lake | functional definition |
 | `hired_blade` | Hired Blade | functional definition |
@@ -254,6 +255,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `surge_mare` | Surge Mare | functional definition |
 | `suspicious_bookcase` | Suspicious Bookcase | functional definition |
 | `swamp` | Swamp | functional definition |
+| `switcheroo` | Switcheroo | functional definition |
 | `take_vengeance` | Take Vengeance | functional definition |
 | `talons_of_wildwood` | Talons of Wildwood | functional definition |
 | `tattered_mummy` | Tattered Mummy | functional definition |
@@ -291,7 +293,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `windreader_sphinx` | Windreader Sphinx | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (50)
+## Excluded (49)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
@@ -319,13 +321,12 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Effects that **replace** a permanent's types or colours, or animate a class | a continuous effect may add card types, subtypes and colours to one permanent — one it targeted, or the one it just put onto the battlefield — and set that permanent's base power and toughness (CR 613 layers 4, 5 and 7b), for the turn or for as long as its source remains; nothing *removes* a type or a colour, no effect names a class of permanents to animate, and no layer 7d switches power with toughness; and a colour a layer-5 effect added is read by the rules that ask about one object at a time — an evasion restriction, a colourless target — but not by a *counted class*, which is evaluated from inside a static ability's own condition and would recurse through the characteristics it is computing |
 | Effects that act on a player unless that player pays | the one cost an effect asks for mid-resolution belongs to an optional effect and is posed to the asking ability's own controller, never to a player the effect merely names; declining may now splice a consequence of its own onto the remainder — `sacrifice it unless you pay {1}` — but only the controller is ever the one asked, so an effect that acts on an *opponent* unless that opponent pays is unwritable |
 | Effects that ask a player to name a type | a permanent records the colour and the card its controller named as it entered — the card as a functional identity chosen from the catalog, never a string — but a card or creature type has no recorded identity, only a nonbasic land may be named, and nothing on a spell records a choice at all |
-| Effects that exile a permanent until the source that exiled it leaves the battlefield | an exile moves the permanent an effect targeted one way and records nothing about what moved it; there is no linked-object reference (CR 610.3) and no effect watching for a source's departure, so nothing an exile removes ever comes back |
 | Effects that let a player choose the order of the cards a scry keeps on top | a look bottoms its rest in an order the looker picks or at random, as the card says, but the cards a scry leaves on top stay in their printed order |
 | Effects that return a card from a graveyard to a zone other than a hand or the battlefield | a targeted card returns from a graveyard to a hand or to the battlefield, and a whole graveyard can be exiled; nothing else moves a card out of one |
 | Effects that untap a permanent it did not just take | untapping rides on the control change that steals a creature, because one effect names one target; nothing else brings an untap forward |
 | Effects whose amount is derived from a source outside the ones the IR names | an amount may be a count of permanents (feeding power/toughness, life, damage, a token count, and an attachment's static grant), the life gained this turn, a count of what this resolution milled, the greatest mana value among a class of permanents, the X its controller announced, how many permanents this resolution has sacrificed, the power the creature a cost sacrificed had, or half a named player's life total, hand, or creature count rounded up — the last seven feeding power/toughness, a draw, damage, a search's size, a life loss, a discard, and a sacrifice, which may instead name no amount at all and take any number the sacrificing player picks; a count of cards in a graveyard feeds a characteristic-defining power and nothing else, and a chosen permanent's power feeds only the life gained by the exile that removes it — nothing else may: not a whole life total, hand, or graveyard feeding an effect, not one named object's mana value, not another surviving object's power (an ability's own source's power is read by an effect whose sentence is about it, never by an amount), not a chosen permanent's toughness or mana value, not half of anything rounded down, and not the permanent an effect just put onto the battlefield |
 | Emblems with an activated ability | an emblem carries static and triggered abilities only; nothing offers a way to activate one |
-| Gaining control of a permanent for longer than a turn, and exchanging control | a control change is a targeted layer-2 effect the cleanup step ends; no duration outlives the turn and nothing swaps two permanents' controllers |
+| Gaining control of a permanent for longer than a turn | a control change either lasts until end of turn — the theft that unteaps and grants haste — or is an **exchange**, which swaps two permanents indefinitely (CR 701.10) and is all or nothing; nothing takes one permanent for good, and no duration sits between the two |
 | Kicker and other optional additional costs | no optional cost declared on announcement |
 | Losing abilities on a targeted permanent | a printed static ability may take all abilities from a class of permanents, and an until-end-of-turn removal names its own source and may lose named keywords; nothing takes abilities from a permanent an effect *targeted*, and no removal reaching another permanent has a duration shorter than its source's presence |
 | Losing the game outright | an effect may state that a player *wins* the game (CR 104.2b), which is recorded as every other player losing it, because the last seat standing is what winning is; nothing states that a player **loses**, so a card that ends a game from the other direction is unwritable |

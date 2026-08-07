@@ -208,6 +208,9 @@ pub(crate) fn apply_effect(
         // Aimed at a chosen permanent, so it is applied through [`apply_targeted_effect`]
         // and this arm is never the one that runs it.
         Effect::SelfDealsDamage { .. } | Effect::Animate { .. } => {}
+        // Both are aimed at chosen permanents, so they are applied through the targeted
+        // path; an exchange goes through the multi-slot one beside it.
+        Effect::ExchangeControl { .. } | Effect::ExileUntilSourceLeaves { .. } => {}
         // CR 613 layers 4, 5 and 7b applied to the source itself — the self-referential
         // animation. Until end of turn always: every printed card that says "becomes" of
         // itself says it for the turn, and a permanent-lifetime version would be a

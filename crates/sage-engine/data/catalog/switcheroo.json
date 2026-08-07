@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "functional_id": "switcheroo",
+  "name": "Switcheroo",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{4}{U}",
+  "colors": [
+    "blue"
+  ],
+  "spell_effects": [
+    {
+      "kind": "exchange_control",
+      "first": "any_creature",
+      "second": "any_creature"
+    }
+  ]
+}

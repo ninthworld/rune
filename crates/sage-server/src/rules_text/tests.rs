@@ -1936,3 +1936,17 @@ fn issue_706_becoming_something_else_and_the_once_a_turn_line() {
          until end of turn and Chromium, the Mutable can't be blocked this turn."
     );
 }
+
+#[test]
+fn issue_706_an_exile_that_comes_back_and_an_exchange() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "hieromancer_s_cage"),
+        "When Hieromancer's Cage enters the battlefield, exile target nonland permanent \
+         an opponent controls until Hieromancer's Cage leaves the battlefield."
+    );
+    assert_eq!(
+        text_of(&db, "switcheroo"),
+        "Exchange control of two target creatures."
+    );
+}
