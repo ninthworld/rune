@@ -1242,8 +1242,11 @@ When the game ends, `result` is present and `valid_actions` is empty:
 }
 ```
 
-`winner` is absent for a draw. `reason` is one of `life_zero`, `decked`, `concede`, or
-`commander_damage` (a player took 21+ combat damage from a single commander, CR 903.10a).
+`winner` is absent for a draw. `reason` is one of `life_zero`, `decked`, `concede`,
+`commander_damage` (a player took 21+ combat damage from a single commander, CR 903.10a),
+or `opponent_won` (an effect stated that a player *wins* the game, CR 104.2b, so everyone
+else lost it — the one reason that describes what a card did rather than what happened to
+the loser).
 Further submitted actions are rejected and the final view is re-sent.
 
 ### `SpectatorView`

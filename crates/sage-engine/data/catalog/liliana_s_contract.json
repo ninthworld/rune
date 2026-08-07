@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "functional_id": "liliana_s_contract",
+  "name": "Liliana's Contract",
+  "types": [
+    "enchantment"
+  ],
+  "mana_cost": "{3}{B}{B}",
+  "colors": [
+    "black"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "draw_card",
+          "count": 4
+        },
+        {
+          "kind": "lose_life",
+          "player_ref": "controller",
+          "amount": 4
+        }
+      ]
+    },
+    {
+      "type": "triggered",
+      "event": {
+        "beginning_of_step": {
+          "step": "upkeep",
+          "whose_turn": "yours"
+        }
+      },
+      "effects": [
+        {
+          "kind": "conditional",
+          "condition": {
+            "kind": "controls_at_least",
+            "permanents": {
+              "subtype": "Demon",
+              "distinct_names": true
+            },
+            "count": 4
+          },
+          "then": [
+            {
+              "kind": "win_the_game",
+              "player_ref": "controller"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -18,6 +18,7 @@ const REASONS: Record<string, string> = {
   decked: 'a draw from an empty library',
   concede: 'a concession',
   commander_damage: '21 commander damage',
+  opponent_won: 'a card that wins the game',
 }
 
 export function MatchResult({

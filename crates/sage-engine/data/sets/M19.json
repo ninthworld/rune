@@ -460,6 +460,11 @@
     "rarity": "mythic"
   },
   {
+    "functional_id": "liliana_s_contract",
+    "collector_number": "107",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "macabre_waltz",
     "collector_number": "108",
     "rarity": "common"

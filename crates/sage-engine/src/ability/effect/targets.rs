@@ -112,6 +112,9 @@ impl Effect {
             Effect::GainLife { player_ref, .. }
             | Effect::LoseLife { player_ref, .. }
             | Effect::Mill { player_ref, .. }
+            // Winning names its player the same way, and the answer is the same one:
+            // "you win the game" fills no slot.
+            | Effect::WinTheGame { player_ref }
             // A discard names its hand the same way, and for the same reason: "target
             // player discards two cards" fills a slot and can fizzle, "each opponent
             // discards a card" fills none and cannot.

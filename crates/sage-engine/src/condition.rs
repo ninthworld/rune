@@ -106,7 +106,10 @@ fn attacked_or_blocked_this_turn(state: &GameState, id: PermanentId) -> bool {
     })
 }
 
-/// How many permanents `wanted` names, for an object controlled by `controller`.
+/// How many permanents `wanted` names, for an object controlled by `controller` — or how
+/// many **different names** they have, when
+/// [`PermanentCount::distinct_names`](crate::ability::PermanentCount::distinct_names) is
+/// authored.
 ///
 /// Reads **printed** types and subtypes, consistent with every other selector in the
 /// engine: the type-changing layers are not implemented, so printed types are current
@@ -128,7 +131,19 @@ pub(crate) fn count_permanents(
     db: &CardDatabase,
 ) -> u32 {
     let matching = permanents_matching(state, wanted, controller, db);
-    u32::try_from(matching.count()).unwrap_or(u32::MAX)
+    let tally = if wanted.distinct_names {
+        // The card counts *names*, not permanents (CR 111.4 / CR 712.4b: a token's own
+        // name, a transformed card's face-up one). A permanent whose face is not in `db`
+        // has no name to compare and is not counted — the same silence every other read
+        // of a missing card handle keeps.
+        matching
+            .filter_map(|perm| perm.printed.face(db).map(|face| face.name().to_string()))
+            .collect::<std::collections::BTreeSet<String>>()
+            .len()
+    } else {
+        matching.count()
+    };
+    u32::try_from(tally).unwrap_or(u32::MAX)
 }
 
 /// The permanents `wanted` names, in battlefield order, for an object controlled by

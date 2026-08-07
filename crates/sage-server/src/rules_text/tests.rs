@@ -1765,3 +1765,24 @@ fn issue_734_a_copy_reads_as_the_copy_it_is() {
          may choose new targets for the copy."
     );
 }
+
+#[test]
+fn issue_727_a_count_of_names_and_the_shortest_payoff_a_card_can_print() {
+    let db = bundled();
+    // Two sentences, and the second is the whole reason the card exists. "Demons" is the
+    // subtype standing alone as its own noun — a card says "four or more Demons", never
+    // "four or more Demon permanents" — and "with different names" trails it where the
+    // printed clause sits.
+    assert_eq!(
+        text_of(&db, "liliana_s_contract"),
+        "When Liliana's Contract enters the battlefield, draw four cards and you lose 4 \
+         life.\nAt the beginning of your upkeep, if you control four or more Demons with \
+         different names, you win the game."
+    );
+    // The same composer, one permanent and no names clause: a count of one cannot have
+    // different names and does not claim to.
+    assert_eq!(
+        text_of(&db, "kargan_dragonrider"),
+        "Kargan Dragonrider has flying as long as you control a Dragon."
+    );
+}

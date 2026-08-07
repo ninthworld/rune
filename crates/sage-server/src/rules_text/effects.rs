@@ -118,6 +118,11 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         Effect::LoseLife { player_ref, amount } => {
             format!("{} {amount} life", conjugate(*player_ref, "lose"))
         }
+        // The shortest sentence a card can end on, and it takes the same conjugation
+        // every other player-subject clause does: "you win the game".
+        Effect::WinTheGame { player_ref } => {
+            format!("{} the game", conjugate(*player_ref, "win"))
+        }
         // "on each of up to two target creatures" when the effect may name more than
         // one, "on target creature" when it names exactly one — read off the same count
         // the engine builds the target slots from, so the sentence and the slots cannot

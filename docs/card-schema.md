@@ -672,6 +672,21 @@ name every opponent. `each_player` is a variant of its own rather than a flag on
 symmetric sweeper hits its own caster. `gain_life`, `lose_life`, and `mill` all take a reference, so both
 shapes exist for each without any of them restating the fizzle rule.
 
+### Winning the game (CR 104.2b)
+
+`win_the_game` takes the same reference and every printed card fills it with `controller`:
+
+```json
+{ "kind": "win_the_game", "player_ref": "controller" }
+```
+
+There is no "has won" flag anywhere in the engine, and this effect does not add one: a game
+ends when at most one player is still in it and the survivor **is** the winner (CR 104.2a),
+so winning is recorded as every other player losing, with the reason `opponent_won`. That is
+also what the rules describe happening at a table of any size. A player who has already lost
+wins nothing. There is no `lose_the_game` counterpart — a card that ends the game from the
+other direction is not authorable, and the exclusion list says so.
+
 ### Damage (CR 120.3)
 
 `deal_damage` names **who or what takes the damage** with exactly one of three keys, and
@@ -1023,8 +1038,8 @@ because a printed card asks them as one, and two combats in a turn both count.
 
 A `permanents` selector is a small product — `scope` (`you_control`, `opponents_control`,
 `any`; default `you_control`), optional `card_type`, optional `subtype`, optional `color`,
-optional `min_power`, and the flag `nontoken` — read against printed types, like every
-other selector in the engine.
+optional `min_power`, and the flags `nontoken` and `distinct_names` — read against printed
+types, like every other selector in the engine.
 
 `nontoken` counts only permanents that are not tokens (CR 111), which is the *"number of
 nontoken creatures you control"* a card names before making tokens of its own. It matters
@@ -1032,6 +1047,20 @@ most on exactly those cards: a token-making effect that counted its own tokens w
 every time it resolved. One flag rather than a three-way choice, because only that
 direction is printed — a card that counted tokens would add the other value and nothing
 here would move.
+
+`distinct_names` changes what is counted rather than what is looked at: the tally becomes
+how many **different names** the matching permanents have, which is the *"four or more
+Demons with different names"* of a card that cannot be satisfied by playing one card four
+times. A permanent's name is the one its current face prints (CR 712.4b) and a token's is
+its own (CR 111.4), compared as the printed string — two printings of one card share a
+name.
+
+```json
+{ "kind": "conditional",
+  "condition": { "kind": "controls_at_least",
+                 "permanents": { "subtype": "Demon", "distinct_names": true }, "count": 4 },
+  "then":      [{ "kind": "win_the_game", "player_ref": "controller" }] }
+```
 
 A mass class (`affects`) takes the same `min_power` bound, and one more that a printed number
 cannot express: `below_source_power` restricts the class to creatures whose power is **strictly

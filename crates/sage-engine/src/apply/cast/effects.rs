@@ -215,6 +215,15 @@ pub(crate) fn apply_effect(
                 state.change_life(seat, -i32::try_from(lost).unwrap_or(i32::MAX));
             }
         }
+        // CR 104.2b: the referenced player wins the game, which the engine says by
+        // making every other player in it lose (CR 104.2a — the survivor is the
+        // winner). A subject who has already lost cannot win and is skipped, and a
+        // seat that has already lost keeps the reason it lost for.
+        Effect::WinTheGame { player_ref } => {
+            for seat in non_targeting_subjects(state, *player_ref, controller) {
+                win_the_game(state, seat);
+            }
+        }
         // CR 701.13: the referenced player puts the top `count` cards of their
         // library into their graveyard. Not a draw — an empty library simply moves
         // fewer cards and never trips the CR 704.5c decking loss.
@@ -643,6 +652,29 @@ fn draw_cards(state: &mut GameState, controller: PlayerId, count: u32) {
             player: controller,
             count: drawn,
         });
+    }
+}
+
+/// `winner` wins the game (CR 104.2b): every other player still in it loses, recorded as
+/// [`LossReason::OpponentWon`](crate::player::LossReason::OpponentWon).
+///
+/// The engine stores no winner — [`GameState::result`](crate::GameState::result) derives
+/// one from who has lost, because the survivor of CR 104.2a *is* the winner — so this is
+/// what winning is written as, and it is also what the rules say happens at a table of
+/// any size. A seat that has already lost keeps the reason it lost for, and a `winner`
+/// who has already lost wins nothing (CR 104.3a: they are no longer in the game).
+///
+/// One function so the targeting and non-targeting spellings of [`Effect::WinTheGame`]
+/// end the game identically; the only difference between them is who the seat is.
+pub(super) fn win_the_game(state: &mut GameState, winner: PlayerId) {
+    if state.players.get(winner.0).is_none_or(|p| p.has_lost) {
+        return;
+    }
+    for (seat, player) in state.players.iter_mut().enumerate() {
+        if seat != winner.0 && !player.has_lost {
+            player.has_lost = true;
+            player.loss_reason = Some(crate::player::LossReason::OpponentWon);
+        }
     }
 }
 

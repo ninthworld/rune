@@ -59,7 +59,13 @@ export type CommanderIdentity = z.infer<typeof CommanderIdentity>
 // Result
 // ---------------------------------------------------------------------------
 
-export const GameOverReason = z.enum(['life_zero', 'decked', 'concede', 'commander_damage'])
+export const GameOverReason = z.enum([
+  'life_zero',
+  'decked',
+  'concede',
+  'commander_damage',
+  'opponent_won',
+])
 export type GameOverReason = z.infer<typeof GameOverReason>
 
 export const CommanderDamage = z.object({

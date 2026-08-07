@@ -677,18 +677,33 @@ pub(super) fn counted_permanents(permanents: &PermanentCount, count: u32) -> Str
     }
     if let Some(subtype) = &permanents.subtype {
         noun.push_str(subtype);
-        noun.push(' ');
+        // A subtype with no card type beside it **is** the noun: a card says "four or
+        // more Demons", never "four or more Demon permanents". With a type it stays an
+        // adjective, which is how a card prints that too — "an Ajani planeswalker".
+        if permanents.card_type.is_some() {
+            noun.push(' ');
+            noun.push_str(permanent_noun(permanents.card_type));
+        }
+    } else {
+        noun.push_str(permanent_noun(permanents.card_type));
     }
-    noun.push_str(permanent_noun(permanents.card_type));
     let phrase = match count {
         1 => format!("{} {noun}", indefinite_article(&noun)),
         n => format!("{} or more {}", number(n), plural(&noun)),
     };
     // A power bound trails the noun, where a card prints it: "a creature with power 4
     // or greater".
-    match permanents.min_power {
+    let phrase = match permanents.min_power {
         None => phrase,
         Some(min) => format!("{phrase} with power {min} or greater"),
+    };
+    // And the names clause trails that, where a card prints it: "four or more Demons
+    // with different names". A count of one cannot have different names and does not
+    // claim to.
+    if permanents.distinct_names && count > 1 {
+        format!("{phrase} with different names")
+    } else {
+        phrase
     }
 }
 

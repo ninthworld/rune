@@ -1461,4 +1461,27 @@ pub enum Effect {
         #[serde(default)]
         new_targets: bool,
     },
+    /// The referenced player **wins the game** (CR 104.2b) — the payoff of a card that
+    /// ends the game on its own terms rather than by reducing anyone to zero.
+    ///
+    /// The engine has no "has won" flag and deliberately gains none: a game ends when at
+    /// most one player is still in it, and the survivor *is* the winner (CR 104.2a), so
+    /// [`GameResult`](crate::GameResult) is derived from who has lost and nothing else.
+    /// Winning is therefore expressed as what it does to everyone else — every other
+    /// player in the game loses it, recorded with
+    /// [`LossReason::OpponentWon`](crate::player::LossReason::OpponentWon) — which is
+    /// also what the rules say happens at a table of any size. One derivation of the
+    /// result, one place a game can end, and no second way to be finished that every
+    /// reader of the state would have to learn.
+    ///
+    /// A player who has already lost cannot win (CR 104.3a — they are no longer in the
+    /// game), so the effect does nothing for such a subject rather than resurrecting
+    /// them.
+    ///
+    /// The subject is a non-targeted [`PlayerRef`], and every printed card that says this
+    /// says "you". This effect chooses no target.
+    WinTheGame {
+        /// Which player wins.
+        player_ref: PlayerRef,
+    },
 }

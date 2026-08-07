@@ -376,6 +376,26 @@ pub struct PermanentCount {
     /// counted its own tokens would grow every time it resolved.
     #[serde(default)]
     pub nontoken: bool,
+    /// Count how many **different names** the matching permanents have, rather than how
+    /// many permanents there are — the "four or more Demons **with different names**" of
+    /// a card that wins on a board it cannot build out of one card played four times.
+    ///
+    /// A property of the *tally*, not of the filter: every field above still says which
+    /// permanents are looked at, and this says what is counted once they are. Four
+    /// Demons of one name are four permanents and one name.
+    ///
+    /// A permanent's name is the one its **current face** prints (CR 712.4b — a
+    /// transformed card is named by the face that is up), and a token's is its own
+    /// (CR 111.4). Read as the printed string rather than as a card identity, because
+    /// that is the question the card asks: two different printings of one card share a
+    /// name, and a token that copies a card takes its name.
+    ///
+    /// Deliberately does nothing to
+    /// [`DerivedAmount::GreatestManaValue`](super::DerivedAmount), the one other reader
+    /// of this selector — and cannot, because dropping duplicates never changes a
+    /// maximum. It is therefore not authorable nonsense there, merely inert.
+    #[serde(default)]
+    pub distinct_names: bool,
 }
 
 /// Whose permanents a [`PermanentCount`] counts, relative to the effect's controller.
