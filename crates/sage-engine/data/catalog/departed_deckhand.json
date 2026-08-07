@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "functional_id": "departed_deckhand",
+  "name": "Departed Deckhand",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Spirit",
+    "Pirate"
+  ],
+  "mana_cost": "{1}{U}",
+  "colors": [
+    "blue"
+  ],
+  "power": 2,
+  "toughness": 2,
+  "restrictions": [
+    {
+      "cant_be_blocked_except_by": "Spirit"
+    }
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "self_becomes_target": {
+          "spells_only": true
+        }
+      },
+      "effects": [
+        {
+          "kind": "sacrifice_self"
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{3}{U}"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "restrict",
+          "target": "another_creature_you_control",
+          "restriction": {
+            "cant_be_blocked_except_by": "Spirit"
+          }
+        }
+      ]
+    }
+  ]
+}

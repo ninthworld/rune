@@ -8,8 +8,8 @@
     "blocker": "the draw trigger condition observes only its own controller's draws"
   },
   {
-    "name": "Abilities that trigger on a permanent becoming the target of a spell or ability",
-    "blocker": "a trigger condition is a pure predicate over the states one action produced, and what it can find there is a zone change, an attack declaration, a draw, a life gain, a cast, an activation that used the stack, or a step boundary; a target is chosen at announcement and stored on the stack object, and no condition reads that list"
+    "name": "Abilities that trigger on a **player** becoming the target of a spell or ability",
+    "blocker": "a permanent notices an object put on the stack naming it as a target (CR 603.6e), narrowed to spells alone and to an opponent's objects; a *player* is never the subject — nothing watches for \"whenever you become the target\" — and no trigger reads the targets of an object that was already on the stack"
   },
   {
     "name": "Abilities that trigger on damage being dealt",

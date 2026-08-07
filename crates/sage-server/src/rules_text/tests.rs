@@ -1857,3 +1857,23 @@ fn issue_706_a_toll_reads_as_the_consequence_and_the_way_out_of_it() {
          battlefield, sacrifice it unless you pay {1}.\n{T}: Add one mana of any color."
     );
 }
+
+#[test]
+fn issue_706_becoming_the_target_says_what_kind_of_object_and_whose() {
+    let db = bundled();
+    // "A spell or ability an opponent controls" — both narrowings, in the order a card
+    // prints them.
+    assert_eq!(
+        text_of(&db, "thorn_lieutenant"),
+        "Whenever Thorn Lieutenant becomes the target of a spell or ability an opponent \
+         controls, you create a 1/1 green Elf Warrior creature token.\n{5}{G}: Thorn \
+         Lieutenant gets +4/+4 until end of turn."
+    );
+    // "A spell", and nobody's in particular: the drawback the card is priced for.
+    assert_eq!(
+        text_of(&db, "departed_deckhand"),
+        "Departed Deckhand can't be blocked except by Spirits.\nWhenever Departed Deckhand \
+         becomes the target of a spell, sacrifice it.\n{3}{U}: Another target creature \
+         you control can't be blocked except by Spirits this turn."
+    );
+}

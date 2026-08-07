@@ -249,6 +249,15 @@ pub enum TargetSpec {
     /// Any creature controlled by an opponent of the object's controller — "target
     /// creature an opponent controls". Never a planeswalker (see [`Self::AnyCreature`]).
     AnyCreatureAnOpponentControls,
+    /// A creature the object's controller controls, **other than the ability's own
+    /// source** — "another target creature you control".
+    ///
+    /// Source-relative like [`Self::AnotherAttackingCreature`], and "another" means the
+    /// same thing here: the source permanent excluded by
+    /// [`PermanentId`](crate::PermanentId), so two copies of one card each name the
+    /// other. Names nothing at all for a spell, which has no source permanent to be
+    /// another one than.
+    AnotherCreatureYouControl,
     /// Any creature that currently has flying (CR 613.1f, so a granted flying counts
     /// exactly as a printed one) — the "target creature with flying" of an anti-air
     /// removal spell. Never a planeswalker (see [`Self::AnyCreature`]).

@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "functional_id": "thorn_lieutenant",
+  "name": "Thorn Lieutenant",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elf",
+    "Warrior"
+  ],
+  "mana_cost": "{1}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 2,
+  "toughness": 3,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "self_becomes_target": {
+          "opponents_only": true
+        }
+      },
+      "effects": [
+        {
+          "kind": "create_token",
+          "token": {
+            "name": "Elf Warrior",
+            "types": [
+              "creature"
+            ],
+            "subtypes": [
+              "Elf",
+              "Warrior"
+            ],
+            "colors": [
+              "green"
+            ],
+            "power": 1,
+            "toughness": 1
+          }
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{5}{G}"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "pump_self",
+          "power": 4,
+          "toughness": 4
+        }
+      ]
+    }
+  ]
+}

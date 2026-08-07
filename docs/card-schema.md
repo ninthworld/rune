@@ -683,6 +683,33 @@ name every opponent. `each_player` is a variant of its own rather than a flag on
 symmetric sweeper hits its own caster. `gain_life`, `lose_life`, and `mill` all take a reference, so both
 shapes exist for each without any of them restating the fizzle rule.
 
+### Becoming the target (CR 603.6e)
+
+`self_becomes_target` fires when an object naming this permanent as a target is **put on
+the stack**:
+
+```json
+{ "type": "triggered",
+  "event": { "self_becomes_target": { "opponents_only": true } },
+  "effects": [ { "kind": "gain_life", "player_ref": "controller", "amount": 3 } ] }
+```
+
+Two independent narrowings, and printed cards use them apart:
+
+| Field | Means |
+| --- | --- |
+| `opponents_only` | only objects an **opponent** controls — `a spell or ability an opponent controls`. Absent notices anyone's, including your own |
+| `spells_only` | only **spells**, never abilities — `becomes the target of a spell`. Absent notices both |
+
+It is observed by diffing the **stack**, which is what makes it exact: targets are chosen
+as an object is put there (CR 601.2c) and never change afterwards, so an object already on
+the stack has just targeted nothing. It follows that the trigger fires on **announcement**
+rather than on resolution — a removal spell that is countered has still targeted, and the
+payoff has already happened. It fires once per object, not once per target word.
+
+A player becoming the target is a different subject and is not authorable; the exclusion
+list says so.
+
 ### `unless you pay` — an optional effect with a consequence
 
 `may` takes an `otherwise` branch: what happens **instead** when the offer is declined.

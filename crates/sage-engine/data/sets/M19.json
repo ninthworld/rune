@@ -170,6 +170,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "shield_mare",
+    "collector_number": "37",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "star_crowned_stag",
     "collector_number": "38",
     "rarity": "common"
@@ -218,6 +223,11 @@
     "functional_id": "cancel",
     "collector_number": "48",
     "rarity": "common"
+  },
+  {
+    "functional_id": "departed_deckhand",
+    "collector_number": "49",
+    "rarity": "uncommon"
   },
   {
     "functional_id": "disperse",
@@ -913,6 +923,11 @@
     "functional_id": "talons_of_wildwood",
     "collector_number": "202",
     "rarity": "common"
+  },
+  {
+    "functional_id": "thorn_lieutenant",
+    "collector_number": "203",
+    "rarity": "rare"
   },
   {
     "functional_id": "thornhide_wolves",
