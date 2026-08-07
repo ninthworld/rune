@@ -68,7 +68,7 @@ pub(crate) fn condition_holds(
                         .any(|card| card_matches(db, card.card, filter)))
         }),
         Condition::DiscardedThisWay => events_since(state, resolution_start).any(|event| {
-            matches!(event, GameEvent::CardsDiscarded { player, count }
+            matches!(event, GameEvent::CardsDiscarded { player, count, .. }
                 if *player == controller && *count > 0)
         }),
         Condition::GainedLifeThisTurn { amount } => {

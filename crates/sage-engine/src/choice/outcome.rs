@@ -29,7 +29,7 @@ pub(crate) fn apply_choice_outcome(
 ) -> ChoiceAftermath {
     match request.outcome {
         ChoiceOutcome::Discard => {
-            discard_chosen(state, request.subject, chosen, db);
+            discard_chosen(state, request.subject, chosen, request.caused_by, db);
             ChoiceAftermath::default()
         }
         ChoiceOutcome::BottomChosen => {
@@ -74,7 +74,10 @@ pub(crate) fn discard_to_cost(
     chosen: &[CardInstanceId],
     db: &CardDatabase,
 ) {
-    discard_chosen(state, subject, chosen, db);
+    // A cost is paid by the player casting or activating, so they are the cause — which
+    // is what keeps `a spell an **opponent** controls caused you to discard` false of a
+    // card its own controller pitched.
+    discard_chosen(state, subject, chosen, Some(subject), db);
 }
 
 /// Move the chosen cards from the subject's hand to their graveyard (CR 701.8) and log
@@ -85,6 +88,7 @@ fn discard_chosen(
     state: &mut GameState,
     subject: PlayerId,
     chosen: &[CardInstanceId],
+    caused_by: Option<PlayerId>,
     db: &CardDatabase,
 ) {
     let mut discarded = 0u32;
@@ -103,6 +107,7 @@ fn discard_chosen(
         state.record_event(GameEvent::CardsDiscarded {
             player: subject,
             count: discarded,
+            caused_by,
         });
     }
 }

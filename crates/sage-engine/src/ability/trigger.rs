@@ -82,6 +82,26 @@ pub enum TriggerCondition {
     /// was not before — so it fires once per declaration, from the one place
     /// attackers are declared, and never from a creature that merely became tapped.
     SelfAttacks,
+    /// **This card was discarded** from its owner's hand this transition — Ajani's Last
+    /// Stand's `when a spell or ability an opponent controls causes you to discard this
+    /// card`.
+    ///
+    /// The one condition whose ability functions in a **hand** (CR 113.6). Every other
+    /// watcher reads a permanent, an emblem, or a card in a graveyard; this one has to be
+    /// read off a card nobody can see, because by the time it has left the hand it is too
+    /// late to have been watching from there.
+    ///
+    /// Observed by diffing the hand it was in, which is what "discarded" means here, and
+    /// narrowed by **who caused it** — a fact the recorded event carries because nothing
+    /// about a hand one card lighter says why (CR 701.8). A cleanup discard has no cause
+    /// and satisfies no narrowing; a card its own controller pitched to a cost was caused
+    /// by them, not by an opponent.
+    SelfDiscarded {
+        /// Notice only a discard an **opponent's** spell or ability caused. `false`
+        /// notices any of them, including one the turn structure caused.
+        #[serde(default)]
+        by_opponent: bool,
+    },
     /// The source permanent — or the one it is **attached to** — was declared as a
     /// **blocker** this transition (CR 509.1, the "blocks" event of CR 603.6d): Dwindle's
     /// `when enchanted creature blocks, destroy it`.
@@ -467,6 +487,15 @@ pub enum ObservedPermanent {
         /// a flying watcher notices, and really stops being one when the grant ends.
         #[serde(default)]
         keyword: Option<Keyword>,
+        /// Also notice **planeswalkers** — the `a creature or planeswalker you control`
+        /// of Ajani's Last Stand.
+        ///
+        /// A flag rather than a variant of its own, because it widens the class without
+        /// changing anything else about it: the same controller test, the same
+        /// exclusions, the same count. The two types are disjoint on every card the
+        /// schema can express, so this is a union and never a re-reading.
+        #[serde(default)]
+        or_planeswalker: bool,
     },
     /// Any creature on the battlefield, whoever controls it — "a creature", and with
     /// `except_this`, "another creature".
@@ -517,6 +546,17 @@ impl ObservedPermanent {
         match self {
             ObservedPermanent::CreaturesYouControl { nontoken, .. }
             | ObservedPermanent::AnyCreature { nontoken, .. } => *nontoken,
+        }
+    }
+
+    /// Whether this selector also notices planeswalkers, not creatures alone.
+    #[must_use]
+    pub fn also_planeswalkers(&self) -> bool {
+        match self {
+            ObservedPermanent::CreaturesYouControl {
+                or_planeswalker, ..
+            } => *or_planeswalker,
+            ObservedPermanent::AnyCreature { .. } => false,
         }
     }
 

@@ -638,6 +638,14 @@ pub struct ChoiceRequest {
     pub zone: ChoiceZone,
     /// Which cards of that zone may be picked.
     pub filter: CardFilter,
+    /// Who **caused** this selection, for the one outcome that records a cause: the
+    /// controller of the object whose resolution posed it, or `None` for a question the
+    /// turn structure asked (the cleanup discard).
+    ///
+    /// Resolved when the choice is posed, for [`Self::source_card`]'s reason: by the time
+    /// the answer arrives the object has finished resolving and there is nothing left to
+    /// ask. Read only by the discard outcome, which puts it on the recorded event.
+    pub caused_by: Option<PlayerId>,
     /// The printed card [`CardFilter::SameNameAsSource`] compares against — resolved
     /// when the choice was posed, because the source permanent may have left the
     /// battlefield by the time the choice is answered. `None` for a spell (no source

@@ -174,6 +174,7 @@ pub(crate) fn choices_for_effect(
                         (
                             chooser,
                             ChoiceQuestion::Cards(ChoiceRequest {
+                                caused_by: Some(controller),
                                 subject,
                                 zone: ChoiceZone::Hand,
                                 filter: filter.clone(),
@@ -211,6 +212,7 @@ pub(crate) fn choices_for_effect(
                         (
                             subject,
                             ChoiceQuestion::Cards(ChoiceRequest {
+                                caused_by: Some(controller),
                                 subject,
                                 zone: ChoiceZone::Hand,
                                 filter: CardFilter::Any,
@@ -280,6 +282,7 @@ pub(crate) fn choices_for_effect(
         Effect::Scry { count } => Some(vec![(
             controller,
             ChoiceQuestion::Cards(ChoiceRequest {
+                caused_by: Some(controller),
                 subject: controller,
                 zone: ChoiceZone::LibraryTop(*count),
                 filter: CardFilter::Any,
@@ -303,6 +306,7 @@ pub(crate) fn choices_for_effect(
         } => Some(vec![(
             controller,
             ChoiceQuestion::Cards(ChoiceRequest {
+                caused_by: Some(controller),
                 subject: controller,
                 zone: ChoiceZone::LibraryTop(*count),
                 filter: filter.clone(),
@@ -383,6 +387,7 @@ pub(crate) fn choices_for_effect(
         } => Some(vec![(
             controller,
             ChoiceQuestion::Cards(ChoiceRequest {
+                caused_by: Some(controller),
                 subject: controller,
                 zone: ChoiceZone::Library,
                 filter: filter.clone(),

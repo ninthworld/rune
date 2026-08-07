@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "functional_id": "ajani_s_last_stand",
+  "name": "Ajani's Last Stand",
+  "types": [
+    "enchantment"
+  ],
+  "mana_cost": "{2}{W}{W}",
+  "colors": [
+    "white"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "permanent_dies": {
+          "scope": "creatures_you_control",
+          "or_planeswalker": true
+        }
+      },
+      "effects": [
+        {
+          "kind": "may",
+          "cost": {
+            "kind": "sacrifice_this"
+          },
+          "effects": [
+            {
+              "kind": "create_token",
+              "token": {
+                "name": "Avatar",
+                "types": [
+                  "creature"
+                ],
+                "subtypes": [
+                  "Avatar"
+                ],
+                "colors": [
+                  "white"
+                ],
+                "power": 4,
+                "toughness": 4,
+                "keywords": [
+                  "flying"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "triggered",
+      "event": {
+        "self_discarded": {
+          "by_opponent": true
+        }
+      },
+      "effects": [
+        {
+          "kind": "conditional",
+          "condition": {
+            "kind": "controls_at_least",
+            "count": 1,
+            "permanents": {
+              "card_type": "land",
+              "subtype": "Plains"
+            }
+          },
+          "then": [
+            {
+              "kind": "create_token",
+              "token": {
+                "name": "Avatar",
+                "types": [
+                  "creature"
+                ],
+                "subtypes": [
+                  "Avatar"
+                ],
+                "colors": [
+                  "white"
+                ],
+                "power": 4,
+                "toughness": 4,
+                "keywords": [
+                  "flying"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
