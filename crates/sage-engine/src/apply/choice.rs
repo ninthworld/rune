@@ -45,17 +45,27 @@ pub(crate) fn apply_answer_choice(
     let ChoiceQuestion::Cards(request) = &answered.question else {
         return;
     };
-    if let Some(question) = apply_choice_outcome(state, request, chosen, db) {
+    let aftermath = apply_choice_outcome(state, request, chosen, db);
+    // What the answer put onto the battlefield is written onto the resumed resolution
+    // ([`Resolution::entered`](crate::Resolution)) — the only moment it could be, since
+    // *which* card was taken is the player's decision and no event records an entry. It
+    // rides onto a follow-up question too, so a look whose remainder is ordered still
+    // reaches the rest of the card knowing what it put there.
+    let mut resume = answered.resume;
+    if let (Some(resume), Some(entered)) = (resume.as_mut(), aftermath.entered) {
+        resume.resolution.entered = Some(entered);
+    }
+    if let Some(question) = aftermath.next {
         // Behind anything the outcome itself queued (a found permanent naming a colour
         // as it enters), because those are questions about steps that already happened.
         state.pending_choices.push(PendingChoice {
             chooser: answered.chooser,
             question,
-            resume: answered.resume,
+            resume,
         });
         return;
     }
-    if let Some(resume) = answered.resume {
+    if let Some(resume) = resume {
         resume_after_choice(state, resume, db);
     }
 }

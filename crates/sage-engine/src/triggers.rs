@@ -39,6 +39,14 @@ pub struct Trigger {
     /// CR 608.2b re-check every stack object runs — so a spell that has been countered
     /// before the ability resolves is simply not copied.
     pub targets: Vec<crate::ability::Target>,
+    /// What the ability knows about its own source's power (CR 608.2h) — the same slot an
+    /// activation records it in, read by the one effect that asks
+    /// ([`Effect::SelfDealsDamage`](crate::Effect)).
+    ///
+    /// Default for every printed and delayed trigger: nothing about them reads it, and a
+    /// trigger has no cost to pay (CR 603.3). A **reflexive** ability writes the entering
+    /// creature's power here, so a creature killed in response still deals its damage.
+    pub paid: crate::stack::PaidCost,
 }
 
 /// The object a trigger condition is being evaluated for, reduced to what the
@@ -359,6 +367,9 @@ fn collect_from(
             // self-conditions can only ever answer 0 or 1.
             for _ in 0..fire_count(&event, watcher, before, after, db) {
                 out.push(Trigger {
+                    // A printed trigger reads nothing about its source's power, and has
+                    // no cost that could have recorded one (CR 603.3).
+                    paid: crate::stack::PaidCost::default(),
                     source: watcher.source(),
                     controller: watcher.controller,
                     effects: effects.clone(),

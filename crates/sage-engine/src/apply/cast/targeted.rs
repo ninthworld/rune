@@ -375,6 +375,22 @@ pub(crate) fn apply_targeted_effect(
                 state.mill(seat, u32::from(*count));
             }
         }
+        // "It deals damage equal to its power" (CR 609.7): the dealer is the ability's own
+        // source, and its power is read *now* (CR 608.2) — or, for a source that is no
+        // longer on the battlefield, from what was last known of it (CR 608.2h), which is
+        // recorded when the ability was created. A power of zero or less deals nothing,
+        // and no damage event is produced at all.
+        Effect::SelfDealsDamage { .. } => {
+            let power = source
+                .and_then(|id| crate::characteristics::characteristics(state, id, db).power)
+                .or(resolution.paid.source_power)
+                .unwrap_or(0);
+            if let Ok(amount) = u32::try_from(power) {
+                if amount > 0 {
+                    deal_damage_to_target(state, target, amount, resolution, source, db);
+                }
+            }
+        }
         // The same verb aimed at a chosen seat (CR 104.2b). No printed card says "target
         // player wins the game", but the reference decides whether this targets exactly
         // as it does for every other player-subject effect, so the targeted spelling
@@ -531,7 +547,10 @@ pub(crate) fn apply_targeted_effect(
         | Effect::ExileSelfAndReturnTransformed
         | Effect::PutCountersOnSelf { .. }
         // A delayed trigger names an event, never a chosen object.
-        | Effect::CreateDelayedTrigger { .. } => {}
+        | Effect::CreateDelayedTrigger { .. }
+        // A reflexive ability names an event inside its own resolution, never a chosen
+        // object; the ability it creates is what aims at one.
+        | Effect::CreateReflexiveTrigger { .. } => {}
         // "Target player's graveyard": the targeting form of the same verb, routed here
         // for the reason a targeted mill is — the reference chose a seat, and this is
         // where a chosen seat arrives.

@@ -236,6 +236,7 @@ impl GameState {
             replacements: Vec::new(),
             prevention: Vec::new(),
             delayed_triggers: Vec::new(),
+            reflexive_triggers: Vec::new(),
             stack: Vec::new(),
             static_effects: Vec::new(),
             next_object_id: 1,

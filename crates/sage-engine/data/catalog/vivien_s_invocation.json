@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "functional_id": "vivien_s_invocation",
+  "name": "Vivien's Invocation",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{5}{G}{G}",
+  "colors": [
+    "green"
+  ],
+  "spell_effects": [
+    {
+      "kind": "look_at_top",
+      "count": 7,
+      "take": 1,
+      "filter": {
+        "kind": "creature"
+      },
+      "destination": "battlefield"
+    },
+    {
+      "kind": "create_reflexive_trigger",
+      "trigger": {
+        "event": "creature_put_onto_battlefield_this_way",
+        "effects": [
+          {
+            "kind": "self_deals_damage",
+            "target": "any_creature_an_opponent_controls"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -126,6 +126,9 @@ pub(crate) fn delayed_triggers_fired(
         fired.push((
             pending.id,
             crate::triggers::Trigger {
+                // Nothing a delayed ability does reads a source's power; it has no source
+                // permanent at all (CR 603.7e).
+                paid: crate::stack::PaidCost::default(),
                 source: crate::stack::AbilitySource::DelayedAbility,
                 controller: pending.controller,
                 effects: pending.trigger.effects.clone(),

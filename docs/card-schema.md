@@ -1566,6 +1566,54 @@ watched — "that spell" — which the trigger event fixes rather than anybody c
 fired ability reaches the stack with its slot already filled and its controller is never asked
 which spell it meant.
 
+#### `create_reflexive_trigger`
+
+`create_reflexive_trigger` creates a **reflexive triggered ability** (CR 603.11) — the
+`When a creature is put onto the battlefield this way, …` a resolution says about something it
+has just done:
+
+```json
+{ "kind": "create_reflexive_trigger",
+  "trigger": {
+    "event": "creature_put_onto_battlefield_this_way",
+    "effects": [ { "kind": "self_deals_damage", "target": "any_creature_an_opponent_controls" } ] } }
+```
+
+The sibling of `create_delayed_trigger`, and the two differences are why it is not that one:
+
+- **It fires now, or never.** A delayed ability waits for a later event and outlives what made
+  it; a reflexive one watches something *inside the resolution that created it*, so it is
+  created, fires, and is gone within a single action. Nothing about it survives to the next one,
+  which is why there is no turn boundary to clear it at and nothing to spend.
+- **It arrives unaimed.** Its target is chosen as it goes on the stack (CR 603.11b), through the
+  same action every printed trigger's targets are chosen with. That is precisely what a
+  `when you do` needs: until the player answers the first question there is nothing to aim
+  *with*, so an announcement could not have asked.
+
+Write it **after** the effect it watches, in the same effect list — it asks what that effect
+did, and one written first would be asking about a resolution that has not done anything yet.
+
+Its `event` vocabulary is one condition today,
+`creature_put_onto_battlefield_this_way`, answered from what the resolution recorded about
+itself. A resolution that put a land there answers no; one that put nothing there — the player
+declined, or nothing among the cards matched — creates no ability at all.
+
+#### `self_deals_damage`
+
+`self_deals_damage` is the `it deals damage equal to its power to target creature an opponent
+controls` of that trigger:
+
+```json
+{ "kind": "self_deals_damage", "target": "any_creature_an_opponent_controls" }
+```
+
+The **dealer is the ability's own source** and is never named or chosen, like `pump_self`'s
+subject — which is also what makes the damage's source a permanent (CR 609.7) rather than a
+spell. The amount is not a number the card prints: the source's power is read on resolution
+(CR 608.2), so a creature pumped in response deals the larger number, and a source that is no
+longer on the battlefield deals its **last known** power (CR 608.2h). Killing the creature in
+response is the obvious answer to this trigger, and it does not stop the damage.
+
 #### `copy_spell`
 
 `copy_spell` puts a **copy of a spell** onto the stack, above the original (CR 707.10):

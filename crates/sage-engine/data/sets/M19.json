@@ -925,6 +925,11 @@
     "rarity": "mythic"
   },
   {
+    "functional_id": "vivien_s_invocation",
+    "collector_number": "209",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "wall_of_vines",
     "collector_number": "210",
     "rarity": "common"

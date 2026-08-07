@@ -72,6 +72,21 @@ pub struct Resolution {
     /// cannot supply it afterwards because only a *creature*'s departure is recorded
     /// (CR 700.4) — a sacrificed land leaves no trace a later effect could count.
     pub sacrificed: u32,
+    /// The permanent **this resolution put onto the battlefield**, if it put one there —
+    /// read by [`ReflexiveCondition::CreaturePutOntoBattlefieldThisWay`](crate::ReflexiveCondition),
+    /// the `when a creature is put onto the battlefield this way` of a reflexive trigger.
+    ///
+    /// Written by the answer that placed it, on the way back into the suspended
+    /// remainder, for the reason [`sacrificed`](Self::sacrificed) is: *which* card among
+    /// the ones looked at is the player's decision, so it does not exist until they make
+    /// it, and no event records a permanent entering — the trigger collector reads
+    /// entries by diffing the battlefield, which a later effect in the same resolution
+    /// cannot do.
+    ///
+    /// One permanent, not a list, because one is what the effects that write it put
+    /// there; a look that took two would need a list and nothing about this field would
+    /// have to move.
+    pub entered: Option<crate::id::PermanentId>,
 }
 
 impl Resolution {
@@ -550,6 +565,9 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         // Nothing has been sacrificed by a resolution that has not started; the answer to
         // an open sacrifice writes this on its way back in.
         sacrificed: 0,
+        // And nothing has been put onto the battlefield yet, for the same reason and by
+        // the same road.
+        entered: None,
     };
     let suspended = apply_effects_with_targets(
         state,

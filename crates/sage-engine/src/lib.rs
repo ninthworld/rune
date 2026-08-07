@@ -34,6 +34,7 @@ mod mana;
 mod mulligan;
 mod phase;
 mod player;
+mod reflexive;
 mod replacement;
 mod resolve;
 mod rng;
@@ -116,6 +117,7 @@ pub use player::{
     casts_from_hand_without_paying, maximum_hand_size, over_hand_size, plays_lands_from_graveyard,
     LossReason, Player, MAX_HAND_SIZE, STARTING_LIFE,
 };
+pub use reflexive::{PendingReflexive, ReflexiveCondition, ReflexiveTrigger};
 pub use replacement::{
     pending_replacement_options, DamageFilter, DamageRecipient, EnteringFilter, EnteringObject,
     OfferedReplacement, PendingDamage, PendingEntry, PendingReplacement, ReplacementEffect,

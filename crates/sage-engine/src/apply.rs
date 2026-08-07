@@ -147,6 +147,23 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         next.delayed_triggers.retain(|pending| pending.id != spent);
         collected.push(trigger);
     }
+    //    A **reflexive** ability (CR 603.11) is a fifth source, and the only one that was
+    //    created by the very transition it fires in: the resolution decided whether it
+    //    fired while it was running, so there is nothing left to evaluate here and the
+    //    list is simply drained. It arrives unaimed like a printed trigger, which is what
+    //    CR 603.11b asks for — a `when you do` chooses its target as it goes on the stack.
+    for pending in std::mem::take(&mut next.reflexive_triggers) {
+        collected.push(crate::triggers::Trigger {
+            source: crate::stack::AbilitySource::Permanent(pending.source),
+            controller: pending.controller,
+            effects: pending.effects,
+            targets: Vec::new(),
+            paid: crate::PaidCost {
+                source_power: pending.source_power,
+                ..crate::PaidCost::default()
+            },
+        });
+    }
     for trigger in collected {
         // CR 603.3c: a triggered ability that requires targets and has no legal
         // choice for one of its slots is removed from the stack — so it never goes on
@@ -185,9 +202,10 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
             // exception is a **delayed** ability, whose slot the trigger event itself
             // filled (CR 603.7c) — there is nothing for its controller to decide.
             targets: trigger.targets,
-            // And unpaid for: a trigger has no cost (CR 603.3), so there is no payment to
-            // record and nothing for an amount read off one to find.
-            paid: crate::PaidCost::default(),
+            // A trigger has no cost (CR 603.3), so this is empty for every printed one —
+            // the exception is what a reflexive ability recorded about its own source
+            // before that source could die (CR 608.2h).
+            paid: trigger.paid,
         });
     }
 
