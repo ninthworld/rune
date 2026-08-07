@@ -208,6 +208,52 @@ pub(crate) fn apply_effect(
         // Aimed at a chosen permanent, so it is applied through [`apply_targeted_effect`]
         // and this arm is never the one that runs it.
         Effect::SelfDealsDamage { .. } | Effect::Animate { .. } => {}
+        // CR 613 layers 4, 5 and 7b applied to the source itself — the self-referential
+        // animation. Until end of turn always: every printed card that says "becomes" of
+        // itself says it for the turn, and a permanent-lifetime version would be a
+        // different sentence.
+        Effect::AnimateSelf {
+            types,
+            subtypes,
+            replace_subtypes,
+            colors,
+            power,
+            toughness,
+        } => {
+            let Some(id) = permanent_source else {
+                return;
+            };
+            if !types.is_empty()
+                || !subtypes.is_empty()
+                || !colors.is_empty()
+                || *replace_subtypes
+            {
+                let timestamp = state.mint_id();
+                state.static_effects.push(crate::state::StaticEffect {
+                    source: timestamp,
+                    affects: crate::state::EffectAffects::SpecificPermanent(id),
+                    modification: crate::state::Modification::AddTypes {
+                        types: types.clone(),
+                        subtypes: subtypes.clone(),
+                        colors: colors.clone(),
+                        replace_subtypes: *replace_subtypes,
+                    },
+                    duration: crate::state::Duration::UntilEndOfTurn,
+                });
+            }
+            if let (Some(power), Some(toughness)) = (power, toughness) {
+                let timestamp = state.mint_id();
+                state.static_effects.push(crate::state::StaticEffect {
+                    source: timestamp,
+                    affects: crate::state::EffectAffects::SpecificPermanent(id),
+                    modification: crate::state::Modification::SetBasePowerToughness {
+                        power: *power,
+                        toughness: *toughness,
+                    },
+                    duration: crate::state::Duration::UntilEndOfTurn,
+                });
+            }
+        }
         // CR 701.17: the source itself, through the one battlefield→graveyard seam a
         // death takes — so a sacrifice fires the dies triggers and logs the death exactly
         // as any other does. A source that has already left sacrifices nothing.

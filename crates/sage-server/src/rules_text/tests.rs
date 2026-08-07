@@ -1919,3 +1919,20 @@ fn issue_706_reanimation_reads_as_two_sentences() {
          That creature is a black Zombie in addition to its other colors and types."
     );
 }
+
+#[test]
+fn issue_706_becoming_something_else_and_the_once_a_turn_line() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "ursine_champion"),
+        "{5}{G}: Ursine Champion gets +3/+3 until end of turn and Ursine Champion \
+         becomes a Bear Berserker until end of turn. Activate only once each turn."
+    );
+    assert_eq!(
+        text_of(&db, "chromium_the_mutable"),
+        "Flash, flying\nChromium, the Mutable can't be countered.\nDiscard a card: \
+         Chromium, the Mutable becomes a Human with base power and toughness 1/1 until \
+         end of turn and Chromium, the Mutable loses all abilities and gains hexproof \
+         until end of turn and Chromium, the Mutable can't be blocked this turn."
+    );
+}

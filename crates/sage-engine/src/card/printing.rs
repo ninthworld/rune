@@ -256,6 +256,7 @@ mod tests {
         assert_eq!(
             crate::card::abilities_of(&cards, first.oracle),
             vec![Ability::Activated {
+                once_each_turn: false,
                 cost: vec![Cost::Tap],
                 effects: vec![Effect::AddMana {
                     color: crate::mana::Color::White,

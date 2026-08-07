@@ -85,6 +85,8 @@ impl GameState {
         self.blockers_declared_by.clear();
         // CR 606.3: the one-loyalty-ability-per-turn allowance refreshes with the turn.
         self.loyalty_activations.clear();
+        // The per-ability allowance of CR 602.5f resets with the loyalty one beside it.
+        self.limited_activations.clear();
         // A "cast from your graveyard **this turn**" permission lapses with the turn it
         // was granted on. Cleared here rather than compared everywhere, so a stale entry
         // cannot outlive its turn even by one read.

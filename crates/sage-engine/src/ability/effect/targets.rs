@@ -194,6 +194,8 @@ impl Effect {
             | Effect::TapAttached
             // A card that sacrifices itself names the permanent by saying "it".
             | Effect::SacrificeSelf
+            // And one that becomes something else names itself the same way.
+            | Effect::AnimateSelf { .. }
             | Effect::PreventDamage { .. }
             // A choice over the controller's own library names no target: the library
             // is theirs by definition (CR 115.1).

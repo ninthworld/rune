@@ -180,20 +180,27 @@ pub(super) fn added_types(
     Vec<crate::card_type::CardType>,
     Vec<String>,
     Vec<crate::mana::Color>,
+    bool,
 ) {
     let mut types = Vec::new();
     let mut subtypes = Vec::new();
     let mut colors = Vec::new();
+    // CR 205.1b: any effect that *sets* the subtypes clears the printed ones for every
+    // effect at this layer, which is what "becomes a Human" means when something else
+    // also made it a Knight.
+    let mut replaced = false;
     let mut take = |modification: &Modification| {
         if let Modification::AddTypes {
             types: added,
             subtypes: added_subtypes,
+            replace_subtypes,
             colors: added_colors,
         } = modification
         {
             types.extend(added.iter().copied());
             subtypes.extend(added_subtypes.iter().cloned());
             colors.extend(added_colors.iter().copied());
+            replaced |= replace_subtypes;
         }
     };
     for effect in &state.static_effects {
@@ -219,10 +226,11 @@ pub(super) fn added_types(
                 // No attachment in this catalog changes a colour; the field exists on the
                 // modification rather than on the grant for that reason.
                 colors: Vec::new(),
+                replace_subtypes: false,
             });
         }
     }
-    (types, subtypes, colors)
+    (types, subtypes, colors, replaced)
 }
 
 /// Whether a **stored** effect applies to `perm`, for the two layers that are folded

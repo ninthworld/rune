@@ -406,6 +406,7 @@ pub(crate) fn apply_targeted_effect(
                             types: types.clone(),
                             subtypes: subtypes.clone(),
                             colors: colors.clone(),
+                            replace_subtypes: false,
                         },
                         duration,
                     });
@@ -562,6 +563,7 @@ pub(crate) fn apply_targeted_effect(
                                 types: types.clone(),
                                 subtypes: subtypes.clone(),
                                 colors: colors.clone(),
+                                replace_subtypes: false,
                             },
                             duration: crate::state::Duration::WhileOnBattlefield,
                         });
@@ -627,6 +629,7 @@ pub(crate) fn apply_targeted_effect(
         // Self-referential: applied by [`apply_effect`], never aimed.
         | Effect::TapAttached
         | Effect::SacrificeSelf
+        | Effect::AnimateSelf { .. }
         | Effect::TakeExtraTurn { .. } => {}
         // "Target player's graveyard": the targeting form of the same verb, routed here
         // for the reason a targeted mill is — the reference chose a seat, and this is

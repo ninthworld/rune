@@ -56,6 +56,17 @@ pub enum Ability {
         /// Effects produced when the ability resolves (or immediately, for a
         /// mana ability — see [`is_mana_ability`]).
         effects: Vec<Effect>,
+        /// Whether it may be activated **only once each turn** (CR 602.5f) — the
+        /// `Activate only once each turn.` a card prints under its cost.
+        ///
+        /// An authored field for [`Self::Activated::timing`]'s reason: it is a line of
+        /// printed text on one particular ability rather than a rule about a kind of
+        /// ability, so nothing about the cost or the effects could derive it. The
+        /// allowance is per **permanent and ability**, recorded on the state and cleared
+        /// at the turn boundary — a creature that leaves and returns is a new object with
+        /// a fresh one, exactly as CR 606.3 says of a planeswalker's loyalty.
+        #[serde(default)]
+        once_each_turn: bool,
         /// **When** it may be activated (CR 602.5d). Defaults to
         /// [`ActivationTiming::AnyTime`], which is every ability in the catalog but the
         /// one that prints `Activate only as a sorcery.`

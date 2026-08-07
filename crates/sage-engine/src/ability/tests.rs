@@ -11,6 +11,7 @@ fn activated_mana_ability_round_trips() {
     assert_eq!(
         ability,
         Ability::Activated {
+            once_each_turn: false,
             cost: vec![Cost::Tap],
             effects: vec![Effect::AddMana {
                 color: Color::Green,
@@ -31,6 +32,7 @@ fn issue_256_activated_colorless_mana_ability_round_trips() {
     assert_eq!(
         ability,
         Ability::Activated {
+            once_each_turn: false,
             cost: vec![Cost::Tap],
             effects: vec![Effect::AddColorlessMana { amount: 1 }],
             timing: crate::ability::ActivationTiming::AnyTime,
@@ -234,6 +236,7 @@ fn issue_738_an_entry_card_name_and_the_selector_that_reads_it_round_trip() {
                        "effects":[{"kind":"add_mana_any_color","amount":1}]}}}"#;
     let ability: Ability = serde_json::from_str(json).unwrap();
     let granted = Ability::Activated {
+        once_each_turn: false,
         cost: vec![Cost::Tap],
         effects: vec![Effect::AddManaAnyColor {
             amount: 1,
@@ -282,6 +285,7 @@ fn issue_155_enters_with_counters_replacement_round_trips() {
 #[test]
 fn activated_non_mana_ability_is_not_a_mana_ability() {
     let ability = Ability::Activated {
+        once_each_turn: false,
         cost: vec![Cost::Tap],
         effects: vec![Effect::DrawCard { count: 1 }],
         timing: crate::ability::ActivationTiming::AnyTime,
@@ -357,6 +361,7 @@ fn counter_spell_effect_round_trips_with_its_target_spec() {
 #[test]
 fn a_tap_effect_is_not_a_mana_ability() {
     let ability = Ability::Activated {
+        once_each_turn: false,
         cost: vec![Cost::Tap],
         effects: vec![Effect::Tap {
             target: TargetSpec::AnyCreature,
@@ -558,6 +563,7 @@ fn a_mana_activation_cost_round_trips_as_the_string_it_was_written_in() {
     assert_eq!(
         ability,
         Ability::Activated {
+            once_each_turn: false,
             cost: vec![
                 Cost::Mana {
                     mana: "{1}{R}".to_string()
@@ -919,6 +925,7 @@ fn issue_723_a_graveyard_ability_is_derived_from_the_effect_that_moves_its_own_c
     assert_eq!(
         ability,
         Ability::Activated {
+            once_each_turn: false,
             cost: vec![Cost::Mana {
                 mana: "{1}{B}".to_string()
             }],
@@ -1014,6 +1021,7 @@ fn issue_740_two_mana_of_any_one_color_is_one_choice_rather_than_two() {
     // Either way it names no target and is a mana ability wherever it is activated.
     assert_eq!(effect.target_group(), None);
     assert!(is_mana_ability(&Ability::Activated {
+        once_each_turn: false,
         cost: vec![Cost::Tap],
         effects: vec![effect],
         timing: crate::ability::ActivationTiming::AnyTime,

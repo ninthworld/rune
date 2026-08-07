@@ -124,9 +124,22 @@ pub(crate) fn apply_activate_ability(
     let Some(ability) = abilities_of_permanent(state, db, perm).get(index).cloned() else {
         return;
     };
-    let Ability::Activated { cost, effects, .. } = &ability else {
+    let Ability::Activated {
+        cost,
+        effects,
+        once_each_turn,
+        ..
+    } = &ability
+    else {
         return;
     };
+    // CR 602.5f: an ability that may be activated only once each turn has now used its
+    // allowance. Recorded per `(permanent, ability)` and whatever the ability does next,
+    // so one that fizzles on resolution still spent it — the same rule the loyalty
+    // allowance below follows.
+    if *once_each_turn && !state.limited_activations.contains(&(permanent, index)) {
+        state.limited_activations.push((permanent, index));
+    }
 
     // Costs are paid **all or nothing** (CR 601.2h): the mana portion is settled
     // against the pool first, and only once it has succeeded does anything else get

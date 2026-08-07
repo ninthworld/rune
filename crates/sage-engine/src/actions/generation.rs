@@ -682,8 +682,19 @@ fn offer_activations(
             if crate::ability::is_graveyard_ability(ability) {
                 continue;
             }
-            if let Ability::Activated { cost, .. } = ability {
+            if let Ability::Activated {
+                cost,
+                once_each_turn,
+                ..
+            } = ability
+            {
                 if tap_cost_is_summoning_sick(state, perm, cost, db) {
+                    continue;
+                }
+                // CR 602.5f: `Activate only once each turn.` The fourth timing gate in
+                // this list and the only one that is per *ability* rather than per
+                // permanent, which is why the ledger it reads is keyed by both.
+                if *once_each_turn && state.limited_activations.contains(&(perm.id, index)) {
                     continue;
                 }
                 // CR 606.3: a loyalty ability is sorcery-speed and once per turn per

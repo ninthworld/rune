@@ -209,6 +209,7 @@ fn a_black_creature_is_no_longer_a_colourless_one() {
         modification: sage_engine::Modification::AddTypes {
             types: Vec::new(),
             subtypes: Vec::new(),
+            replace_subtypes: false,
             colors: vec![Color::Black],
         },
         duration: sage_engine::Duration::WhileOnBattlefield,

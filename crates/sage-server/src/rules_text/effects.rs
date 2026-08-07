@@ -826,6 +826,31 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             };
             format!("{}{becomes}{size}{how_long}", target_noun(*target))
         }
+        // The self-referential animation: the source is the subject, so the sentence says
+        // what it becomes and nothing about what it is now.
+        Effect::AnimateSelf {
+            types,
+            subtypes,
+            colors,
+            power,
+            toughness,
+            ..
+        } => {
+            let mut what: Vec<String> = colors.iter().map(|c| c.word().to_string()).collect();
+            what.extend(subtypes.iter().cloned());
+            what.extend(types.iter().map(|kind| card_type_word(*kind).to_string()));
+            let named = what.join(" ");
+            let size = match (power, toughness) {
+                (Some(power), Some(toughness)) => {
+                    format!(" with base power and toughness {power}/{toughness}")
+                }
+                _ => String::new(),
+            };
+            format!(
+                "{source} becomes {} {named}{size} until end of turn",
+                super::indefinite_article(&named)
+            )
+        }
         // CR 701.17: the source names itself, and a card that has just told you what it
         // is says "it" rather than repeating its own name.
         Effect::SacrificeSelf => "sacrifice it".to_string(),

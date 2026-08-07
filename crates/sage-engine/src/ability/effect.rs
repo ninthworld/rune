@@ -1612,6 +1612,39 @@ pub enum Effect {
         /// Which player takes it.
         player_ref: PlayerRef,
     },
+    /// **This ability's own source** becomes what the clause names — Ursine Champion's
+    /// `becomes a Bear Berserker until end of turn` and Chromium's `becomes a Human with
+    /// base power and toughness 1/1`.
+    ///
+    /// The self-referential [`Self::Animate`], and self-referential for the same reason
+    /// [`Self::PumpSelf`] is: the source is not a target (CR 115.1), so this chooses
+    /// nothing, fills no slot, and can never fizzle.
+    ///
+    /// `replace_subtypes` is the one thing it has that [`Self::Animate`] does not, and it
+    /// is CR 205.1b: `becomes a Human` **sets** the creature types where `is a Knight in
+    /// addition to its other types` adds one. A card that means the first and is authored
+    /// as the second stays an Elder Dragon, which a Dragon lord would still pump.
+    AnimateSelf {
+        /// Card types it gains (CR 613 layer 4).
+        #[serde(default)]
+        types: Vec<crate::card_type::CardType>,
+        /// Subtypes it takes on.
+        #[serde(default)]
+        subtypes: Vec<String>,
+        /// Whether those subtypes **replace** the printed ones (CR 205.1b) rather than
+        /// joining them.
+        #[serde(default)]
+        replace_subtypes: bool,
+        /// Colours it gains (CR 613 layer 5).
+        #[serde(default)]
+        colors: Vec<crate::mana::Color>,
+        /// The base power it becomes (CR 613 layer 7b).
+        #[serde(default)]
+        power: Option<i32>,
+        /// The base toughness it becomes.
+        #[serde(default)]
+        toughness: Option<i32>,
+    },
     /// **Sacrifice this ability's own source** (CR 701.17) — the `sacrifice it` of a land
     /// that asks for a toll on the way in.
     ///

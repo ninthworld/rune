@@ -239,14 +239,19 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
             cost,
             effects,
             timing,
+            once_each_turn,
         } => {
             let costs: Vec<String> = cost.iter().map(cost_symbol).collect();
-            // CR 602.5d: the timing restriction is a second sentence on the same line,
-            // exactly as a printed card sets it — the cost and effect first, then the
-            // window it may be used in.
-            let restriction = match timing {
-                ActivationTiming::AnyTime => "",
-                ActivationTiming::SorcerySpeed => " Activate only as a sorcery.",
+            // CR 602.5d and CR 602.5f: the restrictions are a second sentence on the same
+            // line, exactly as a printed card sets them — the cost and effect first, then
+            // the window it may be used in and how often.
+            let restriction = match (timing, once_each_turn) {
+                (ActivationTiming::AnyTime, false) => "",
+                (ActivationTiming::AnyTime, true) => " Activate only once each turn.",
+                (ActivationTiming::SorcerySpeed, false) => " Activate only as a sorcery.",
+                (ActivationTiming::SorcerySpeed, true) => {
+                    " Activate only as a sorcery and only once each turn."
+                }
             };
             format!(
                 "{}: {}{restriction}",

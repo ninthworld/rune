@@ -176,6 +176,12 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         //     the offer; this re-derives the timing from current state so a stale or
         //     forged action id can never move an Equipment or turn a permanent over
         //     during combat, on an opponent's turn, or in response to a spell.
+        // CR 602.5f: the once-each-turn allowance, re-derived here exactly as the timing
+        // gates around it are — the offer withheld it, and a submitted action is checked
+        // against the live ledger rather than trusted.
+        if !limited_activation_is_legal(state, db, *permanent, *index) {
+            return false;
+        }
         if !sorcery_speed_activation_is_legal(state, db, *permanent, *index) {
             return false;
         }
@@ -361,6 +367,31 @@ fn loyalty_activation_is_legal(
             crate::ability::Cost::Loyalty { amount } => loyalty_cost_is_payable(perm, *amount),
             _ => true,
         })
+}
+
+/// Whether ability `index` of `permanent` still has its **once each turn** allowance
+/// (CR 602.5f).
+///
+/// `true` for an ability that prints no such line — there is nothing to spend — and for a
+/// stale index, which names no ability to restrict. The shape
+/// [`loyalty_activation_is_legal`] uses, and keyed by `(permanent, ability)` because the
+/// allowance is per ability rather than per permanent.
+fn limited_activation_is_legal(
+    state: &GameState,
+    db: &CardDatabase,
+    permanent: PermanentId,
+    index: usize,
+) -> bool {
+    let Some(perm) = state.battlefield.iter().find(|p| p.id == permanent) else {
+        return false;
+    };
+    match abilities_of_permanent(state, db, perm).get(index) {
+        Some(Ability::Activated {
+            once_each_turn: true,
+            ..
+        }) => !state.limited_activations.contains(&(permanent, index)),
+        _ => true,
+    }
 }
 
 /// Whether activating ability `index` of `permanent` satisfies the **sorcery-speed**

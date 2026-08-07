@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "functional_id": "chromium_the_mutable",
+  "name": "Chromium, the Mutable",
+  "supertypes": [
+    "legendary"
+  ],
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elder",
+    "Dragon"
+  ],
+  "mana_cost": "{4}{W}{U}{B}",
+  "colors": [
+    "white",
+    "blue",
+    "black"
+  ],
+  "power": 7,
+  "toughness": 7,
+  "keywords": [
+    "flash",
+    "flying"
+  ],
+  "spell_traits": [
+    {
+      "kind": "cant_be_countered"
+    }
+  ],
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "discard",
+          "count": 1
+        }
+      ],
+      "effects": [
+        {
+          "kind": "animate_self",
+          "subtypes": [
+            "Human"
+          ],
+          "replace_subtypes": true,
+          "power": 1,
+          "toughness": 1
+        },
+        {
+          "kind": "alter_abilities_self",
+          "lose_all": true,
+          "gain": [
+            "hexproof"
+          ]
+        },
+        {
+          "kind": "restrict_self",
+          "restriction": "cant_be_blocked"
+        }
+      ]
+    }
+  ]
+}

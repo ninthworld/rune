@@ -189,14 +189,21 @@ pub fn characteristics(
     // layer 6 bottoms out on — because the third, a printed static ability, is collected
     // by reading each source permanent's abilities, and asking for those from inside this
     // computation would not terminate.
-    let (added_types, added_subtypes, added_colors) = added_types(state, perm, db);
+    let (added_types, added_subtypes, added_colors, replaced_subtypes) =
+        added_types(state, perm, db);
     let mut types = face.types().to_vec();
     for card_type in added_types {
         if !types.contains(&card_type) {
             types.push(card_type);
         }
     }
-    let mut subtypes = face.subtypes().to_vec();
+    // CR 205.1b: `becomes a Human` sets the creature types rather than adding one, so the
+    // printed list starts empty when any effect at this layer says so.
+    let mut subtypes = if replaced_subtypes {
+        Vec::new()
+    } else {
+        face.subtypes().to_vec()
+    };
     for subtype in added_subtypes {
         if !subtypes.contains(&subtype) {
             subtypes.push(subtype);
