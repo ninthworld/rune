@@ -431,8 +431,22 @@ pub(crate) fn choices_for_effect(
                 cost: cost.clone(),
                 source: source_permanent,
                 effects: effects.clone(),
+                reflexive: false,
                 otherwise: otherwise.clone(),
                 targets: targets.to_vec(),
+            }),
+        )]),
+        // The same yes-or-no, and the same payment; what differs is where the effects go
+        // once it is answered (CR 603.11).
+        Effect::MayPayForTrigger { cost, effects } => Some(vec![(
+            controller,
+            ChoiceQuestion::Confirm(ConfirmRequest {
+                cost: Some(cost.clone()),
+                source: source_permanent,
+                effects: effects.clone(),
+                reflexive: true,
+                otherwise: Vec::new(),
+                targets: Vec::new(),
             }),
         )]),
         _ => None,

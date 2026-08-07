@@ -561,6 +561,9 @@ pub(crate) fn apply_effect(
         | Effect::MayCastExiledThisWay { .. }
         | Effect::SearchLibrary { .. }
         | Effect::May { .. }
+        // Both are questions, posed by the resolution path before either apply path is
+        // reached.
+        | Effect::MayPayForTrigger { .. }
         // A conditional is likewise intercepted by the resolve loop, which evaluates it
         // and splices the chosen branch into what remains; reaching here would mean the
         // branch was never taken.
@@ -888,11 +891,24 @@ fn permanents_in(
             .face(db)
             .is_some_and(|face| face.has_type(crate::card_type::CardType::Creature))
     };
+    // Every class but one is a class of creatures, so the type test is applied once here
+    // rather than restated in each arm. The exception names planeswalkers outright and
+    // says so by answering the question itself.
+    let type_ok = |perm: &Permanent| match affects {
+        MassAffects::CreaturesAndPlaneswalkersYourOpponentsControl => {
+            is_creature(perm)
+                || perm
+                    .printed
+                    .face(db)
+                    .is_some_and(|face| face.has_type(crate::card_type::CardType::Planeswalker))
+        }
+        _ => is_creature(perm),
+    };
     state
         .battlefield
         .iter()
         .filter(|p| {
-            is_creature(p)
+            type_ok(p)
                 && match affects {
                     // A subtype narrows the class to a lord's tribe ("Dragons you
                     // control"), read off the printed face — the same place every other
@@ -938,7 +954,8 @@ fn permanents_in(
                     // A seat that has lost is no longer an opponent (CR 102.1); its
                     // permanents are on their way off the battlefield in the same SBA
                     // loop, and this is the same exclusion `non_targeting_subjects` makes.
-                    MassAffects::CreaturesYourOpponentsControl => {
+                    MassAffects::CreaturesYourOpponentsControl
+                    | MassAffects::CreaturesAndPlaneswalkersYourOpponentsControl => {
                         let seat = crate::characteristics::controller_of(state, p);
                         seat != controller
                             && state

@@ -496,7 +496,7 @@ fn observed_activation_matches(
             }
         }
     }
-    if observes.source_types.is_empty() {
+    if observes.source_types.is_empty() && observes.source_subtype.is_none() {
         return true;
     }
     let Some(perm) = before.battlefield.iter().find(|p| p.id == *activated) else {
@@ -505,11 +505,19 @@ fn observed_activation_matches(
     let Some(face) = perm.printed.face(db) else {
         return false;
     };
+    // "A **Sarkhan** planeswalker": the subtype narrows the same source the types do, and
+    // both have to hold when both are authored.
+    if let Some(subtype) = &observes.source_subtype {
+        if !face.has_subtype(subtype) {
+            return false;
+        }
+    }
     // "A creature **or** land": any one of the named types satisfies it.
-    observes
-        .source_types
-        .iter()
-        .any(|&card_type| face.has_type(card_type))
+    observes.source_types.is_empty()
+        || observes
+            .source_types
+            .iter()
+            .any(|&card_type| face.has_type(card_type))
 }
 
 /// Whether the permanent `perm`, which has left the battlefield across this
@@ -686,11 +694,28 @@ fn fire_count(
             .map_or(0, |perm| {
                 targeted_by(before, after, perm.id)
                     .filter(|object| {
-                        !observes.spells_only
+                        // A class of spells implies a spell: no ability is an Aura.
+                        !(observes.spells_only || observes.class.is_some())
                             || matches!(object.kind, StackObjectKind::Spell { .. })
                     })
                     .filter(|object| {
                         !observes.opponents_only || object.controller != watcher.controller
+                    })
+                    .filter(|object| {
+                        !observes.controller_only || object.controller == watcher.controller
+                    })
+                    .filter(|object| {
+                        observes.class.is_none_or(|class| match object.kind {
+                            StackObjectKind::Spell { card, .. } => {
+                                crate::card::spell_matches_class(
+                                    db,
+                                    card.card,
+                                    class,
+                                    perm.chosen_color,
+                                )
+                            }
+                            _ => false,
+                        })
                     })
                     .count()
             }),

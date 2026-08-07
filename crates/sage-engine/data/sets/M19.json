@@ -705,6 +705,11 @@
     "rarity": "mythic"
   },
   {
+    "functional_id": "sarkhan_s_unsealing",
+    "collector_number": "155",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "shock",
     "collector_number": "156",
     "rarity": "common"
@@ -717,6 +722,11 @@
   {
     "functional_id": "smelt",
     "collector_number": "158",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "sparktongue_dragon",
+    "collector_number": "159",
     "rarity": "common"
   },
   {
@@ -797,6 +807,11 @@
   {
     "functional_id": "declare_dominance",
     "collector_number": "175",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "druid_of_horns",
+    "collector_number": "176",
     "rarity": "uncommon"
   },
   {
@@ -1022,6 +1037,11 @@
   {
     "functional_id": "satyr_enchanter",
     "collector_number": "223",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "skyrider_patrol",
+    "collector_number": "224",
     "rarity": "uncommon"
   },
   {
@@ -1273,6 +1293,11 @@
     "functional_id": "riddlemaster_sphinx",
     "collector_number": "287",
     "rarity": "rare"
+  },
+  {
+    "functional_id": "sarkhan_s_whelp",
+    "collector_number": "299",
+    "rarity": "uncommon"
   },
   {
     "functional_id": "waterknot",

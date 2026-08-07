@@ -1479,6 +1479,30 @@ pub enum Effect {
         #[serde(default)]
         new_targets: bool,
     },
+    /// **You may pay `cost`. When you do,** the effects happen — as a *reflexive
+    /// triggered ability* (CR 603.11), not as part of this resolution.
+    ///
+    /// The difference from [`Self::May`] is the whole reason this is its own effect, and
+    /// it is visible on every card that prints it: the effects go on the **stack** after
+    /// the payment, so their targets are chosen then (CR 603.11b) and both players get
+    /// priority before they happen. Sparktongue Dragon's `you may pay {2}{R}. When you
+    /// do, it deals 3 damage to any target` cannot choose that target when the Dragon is
+    /// cast — nobody knows yet whether it will be paid for, and a target chosen up front
+    /// would be a target chosen before the decision.
+    ///
+    /// The ability it creates is the source's own: `it deals 3 damage` is the Dragon
+    /// dealing it, so the damage has a permanent as its source (CR 609.7).
+    ///
+    /// A cost the controller could not pay is never posed, exactly as [`Self::May`]'s is
+    /// not — there is nothing to decide, and unlike an `unless` there is no consequence
+    /// waiting on the other side.
+    MayPayForTrigger {
+        /// What paying costs. Always present: `when you do` refers to a payment, and an
+        /// offer with nothing to pay would be a trigger with no condition.
+        cost: OptionalCost,
+        /// What the reflexive ability does when it resolves.
+        effects: Vec<Effect>,
+    },
     /// Create a **reflexive triggered ability** (CR 603.11) — the `When a creature is put
     /// onto the battlefield this way, …` a resolution says about something it has just
     /// done.

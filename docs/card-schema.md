@@ -683,6 +683,27 @@ name every opponent. `each_player` is a variant of its own rather than a flag on
 symmetric sweeper hits its own caster. `gain_life`, `lose_life`, and `mill` all take a reference, so both
 shapes exist for each without any of them restating the fizzle rule.
 
+### `you may pay … when you do` (CR 603.11)
+
+`may_pay_for_trigger` is the offer whose acceptance creates a **reflexive triggered
+ability** rather than splicing effects into the resolution:
+
+```json
+{ "kind": "may_pay_for_trigger",
+  "cost": { "kind": "mana", "mana": "{2}{R}" },
+  "effects": [ { "kind": "deal_damage", "target": "any_target", "amount": 3 } ] }
+```
+
+The difference from `may` is *where the effects happen*, and it is the whole reason this
+is a separate effect: they go on the stack, so their targets are chosen **after** the
+payment (CR 603.11b) and both players get priority first. A card that asked for its target
+up front would be asking before the decision that pays for it.
+
+A cost the controller cannot pay is never posed, exactly as `may`'s is not — and unlike an
+`unless` branch there is no consequence waiting on the other side. Paying is legal *during*
+the question: mana abilities are the one thing CR 605.3a keeps available while a choice is
+owed, which is how a cost is paid in a step whose pool started empty.
+
 ### Becoming the target (CR 603.6e)
 
 `self_becomes_target` fires when an object naming this permanent as a target is **put on
@@ -700,6 +721,8 @@ Two independent narrowings, and printed cards use them apart:
 | --- | --- |
 | `opponents_only` | only objects an **opponent** controls — `a spell or ability an opponent controls`. Absent notices anyone's, including your own |
 | `spells_only` | only **spells**, never abilities — `becomes the target of a spell`. Absent notices both |
+| `controller_only` | only objects **you** put on the stack — the `whenever **you** cast …` half of Druid of Horns. The mirror of `opponents_only` |
+| `class` | only spells of one class — `an **Aura** spell`. A class implies `spells_only`, since no ability is an Aura |
 
 It is observed by diffing the **stack**, which is what makes it exact: targets are chosen
 as an object is put there (CR 601.2c) and never change afterwards, so an object already on

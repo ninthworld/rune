@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "functional_id": "sarkhan_s_unsealing",
+  "name": "Sarkhan's Unsealing",
+  "types": [
+    "enchantment"
+  ],
+  "mana_cost": "{3}{R}",
+  "colors": [
+    "red"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "you_cast_spell": {
+          "creature": {
+            "min_power": 4,
+            "max_power": 6
+          }
+        }
+      },
+      "effects": [
+        {
+          "kind": "deal_damage",
+          "target": "any_target",
+          "amount": 4
+        }
+      ]
+    },
+    {
+      "type": "triggered",
+      "event": {
+        "you_cast_spell": {
+          "creature": {
+            "min_power": 7
+          }
+        }
+      },
+      "effects": [
+        {
+          "kind": "deal_damage",
+          "player_ref": "each_opponent",
+          "amount": 4
+        },
+        {
+          "kind": "deal_damage",
+          "affects": {
+            "scope": "creatures_and_planeswalkers_your_opponents_control"
+          },
+          "amount": 4
+        }
+      ]
+    }
+  ]
+}

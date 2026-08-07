@@ -732,6 +732,13 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 clauses("that spell", &trigger.effects),
             )
         }
+        // CR 603.11 with a payment as its condition, printed as the two sentences every
+        // card that has it prints: the offer, then what buying it does.
+        Effect::MayPayForTrigger { cost, effects } => format!(
+            "you may {}. When you do, {}",
+            optional_cost_phrase(cost),
+            clauses(source, effects)
+        ),
         // CR 603.11: the `when …, …` a resolution says about what it just did. The
         // subject of the effects it creates is the permanent that arrived, so they are
         // composed against "it" — the pronoun the printed card uses, and the only name
@@ -1220,6 +1227,9 @@ fn mass_subject(source: &str, affects: &MassAffects) -> String {
         MassAffects::CreaturesYourOpponentsControl => {
             "creatures your opponents control".to_string()
         }
+        MassAffects::CreaturesAndPlaneswalkersYourOpponentsControl => {
+            "creatures and planeswalkers your opponents control".to_string()
+        }
         MassAffects::CreaturesWithoutFlying => "creatures without flying".to_string(),
         MassAffects::AttackingCreatures => "attacking creatures".to_string(),
     }
@@ -1251,6 +1261,12 @@ fn mass_recipient(source: &str, affects: &MassAffects) -> String {
         MassAffects::EachCreature => "each creature".to_string(),
         MassAffects::CreaturesYourOpponentsControl => {
             "each creature your opponents control".to_string()
+        }
+        // The card prints this one as a single breath about the seat and its board —
+        // "each opponent and each creature and planeswalker they control" — so the
+        // possessive is *they*, not *your opponents*, wherever it follows that seat.
+        MassAffects::CreaturesAndPlaneswalkersYourOpponentsControl => {
+            "each creature and planeswalker they control".to_string()
         }
         MassAffects::CreaturesWithoutFlying => "each creature without flying".to_string(),
         MassAffects::AttackingCreatures => "each attacking creature".to_string(),

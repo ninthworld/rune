@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "functional_id": "sparktongue_dragon",
+  "name": "Sparktongue Dragon",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Dragon"
+  ],
+  "mana_cost": "{3}{R}{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 3,
+  "toughness": 3,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "may_pay_for_trigger",
+          "cost": {
+            "kind": "mana",
+            "mana": "{2}{R}"
+          },
+          "effects": [
+            {
+              "kind": "deal_damage",
+              "target": "any_target",
+              "amount": 3
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

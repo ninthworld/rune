@@ -42,6 +42,14 @@ pub struct ConfirmRequest {
     /// the battlefield while the question sits owed, and an exclusion that quietly
     /// stopped excluding would let a creature eat itself to pump its own corpse.
     pub source: Option<crate::id::PermanentId>,
+    /// Whether accepting creates a **reflexive triggered ability** (CR 603.11) out of
+    /// [`Self::effects`] rather than splicing them into the resolution — the `when you
+    /// do` of a card that pays for its trigger.
+    ///
+    /// The difference is where the effects happen: on the stack, aimed after the payment
+    /// and after both players have had priority, instead of here and now with targets
+    /// chosen at announcement.
+    pub reflexive: bool,
     /// The effects applied **instead**, when the offer is declined — the `unless` half of
     /// `sacrifice it unless you pay`. Empty for a plain `you may`, where declining is the
     /// end of it.
@@ -148,6 +156,7 @@ pub(crate) fn optional_cost_could_be_paid(
             cost: Some(cost.clone()),
             source: None,
             effects: Vec::new(),
+            reflexive: false,
             otherwise: Vec::new(),
             targets: Vec::new(),
         },

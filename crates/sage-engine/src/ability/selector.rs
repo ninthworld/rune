@@ -622,6 +622,14 @@ pub enum MassAffects {
     /// reason both are relative to the controller rather than to a seat: one
     /// authored card must mean "you" from either side of the table.
     CreaturesYourOpponentsControl,
+    /// Every **creature and planeswalker** an opponent of the effect's controller
+    /// controls — the wider class a sweeper that also burns walkers names.
+    ///
+    /// A class rather than two, because the card prints it as one breath: `deals 4 damage
+    /// to each opponent and each creature and planeswalker they control`. Damage to a
+    /// planeswalker removes loyalty (CR 120.3c) at the same seam damage to a creature is
+    /// marked, so nothing about the verb has to know which it hit.
+    CreaturesAndPlaneswalkersYourOpponentsControl,
     /// Every creature on the battlefield that does not currently have flying, whoever
     /// controls it — the scope of an effect that clears the ground.
     ///

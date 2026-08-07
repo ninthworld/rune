@@ -519,9 +519,14 @@ fn observed_spell_noun(spell: ObservedSpell) -> String {
         ObservedSpell::Enchantment => "an enchantment spell".to_string(),
         ObservedSpell::Artifact => "an artifact spell".to_string(),
         ObservedSpell::InstantOrSorcery => "an instant or sorcery spell".to_string(),
-        ObservedSpell::Creature { min_power } => {
-            format!("a creature spell{}", spell_power_clause(min_power))
-        }
+        ObservedSpell::Creature {
+            min_power,
+            max_power,
+        } => format!(
+            "a creature spell{}",
+            spell_power_clause(min_power, max_power)
+        ),
+        ObservedSpell::Aura => "an Aura spell".to_string(),
         // Named, not spelled out: the sentence is printed on a card that has not
         // entered the battlefield yet, where the colour is genuinely unknown. What the
         // *permanent* chose is on the board, in its own field, rather than baked into
@@ -542,19 +547,38 @@ fn observed_spell_class(spell: ObservedSpell) -> String {
         ObservedSpell::Enchantment => "enchantment spells".to_string(),
         ObservedSpell::Artifact => "artifact spells".to_string(),
         ObservedSpell::InstantOrSorcery => "instant and sorcery spells".to_string(),
-        ObservedSpell::Creature { min_power } => {
-            format!("creature spells{}", spell_power_clause(min_power))
-        }
+        ObservedSpell::Creature {
+            min_power,
+            max_power,
+        } => format!(
+            "creature spells{}",
+            spell_power_clause(min_power, max_power)
+        ),
+        ObservedSpell::Aura => "Aura spells".to_string(),
         ObservedSpell::ChosenColor => "spells of the chosen color".to_string(),
     }
 }
 
 /// The " with power 4 or greater" that trails a spell class, or nothing when the class
 /// names no bound. Written once so the singular and the plural phrasings cannot drift.
-fn spell_power_clause(min_power: Option<i32>) -> String {
-    match min_power {
-        None => String::new(),
-        Some(min) => format!(" with power {min} or greater"),
+fn spell_power_clause(min_power: Option<i32>, max_power: Option<i32>) -> String {
+    match (min_power, max_power) {
+        (None, None) => String::new(),
+        (Some(min), None) => format!(" with power {min} or greater"),
+        (None, Some(max)) => format!(" with power {max} or less"),
+        // A range is printed as the numbers themselves — "power 4, 5, or 6" — because
+        // that is how the card that has one says it, and "between 4 and 6" is not a
+        // phrase Magic uses. Two apart is the only span any card prints; a wider one
+        // would read as a list and is not worth pre-empting.
+        (Some(min), Some(max)) => {
+            let values: Vec<String> = (min..=max).map(|value| value.to_string()).collect();
+            match values.split_last() {
+                Some((last, rest)) if !rest.is_empty() => {
+                    format!(" with power {}, or {last}", rest.join(", "))
+                }
+                _ => format!(" with power {min}"),
+            }
+        }
     }
 }
 
