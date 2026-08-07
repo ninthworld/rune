@@ -13,7 +13,8 @@
     "test": "vitest run",
     "e2e": "SAGE_E2E_SERVER=1 playwright test",
     "e2e:smoke": "SAGE_E2E_SERVER=1 playwright test --project=smoke",
-    "e2e:views": "playwright test --project=views"
+    "e2e:views": "playwright test --project=views",
+    "e2e:scenario": "SAGE_E2E_SCENARIO=1 playwright test --project=scenario"
   },
   "dependencies": {
     "react": "^19.2.8",

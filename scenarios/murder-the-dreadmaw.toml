@@ -1,0 +1,64 @@
+# A worked example of the scenario format (docs/scenarios.md, issue #777).
+#
+#   cargo run -p sage-scenario -- scenarios/murder-the-dreadmaw.toml
+#
+# Seat 0 is yours and holds one removal spell with the mana to cast it; seat 1 is a bot
+# with the creature the spell is for. Opening the printed URL puts you at that decision
+# and nowhere else: no lobby, no deck, no mulligan, and no five turns of clicking to
+# reach the board you wanted to look at.
+#
+# Everything past this point is a real game. The engine offers the actions, the server
+# projects the view, and the bot answers through the same path a person does.
+
+name = "Murder the Dreadmaw"
+note = "Seat 0 holds Murder with the mana up; seat 1 has the creature it is for."
+
+# Randomness is one number: the same file and the same seed replay identically.
+seed = 777
+
+# Far enough in that both seats have had turns, so nothing on the battlefield is
+# summoning sick.
+turn = 6
+step = "precombat_main"
+active_player = 0
+
+# ── Seat 0 — you ───────────────────────────────────────────────────────────────────────
+[[players]]
+name = "You"
+life = 14
+hand = ["murder", "swamp"]
+# Top card first: this is the card you would draw next.
+library = ["swamp", "forest", "llanowar_elves"]
+graveyard = ["shock"]
+
+[[players.battlefield]]
+card = "swamp"
+
+[[players.battlefield]]
+card = "swamp"
+
+[[players.battlefield]]
+card = "swamp"
+
+[[players.battlefield]]
+card = "llanowar_elves"
+tapped = true
+
+# ── Seat 1 — a sparring bot ────────────────────────────────────────────────────────────
+[[players]]
+name = "Sparring partner"
+ai = "random"
+life = 17
+hand = ["mountain"]
+library = ["mountain", "onakke_ogre"]
+
+[[players.battlefield]]
+card = "mountain"
+
+[[players.battlefield]]
+card = "mountain"
+
+# The reason the position exists.
+[[players.battlefield]]
+card = "colossal_dreadmaw"
+damage = 2
