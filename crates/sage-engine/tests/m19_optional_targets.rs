@@ -114,6 +114,7 @@ fn aim_and_resolve(state: &GameState, db: &CardDatabase, target: Target) -> Game
         state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![target],
         },
         db,
@@ -150,6 +151,7 @@ fn issue_725_an_optional_effect_declares_its_targets_slot_at_announcement() {
         &db,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: Vec::new(),
         },
     );
@@ -265,6 +267,7 @@ fn issue_725_a_target_gone_by_resolution_fizzles_the_ability_before_the_question
         &aimed,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(artifact)],
         },
         &db,

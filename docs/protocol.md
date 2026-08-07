@@ -473,6 +473,14 @@ because a token that would leave the battlefield ceases to exist (CR 111.7).
 defaulting to `false`) in a two-player game. `ZonePile` contains a `player_id` and ordered
 `cards`; the top of the zone is last.
 
+Both `OpponentView` and `SelfView` also carry an optional `counters` — counters on the
+**player** (CR 122.1a), in the same `{kind, count}` shape a permanent's ride in, and public
+information exactly as a life total is. It is omitted when empty, which is every seat in
+every game the bundled catalog can currently produce: `poison` is the only kind defined
+(CR 704.5d — ten of them and that player loses, surfacing as `result.reason` of `poison`),
+and no card in the catalog gives one out. A client renders the list it is sent and derives
+nothing: which kinds exist, and what any of them mean, is the server's to say.
+
 ### Permanents and stack objects
 
 A `Permanent` contains:
@@ -896,6 +904,14 @@ elided — so the range reads completely rather than by inference. A *divided* v
 posed as one `number` slot per recipient, each with its own bounds, and the server
 validates the total on resolution; the client never enforces a sum.
 
+Since issue #706 a `number` slot may also carry a **mid-resolution** X — the `you may pay
+{X}` of a triggered ability, which has no announcement to ride on. It rides the same
+`player_choice` action every other mid-resolution answer does, on the same `choice` slot,
+so a client that can answer a yes-or-no and announce an X can answer this with no new
+shape to learn. Its bounds are recomputed on every projection, because a player owed the
+question may still activate mana abilities before answering (CR 605.3a) — the range grows
+as they tap.
+
 `values` (issue #733) is present exactly when the number is **the X of a mana cost**, and
 it lists every legal value together with what announcing it costs:
 
@@ -1308,9 +1324,9 @@ When the game ends, `result` is present and `valid_actions` is empty:
 
 `winner` is absent for a draw. `reason` is one of `life_zero`, `decked`, `concede`,
 `commander_damage` (a player took 21+ combat damage from a single commander, CR 903.10a),
-or `opponent_won` (an effect stated that a player *wins* the game, CR 104.2b, so everyone
-else lost it — the one reason that describes what a card did rather than what happened to
-the loser).
+`poison` (a player had ten or more poison counters, CR 704.5d), or `opponent_won` (an
+effect stated that a player *wins* the game, CR 104.2b, so everyone else lost it — the one
+reason that describes what a card did rather than what happened to the loser).
 Further submitted actions are rejected and the final view is re-sent.
 
 ### `SpectatorView`

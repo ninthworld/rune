@@ -22,6 +22,8 @@ pub enum GameOverReason {
     /// A player was dealt 21 or more combat damage over the game by a single
     /// commander (CR 903.10a).
     CommanderDamage,
+    /// A player had ten or more poison counters (CR 704.5d).
+    Poison,
 }
 
 /// One player's cumulative **combat** damage from one commander this game

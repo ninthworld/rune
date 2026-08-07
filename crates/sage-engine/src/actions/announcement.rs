@@ -84,7 +84,7 @@ pub fn mode_options(state: &GameState, db: &CardDatabase, action: &Action) -> Ve
         .filter_map(|(index, mode)| Some((u8::try_from(index).ok()?, mode)))
         .filter(|(index, _)| {
             super::generation::groups_are_fillable(
-                &data.cast_target_groups(Some(*index)),
+                &data.cast_target_groups(Some(*index), state.players.len()),
                 state,
                 state.priority,
                 // A mode belongs to a spell, and a spell is not a permanent.

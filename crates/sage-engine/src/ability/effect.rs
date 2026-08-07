@@ -984,6 +984,25 @@ pub enum Effect {
         /// chosen for it. The continuous effect lasts as long as that permanent does.
         #[serde(default)]
         colors: Vec<crate::mana::Color>,
+        /// Counters the permanent enters with — the `with a corpse counter on it` of a
+        /// reanimation that marks what it brought back.
+        ///
+        /// Placed as part of *entering* (CR 614.12), so they are already there before any
+        /// state-based action or entry trigger looks — the same road
+        /// [`Ability::EntersWithCounters`](crate::Ability) takes, for the same reason.
+        #[serde(default)]
+        counters: Vec<(CounterKind, u32)>,
+        /// Whether the permanent is **exiled instead of going anywhere else** when it
+        /// would leave the battlefield — `if that creature would leave the battlefield,
+        /// exile it instead of putting it anywhere else`.
+        ///
+        /// A replacement effect (CR 614.1a) keyed to the permanent this effect just made,
+        /// which nothing else could name: it did not exist when the ability was aimed. It
+        /// lasts as long as the permanent does, and outlives the source that created it —
+        /// the printed sentence sets no duration, so a creature reanimated this way is
+        /// still exiled after the reanimator itself has died.
+        #[serde(default)]
+        exile_on_leaving: bool,
     },
     /// Return the **card in a graveyard** this effect targets to its owner's **hand**
     /// (`Return target creature card from your graveyard to your hand.`) — the
@@ -1695,6 +1714,82 @@ pub enum Effect {
     PutHandOntoBattlefieldFaceDown {
         /// What each card becomes while it is face down.
         values: TokenData,
+    },
+    /// **Remove all counters from the targeted permanent, and forbid it any more** for as
+    /// long as this effect's source remains on the battlefield — Suncleanser's first mode.
+    ///
+    /// Two halves of one sentence, and one effect rather than two because the second half
+    /// is not something that happens: it is a continuous effect the first half's
+    /// resolution creates (CR 611.2b), keyed to the same permanent and lasting as long as
+    /// the source does. Splitting them would mean a second target slot naming the same
+    /// object, which the card does not ask for.
+    ///
+    /// The prohibition is a
+    /// [`RuleModification::CannotHaveCountersPut`](crate::RuleModification), applied at
+    /// the one counter seam every road to a counter runs through — so it forbids a
+    /// `+1/+1` counter from a spell, from an activated ability, and from a state-based
+    /// action equally, without any of them knowing it exists.
+    RemoveAllCounters {
+        /// What may be aimed at.
+        target: TargetSpec,
+        /// Whether the permanent is also forbidden further counters for as long as the
+        /// source remains on the battlefield.
+        ///
+        /// A field rather than an assumption because the two sentences are separable on a
+        /// printed card: removing counters is a common effect and forbidding them is a
+        /// rare one, and an effect that only clears counters authors `false`.
+        #[serde(default)]
+        then_forbid: bool,
+    },
+    /// **The player this effect names loses all counters, and is forbidden any more** for
+    /// as long as the source remains on the battlefield — Suncleanser's second mode.
+    ///
+    /// The player-side twin of [`Self::RemoveAllCounters`], and identical in shape because
+    /// a player's counters and a permanent's are one mechanism: the same removal, the same
+    /// [`RuleModification::CannotHaveCountersPut`](crate::RuleModification), and the same
+    /// single seam enforcing it.
+    ///
+    /// Nothing in the bundled catalog gives a player a counter, so today both halves are
+    /// correct and inert: there is nothing to remove and nothing to forbid. That is a fact
+    /// about the catalog rather than about this effect — the day a card hands out a poison
+    /// counter, this stops it with no change here.
+    PlayerLosesAllCounters {
+        /// Whose counters — `target_opponent` on the one card that prints it.
+        player_ref: PlayerRef,
+        /// Whether that player is also forbidden further counters for as long as the
+        /// source remains on the battlefield.
+        #[serde(default)]
+        then_forbid: bool,
+    },
+    /// **For each player, one chosen permanent that player controls is sacrificed** —
+    /// and each player who lost one reveals the top card of their library and puts it
+    /// onto the battlefield if it is a permanent card. Vaevictis Asmadi, the Dire's
+    /// attack trigger.
+    ///
+    /// The only effect whose **number of target slots comes from the table** rather than
+    /// from the card: it declares one required slot per seat, each naming that seat's
+    /// permanents ([`TargetSpec::PermanentThatPlayerControls`]), which is why
+    /// [`Self::target_groups`] is given a seat count at all. Nothing about it is written
+    /// for two players — a three-seat game declares three slots and sacrifices three
+    /// permanents, and the code that does it is the same loop.
+    ///
+    /// Everything the printed card conditions on the *sacrifice actually happening* is
+    /// conditioned on it here too. A slot whose target became illegal between
+    /// announcement and resolution (CR 608.2b) sacrifices nothing, and that player does
+    /// not reveal — "each player who sacrificed a permanent **this way**". A player whose
+    /// revealed card is not a permanent card has simply revealed it; it stays on top,
+    /// because the card says *puts it onto the battlefield if it's a permanent card* and
+    /// says nothing about anywhere else for it to go.
+    SacrificeChosenPerPlayer {
+        /// Whether each player who sacrificed then reveals the top card of their library
+        /// and puts it onto the battlefield if it is a permanent card.
+        ///
+        /// A field rather than an assumption because the sacrifice and the replacement
+        /// are two sentences on the printed card, and only one card prints both. An
+        /// effect that wants the symmetrical sacrifice alone authors `false` and inherits
+        /// the whole per-seat targeting pipeline.
+        #[serde(default)]
+        reveal_top: bool,
     },
     /// **Exchange control** of the two permanents this effect names (CR 701.10) —
     /// Switcheroo's `Exchange control of two target creatures.`

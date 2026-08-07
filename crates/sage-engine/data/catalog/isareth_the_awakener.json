@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "functional_id": "isareth_the_awakener",
+  "name": "Isareth the Awakener",
+  "types": [
+    "creature"
+  ],
+  "supertypes": [
+    "legendary"
+  ],
+  "subtypes": [
+    "Human",
+    "Wizard"
+  ],
+  "mana_cost": "{1}{B}{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 3,
+  "toughness": 3,
+  "keywords": [
+    "deathtouch"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_attacks",
+      "effects": [
+        {
+          "kind": "may_pay_for_trigger",
+          "cost": {
+            "kind": "mana_x"
+          },
+          "effects": [
+            {
+              "kind": "return_card_to_battlefield",
+              "target": {
+                "card_in_graveyard": {
+                  "scope": "yours",
+                  "class": "creature",
+                  "mana_value_is_x": true
+                }
+              },
+              "counters": [
+                [
+                  "corpse",
+                  1
+                ]
+              ],
+              "exile_on_leaving": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

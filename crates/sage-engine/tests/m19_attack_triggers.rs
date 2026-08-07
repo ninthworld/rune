@@ -76,6 +76,7 @@ fn offered(state: &GameState, db: &CardDatabase) -> Vec<Target> {
     let ability = pending_trigger_target_choice(state).expect("a trigger owes a target");
     let action = Action::ChooseTriggerTargets {
         ability,
+        mode: None,
         targets: Vec::new(),
     };
     target_requirements(state, db, &action)
@@ -127,6 +128,7 @@ fn pegasus_courser_grants_flying_to_another_attacker() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(ally)],
         },
         &db,
@@ -213,6 +215,7 @@ fn star_crowned_stag_taps_a_creature_the_defender_controls() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(theirs)],
         },
         &db,
@@ -265,6 +268,7 @@ fn a_source_that_is_not_attacking_names_no_defending_player() {
 
     let action = Action::ChooseTriggerTargets {
         ability,
+        mode: None,
         targets: Vec::new(),
     };
     let candidates: Vec<Target> = target_requirements(&state, &db, &action)

@@ -1,6 +1,6 @@
 //! Action targeting — enumeration of legal targets per action and target slot.
 
-use crate::ability::{Ability, Effect, GraveyardScope, Target, TargetGroup, TargetSpec};
+use crate::ability::{Ability, GraveyardScope, Target, TargetGroup, TargetSpec};
 use crate::id::PermanentId;
 use crate::id::PlayerId;
 use crate::resolve::target_is_legal;
@@ -86,7 +86,10 @@ pub(crate) fn action_target_groups(
             let Some(Ability::Activated { effects, .. }) = abilities.get(*index) else {
                 return Vec::new();
             };
-            effects.iter().flat_map(Effect::target_groups).collect()
+            effects
+                .iter()
+                .flat_map(|effect| effect.target_groups(state.players.len()))
+                .collect()
         }
         // The graveyard counterpart, read off the card rather than off a permanent that
         // does not exist (CR 113.6). The same `graveyard_ability` lookup the offer and
@@ -94,9 +97,10 @@ pub(crate) fn action_target_groups(
         // declares no slots rather than slots nothing can fill.
         Action::ActivateAbilityFromGraveyard { card, index, .. } => {
             match super::utilities::graveyard_ability(state, db, state.priority, *card, *index) {
-                Some(Ability::Activated { effects, .. }) => {
-                    effects.iter().flat_map(Effect::target_groups).collect()
-                }
+                Some(Ability::Activated { effects, .. }) => effects
+                    .iter()
+                    .flat_map(|effect| effect.target_groups(state.players.len()))
+                    .collect(),
                 _ => Vec::new(),
             }
         }
@@ -106,19 +110,33 @@ pub(crate) fn action_target_groups(
         // answer until the question "which of its two things does it do" has one.
         Action::CastSpell { card, mode, .. } => db
             .card(card.card)
-            .map(|data| data.cast_target_groups(*mode))
+            .map(|data| data.cast_target_groups(*mode, state.players.len()))
             .unwrap_or_default(),
         // A trigger's slots are the target groups of the effects it carries on the
         // stack — read from the object itself, since a triggered ability's effects
         // were copied there when it triggered and are what will resolve.
-        Action::ChooseTriggerTargets { ability, .. } => state
+        Action::ChooseTriggerTargets {
+            ability,
+            mode: chosen,
+            ..
+        } => state
             .stack
             .iter()
             .find(|o| o.id == *ability)
             .map(|o| match &o.kind {
-                crate::stack::StackObjectKind::Ability { effects, .. } => {
-                    effects.iter().flat_map(Effect::target_groups).collect()
-                }
+                // A **modal** ability's slots are the ones the mode *this action names*
+                // declares — not the one the stack object holds, which is still unanswered
+                // while this action is being judged. The mode and the targets are one
+                // answer, so the mode has to be read from the answer.
+                kind @ crate::stack::StackObjectKind::Ability { .. } if kind.owes_mode() => chosen
+                    .map_or_else(Vec::new, |index| {
+                        mode_target_groups(state, db, *ability, index)
+                    }),
+                kind @ crate::stack::StackObjectKind::Ability { .. } => kind
+                    .ability_effects()
+                    .iter()
+                    .flat_map(|effect| effect.target_groups(state.players.len()))
+                    .collect(),
                 // A **copy of a spell** whose controller may choose new targets
                 // (CR 707.10c) is aimed by the same action, so it declares the same slots
                 // the copied spell would have chosen at cast (CR 707.2 — a copy has the
@@ -127,13 +145,47 @@ pub(crate) fn action_target_groups(
                     .card(*card)
                     // The mode the original announced travels with the copy (CR 707.10),
                     // so its slots are the ones that mode declares.
-                    .map(|data| data.cast_target_groups(*mode))
+                    .map(|data| data.cast_target_groups(*mode, state.players.len()))
                     .unwrap_or_default(),
                 crate::stack::StackObjectKind::Spell { .. } => Vec::new(),
             })
             .unwrap_or_default(),
         _ => Vec::new(),
     }
+}
+
+/// The [`TargetGroup`]s a **modal** triggered ability declares under `mode` — the slots
+/// that mode's effects would ask for, read without the mode having been chosen yet.
+///
+/// The trigger counterpart of
+/// [`CardData::cast_target_groups`](crate::CardData::cast_target_groups) taking a mode: a
+/// modal object declares no slots until one is picked, so the offer has to ask "and what
+/// would *this* mode target" for each in turn. Empty for an id that is not on the stack,
+/// is not an ability, or names a mode the ability does not have.
+pub(crate) fn mode_target_groups(
+    state: &GameState,
+    _db: &CardDatabase,
+    ability: crate::stack::StackId,
+    mode: u8,
+) -> Vec<TargetGroup> {
+    state
+        .stack
+        .iter()
+        .find(|object| object.id == ability)
+        .map(|object| match &object.kind {
+            crate::stack::StackObjectKind::Ability { modes, .. } => modes
+                .get(usize::from(mode))
+                .map(|chosen| {
+                    chosen
+                        .effects
+                        .iter()
+                        .flat_map(|effect| effect.target_groups(state.players.len()))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        })
+        .unwrap_or_default()
 }
 
 /// The player whose seat `action` is taken from, and therefore the frame of
@@ -209,6 +261,10 @@ pub(crate) fn legal_targets_for_spec(
         // still in the game and permanents that are planeswalkers.
         TargetSpec::AnyPlayerOrPlaneswalker => players.into_iter().chain(permanents).collect(),
         TargetSpec::AnyPermanent
+        // The seat this slot belongs to narrows the battlefield rather than naming a
+        // different zone, exactly as a mana value does — the `target_is_legal` filter
+        // below is what reads the seat.
+        | TargetSpec::PermanentThatPlayerControls { .. }
         | TargetSpec::AnyNonlandPermanent
         | TargetSpec::AnyNonlandPermanentAnOpponentControls
         // A mana-value filter narrows the battlefield rather than naming a different

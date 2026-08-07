@@ -316,6 +316,24 @@ pub enum OptionalCost {
         /// How many cards are discarded. At least one on every printed card.
         count: u8,
     },
+    /// **Pay `{X}`, for an X the chooser picks** (CR 601.2b's number, asked in the middle
+    /// of a resolution) — the `you may pay {X}` of a creature whose attack trigger buys
+    /// back a corpse.
+    ///
+    /// The only optional cost whose *size* is a decision. Its siblings ask what to pay
+    /// with; this asks how much, so accepting poses a number question
+    /// ([`ChoiceQuestion::Number`](crate::ChoiceQuestion)) bounded by what the chooser can
+    /// actually pay, and the amount is charged as generic mana the moment they answer.
+    ///
+    /// The value does not vanish once it is paid. It is **substituted into the effects
+    /// the payment bought**, which is what lets `return target creature card with mana
+    /// value X` mean a concrete number by the time anybody chooses a target — the same
+    /// trick a trigger that says "that many" uses, and the reason X does not have to be
+    /// carried on the stack object and re-read.
+    ///
+    /// Zero is a legal answer, because the printed card allows it: paying nothing is
+    /// paying X where X is nothing, and it buys a search for a card that costs nothing.
+    ManaX,
 }
 
 impl OptionalCost {
@@ -345,6 +363,11 @@ impl OptionalCost {
             },
             OptionalCost::Discard { count } => Cost::Discard { count: *count },
             OptionalCost::SacrificeThis => Cost::SacrificeThis,
+            // The one payment with no fixed cost to name: `{X}` is what the card prints,
+            // and the number is not known until the chooser answers.
+            OptionalCost::ManaX => Cost::Mana {
+                mana: "{X}".to_string(),
+            },
         }
     }
 
@@ -357,8 +380,12 @@ impl OptionalCost {
     pub fn mana(&self) -> Option<&str> {
         match self {
             OptionalCost::Mana { mana } => Some(mana),
+            // `{X}` is mana, but not a *fixed* string: the amount is chosen, so an offer
+            // is judged against the pool by the number question's bounds rather than by
+            // parsing a cost here. Answering `None` is what routes it there.
             OptionalCost::Sacrifice { .. }
             | OptionalCost::SacrificeThis
+            | OptionalCost::ManaX
             | OptionalCost::Discard { .. } => None,
         }
     }

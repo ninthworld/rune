@@ -108,6 +108,7 @@ fn animate(
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(artifact)],
         },
         db,

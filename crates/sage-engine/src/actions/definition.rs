@@ -230,6 +230,16 @@ pub enum Action {
         /// The stack object being aimed — a triggered ability owed targets, as
         /// reported by [`crate::pending_trigger_target_choice`].
         ability: crate::stack::StackId,
+        /// The **mode** chosen for a modal triggered ability (CR 603.3c), as an index into
+        /// its modes; `None` for every ability that is not modal.
+        ///
+        /// Answered by the same action as the targets, and it has to be: the mode is what
+        /// says how many target slots there are and what each may aim at, so the two
+        /// cannot be two questions in sequence without the first one's answer being
+        /// invisible to the second. That is the same ordering a modal *cast* has, where
+        /// mode and targets are both fields of [`Self::CastSpell`] (CR 601.2b before
+        /// CR 601.2c).
+        mode: Option<u8>,
         /// One target per slot the ability's effects declare, in that order; the same
         /// parameterized representation [`Self::ActivateAbility`] uses.
         targets: Vec<Target>,
@@ -275,6 +285,21 @@ pub enum Action {
         /// choice's clamped bounds ([`crate::choice_bounds`]). An empty selection is
         /// legal whenever the minimum is zero — declining to scry, or failing to find.
         chosen: Vec<CardInstanceId>,
+    },
+    /// Answer the pending **amount** question with `value` — the X of a `you may pay
+    /// {X}` asked in the middle of a resolution
+    /// ([`ChoiceQuestion::Number`](crate::ChoiceQuestion)).
+    ///
+    /// Routed exactly as the other mid-resolution answers are, and with the same
+    /// exclusivity: while it is owed, its chooser is offered this and their mana
+    /// abilities, and every other seat is offered nothing. That mana-ability exception is
+    /// the reason the bounds are recomputed at the gate rather than trusted from the
+    /// question — a player owed this may still tap for more (CR 605.3a), and the answer
+    /// is judged against the pool as it stands when they give it.
+    AnswerNumber {
+        /// The amount chosen, judged against [`crate::number_bounds`]. Zero is always a
+        /// legal answer.
+        value: u32,
     },
     /// Answer the **mid-resolution color choice** the game is currently waiting on: one
     /// point of `Add two mana in any combination of colors` (see
@@ -625,6 +650,7 @@ impl Action {
             | Action::AnswerChoice { .. }
             | Action::AnswerConfirm { .. }
             | Action::AnswerColor { .. }
+            | Action::AnswerNumber { .. }
             | Action::AnswerReplacement { .. }
             | Action::AnswerCardName { .. }
             | Action::AnswerOrder { .. }
@@ -685,8 +711,12 @@ impl Action {
                 targets: Vec::new(),
                 payment: Vec::new(),
             },
-            Action::ChooseTriggerTargets { ability, .. } => Action::ChooseTriggerTargets {
+            // The mode is part of the requirement form rather than cleared with the
+            // targets: a modal trigger is advertised once **per mode**, exactly as a modal
+            // cast is, because the slots differ between them.
+            Action::ChooseTriggerTargets { ability, mode, .. } => Action::ChooseTriggerTargets {
                 ability: *ability,
+                mode: *mode,
                 targets: Vec::new(),
             },
             // The mulligan keep's bottom selection is cleared the same way, so its
@@ -706,6 +736,10 @@ impl Action {
             Action::AnswerColor { .. } => Action::AnswerColor {
                 color: crate::mana::Color::White,
             },
+            // And an amount the same way: the bare question, whose answer is the value
+            // the submitted action carries. Zero is the requirement form's stand-in and
+            // also — uniquely among these — a legal answer.
+            Action::AnswerNumber { .. } => Action::AnswerNumber { value: 0 },
             // And a replacement-ordering answer the same way: one bare question, whose
             // answer names a position in the submitted action. Zero is the requirement
             // form's stand-in, never a default anyone is held to.

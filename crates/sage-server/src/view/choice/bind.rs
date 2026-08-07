@@ -131,6 +131,35 @@ pub(crate) fn bind_player_color(
     Some(Action::AnswerColor { color: *color })
 }
 
+/// Map a returned answer to an **amount** onto [`Action::AnswerNumber`].
+///
+/// The same reject-stale discipline as its siblings, in the shape a number takes: the
+/// answer must be one of the values the offer itself listed, so a value that was reachable
+/// when the view was built but is not now — a pool that shrank, or a forged number — is
+/// refused rather than clamped. The engine's gate re-checks the bounds regardless; this is
+/// what stops a stale answer becoming a *different* legal answer.
+pub(crate) fn bind_player_number(
+    state: &GameState,
+    offered: &ValidAction,
+    targets: &[TargetChoice],
+) -> Option<Action> {
+    let values = offered.prompts.iter().find_map(|prompt| match prompt {
+        Prompt::Number { slot, values, .. } if slot == CHOICE_SLOT => Some(values),
+        _ => None,
+    })?;
+    if !matches!(
+        pending_player_choice(state)?.question,
+        sage_engine::ChoiceQuestion::Number(_)
+    ) {
+        return None;
+    }
+    let answer: u32 = chosen_for(targets, CHOICE_SLOT).first()?.parse().ok()?;
+    if !values.iter().any(|value| value.value == answer) {
+        return None;
+    }
+    Some(Action::AnswerNumber { value: answer })
+}
+
 /// Map a returned answer to the yes-or-no of an optional effect onto
 /// [`Action::AnswerConfirm`] (issue #610).
 ///

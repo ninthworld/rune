@@ -127,6 +127,55 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 )
             }
         }
+        // The one clause whose *number* of target nouns comes from the table, so it names
+        // none of them individually: "for each player" is the whole of who is being asked,
+        // and repeating the noun once per seat would make the card's text depend on how
+        // many people are playing.
+        Effect::SacrificeChosenPerPlayer { reveal_top } => {
+            let sacrifice = "for each player, choose target permanent that player controls. \
+                 Those players sacrifice those permanents"
+                .to_string();
+            if *reveal_top {
+                format!(
+                    "{sacrifice}. Each player who sacrificed a permanent this way reveals \
+                     the top card of their library, then puts it onto the battlefield if \
+                     it's a permanent card"
+                )
+            } else {
+                sacrifice
+            }
+        }
+        // Two sentences on the printed card, and two here: the removal, then the
+        // prohibition that outlives it. `for as long as` names the source's stay on the
+        // battlefield, which is what the duration measures.
+        Effect::RemoveAllCounters {
+            target,
+            then_forbid,
+        } => {
+            let removal = format!("remove all counters from {}", target_noun(*target));
+            if *then_forbid {
+                format!(
+                    "{removal}. It can't have counters put on it for as long as \
+                     {source} remains on the battlefield"
+                )
+            } else {
+                removal
+            }
+        }
+        Effect::PlayerLosesAllCounters {
+            player_ref,
+            then_forbid,
+        } => {
+            let removal = format!("{} all counters", conjugate(*player_ref, "lose"));
+            if *then_forbid {
+                format!(
+                    "{removal}. That player can't get counters for as long as \
+                     {source} remains on the battlefield"
+                )
+            } else {
+                removal
+            }
+        }
         Effect::GainLife { player_ref, amount } => {
             format!("{} {amount} life", conjugate(*player_ref, "gain"))
         }
@@ -544,12 +593,48 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             types,
             subtypes,
             colors,
+            counters,
+            exile_on_leaving,
         } => {
+            // The counters ride the same sentence the card prints them in: "…onto the
+            // battlefield with a corpse counter on it".
+            let with_counters = match counters.as_slice() {
+                [] => String::new(),
+                entries => format!(
+                    " with {}",
+                    entries
+                        .iter()
+                        // "a corpse counter", not "1 corpse counter" — a card writes the
+                        // article for one and the number for more.
+                        .map(|(kind, count)| format!(
+                            "{} {} counter{}",
+                            if *count == 1 {
+                                "a".to_string()
+                            } else {
+                                number(*count)
+                            },
+                            counter_symbol(*kind),
+                            if *count == 1 { "" } else { "s" }
+                        ))
+                        .collect::<Vec<_>>()
+                        .join(" and ")
+                ),
+            };
+            let on_it = if counters.is_empty() { "" } else { " on it" };
             let return_it = format!(
-                "put {} onto the battlefield under your control{}",
+                "put {} onto the battlefield under your control{}{with_counters}{on_it}",
                 target_phrase(*target, *targets),
                 if *tapped { " tapped" } else { "" }
             );
+            // The replacement is its own sentence, where the card prints it.
+            let return_it = if *exile_on_leaving {
+                format!(
+                    "{return_it}. If that creature would leave the battlefield, exile it \
+                     instead of putting it anywhere else"
+                )
+            } else {
+                return_it
+            };
             // The card prints the continuous half as its own sentence about "that
             // creature", because by then the permanent exists and can be spoken of.
             let mut what: Vec<String> = colors.iter().map(|c| c.word().to_string()).collect();

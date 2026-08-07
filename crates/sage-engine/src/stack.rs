@@ -169,9 +169,72 @@ pub enum StackObjectKind {
         source: AbilitySource,
         /// How this ability got onto the stack (CR 113.3).
         origin: AbilityOrigin,
-        /// The effects to apply on resolution.
+        /// The effects to apply on resolution. Empty for a **modal** ability, whose
+        /// effects are the chosen mode's.
         effects: Vec<Effect>,
+        /// The modes this ability chooses between, carried from its printed
+        /// [`Ability::Triggered`](crate::Ability) exactly as its effects are. Empty for
+        /// every non-modal ability.
+        modes: Vec<crate::card::SpellMode>,
+        /// The **mode** chosen as this ability was put onto the stack (CR 603.3c), as an
+        /// index into [`modes`](Self::Ability::modes).
+        ///
+        /// `None` while the choice is still owed, which is the same shape an unaimed
+        /// trigger's empty target list has and is read the same way: the ability is owed
+        /// an answer exactly while it has none, so nothing has to be flagged or cleared.
+        /// Resolution reads its effects through this and can reach no other mode.
+        mode: Option<u8>,
     },
+}
+
+impl StackObjectKind {
+    /// The effects this object will apply on resolution — its own, or the **chosen
+    /// mode's** for a modal ability (CR 700.2).
+    ///
+    /// The one place a mode is unwrapped, so every path that walks an ability's effects —
+    /// the target slots it declares, the CR 603.3c removal check, the resolution itself —
+    /// asks one question and cannot reach a mode nobody chose. A modal ability with no
+    /// answer yet has **no effects**, which is the ordering rule made structural: what
+    /// this ability targets has no answer until which of its things it does has one.
+    ///
+    /// Answers an ability's plain effects for everything else, including every ability
+    /// that is not modal.
+    #[must_use]
+    pub fn ability_effects(&self) -> Vec<Effect> {
+        let Self::Ability {
+            effects,
+            modes,
+            mode,
+            ..
+        } = self
+        else {
+            return Vec::new();
+        };
+        if modes.is_empty() {
+            return effects.clone();
+        }
+        mode.and_then(|index| modes.get(usize::from(index)))
+            .map(|chosen| chosen.effects.clone())
+            .unwrap_or_default()
+    }
+
+    /// Whether this object is a **modal ability that has not chosen its mode yet**
+    /// (CR 603.3c) — owed an answer for exactly the reason an unaimed trigger is owed
+    /// one, and derived the same way rather than flagged.
+    #[must_use]
+    pub fn owes_mode(&self) -> bool {
+        matches!(self, Self::Ability { modes, mode, .. } if !modes.is_empty() && mode.is_none())
+    }
+
+    /// How many modes this object chooses between; `0` for everything that is not a modal
+    /// ability.
+    #[must_use]
+    pub fn mode_count(&self) -> usize {
+        match self {
+            Self::Ability { modes, .. } => modes.len(),
+            _ => 0,
+        }
+    }
 }
 
 /// The object an ability on the stack came from (CR 113.3).

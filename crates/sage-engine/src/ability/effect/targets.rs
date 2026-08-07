@@ -18,8 +18,8 @@ impl Effect {
     /// spec, and answering with the first one would be a wrong answer rather than a
     /// partial one.
     #[must_use]
-    pub fn target_spec(&self) -> Option<TargetSpec> {
-        match self.target_groups().as_slice() {
+    pub fn target_spec(&self, seats: usize) -> Option<TargetSpec> {
+        match self.target_groups(seats).as_slice() {
             [group] => Some(group.spec),
             _ => None,
         }
@@ -32,11 +32,33 @@ impl Effect {
     /// The single-group narrowing of [`Self::target_groups`], kept for the resolve and
     /// legality paths that have already established they are looking at one slot.
     #[must_use]
-    pub fn target_group(&self) -> Option<TargetGroup> {
-        match self.target_groups().as_slice() {
+    pub fn target_group(&self, seats: usize) -> Option<TargetGroup> {
+        match self.target_groups(seats).as_slice() {
             [group] => Some(*group),
             _ => None,
         }
+    }
+
+    /// Whether this effect's target slots stand or fall **together** — the question
+    /// CR 608.2b leaves open for an effect that declares more than one.
+    ///
+    /// `true` is the conservative answer and the default. A fight is a fight or it is
+    /// nothing (CR 701.12c), and an exchange of control is all or nothing (CR 701.10c):
+    /// their slots are not interchangeable, so half of either is an effect the card never
+    /// printed.
+    ///
+    /// `false` is for an effect that is one sentence about several **separate** things.
+    /// `For each player, choose target permanent that player controls` says the same thing
+    /// once per seat, and one seat's target having become illegal says nothing about
+    /// another's — so CR 608.2b's ordinary rule applies and the effect does as much as it
+    /// still can.
+    ///
+    /// Only ever asked of an effect with two or more groups, which is why the wildcard is
+    /// safe: an effect with one slot has no togetherness to have, and one with none is
+    /// never on this path at all.
+    #[must_use]
+    pub fn slots_are_indivisible(&self) -> bool {
+        !matches!(self, Effect::SacrificeChosenPerPlayer { .. })
     }
 
     /// The [`TargetGroup`]s this effect must be given chosen targets for, in slot
@@ -52,9 +74,33 @@ impl Effect {
     /// The resolution path uses this to pair each of an object's stored [`Target`]s with
     /// the effect that consumes it and to re-check that target's legality (CR 608.2b).
     /// Kept exhaustive so a new targeting [`Effect`] variant must declare its specs here.
+    ///
+    /// # Why this is given the seat count
+    ///
+    /// Because one effect's slot count is not a property of the effect. `For each player,
+    /// choose target permanent that player controls` declares **one group per seat**
+    /// ([`TargetSpec::PermanentThatPlayerControls`]), and how many that is depends on how
+    /// many people are playing. Every other effect ignores `seats` entirely and answers
+    /// exactly what it always did.
+    ///
+    /// It is the seat *count* rather than the whole [`GameState`](crate::GameState) on
+    /// purpose: this is asked on every announcement, every legality check, and every
+    /// resolution, and the only thing about the game any effect needs in order to say how
+    /// many slots it has is how many seats there are. Passing less means the answer
+    /// cannot quietly start depending on the board — the slots an object declares must be
+    /// the same at resolution as at announcement, or the CR 608.2b re-check would be
+    /// re-checking a different shape than the one the player answered.
     #[must_use]
-    pub fn target_groups(&self) -> Vec<TargetGroup> {
+    pub fn target_groups(&self, seats: usize) -> Vec<TargetGroup> {
         match self {
+            // The one effect whose slot count comes from the table rather than from the
+            // card: one required slot per seat, each naming that seat's permanents
+            // (CR 601.2c chooses them all at once, in seat order).
+            Effect::SacrificeChosenPerPlayer { .. } => (0..seats)
+                .map(|seat| {
+                    TargetGroup::single(TargetSpec::PermanentThatPlayerControls { seat })
+                })
+                .collect(),
             // The variable-arity effects: `put a +1/+1 counter on each of up to two
             // target creatures` chooses between zero and two, and every other authoring
             // of the same effects leaves the count at its default of one. They differ
@@ -89,10 +135,15 @@ impl Effect {
             Effect::May {
                 effects, otherwise, ..
             } => {
-                let accepted: Vec<TargetGroup> =
-                    effects.iter().flat_map(Effect::target_groups).collect();
+                let accepted: Vec<TargetGroup> = effects
+                    .iter()
+                    .flat_map(|effect| effect.target_groups(seats))
+                    .collect();
                 if accepted.is_empty() {
-                    otherwise.iter().flat_map(Effect::target_groups).collect()
+                    otherwise
+                        .iter()
+                        .flat_map(|effect| effect.target_groups(seats))
+                        .collect()
                 } else {
                     accepted
                 }
@@ -129,7 +180,10 @@ impl Effect {
             // trigger event rather than by a player (CR 603.7c) — but it is a slot, so the
             // CR 608.2b re-check applies to it like any other.
             | Effect::CopySpell { target, .. }
-            | Effect::ReturnToHand { target } => vec![TargetGroup::single(*target)],
+            | Effect::ReturnToHand { target }
+            // Clearing a permanent's counters names it in one slot; the prohibition that
+            // follows is about the same object and asks for nothing further.
+            | Effect::RemoveAllCounters { target, .. } => vec![TargetGroup::single(*target)],
             // A player-subject effect targets exactly when its reference does
             // (CR 115.1) — "target opponent loses 2 life" fills a slot, "each
             // opponent loses 2 life" fills none. One answer, from the reference.
@@ -153,6 +207,8 @@ impl Effect {
             | Effect::DiscardByAmount { player_ref, .. }
             | Effect::Sacrifice { player_ref, .. }
             | Effect::ExileGraveyard { player_ref }
+            // And clearing a player's names them the same way their graveyard is named.
+            | Effect::PlayerLosesAllCounters { player_ref, .. }
             // Digging through a library names its owner the same way emptying one does.
             | Effect::ExileFromLibraryUntil { player_ref, .. }
             // Emptying a library names its owner the same way a graveyard's does.

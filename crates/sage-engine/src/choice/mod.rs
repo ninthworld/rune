@@ -243,6 +243,21 @@ pub enum ChoiceQuestion {
     /// It is a **choice, not a target** (CR 115.1): nothing is aimed, no slot is filled at
     /// announcement, and hexproof has nothing to say about it.
     Permanent(CopyChoiceRequest),
+    /// **How much?** — the value of an `{X}` a player is paying in the middle of a
+    /// resolution ([`NumberRequest`]). Answered with
+    /// [`Action::AnswerNumber`](crate::Action).
+    ///
+    /// Its own shape because the answer is a plain number, which none of the others is: a
+    /// selection, a yes-or-no, a colour, a position in a derived list, a card identity, an
+    /// arrangement, and a set of permanents are all answers *about objects*. This one is
+    /// an amount, and the only thing bounding it is what the chooser can pay.
+    ///
+    /// It exists because X was previously only ever announced (CR 601.2b), where it rides
+    /// on the action that puts the object on the stack. `You may pay {X}` on a trigger has
+    /// no announcement to ride, so it is asked here — and the value is then substituted
+    /// into the effects it bought, which is what lets a later sentence say "mana value X"
+    /// and mean a number.
+    Number(NumberRequest),
     /// **You may play this card** — the CR 608.2f offer a resolution makes when it hands
     /// the player a specific card and lets them play it on the spot ([`PlayCardRequest`]).
     ///
@@ -276,6 +291,7 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Order(_)
             | ChoiceQuestion::Permanents(_)
             | ChoiceQuestion::Permanent(_)
+            | ChoiceQuestion::Number(_)
             | ChoiceQuestion::PlayCard(_) => None,
         }
     }
@@ -295,6 +311,7 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Replacement(_)
             | ChoiceQuestion::Order(_)
             | ChoiceQuestion::Permanents(_)
+            | ChoiceQuestion::Number(_)
             | ChoiceQuestion::Permanent(_) => None,
         }
     }
@@ -311,6 +328,7 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Order(_)
             | ChoiceQuestion::Permanents(_)
             | ChoiceQuestion::Permanent(_)
+            | ChoiceQuestion::Number(_)
             | ChoiceQuestion::PlayCard(_) => None,
         }
     }
@@ -327,6 +345,7 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Order(_)
             | ChoiceQuestion::Permanents(_)
             | ChoiceQuestion::Permanent(_)
+            | ChoiceQuestion::Number(_)
             | ChoiceQuestion::PlayCard(_) => None,
         }
     }
@@ -343,6 +362,7 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Order(_)
             | ChoiceQuestion::Permanents(_)
             | ChoiceQuestion::Permanent(_)
+            | ChoiceQuestion::Number(_)
             | ChoiceQuestion::PlayCard(_) => None,
         }
     }
@@ -359,6 +379,7 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Replacement(_)
             | ChoiceQuestion::Permanents(_)
             | ChoiceQuestion::Permanent(_)
+            | ChoiceQuestion::Number(_)
             | ChoiceQuestion::PlayCard(_) => None,
         }
     }
@@ -375,6 +396,7 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Replacement(_)
             | ChoiceQuestion::Order(_)
             | ChoiceQuestion::Permanent(_)
+            | ChoiceQuestion::Number(_)
             | ChoiceQuestion::PlayCard(_) => None,
         }
     }
@@ -391,6 +413,7 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Order(_)
             | ChoiceQuestion::Permanents(_)
             | ChoiceQuestion::Permanent(_)
+            | ChoiceQuestion::Number(_)
             | ChoiceQuestion::PlayCard(_) => None,
         }
     }
@@ -407,6 +430,7 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Replacement(_)
             | ChoiceQuestion::Order(_)
             | ChoiceQuestion::Permanents(_)
+            | ChoiceQuestion::Number(_)
             | ChoiceQuestion::PlayCard(_) => None,
         }
     }
@@ -517,6 +541,86 @@ pub struct ReplacementRequest {
 pub struct ColorRequest {
     /// What becomes of the colour once it is named.
     pub outcome: ColorOutcome,
+}
+
+/// `effects` with the **X that was just paid** written into every slot that says X.
+///
+/// The one substitution the vocabulary needs for a mid-resolution X, and it is a
+/// rewrite rather than a lookup for a reason: the effects travel onward into a reflexive
+/// ability that is put on the stack, aimed, responded to, and only then resolved. Making
+/// them concrete here means nothing downstream carries an X, and no later reader can
+/// disagree about what it was.
+///
+/// Every other effect passes through untouched.
+#[must_use]
+pub fn with_paid_x(effects: &[crate::ability::Effect], x: u32) -> Vec<crate::ability::Effect> {
+    use crate::ability::{Effect, TargetSpec};
+    fn substitute(spec: TargetSpec, x: u32) -> TargetSpec {
+        match spec {
+            TargetSpec::CardInGraveyard {
+                scope,
+                class,
+                max_mana_value,
+                mana_value_is_x: true,
+                ..
+            } => TargetSpec::CardInGraveyard {
+                scope,
+                class,
+                max_mana_value,
+                exact_mana_value: Some(x),
+                mana_value_is_x: false,
+            },
+            other => other,
+        }
+    }
+    effects
+        .iter()
+        .cloned()
+        .map(|effect| match effect {
+            Effect::ReturnCardToBattlefield {
+                target,
+                targets,
+                tapped,
+                types,
+                subtypes,
+                colors,
+                counters,
+                exile_on_leaving,
+            } => Effect::ReturnCardToBattlefield {
+                target: substitute(target, x),
+                targets,
+                tapped,
+                types,
+                subtypes,
+                colors,
+                counters,
+                exile_on_leaving,
+            },
+            other => other,
+        })
+        .collect()
+}
+
+/// **How much?** — the pending choice of an amount, and what the amount is for./// **How much?** — the pending choice of an amount, and what the amount is for.
+///
+/// Carries its own bounds rather than deriving them on read, for the reason a
+/// [`ChoiceRequest`]'s count is carried: the question a player was asked has to still be
+/// the question their answer is judged against, and a mana pool can change between the
+/// two if they activate a mana ability in between (CR 605.3a). The bounds are recomputed
+/// against the *pool* by [`number_bounds`], which is what the gate reads; these are what
+/// the question was posed with.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NumberRequest {
+    /// The source permanent whose ability is asking, for the sentence a client shows.
+    pub source: Option<crate::id::PermanentId>,
+    /// The effects the payment buys, with the chosen value substituted in.
+    ///
+    /// Held here rather than spliced into the resolution because they are not this
+    /// resolution's: paying creates a **reflexive** ability (CR 603.11) that fires
+    /// afterwards, chooses its own targets as it goes on the stack, and may be responded
+    /// to. Splicing them in would resolve them immediately and silently, which is a
+    /// different card.
+    pub effects: Vec<crate::ability::Effect>,
 }
 
 /// What a named colour is *for* — the counterpart of [`ChoiceOutcome`] for the colour
@@ -870,6 +974,28 @@ pub fn choice_bounds(state: &GameState, request: &ChoiceRequest, db: &CardDataba
     let available = u32::try_from(choice_candidates(state, request, db).len()).unwrap_or(u32::MAX);
     let max = request.max.min(available);
     (request.min.min(available).min(max), max)
+}
+
+/// The bounds on the **amount** currently owed (CR 601.2b's number, asked in the middle
+/// of a resolution): zero, and the most the chooser could still pay.
+///
+/// `(0, 0)` when no amount is owed, which is also the honest answer for a chooser with an
+/// empty pool: paying nothing is a legal payment of X.
+///
+/// The ceiling is the **potential** pool — untapped mana sources included — for the reason
+/// an optional cost's gate reads the same one: a player owed this question may still
+/// activate mana abilities (CR 605.3a), so an amount they could reach by tapping is an
+/// amount they may name. The server taps for them when they do.
+#[must_use]
+pub fn number_bounds(state: &GameState, db: &CardDatabase) -> (u32, u32) {
+    let Some(pending) = pending_player_choice(state) else {
+        return (0, 0);
+    };
+    if !matches!(pending.question, ChoiceQuestion::Number(_)) {
+        return (0, 0);
+    }
+    let pool = crate::actions::potential_mana_pool(state, pending.chooser, db);
+    (0, u32::from(pool.total()))
 }
 
 /// Whether `chosen` is a legal answer to the choice currently owed (CR-style

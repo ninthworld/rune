@@ -308,6 +308,7 @@ fn desecrated_tomb_makes_one_bat_however_many_cards_left() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Card(card.id)],
         },
         &db,
@@ -355,6 +356,7 @@ fn fell_specter_drains_the_player_who_discarded() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Player(PlayerId(1))],
         },
         &db,

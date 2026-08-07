@@ -122,6 +122,7 @@ fn settle(state: &GameState, db: &CardDatabase, aim: Target) -> GameState {
                 &state,
                 &Action::ChooseTriggerTargets {
                     ability,
+                    mode: None,
                     targets: vec![aim],
                 },
                 db,
@@ -744,6 +745,7 @@ fn cr_707_10c_the_copy_can_take_new_targets() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Player(PlayerId(0))],
         },
         &db,

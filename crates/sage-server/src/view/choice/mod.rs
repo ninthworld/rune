@@ -59,6 +59,7 @@ pub(crate) fn player_choice_prompts(state: &GameState, db: &CardDatabase) -> Vec
         ChoiceQuestion::Cards(request) => vec![card_choice_prompt(state, db, request)],
         ChoiceQuestion::Confirm(request) => vec![confirm_prompt(state, db, request)],
         ChoiceQuestion::Color(request) => vec![color_prompt(request, db)],
+        ChoiceQuestion::Number(_) => vec![number_prompt(state, db)],
         ChoiceQuestion::Replacement(_) => vec![replacement_prompt(state, db)],
         ChoiceQuestion::Order(request) => vec![card_order_prompt(state, request)],
         ChoiceQuestion::CardName(request) => vec![card_name_prompt(request, db)],
@@ -315,6 +316,41 @@ fn offered_replacement_label(offered: &OfferedReplacement) -> String {
 /// color is legal by being a color (CR 105.1). The prompt says what the mana may be
 /// spent on when the effect restricted it, since that is the only thing that makes one
 /// answer better than another.
+/// The **amount** prompt: a number in a server-stated range, on the same slot every other
+/// mid-resolution answer rides.
+///
+/// [`Prompt::Number`] already exists for the X of a cast's announcement, so a client that
+/// can announce an X can answer this with no new wire shape — the difference is only which
+/// action carries the value back. Every value from zero up is offered, and each is priced
+/// at itself in generic mana, which is what a client shows beside it.
+///
+/// The bounds are the engine's ([`sage_engine::number_bounds`]) and are recomputed on
+/// every projection, so a player who taps for more mana while the question stands sees the
+/// larger range on their next view.
+fn number_prompt(state: &GameState, db: &CardDatabase) -> Prompt {
+    let (min, max) = sage_engine::number_bounds(state, db);
+    Prompt::Number {
+        slot: CHOICE_SLOT.to_string(),
+        prompt: number_question(),
+        min,
+        max,
+        values: (min..=max)
+            .map(|value| NumberValue {
+                value,
+                // Generic mana, one point per point of X — the whole of what `{X}` costs,
+                // written out rather than left as a multiplication for the client.
+                cost: format!("{{{value}}}"),
+            })
+            .collect(),
+    }
+}
+
+/// The words an amount is asked in. One sentence, because there is one thing it is ever
+/// asked for: how much of an `{X}` to pay in the middle of a resolution.
+fn number_question() -> String {
+    "Choose how much to pay for X".to_string()
+}
+
 fn color_prompt(request: &ColorRequest, db: &CardDatabase) -> Prompt {
     Prompt::Option {
         slot: CHOICE_SLOT.to_string(),
@@ -498,6 +534,7 @@ pub(crate) fn player_choice_label(state: &GameState, db: &CardDatabase) -> Strin
             optional_effect_question(request.cost.as_ref(), &request.effects)
         }
         Some(ChoiceQuestion::Color(request)) => color_question(request, db),
+        Some(ChoiceQuestion::Number(_)) => number_question(),
         Some(ChoiceQuestion::Replacement(_)) => replacement_question(),
         Some(ChoiceQuestion::PlayCard(request)) => {
             let name = card_name(request.card.card, db);
@@ -580,6 +617,7 @@ pub(crate) fn revealed_to(state: &GameState, db: &CardDatabase, viewer: PlayerId
         },
         ChoiceQuestion::Order(request) => order_candidates(state, request),
         ChoiceQuestion::Confirm(_)
+        | ChoiceQuestion::Number(_)
         | ChoiceQuestion::Color(_)
         | ChoiceQuestion::CardName(_)
         | ChoiceQuestion::Replacement(_)

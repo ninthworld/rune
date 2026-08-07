@@ -42,7 +42,7 @@ fn issue_256_activated_colorless_mana_ability_round_trips() {
     );
     assert!(is_mana_ability(&ability));
     // Colorless mana production has an implicit subject, so it targets nothing.
-    assert_eq!(Effect::AddColorlessMana { amount: 1 }.target_spec(), None);
+    assert_eq!(Effect::AddColorlessMana { amount: 1 }.target_spec(2), None);
 }
 
 #[test]
@@ -79,6 +79,7 @@ fn triggered_etb_draw_round_trips() {
         Ability::Triggered {
             event: TriggerCondition::SelfEntersBattlefield,
             effects: vec![Effect::DrawCard { count: 1 }],
+            modes: Vec::new(),
         }
     );
     assert!(!is_mana_ability(&ability));
@@ -96,6 +97,7 @@ fn issue_151_triggered_dies_draw_round_trips() {
         Ability::Triggered {
             event: TriggerCondition::SelfDies,
             effects: vec![Effect::DrawCard { count: 1 }],
+            modes: Vec::new(),
         }
     );
     assert!(!is_mana_ability(&ability));
@@ -120,6 +122,7 @@ fn issue_607_step_trigger_round_trips_with_its_step_and_scope() {
                 player_ref: PlayerRef::Controller,
                 amount: 1
             }],
+            modes: Vec::new(),
         }
     );
     assert!(!is_mana_ability(&ability));
@@ -192,6 +195,7 @@ fn issue_738_an_entry_colour_choice_round_trips_and_reads_back_by_name() {
                 player_ref: crate::ability::PlayerRef::Controller,
                 amount: 1,
             }],
+            modes: Vec::new(),
         }
     );
 }
@@ -330,16 +334,16 @@ fn only_targeting_effects_report_a_target_spec() {
         Effect::Tap {
             target: TargetSpec::AnyPermanent,
         }
-        .target_spec(),
+        .target_spec(2),
         Some(TargetSpec::AnyPermanent)
     );
-    assert_eq!(Effect::DrawCard { count: 1 }.target_spec(), None);
+    assert_eq!(Effect::DrawCard { count: 1 }.target_spec(2), None);
     assert_eq!(
         Effect::AddMana {
             color: Color::Green,
             amount: 1
         }
-        .target_spec(),
+        .target_spec(2),
         None
     );
 }
@@ -356,7 +360,7 @@ fn counter_spell_effect_round_trips_with_its_target_spec() {
             target: TargetSpec::SpellOnStack,
         }
     );
-    assert_eq!(effect.target_spec(), Some(TargetSpec::SpellOnStack));
+    assert_eq!(effect.target_spec(2), Some(TargetSpec::SpellOnStack));
     assert_eq!(
         serde_json::from_str::<TargetSpec>(r#""spell_on_stack""#).unwrap(),
         TargetSpec::SpellOnStack
@@ -390,7 +394,7 @@ fn issue_149_deal_damage_round_trips_with_its_target_spec() {
     );
     // A targeting effect reports its spec; the "any target" spec deserializes
     // from its bare string tag.
-    assert_eq!(effect.target_spec(), Some(TargetSpec::AnyTarget));
+    assert_eq!(effect.target_spec(2), Some(TargetSpec::AnyTarget));
     assert_eq!(
         serde_json::from_str::<TargetSpec>(r#""any_target""#).unwrap(),
         TargetSpec::AnyTarget
@@ -424,8 +428,8 @@ fn issue_611_deal_damage_round_trips_with_a_class_of_players_or_permanents() {
         }
     );
     // Neither class fills a target slot (CR 115.1), so neither can fizzle.
-    assert_eq!(players.target_spec(), None);
-    assert_eq!(permanents.target_spec(), None);
+    assert_eq!(players.target_spec(2), None);
+    assert_eq!(permanents.target_spec(2), None);
     // The subject answers the targeting question in one place, so a *targeting*
     // player reference reports the slot it fills just as `lose_life` does.
     assert_eq!(
@@ -450,7 +454,7 @@ fn issue_149_destroy_round_trips_with_its_target_spec() {
             target: TargetSpec::AnyCreature,
         }
     );
-    assert_eq!(effect.target_spec(), Some(TargetSpec::AnyCreature));
+    assert_eq!(effect.target_spec(2), Some(TargetSpec::AnyCreature));
 }
 
 #[test]
@@ -498,7 +502,7 @@ fn issue_150_pump_round_trips_with_its_target_spec() {
             restrictions: Vec::new(),
         }
     );
-    assert_eq!(effect.target_spec(), Some(TargetSpec::AnyCreature));
+    assert_eq!(effect.target_spec(2), Some(TargetSpec::AnyCreature));
 
     // A pump that also grants keywords is still **one** effect with one target slot:
     // the card says "target creature gets +2/+2 **and** gains flying", and two slots
@@ -518,7 +522,7 @@ fn issue_150_pump_round_trips_with_its_target_spec() {
         }
     );
     assert_eq!(
-        effect.target_group().map(|group| (group.min, group.max)),
+        effect.target_group(2).map(|group| (group.min, group.max)),
         Some((1, 1)),
         "one slot, however many keywords ride along"
     );
@@ -541,7 +545,7 @@ fn issue_150_pump_round_trips_with_its_target_spec() {
         }
     );
     assert_eq!(
-        effect.target_group().map(|group| (group.min, group.max)),
+        effect.target_group(2).map(|group| (group.min, group.max)),
         Some((1, 1))
     );
 }
@@ -560,7 +564,7 @@ fn issue_374_grant_keyword_round_trips_with_its_target_spec() {
             keyword: Keyword::Trample,
         }
     );
-    assert_eq!(effect.target_spec(), Some(TargetSpec::AnyCreature));
+    assert_eq!(effect.target_spec(2), Some(TargetSpec::AnyCreature));
 }
 
 #[test]
@@ -614,17 +618,17 @@ fn a_player_reference_decides_for_itself_whether_it_targets() {
         player_ref: PlayerRef::TargetOpponent,
         amount: 2,
     };
-    assert_eq!(drain.target_spec(), Some(TargetSpec::AnyOpponent));
+    assert_eq!(drain.target_spec(2), Some(TargetSpec::AnyOpponent));
     let symmetric = Effect::LoseLife {
         player_ref: PlayerRef::EachOpponent,
         amount: 2,
     };
-    assert_eq!(symmetric.target_spec(), None);
+    assert_eq!(symmetric.target_spec(2), None);
     let mill = Effect::Mill {
         player_ref: PlayerRef::TargetPlayer,
         count: 2,
     };
-    assert_eq!(mill.target_spec(), Some(TargetSpec::AnyPlayer));
+    assert_eq!(mill.target_spec(2), Some(TargetSpec::AnyPlayer));
 }
 
 #[test]
@@ -637,7 +641,7 @@ fn the_new_effect_verbs_round_trip_with_their_target_or_class() {
             target: TargetSpec::AnyCreature
         }
     );
-    assert_eq!(bounce.target_spec(), Some(TargetSpec::AnyCreature));
+    assert_eq!(bounce.target_spec(2), Some(TargetSpec::AnyCreature));
 
     let mill = r#"{"kind":"mill","player_ref":"each_opponent","count":2}"#;
     assert_eq!(
@@ -663,7 +667,7 @@ fn the_new_effect_verbs_round_trip_with_their_target_or_class() {
             toughness: 1,
         }
     );
-    assert_eq!(pump.target_spec(), None);
+    assert_eq!(pump.target_spec(2), None);
 
     let grant = r#"{"kind":"grant_keyword_all","affects":{"scope":"creatures_you_control"},
                      "keyword":"trample"}"#;
@@ -679,7 +683,7 @@ fn the_new_effect_verbs_round_trip_with_their_target_or_class() {
             keyword: Keyword::Trample,
         }
     );
-    assert_eq!(grant.target_spec(), None);
+    assert_eq!(grant.target_spec(2), None);
 }
 
 #[test]
@@ -733,7 +737,7 @@ fn issue_748_a_mana_value_spec_is_authored_in_the_tagged_form() {
         }
     );
     assert_eq!(
-        effect.target_spec(),
+        effect.target_spec(2),
         Some(TargetSpec::AnyPermanentWithManaValue { mana_value: 1 })
     );
 }
@@ -754,7 +758,7 @@ fn issue_748_restrict_carries_a_target_count_and_defaults_it_to_one() {
             restriction: CombatRestriction::CantBeBlocked,
         }
     );
-    let groups = single.target_groups();
+    let groups = single.target_groups(2);
     assert_eq!((groups[0].min, groups[0].max), (1, 1));
 
     // Present, it is the same "up to N" group `put_counters` declares — one group,
@@ -762,7 +766,7 @@ fn issue_748_restrict_carries_a_target_count_and_defaults_it_to_one() {
     let variable = r#"{"kind":"restrict","target":"any_creature","targets":{"up_to":2},
                        "restriction":"cant_be_blocked"}"#;
     let variable: Effect = serde_json::from_str(variable).unwrap();
-    let groups = variable.target_groups();
+    let groups = variable.target_groups(2);
     assert_eq!(groups.len(), 1, "one group, however many slots");
     assert_eq!((groups[0].min, groups[0].max), (0, 2));
     assert_eq!(groups[0].spec, TargetSpec::AnyCreature);
@@ -780,6 +784,7 @@ fn the_attacks_trigger_authors_its_condition_as_a_bare_tag() {
                 player_ref: PlayerRef::Controller,
                 amount: 2
             }],
+            modes: Vec::new(),
         }
     );
 }
@@ -801,7 +806,7 @@ fn issue_604_the_choice_effects_round_trip_with_their_defaults() {
     );
     // A discard targets exactly when its player reference does, like every other
     // player-subject effect.
-    assert_eq!(plain.target_spec(), Some(TargetSpec::AnyPlayer));
+    assert_eq!(plain.target_spec(2), Some(TargetSpec::AnyPlayer));
     assert_eq!(
         Effect::Discard {
             player_ref: PlayerRef::Controller,
@@ -809,7 +814,7 @@ fn issue_604_the_choice_effects_round_trip_with_their_defaults() {
             chosen_by: Chooser::Owner,
             filter: CardFilter::Any,
         }
-        .target_spec(),
+        .target_spec(2),
         None
     );
 
@@ -878,7 +883,7 @@ fn issue_604_the_choice_effects_round_trip_with_their_defaults() {
     // A choice over the controller's own library is never a target (CR 115.1), so
     // none of these three can fizzle.
     for effect in [scry, look] {
-        assert_eq!(effect.target_spec(), None);
+        assert_eq!(effect.target_spec(2), None);
     }
 
     // An unconstrained creature filter, the default destination, the optional take, and
@@ -921,8 +926,8 @@ fn issue_149_life_effects_round_trip_and_target_nothing() {
         }
     );
     // Life gain/loss have an implicit subject, so they choose no target.
-    assert_eq!(gain.target_spec(), None);
-    assert_eq!(lose.target_spec(), None);
+    assert_eq!(gain.target_spec(2), None);
+    assert_eq!(lose.target_spec(2), None);
 }
 
 #[test]
@@ -953,7 +958,7 @@ fn issue_723_a_graveyard_ability_is_derived_from_the_effect_that_moves_its_own_c
         Effect::ReturnSelfFromGraveyard {
             destination: FoundDestination::Hand,
         }
-        .target_group(),
+        .target_group(2),
         None
     );
     // And it is not a mana ability, so it uses the stack like any other activation.
@@ -1031,7 +1036,7 @@ fn issue_740_two_mana_of_any_one_color_is_one_choice_rather_than_two() {
         }
     );
     // Either way it names no target and is a mana ability wherever it is activated.
-    assert_eq!(effect.target_group(), None);
+    assert_eq!(effect.target_group(2), None);
     assert!(is_mana_ability(&Ability::Activated {
         once_each_turn: false,
         cost: vec![Cost::Tap],
@@ -1060,7 +1065,7 @@ fn issue_737_a_fight_declares_two_groups_of_its_own_specs() {
     );
     assert_eq!(
         effect
-            .target_groups()
+            .target_groups(2)
             .iter()
             .map(|group| (group.spec, group.min, group.max))
             .collect::<Vec<_>>(),
@@ -1072,20 +1077,21 @@ fn issue_737_a_fight_declares_two_groups_of_its_own_specs() {
     );
     // A two-slot effect has no single spec, and the single-group convenience says so
     // rather than answering with the first of two.
-    assert_eq!(effect.target_spec(), None);
-    assert_eq!(effect.target_group(), None);
+    assert_eq!(effect.target_spec(2), None);
+    assert_eq!(effect.target_group(2), None);
 
     // Both slots are required, so the announcement takes exactly two targets.
     let effects = vec![effect];
-    assert_eq!(minimum_targets(&effects), 2);
-    assert_eq!(maximum_targets(&effects), 2);
+    assert_eq!(minimum_targets(&effects, 2), 2);
+    assert_eq!(maximum_targets(&effects, 2), 2);
     assert_eq!(
         target_counts(
             &effects,
             &[
                 Target::Permanent(crate::id::PermanentId(1)),
                 Target::Permanent(crate::id::PermanentId(2)),
-            ]
+            ],
+            2
         ),
         vec![1, 1],
         "one target per group, counted per group rather than per effect"

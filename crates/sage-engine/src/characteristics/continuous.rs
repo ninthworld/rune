@@ -346,5 +346,10 @@ pub(super) fn affects(
         // pump landed on a non-creature (which has none) is folded into `None`
         // and has no visible effect — no `is_creature` gate is needed here.
         EffectAffects::SpecificPermanent(id) => perm.id == id,
+        // An effect about a **player** is never about a permanent (CR 109.1). It is read
+        // by the one question that asks about a seat
+        // ([`player_cannot_get_counters`](super::player_cannot_get_counters)), and every
+        // layer fold reaches this arm and correctly declines.
+        EffectAffects::SpecificPlayer(_) => false,
     }
 }

@@ -190,6 +190,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "suncleanser",
+    "collector_number": "39",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "take_vengeance",
     "collector_number": "40",
     "rarity": "common"
@@ -508,6 +513,11 @@
     "functional_id": "infernal_scarring",
     "collector_number": "103",
     "rarity": "common"
+  },
+  {
+    "functional_id": "isareth_the_awakener",
+    "collector_number": "104",
+    "rarity": "rare"
   },
   {
     "functional_id": "lich_s_caress",
@@ -1108,6 +1118,11 @@
     "functional_id": "skyrider_patrol",
     "collector_number": "224",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "vaevictis_asmadi_the_dire",
+    "collector_number": "225",
+    "rarity": "mythic"
   },
   {
     "functional_id": "amulet_of_safekeeping",

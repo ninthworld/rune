@@ -168,6 +168,13 @@ pub(crate) fn target_spec_prompt(spec: TargetSpec) -> String {
         TargetSpec::AnyNonlandPermanentAnOpponentControls => {
             "Choose target nonland permanent an opponent controls".to_string()
         }
+        // One of these slots per seat, so the prompt has to say **which** seat — the
+        // candidate set is already narrowed to that player's permanents, and a prompt
+        // that repeated "that player" N times would leave the player guessing which
+        // repetition they were answering. Numbered from one, as a table is counted.
+        TargetSpec::PermanentThatPlayerControls { seat } => {
+            format!("Choose target permanent player {} controls", seat + 1)
+        }
         TargetSpec::AnyPermanentWithManaValue { mana_value } => {
             format!("Choose target permanent with mana value {mana_value}")
         }

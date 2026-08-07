@@ -128,6 +128,7 @@ fn sparktongue_dragon_aims_after_it_has_been_paid_for() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(victim)],
         },
         &db,
@@ -228,6 +229,7 @@ fn skyrider_patrol_buys_a_counter_and_a_keyword_for_one_creature() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(ally), Target::Permanent(ally)],
         },
         &db,

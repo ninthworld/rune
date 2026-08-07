@@ -179,6 +179,7 @@ fn aim_copy(state: &GameState, db: &CardDatabase, target: Target) -> GameState {
         state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![target],
         },
         db,

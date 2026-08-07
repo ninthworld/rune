@@ -86,6 +86,16 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         return crate::choice::named_card_is_legal(state, *card, db);
     }
 
+    // 1a-quater-bis. An amount is judged against the bounds recomputed **now**
+    //     ([`crate::number_bounds`]) rather than against whatever the question was posed
+    //     with: a player owed this may still activate mana abilities (CR 605.3a), so the
+    //     pool they answer with is not necessarily the pool they were asked with. Zero is
+    //     always within them.
+    if let Action::AnswerNumber { value } = action {
+        let (min, max) = crate::number_bounds(state, db);
+        return *value >= min && *value <= max;
+    }
+
     // 1a-quinquies. A card ordering names *every* card of the pending remainder, once
     //     each, and is checked against that remainder recomputed now
     //     ([`crate::choice::order_answer_is_legal`]). A permutation has one legal size, so
@@ -296,11 +306,17 @@ fn targets_fill_groups(
     if chosen.len() < minimum || chosen.len() > maximum {
         return false;
     }
+    let counts = crate::ability::group_target_counts(groups, chosen);
+    // Every chosen target has to *belong* to a slot. `group_target_counts` pairs by kind
+    // and leaves a target no group could have named unpaired — which, without this, was
+    // silently accepted: the unpaired target filled no slice, so nothing ever checked it,
+    // and the count test above was satisfied by its mere presence. Aiming a
+    // creature-only slot at a player was legal and then did nothing on resolution.
+    if counts.iter().sum::<usize>() != chosen.len() {
+        return false;
+    }
     let mut rest = chosen;
-    for (group, take) in groups
-        .iter()
-        .zip(crate::ability::group_target_counts(groups, chosen))
-    {
+    for (group, take) in groups.iter().zip(counts) {
         let (slice, remaining) = rest.split_at(take.min(rest.len()));
         rest = remaining;
         if !all_unique(slice) {

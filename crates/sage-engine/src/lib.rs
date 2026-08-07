@@ -80,16 +80,18 @@ pub use card::{
 pub use card_type::{CardType, Supertype};
 pub use catalog::{Violation, MAX_MODES};
 pub use characteristics::{
-    assigns_combat_damage_by, attacks_as_though_no_defender, characteristics, controller_of,
-    controller_of_id, does_not_untap, Characteristics,
+    assigns_combat_damage_by, attacks_as_though_no_defender, cannot_have_counters_put_on,
+    characteristics, controller_of, controller_of_id, does_not_untap, exiled_instead_of_leaving,
+    player_cannot_get_counters, Characteristics,
 };
 pub use choice::{
     choice_bounds, choice_candidates, choice_looked_at, confirm_is_payable, named_card_candidates,
-    order_candidates, pending_player_choice, permanent_choice_bounds, permanent_choice_candidates,
-    CardNameRequest, ChoiceOutcome, ChoiceQuestion, ChoiceRequest, ChoiceZone, ColorOutcome,
-    ColorRequest, ConfirmRequest, CopyChoiceOutcome, CopyChoiceRequest, DeclineOutcome,
-    NamedCardClass, OrderRequest, PendingChoice, PermanentOutcome, PermanentRequest,
-    PlayCardRequest, PlayZone, ReplacementRequest, Resume, SuspendedSpell,
+    number_bounds, order_candidates, pending_player_choice, permanent_choice_bounds,
+    permanent_choice_candidates, with_paid_x, CardNameRequest, ChoiceOutcome, ChoiceQuestion,
+    ChoiceRequest, ChoiceZone, ColorOutcome, ColorRequest, ConfirmRequest, CopyChoiceOutcome,
+    CopyChoiceRequest, DeclineOutcome, NamedCardClass, NumberRequest, OrderRequest, PendingChoice,
+    PermanentOutcome, PermanentRequest, PlayCardRequest, PlayZone, ReplacementRequest, Resume,
+    SuspendedSpell,
 };
 pub use combat::{
     attack_target_of, attacked_players, attacker_candidates, attackers_needing_damage_order,
@@ -125,6 +127,7 @@ pub use replacement::{
     ReplacementOption,
 };
 pub use resolve::Resolution;
+pub use sba::POISON_LOSS_THRESHOLD;
 pub use scripted::scripted_rules_text;
 pub use setup::{
     GameSetup, PlayerSetup, SetupError, DEFAULT_STARTING_HAND_SIZE, DEFAULT_STARTING_LIFE,

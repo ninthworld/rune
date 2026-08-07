@@ -735,6 +735,8 @@ fn issue_148_counterspell_cannot_target_an_ability_on_the_stack_cr_605_3() {
             source: crate::stack::AbilitySource::Permanent(PermanentId(999)),
             origin: AbilityOrigin::Activated,
             effects: vec![crate::ability::Effect::DrawCard { count: 1 }],
+            modes: Vec::new(),
+            mode: None,
         },
         targets: Vec::new(),
     });

@@ -575,9 +575,7 @@ pub(crate) fn apply_effect(
         }
         Effect::PutCountersOnSelf { counter, count, .. } => {
             if let Some(id) = permanent_source {
-                if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
-                    *perm.counters.entry(*counter).or_insert(0) += *count;
-                }
+                state.put_counters_on_permanent(id, *counter, *count, db);
             }
         }
         // The self-referential effect whose source is a **card in a graveyard** rather
@@ -664,6 +662,12 @@ pub(crate) fn apply_effect(
         // A fight arrives with *two* chosen targets, so it is applied via
         // [`apply_multi_target_effect`] and is doubly a no-op here.
         | Effect::Fight { .. }
+        // And one slot per seat arrives with all of them, so it is a no-op here too.
+        | Effect::SacrificeChosenPerPlayer { .. }
+        // Both counter-clearing verbs name what they clear in a slot, so both arrive with
+        // a chosen target and are applied there.
+        | Effect::RemoveAllCounters { .. }
+        | Effect::PlayerLosesAllCounters { .. }
         | Effect::Restrict { .. } => {}
         // X is taken **once, on resolution** (CR 608.2), from the board as it stands
         // then — a creature that dies afterwards does not take the life back. The count

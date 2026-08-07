@@ -201,9 +201,7 @@ pub(crate) fn apply_targeted_effect(
                 ),
             };
             if let Target::Permanent(id) = target {
-                if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
-                    *perm.counters.entry(*counter).or_insert(0) += count;
-                }
+                state.put_counters_on_permanent(id, *counter, count, db);
             }
         }
         // Pump the targeted creature until end of turn (CR 514.2): add a
@@ -592,11 +590,31 @@ pub(crate) fn apply_targeted_effect(
             types,
             subtypes,
             colors,
+            counters,
+            exile_on_leaving,
             ..
         } => {
             if let Target::Card(instance) = target {
                 if let Some(card) = take_from_a_graveyard(state, instance) {
-                    let made = state.put_card_onto_battlefield(card, controller, *tapped, None, db);
+                    let made = state.put_card_onto_battlefield_with_counters(
+                        card, controller, *tapped, None, counters, db,
+                    );
+                    // `If that creature would leave the battlefield, exile it instead`: a
+                    // replacement (CR 614.1a) keyed to the permanent this just made, which
+                    // is the only thing that could name it. It sets no duration of its own,
+                    // so it lasts as long as the permanent does and outlives the source —
+                    // a creature reanimated this way is still exiled after the reanimator
+                    // has died.
+                    if let Some(made) = made.filter(|_| *exile_on_leaving) {
+                        state.static_effects.push(crate::state::StaticEffect {
+                            source: made.0,
+                            affects: crate::state::EffectAffects::SpecificPermanent(made),
+                            modification: crate::state::Modification::ModifyRule(
+                                crate::card::RuleModification::ExiledInsteadOfLeavingBattlefield,
+                            ),
+                            duration: crate::state::Duration::WhileOnBattlefield,
+                        });
+                    }
                     // `That creature is a black Zombie in addition to its other colors and
                     // types`: a continuous effect on the permanent this just made, keyed
                     // to that permanent so it lasts exactly as long as it does. Nothing
@@ -733,10 +751,62 @@ pub(crate) fn apply_targeted_effect(
                 }
             }
         }
+        // Clear the targeted permanent's counters, and — when the card says so — forbid it
+        // any more for as long as this ability's source is on the battlefield (CR 611.2b).
+        //
+        // The removal is unconditional: the prohibition is about counters being *put on*,
+        // so a permanent already under one still loses what it has.
+        Effect::RemoveAllCounters { then_forbid, .. } => {
+            if let Target::Permanent(id) = target {
+                if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
+                    perm.counters.clear();
+                }
+                if *then_forbid {
+                    if let Some(from) = source {
+                        state.static_effects.push(StaticEffect {
+                            // Keyed to the **source**, not to the permanent it is about:
+                            // `for as long as this creature remains on the battlefield` is
+                            // a duration measured by the source, and the state-based-action
+                            // loop ends the effect by finding the source gone.
+                            source: from.0,
+                            affects: EffectAffects::SpecificPermanent(id),
+                            modification: Modification::ModifyRule(
+                                crate::card::RuleModification::CannotHaveCountersPut,
+                            ),
+                            duration: Duration::WhileOnBattlefield,
+                        });
+                    }
+                }
+            }
+        }
+        // The player-side twin, aimed at a seat rather than at an object.
+        Effect::PlayerLosesAllCounters { then_forbid, .. } => {
+            if let Target::Player(seat) = target {
+                if let Some(player) = state.players.get_mut(seat.0) {
+                    player.counters.clear();
+                }
+                if *then_forbid {
+                    if let Some(from) = source {
+                        state.static_effects.push(StaticEffect {
+                            source: from.0,
+                            affects: EffectAffects::SpecificPlayer(seat),
+                            modification: Modification::ModifyRule(
+                                crate::card::RuleModification::CannotHaveCountersPut,
+                            ),
+                            duration: Duration::WhileOnBattlefield,
+                        });
+                    }
+                }
+            }
+        }
         // A fight declares two target groups, so the resolve path routes it to
         // [`apply_multi_target_effect`] with both of its targets at once; one target on
         // its own says nothing about which slot it filled, so this arm stays empty.
         Effect::Fight { .. } => {}
+        // One slot per seat, and every one of them is read together: a player who lost a
+        // permanent is the one who reveals, and that is a fact about the whole set. Routed
+        // to [`apply_multi_target_effect`] for the same reason a fight is.
+        Effect::SacrificeChosenPerPlayer { .. } => {}
         // Put the targeted permanent on top of its owner's library (CR 400.7). A token
         // put anywhere but the battlefield ceases to exist (CR 111.7), so it never
         // arrives — which the one leaves-battlefield seam below already knows.
@@ -872,6 +942,61 @@ pub(crate) fn apply_multi_target_effect(
                 modification: Modification::GainControl(gains),
                 duration: Duration::WhileOnBattlefield,
             });
+        }
+        return;
+    }
+    // CR 701.17: each chosen permanent is sacrificed by the player who controls it, and —
+    // when the card says so — each player who lost one then reveals the top card of their
+    // library and puts it onto the battlefield if it is a permanent card.
+    if let Effect::SacrificeChosenPerPlayer { reveal_top } = effect {
+        // Whose each permanent is, read **before** any of them is sacrificed: a permanent
+        // in a graveyard has no controller, so asking afterwards would find nobody to
+        // reveal. This is also what makes the effect right for any number of seats — the
+        // list of players who lost something is derived from the targets, never assumed.
+        let losing: Vec<PlayerId> = targets
+            .iter()
+            .filter_map(|target| match target {
+                Target::Permanent(id) => crate::characteristics::controller_of_id(state, *id),
+                _ => None,
+            })
+            .collect();
+        // CR 701.17a: all of them at once, so no sacrifice can change whether another one
+        // happens. The chosen permanents were fixed at announcement and re-checked on the
+        // way in, so this is the whole of "those players sacrifice those permanents".
+        for target in targets {
+            if let Target::Permanent(id) = target {
+                state.move_permanent_to_graveyard(*id, db);
+            }
+        }
+        if !*reveal_top {
+            return;
+        }
+        // "Each player who sacrificed a permanent this way" — one reveal per sacrifice,
+        // in seat order, and nobody who kept their permanent reveals at all. A player who
+        // lost two (which no printed card can currently arrange, since each seat gets one
+        // slot) would reveal twice, which is what the sentence says.
+        let mut order: Vec<PlayerId> = losing;
+        order.sort_by_key(|seat| seat.0);
+        for seat in order {
+            // The top of a library is the **end** of the Vec.
+            let Some(card) = state
+                .players
+                .get_mut(seat.0)
+                .and_then(|player| player.library.pop())
+            else {
+                continue;
+            };
+            let is_permanent = db
+                .card(card.card)
+                .is_some_and(crate::CardData::is_permanent);
+            if is_permanent {
+                state.put_card_onto_battlefield(card, seat, false, None, db);
+            } else if let Some(player) = state.players.get_mut(seat.0) {
+                // It was revealed and nothing else: the card says what happens to a
+                // permanent card and says nothing about any other, so it goes back where
+                // it was.
+                player.library.push(card);
+            }
         }
         return;
     }
@@ -1038,7 +1163,7 @@ fn copy_spell_onto_stack(
         return;
     }
     let inherited = original.targets.clone();
-    let groups = data.cast_target_groups(mode);
+    let groups = data.cast_target_groups(mode, state.players.len());
     let re_aim = new_targets
         && groups.iter().any(|group| group.min >= 1)
         && groups.iter().all(|group| {

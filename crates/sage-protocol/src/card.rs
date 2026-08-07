@@ -200,6 +200,14 @@ pub struct OpponentView {
     /// Free-form status labels (e.g. `"monarch"`, `"hexproof"`) for display only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub statuses: Vec<String>,
+    /// Counters on this **player** (CR 122.1a) — poison and anything that joins it —
+    /// keyed and counted exactly as a permanent's are ([`CardView::counters`]).
+    ///
+    /// Public information: a player's counters are as visible as their life total, so
+    /// this is the same list every seat and every spectator sees. Additive — omitted when
+    /// empty, which is every game today, so an existing view is byte-for-byte unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub counters: Vec<Counter>,
     /// Whether this opponent has been eliminated — they lost while the game
     /// continued and left it (CR 800.4a, issue #342/#345). Additive: omitted (and
     /// defaults to `false`) so a two-player view is unchanged; the client shows an
@@ -250,6 +258,11 @@ pub struct SelfView {
     pub life: i32,
     /// Number of cards left in the receiver's library.
     pub library_size: u32,
+    /// The receiver's own counters — see [`OpponentView::counters`]. Present for the same
+    /// symmetry reason as the rest of this type: a surface that renders a seat cluster
+    /// reads the same field for every seat rather than special-casing itself.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub counters: Vec<Counter>,
     /// Whether the receiver has been eliminated — they lost while two or more
     /// players remained, so the game continues without them (CR 800.4a, issue
     /// #553). The self-counterpart of [`OpponentView::eliminated`], and the only
@@ -329,6 +342,7 @@ impl Default for SelfView {
         Self {
             life: 0,
             library_size: 0,
+            counters: Vec::new(),
             eliminated: false,
             connected: true,
             ai: false,

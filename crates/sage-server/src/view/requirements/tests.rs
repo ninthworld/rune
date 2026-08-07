@@ -36,6 +36,8 @@ fn a_trigger_awaiting_targets_is_reachable_from_the_stack_and_from_its_source() 
                 player_ref: PlayerRef::TargetOpponent,
                 amount: 1,
             }],
+            modes: Vec::new(),
+            mode: None,
         },
         targets: Vec::new(),
     });

@@ -222,7 +222,10 @@ mod tests {
             })
         );
         // An Aura chooses its enchant target as it is cast (CR 601.2c): one slot.
-        assert_eq!(aegis.cast_target_specs(None), vec![TargetSpec::AnyCreature]);
+        assert_eq!(
+            aegis.cast_target_specs(None, 2),
+            vec![TargetSpec::AnyCreature]
+        );
 
         let curse = crate::card::tests::card_named(&db, "test_curse");
         assert!(curse.has_subtype("Aura"));
@@ -249,7 +252,7 @@ mod tests {
             .attachment
             .is_none());
         assert!(crate::card::tests::card_named(&bundled, "onakke_ogre")
-            .cast_target_specs(None)
+            .cast_target_specs(None, 2)
             .is_empty());
     }
 
@@ -280,7 +283,7 @@ mod tests {
             })
         );
         assert!(
-            axe.cast_target_specs(None).is_empty(),
+            axe.cast_target_specs(None, 2).is_empty(),
             "an Equipment names no target as it is cast"
         );
     }
@@ -318,7 +321,7 @@ mod tests {
             AttachmentKind::Aura.host_legality(grant.attach_to),
             TargetSpec::AnyLand
         );
-        assert_eq!(gift.cast_target_specs(None), vec![TargetSpec::AnyLand]);
+        assert_eq!(gift.cast_target_specs(None, 2), vec![TargetSpec::AnyLand]);
         assert_eq!(
             grant.abilities,
             vec![Ability::Activated {
@@ -348,6 +351,7 @@ mod tests {
             vec![Ability::Triggered {
                 event: crate::ability::TriggerCondition::SelfDies,
                 effects: vec![Effect::DrawCard { count: 1 }],
+                modes: Vec::new(),
             }]
         );
     }

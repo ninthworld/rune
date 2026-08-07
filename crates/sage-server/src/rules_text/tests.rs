@@ -2115,3 +2115,42 @@ fn issue_706_a_walker_that_turns_cards_down_states_what_they_become() {
          They're 5/5 artifact creatures."
     );
 }
+
+#[test]
+fn issue_706_a_trigger_with_one_slot_per_seat_names_the_seats_collectively() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "vaevictis_asmadi_the_dire"),
+        "Flying\n\
+         Whenever Vaevictis Asmadi, the Dire attacks, for each player, choose target permanent that \
+         player controls. Those players sacrifice those permanents. Each player who \
+         sacrificed a permanent this way reveals the top card of their library, then \
+         puts it onto the battlefield if it's a permanent card."
+    );
+}
+
+#[test]
+fn issue_706_a_modal_trigger_prints_its_bullets_under_the_trigger() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "suncleanser"),
+        "When Suncleanser enters the battlefield, choose one —\n\
+         • Remove all counters from target creature. It can't have counters put on it \
+         for as long as Suncleanser remains on the battlefield.\n\
+         • Target opponent loses all counters. That player can't get counters for as \
+         long as Suncleanser remains on the battlefield."
+    );
+}
+
+#[test]
+fn issue_706_an_x_paid_mid_resolution_prints_as_the_letter() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "isareth_the_awakener"),
+        "Deathtouch\n\
+         Whenever Isareth the Awakener attacks, you may pay {X}. When you do, put target \
+         creature card with mana value X in your graveyard onto the battlefield under \
+         your control with a corpse counter on it. If that creature would leave the \
+         battlefield, exile it instead of putting it anywhere else."
+    );
+}

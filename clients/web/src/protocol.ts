@@ -65,6 +65,7 @@ export const GameOverReason = z.enum([
   'concede',
   'commander_damage',
   'opponent_won',
+  'poison',
 ])
 export type GameOverReason = z.infer<typeof GameOverReason>
 
@@ -214,6 +215,12 @@ export const CardView = z.object({
 })
 export type CardView = z.infer<typeof CardView>
 
+export const Counter = z.object({
+  kind: z.string(),
+  count: z.number(),
+})
+export type Counter = z.infer<typeof Counter>
+
 export const OpponentView = z.object({
   player_id: PlayerId,
   hand_size: z.number(),
@@ -221,6 +228,8 @@ export const OpponentView = z.object({
   library_size: z.number(),
   graveyard_size: z.number(),
   statuses: z.array(z.string()).optional(),
+  /** Counters on the **player** (CR 122.1a) — poison and anything that joins it. */
+  counters: z.array(Counter).optional(),
   eliminated: z.boolean().optional(),
   /** Absent means **connected** — the flag rides the wire only when `false`. */
   connected: z.boolean().optional(),
@@ -240,6 +249,8 @@ export type MaximumHandSize = z.infer<typeof MaximumHandSize>
 export const SelfView = z.object({
   life: z.number(),
   library_size: z.number(),
+  /** The receiver's own counters — see `OpponentView.counters`. */
+  counters: z.array(Counter).optional(),
   eliminated: z.boolean().optional(),
   /** Absent means **connected**, as on `OpponentView`. */
   connected: z.boolean().optional(),
@@ -251,12 +262,6 @@ export const SelfView = z.object({
   maximum_hand_size: MaximumHandSize.optional(),
 })
 export type SelfView = z.infer<typeof SelfView>
-
-export const Counter = z.object({
-  kind: z.string(),
-  count: z.number(),
-})
-export type Counter = z.infer<typeof Counter>
 
 export const Permanent = z.object({
   id: EntityId,

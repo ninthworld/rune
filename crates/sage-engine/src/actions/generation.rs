@@ -2,7 +2,6 @@
 
 use crate::ability::{
     is_equip_ability, is_loyalty_ability, is_mana_ability, is_sorcery_speed_ability, Ability,
-    Effect,
 };
 use crate::choice::ChoiceQuestion;
 use crate::phase::Step;
@@ -86,6 +85,12 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 // answer is the permutation the submitted action carries. It is posed
                 // only over two cards or more, so it is always answerable.
                 ChoiceQuestion::Order(_) => vec![Action::AnswerOrder { order: Vec::new() }],
+                // An amount is advertised as the bare question too; the value rides in
+                // the submitted action and is judged against the bounds
+                // ([`crate::number_bounds`]) recomputed against the pool as it stands —
+                // which may have grown, since a player owed this may still activate mana
+                // abilities (CR 605.3a).
+                ChoiceQuestion::Number(_) => vec![Action::AnswerNumber { value: 0 }],
                 // A sacrifice is advertised as the bare question too; the chosen
                 // permanents ride in the submitted action, exactly as a discard's
                 // chosen cards do.
@@ -190,10 +195,49 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
     if let Some(ability) = crate::pending_trigger_target_choice(state) {
         let chooser = crate::triggers::controller_of_stack_object(state, ability);
         return if Some(priority) == chooser {
-            let mut actions = vec![Action::ChooseTriggerTargets {
-                ability,
-                targets: Vec::new(),
-            }];
+            // A **modal** ability is offered once per mode, because the slots differ
+            // between them — the same shape a modal cast is advertised in, and for the
+            // same reason (CR 603.3c before CR 603.3d). An ability that is not modal is
+            // offered once, with no mode at all.
+            let modes = state
+                .stack
+                .iter()
+                .find(|object| object.id == ability)
+                .map_or(0, |object| {
+                    if object.kind.owes_mode() {
+                        object.kind.mode_count()
+                    } else {
+                        0
+                    }
+                });
+            let mut actions: Vec<Action> = if modes == 0 {
+                vec![Action::ChooseTriggerTargets {
+                    ability,
+                    mode: None,
+                    targets: Vec::new(),
+                }]
+            } else {
+                (0..modes)
+                    .filter_map(|index| u8::try_from(index).ok())
+                    // A mode whose required slots have no legal candidate is not on
+                    // offer (CR 601.2b via CR 603.3c) — the same per-slot check a modal
+                    // cast's modes are filtered by.
+                    .filter(|&index| {
+                        groups_are_fillable(
+                            &super::targeting::mode_target_groups(state, db, ability, index),
+                            state,
+                            priority,
+                            None,
+                            db,
+                        )
+                    })
+                    .map(|index| Action::ChooseTriggerTargets {
+                        ability,
+                        mode: Some(index),
+                        targets: Vec::new(),
+                    })
+                    .collect()
+            };
             offer_concede(&mut actions);
             actions
         } else {
@@ -531,13 +575,19 @@ fn cast_is_announceable(
     actor: crate::id::PlayerId,
 ) -> bool {
     if !data.is_modal() {
-        return groups_are_fillable(&data.cast_target_groups(None), state, actor, None, db);
+        return groups_are_fillable(
+            &data.cast_target_groups(None, state.players.len()),
+            state,
+            actor,
+            None,
+            db,
+        );
     }
     (0..data.modes.len())
         .filter_map(|index| u8::try_from(index).ok())
         .any(|index| {
             groups_are_fillable(
-                &data.cast_target_groups(Some(index)),
+                &data.cast_target_groups(Some(index), state.players.len()),
                 state,
                 actor,
                 None,
@@ -730,9 +780,10 @@ fn offer_activations(
                 // loyalty and its one activation for the turn — and then fizzle for want
                 // of anything to aim at.
                 let groups: Vec<crate::ability::TargetGroup> = match ability {
-                    Ability::Activated { effects, .. } => {
-                        effects.iter().flat_map(Effect::target_groups).collect()
-                    }
+                    Ability::Activated { effects, .. } => effects
+                        .iter()
+                        .flat_map(|effect| effect.target_groups(state.players.len()))
+                        .collect(),
                     _ => Vec::new(),
                 };
                 if cost_payable(state, db, cost, perm)
@@ -781,8 +832,10 @@ fn offer_graveyard_activations(
             let Ability::Activated { cost, effects, .. } = &ability else {
                 continue;
             };
-            let groups: Vec<crate::ability::TargetGroup> =
-                effects.iter().flat_map(Effect::target_groups).collect();
+            let groups: Vec<crate::ability::TargetGroup> = effects
+                .iter()
+                .flat_map(|effect| effect.target_groups(state.players.len()))
+                .collect();
             // A card in a graveyard is not a permanent, so nothing here is relative to
             // one (CR 113.6).
             if graveyard_cost_payable(state, db, seat, card.id, cost)

@@ -149,6 +149,10 @@ export function PlayerBar({
       : []),
   ]
 
+  // Spoken in full — `3 poison` rather than a bare number, since the chip itself is only
+  // a number and the kind is what makes it mean anything.
+  const counterNote = seat.counters.map((counter) => `${counter.count} ${counter.kind}`).join(', ')
+
   return (
     <div
       ref={barRef}
@@ -166,14 +170,29 @@ export function PlayerBar({
           // this id, and an anchor under any other name is an arrow that never draws.
           data-anchor={seat.id}
           aria-label={`${seat.name}${seat.life === undefined ? '' : `, ${seat.life} life`}${
-            note ? ` · ${note}` : ''
-          }`}
+            counterNote ? `, ${counterNote}` : ''
+          }${note ? ` · ${note}` : ''}`}
           onClick={onActivate && (() => onActivate(seat.id))}
         >
           <span ref={nameRef} className="player-name">
             {seat.name}
           </span>
-          {seat.life !== undefined && <span className="player-life">{seat.life}</span>}
+          {/* Life and the seat's counters share one row: a counter is a number about the
+              player, and it belongs beside the other number about the player rather than
+              in a region of its own. Nothing is drawn for a seat with no counters. */}
+          <span className="player-vitals">
+            {seat.life !== undefined && <span className="player-life">{seat.life}</span>}
+            {seat.counters.map((counter) => (
+              <span
+                key={counter.kind}
+                className="player-counter"
+                data-counter={counter.kind}
+                title={`${counter.count} ${counter.kind}`}
+              >
+                {counter.count}
+              </span>
+            ))}
+          </span>
         </button>
         {onFocus && (
           <button

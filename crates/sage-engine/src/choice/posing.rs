@@ -72,7 +72,11 @@ pub(crate) fn pose_choices(
             | ChoiceQuestion::Order(_)
             // Nor is a permanent named as a card enters: that one is queued by the
             // battlefield-entry seam, and only when the board holds something to name.
-            | ChoiceQuestion::Permanent(_) => question,
+            | ChoiceQuestion::Permanent(_)
+            // An amount always has a legal answer — zero — so it is posed unconditionally,
+            // like the colour question. The offer's own gate already established that the
+            // payment is possible; how much of it to make is the whole question.
+            | ChoiceQuestion::Number(_) => question,
             // A sacrifice of nothing is not a question: a player with no permanent of
             // the named class simply sacrifices none, exactly as a player with an empty
             // hand discards none. There is no aftermath to apply for the answers not
@@ -517,7 +521,7 @@ pub(crate) fn choices_for_effect(
                     // accepted branch names no target of its own.
                     targets_are_the_consequence: effects
                         .iter()
-                        .flat_map(Effect::target_groups)
+                        .flat_map(|effect| effect.target_groups(state.players.len()))
                         .next()
                         .is_none(),
                 }),

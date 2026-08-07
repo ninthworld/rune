@@ -345,6 +345,7 @@ fn herald_token() -> TokenData {
                 player_ref: PlayerRef::Controller,
                 amount: 7,
             }],
+            modes: Vec::new(),
         }],
         ..TokenData::default()
     }

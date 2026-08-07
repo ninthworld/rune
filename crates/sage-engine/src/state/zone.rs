@@ -77,6 +77,13 @@ impl GameState {
         id: PermanentId,
         db: &CardDatabase,
     ) -> Option<Permanent> {
+        // CR 614.1a: `if that creature would leave the battlefield, exile it instead of
+        // putting it anywhere else`. Asked at each road *out* rather than at one shared
+        // one, because there is no shared one — but asked in the same words, so dying,
+        // being bounced, and being tucked all get one answer.
+        if crate::characteristics::exiled_instead_of_leaving(self, id) {
+            return self.move_permanent_to_exile(id);
+        }
         let pos = self.battlefield.iter().position(|p| p.id == id)?;
         let perm = self.battlefield.remove(pos);
         if let Some(card) = card_leaving(&perm) {
@@ -88,6 +95,57 @@ impl GameState {
             }
         }
         Some(perm)
+    }
+
+    /// Put `count` counters of `kind` on the permanent `id` — **the** counter seam for a
+    /// permanent, and the one place a `can't have counters put on it` prohibition is
+    /// applied (CR 614.1b: a prohibition is the event replaced with nothing).
+    ///
+    /// Every road that adds a counter to a permanent ends here: an effect that puts them
+    /// on a target, one that puts them on its own source, an activated ability's charge,
+    /// the state-based action that grows a creature, the entry replacement that gives a
+    /// permanent counters as it arrives. That is what makes the prohibition one fact
+    /// rather than one per road.
+    ///
+    /// Returns whether any counter was actually placed. A caller that needs to know reads
+    /// it; the rest ignore it, because a counter that was not placed is simply not there
+    /// and every later question about it answers itself.
+    pub fn put_counters_on_permanent(
+        &mut self,
+        id: PermanentId,
+        kind: super::CounterKind,
+        count: u32,
+        db: &CardDatabase,
+    ) -> bool {
+        if count == 0 || crate::characteristics::cannot_have_counters_put_on(self, id, db) {
+            return false;
+        }
+        let Some(perm) = self.battlefield.iter_mut().find(|perm| perm.id == id) else {
+            return false;
+        };
+        *perm.counters.entry(kind).or_insert(0) += count;
+        true
+    }
+
+    /// The player-side counterpart: put `count` counters of `kind` on the player in
+    /// `seat`, unless an effect forbids that player getting counters (CR 614.1b).
+    ///
+    /// The same seam and the same shape, because a player's counters and a permanent's
+    /// are the same mechanism — the only difference is what is being asked about.
+    pub fn put_counters_on_player(
+        &mut self,
+        seat: PlayerId,
+        kind: super::CounterKind,
+        count: u32,
+    ) -> bool {
+        if count == 0 || crate::characteristics::player_cannot_get_counters(self, seat) {
+            return false;
+        }
+        let Some(player) = self.players.get_mut(seat.0) else {
+            return false;
+        };
+        *player.counters.entry(kind).or_insert(0) += count;
+        true
     }
 
     /// Put `card` into `owner`'s graveyard — **the** graveyard seam, and the one place a
@@ -185,7 +243,14 @@ impl GameState {
     /// flagged (CR 903.9a covers a graveyard or exile, not the hand). Returns the permanent
     /// that moved, or `None` when no permanent with that id was on the battlefield. A bare
     /// zone move that records no log event of its own.
-    pub(crate) fn return_permanent_to_hand(&mut self, id: PermanentId) -> Option<Permanent> {
+    pub fn return_permanent_to_hand(&mut self, id: PermanentId) -> Option<Permanent> {
+        // CR 614.1a: `if that creature would leave the battlefield, exile it instead of
+        // putting it anywhere else`. Asked at each road *out* rather than at one shared
+        // one, because there is no shared one — but asked in the same words, so dying,
+        // being bounced, and being tucked all get one answer.
+        if crate::characteristics::exiled_instead_of_leaving(self, id) {
+            return self.move_permanent_to_exile(id);
+        }
         let pos = self.battlefield.iter().position(|p| p.id == id)?;
         let perm = self.battlefield.remove(pos);
         if let (Some(card), Some(owner)) =
@@ -203,6 +268,13 @@ impl GameState {
     /// `card_leaving` is where that rule lives, so a bounced token simply never arrives.
     /// The top of a library is its last element, matching every other read of it.
     pub(crate) fn put_permanent_on_top_of_library(&mut self, id: PermanentId) -> Option<Permanent> {
+        // CR 614.1a: `if that creature would leave the battlefield, exile it instead of
+        // putting it anywhere else`. Asked at each road *out* rather than at one shared
+        // one, because there is no shared one — but asked in the same words, so dying,
+        // being bounced, and being tucked all get one answer.
+        if crate::characteristics::exiled_instead_of_leaving(self, id) {
+            return self.move_permanent_to_exile(id);
+        }
         let pos = self.battlefield.iter().position(|p| p.id == id)?;
         let perm = self.battlefield.remove(pos);
         if let (Some(card), Some(owner)) =
@@ -227,6 +299,13 @@ impl GameState {
     /// controller, the owner shim every other departure seam uses (CR 400.7), so a stolen
     /// creature shuffled away goes into its own player's deck.
     pub(crate) fn shuffle_permanent_into_library(&mut self, id: PermanentId) -> Option<Permanent> {
+        // CR 614.1a: `if that creature would leave the battlefield, exile it instead of
+        // putting it anywhere else`. Asked at each road *out* rather than at one shared
+        // one, because there is no shared one — but asked in the same words, so dying,
+        // being bounced, and being tucked all get one answer.
+        if crate::characteristics::exiled_instead_of_leaving(self, id) {
+            return self.move_permanent_to_exile(id);
+        }
         let pos = self.battlefield.iter().position(|p| p.id == id)?;
         let perm = self.battlefield.remove(pos);
         let owner = perm.controller;
@@ -290,6 +369,48 @@ impl GameState {
             tapped,
             attached_to,
             crate::card::Face::Front,
+            db,
+        )
+    }
+
+    /// [`Self::put_card_onto_battlefield`], with counters the permanent **enters with**
+    /// (CR 614.12) — the `with a corpse counter on it` of a reanimation.
+    ///
+    /// They ride the entry rather than being put on afterwards, which is the same
+    /// distinction [`Ability::EntersWithCounters`](crate::Ability) makes and matters for
+    /// the same reason: a permanent entering with counters already has them when
+    /// state-based actions and entry triggers look. It also means the counter prohibition
+    /// has nothing to say about them — a permanent arriving is a new object, and no
+    /// prohibition can already name it.
+    pub(crate) fn put_card_onto_battlefield_with_counters(
+        &mut self,
+        card: crate::id::CardInstance,
+        controller: PlayerId,
+        tapped: bool,
+        attached_to: Option<PermanentId>,
+        counters: &[(super::CounterKind, u32)],
+        db: &CardDatabase,
+    ) -> Option<PermanentId> {
+        if counters.is_empty() {
+            return self.put_card_onto_battlefield(card, controller, tapped, attached_to, db);
+        }
+        self.begin_battlefield_entry(
+            PendingEntry {
+                object: EnteringObject::Card(card),
+                face: crate::card::Face::Front,
+                controller,
+                tapped,
+                attacking: None,
+                attached_to,
+                counters: counters.to_vec(),
+                announced_x: None,
+                cast: false,
+                applied: Vec::new(),
+                chosen_color: None,
+                named_card: None,
+                copied: None,
+                counter_placed: false,
+            },
             db,
         )
     }
@@ -788,7 +909,7 @@ impl GameState {
     /// Creature-ness is read from printed types, consistent with the rest of the
     /// engine (type-changing effects are unmodeled). Returns whether a permanent
     /// moved.
-    pub(crate) fn destroy_permanent(&mut self, id: PermanentId, db: &CardDatabase) -> bool {
+    pub fn destroy_permanent(&mut self, id: PermanentId, db: &CardDatabase) -> bool {
         let Some(perm) = self.move_permanent_to_graveyard(id, db) else {
             return false;
         };

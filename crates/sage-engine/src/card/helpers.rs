@@ -396,6 +396,7 @@ mod tests {
             vec![Ability::Triggered {
                 event: TriggerCondition::SelfEntersBattlefield,
                 effects: vec![Effect::DrawCard { count: 1 }],
+                modes: Vec::new(),
             }]
         );
     }
@@ -535,6 +536,7 @@ mod tests {
                     counter: CounterKind::PlusOnePlusOne,
                     count: 1,
                 }],
+                modes: Vec::new(),
             }]
         );
         assert_eq!(
@@ -602,6 +604,7 @@ mod tests {
                     ),
                     amount: 2,
                 }],
+                modes: Vec::new(),
             }]
         );
 

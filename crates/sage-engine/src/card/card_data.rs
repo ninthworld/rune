@@ -300,8 +300,8 @@ impl CardData {
     /// per-slot candidate enumeration, and the on-resolution fizzle re-check
     /// (CR 608.2b). Empty for a spell that chooses no targets.
     #[must_use]
-    pub fn cast_target_specs(&self, mode: Option<u8>) -> Vec<TargetSpec> {
-        self.cast_target_groups(mode)
+    pub fn cast_target_specs(&self, mode: Option<u8>, seats: usize) -> Vec<TargetSpec> {
+        self.cast_target_groups(mode, seats)
             .into_iter()
             .map(|group| group.spec)
             .collect()
@@ -359,7 +359,11 @@ impl CardData {
     /// this answerable at all for one: the slots are the chosen mode's, so with no mode
     /// there are none. Ignored by every non-modal card.
     #[must_use]
-    pub fn cast_target_groups(&self, mode: Option<u8>) -> Vec<crate::ability::TargetGroup> {
+    pub fn cast_target_groups(
+        &self,
+        mode: Option<u8>,
+        seats: usize,
+    ) -> Vec<crate::ability::TargetGroup> {
         let mut groups: Vec<crate::ability::TargetGroup> = self
             .attachment
             .as_ref()
@@ -374,7 +378,7 @@ impl CardData {
         groups.extend(
             self.spell_effects_for_mode(mode)
                 .iter()
-                .flat_map(Effect::target_groups),
+                .flat_map(|effect| effect.target_groups(seats)),
         );
         groups
     }

@@ -8,7 +8,6 @@
 //! battlefield-entry seam (the CR 614 replacement layer). Pure over
 //! an immutable [`crate::GameState`].
 
-use crate::ability::Effect;
 use crate::actions::{action_is_legal, Action};
 use crate::sba::run_state_based_actions;
 use crate::stack::{AbilityOrigin, StackId, StackObject, StackObjectKind};
@@ -92,12 +91,17 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
             crate::actions::apply_payment(&mut next, db, payment);
             apply_cast_spell(&mut next, *card, *mode, *x, targets, payment, db);
         }
-        Action::ChooseTriggerTargets { ability, targets } => {
-            apply_choose_trigger_targets(&mut next, *ability, targets);
+        Action::ChooseTriggerTargets {
+            ability,
+            mode,
+            targets,
+        } => {
+            apply_choose_trigger_targets(&mut next, *ability, *mode, targets);
         }
         Action::AnswerChoice { chosen } => apply_answer_choice(&mut next, chosen, db),
         Action::AnswerConfirm { accept } => apply_answer_confirm(&mut next, *accept, db),
         Action::AnswerColor { color } => apply_answer_color(&mut next, *color, db),
+        Action::AnswerNumber { value } => apply_answer_number(&mut next, *value, db),
         Action::AnswerReplacement { index } => apply_answer_replacement(&mut next, *index, db),
         Action::AnswerCardName { card } => apply_answer_card_name(&mut next, *card, db),
         Action::AnswerOrder { order } => apply_answer_order(&mut next, order, db),
@@ -162,6 +166,9 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
                 source_power: pending.source_power,
                 ..crate::PaidCost::default()
             },
+            // A reflexive ability is never modal (CR 603.11): it is the consequence of a
+            // choice already made, not a further one.
+            modes: Vec::new(),
         });
     }
     for trigger in collected {
@@ -169,17 +176,27 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         // choice for one of its slots is removed from the stack — so it never goes on
         // in the first place here. Checked against the *controller's* legal sets,
         // since a possessive spec means different things from different seats.
-        let specs: Vec<_> = trigger
+        //
+        // Read off the **groups** rather than off a single spec, so an ability with more
+        // than one slot is judged on all of them. That is what makes CR 603.3c right for
+        // a trigger with one slot per seat: a player controlling nothing leaves its slot
+        // with no legal choice, and the whole ability is removed — which is what
+        // `for each player, choose target permanent that player controls` does.
+        //
+        // Only a **required** slot can make an ability unanswerable. An `up to` group has
+        // a legal answer with an empty candidate set: none of them.
+        let groups: Vec<_> = trigger
             .effects
             .iter()
-            .filter_map(Effect::target_spec)
+            .flat_map(|effect| effect.target_groups(next.players.len()))
+            .filter(|group| group.min >= 1)
             .collect();
         // A trigger the event already aimed (CR 603.7c) is not looking for a legal
         // choice — it has one — so CR 603.3c has nothing to say about it.
         let unanswerable = trigger.targets.is_empty()
-            && specs.iter().any(|&spec| {
+            && groups.iter().any(|group| {
                 crate::actions::legal_targets_for_spec(
-                    spec,
+                    group.spec,
                     &next,
                     trigger.controller,
                     trigger.source.permanent(),
@@ -201,6 +218,12 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
                 // `apply_activate_ability` (issue #579).
                 origin: AbilityOrigin::Triggered,
                 effects: trigger.effects,
+                // A **modal** trigger arrives with its modes and no answer, exactly as it
+                // arrives with target slots and nothing in them (CR 603.3c/603.3d). Both
+                // are answered by its controller before anyone gets priority, and both
+                // are "owed" purely by being unanswered — there is no flag either way.
+                modes: trigger.modes,
+                mode: None,
             },
             // A trigger arrives **unaimed** (CR 603.3d): the game put it here, so its
             // controller has had no chance to choose. When it declares target slots,

@@ -165,6 +165,7 @@ fn issue_722_a_creature_put_onto_the_battlefield_deals_its_power_to_a_chosen_cre
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(ogre)],
         },
         &db,
@@ -179,6 +180,7 @@ fn issue_722_a_creature_put_onto_the_battlefield_deals_its_power_to_a_chosen_cre
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(victim)],
         },
         &db,
@@ -306,6 +308,7 @@ fn issue_722_a_creature_killed_in_response_still_deals_its_damage() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(victim)],
         },
         &db,
@@ -368,6 +371,7 @@ fn issue_722_the_power_is_read_when_the_ability_resolves() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(victim)],
         },
         &db,

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "functional_id": "vaevictis_asmadi_the_dire",
+  "name": "Vaevictis Asmadi, the Dire",
+  "types": [
+    "creature"
+  ],
+  "supertypes": [
+    "legendary"
+  ],
+  "subtypes": [
+    "Elder",
+    "Dragon"
+  ],
+  "mana_cost": "{3}{B}{R}{G}",
+  "colors": [
+    "black",
+    "red",
+    "green"
+  ],
+  "power": 6,
+  "toughness": 6,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_attacks",
+      "effects": [
+        {
+          "kind": "sacrifice_chosen_per_player",
+          "reveal_top": true
+        }
+      ]
+    }
+  ]
+}

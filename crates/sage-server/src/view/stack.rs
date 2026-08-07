@@ -58,14 +58,18 @@ pub(crate) fn stack_item(state: &GameState, object: &StackObject, db: &CardDatab
             targets,
             card: Some(card_view(stack_entity_id(object.id), *card, db)),
         },
-        StackObjectKind::Ability {
-            source,
-            origin,
-            effects,
-        } => StackItem {
+        kind @ StackObjectKind::Ability { source, origin, .. } => StackItem {
             id: stack_entity_id(object.id),
             controller: player_id(object.controller),
-            description: effects_description(&source_name(state, *source, db), effects),
+            // The **chosen mode's** effects for a modal ability (CR 603.3c), so the stack
+            // entry says what this object is actually going to do rather than listing
+            // every branch it might have taken. A modal ability that has not been answered
+            // yet describes nothing, which is exactly the moment its controller is being
+            // asked which of them it is.
+            description: effects_description(
+                &source_name(state, *source, db),
+                &kind.ability_effects(),
+            ),
             source: source.permanent().map(permanent_entity_id),
             // An ability on the stack (CR 113.3) is an object with no card behind it, so
             // there is no physical card to name (issue #650). `source` names the
@@ -282,6 +286,8 @@ mod tests {
                 source: sage_engine::AbilitySource::Permanent(elves),
                 origin: AbilityOrigin::Activated,
                 effects: vec![Effect::DrawCard { count: 1 }],
+                modes: Vec::new(),
+                mode: None,
             },
             Vec::new(),
         );
@@ -427,6 +433,8 @@ mod tests {
                     subject: DamageSubject::Target(TargetSpec::AnyTarget),
                     amount: 1,
                 }],
+                modes: Vec::new(),
+                mode: None,
             },
             vec![Target::Player(PlayerId(1))],
         );
@@ -550,6 +558,8 @@ mod tests {
                 source: sage_engine::AbilitySource::Permanent(elves),
                 origin: AbilityOrigin::Activated,
                 effects: effects.clone(),
+                modes: Vec::new(),
+                mode: None,
             },
             Vec::new(),
         );
@@ -560,6 +570,8 @@ mod tests {
                 source: sage_engine::AbilitySource::Permanent(elves),
                 origin: AbilityOrigin::Triggered,
                 effects,
+                modes: Vec::new(),
+                mode: None,
             },
             Vec::new(),
         );

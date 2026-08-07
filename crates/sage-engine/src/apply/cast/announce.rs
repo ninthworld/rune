@@ -295,6 +295,11 @@ pub(crate) fn apply_activate_ability(
                 // otherwise identical to a trigger's (issue #579).
                 origin: AbilityOrigin::Activated,
                 effects: effects.clone(),
+                // An **activated** ability is never modal: no printed card writes
+                // `choose one` on one, and its announcement (CR 602.2b) has no step that
+                // would ask.
+                modes: Vec::new(),
+                mode: None,
             },
             // The targets chosen for this activation (CR 601.2c), already
             // validated against freshly computed legal sets in `action_is_legal`
@@ -384,6 +389,8 @@ pub(crate) fn apply_activate_ability_from_graveyard(
             source: crate::stack::AbilitySource::GraveyardCard(card),
             origin: AbilityOrigin::Activated,
             effects: effects.clone(),
+            modes: Vec::new(),
+            mode: None,
         },
         targets: targets.to_vec(),
         // A graveyard activation's cost is mana and only mana, so its payment records
@@ -405,9 +412,18 @@ pub(crate) fn apply_activate_ability_from_graveyard(
 pub(crate) fn apply_choose_trigger_targets(
     state: &mut GameState,
     ability: StackId,
+    chosen_mode: Option<u8>,
     targets: &[Target],
 ) {
     if let Some(object) = state.stack.iter_mut().find(|o| o.id == ability) {
+        // The mode first, then the targets — the order CR 603.3c and CR 603.3d are in, and
+        // the order they depend on each other in. Written only for a modal ability, so an
+        // ordinary trigger's `None` can never overwrite anything.
+        if let StackObjectKind::Ability { modes, mode, .. } = &mut object.kind {
+            if !modes.is_empty() {
+                *mode = chosen_mode;
+            }
+        }
         object.targets = targets.to_vec();
     }
 }

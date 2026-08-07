@@ -190,6 +190,8 @@ fn exile_ability_targeting(state: &mut GameState, target: PermanentId) {
                 target: TargetSpec::AnyPermanent,
                 gain_life: None,
             }],
+            modes: Vec::new(),
+            mode: None,
         },
         targets: vec![Target::Permanent(target)],
     });

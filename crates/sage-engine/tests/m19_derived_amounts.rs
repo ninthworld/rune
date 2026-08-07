@@ -177,6 +177,7 @@ fn volley_veteran_deals_damage_equal_to_your_goblin_count() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(target)],
         },
         &db,
@@ -203,6 +204,7 @@ fn volley_veteran_deals_one_damage_alone() {
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![Target::Permanent(target)],
         },
         &db,
@@ -481,6 +483,7 @@ fn resolve_upkeep_trigger(state: &GameState, db: &CardDatabase, target: Target) 
         &state,
         &Action::ChooseTriggerTargets {
             ability,
+            mode: None,
             targets: vec![target],
         },
         db,

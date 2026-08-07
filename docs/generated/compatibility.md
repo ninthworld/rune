@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (296)
+## Supported cards (299)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -142,6 +142,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `inferno_hellion` | Inferno Hellion | functional definition |
 | `inspired_charge` | Inspired Charge | functional definition |
 | `invoke_the_divine` | Invoke the Divine | functional definition |
+| `isareth_the_awakener` | Isareth the Awakener | functional definition |
 | `island` | Island | functional definition |
 | `isolate` | Isolate | functional definition |
 | `kargan_dragonrider` | Kargan Dragonrider | functional definition |
@@ -262,6 +263,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `strangling_spores` | Strangling Spores | functional definition |
 | `submerged_boneyard` | Submerged Boneyard | functional definition |
 | `sun_sentinel` | Sun Sentinel | functional definition |
+| `suncleanser` | Suncleanser | functional definition |
 | `supreme_phantom` | Supreme Phantom | functional definition |
 | `sure_strike` | Sure Strike | functional definition |
 | `surge_mare` | Surge Mare | functional definition |
@@ -291,6 +293,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `two_headed_zombie` | Two-Headed Zombie | functional definition |
 | `uncomfortable_chill` | Uncomfortable Chill | functional definition |
 | `ursine_champion` | Ursine Champion | functional definition |
+| `vaevictis_asmadi_the_dire` | Vaevictis Asmadi, the Dire | functional definition |
 | `valiant_knight` | Valiant Knight | functional definition |
 | `vampire_neonate` | Vampire Neonate | functional definition |
 | `vampire_sovereign` | Vampire Sovereign | functional definition |

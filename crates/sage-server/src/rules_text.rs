@@ -276,7 +276,11 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                 finish(&clauses(source, effects))
             )
         }
-        Ability::Triggered { event, effects } => {
+        Ability::Triggered {
+            event,
+            effects,
+            modes,
+        } => {
             let trigger = match event {
                 TriggerCondition::SelfEntersBattlefield => {
                     format!("When {source} enters the battlefield")
@@ -410,7 +414,18 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                     format!("At the beginning of {}", step_phrase(*step, *whose_turn))
                 }
             };
-            finish(&format!("{trigger}, {}", clauses(source, effects)))
+            // A **modal** trigger prints its bullets under the trigger sentence, exactly
+            // as a modal spell prints them under nothing (CR 700.2) — one line per mode,
+            // which is also one dock row per mode when its controller is asked.
+            if modes.is_empty() {
+                finish(&format!("{trigger}, {}", clauses(source, effects)))
+            } else {
+                let bullets: Vec<String> = modes
+                    .iter()
+                    .map(|mode| format!("• {}", mode_text(source, mode)))
+                    .collect();
+                format!("{trigger}, choose one —\n{}", bullets.join("\n"))
+            }
         }
         // Self-replacements (CR 614.1c) read as statements about entering, not as
         // things that happen afterwards — which is exactly what they are.

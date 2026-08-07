@@ -346,6 +346,8 @@ pub(crate) fn push_ability(
             // same either way, so the origin only has to be stated, not varied.
             origin: AbilityOrigin::Activated,
             effects,
+            modes: Vec::new(),
+            mode: None,
         },
         targets,
     });
