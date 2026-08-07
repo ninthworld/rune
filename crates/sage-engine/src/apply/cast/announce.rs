@@ -233,10 +233,10 @@ pub(crate) fn apply_activate_ability(
     // exile the same graveyard→exile move — down one path each, so what they trigger is
     // collected by `apply_action` diffing the whole action and needs no trigger pass of
     // its own.
-    crate::choice::discard_to_cost(state, controller, &crate::actions::discards_of(payment));
+    crate::choice::discard_to_cost(state, controller, &crate::actions::discards_of(payment), db);
     crate::apply::exile_to_cost(state, controller, &crate::actions::exiles_of(payment));
     for sacrificed in crate::actions::sacrifices_of(payment) {
-        state.move_permanent_to_graveyard(sacrificed);
+        state.move_permanent_to_graveyard(sacrificed, db);
     }
 
     // CR 701.17: the source's own sacrifice, last, so every other component of the cost was
@@ -244,7 +244,7 @@ pub(crate) fn apply_activate_ability(
     // it goes through the one leaves-battlefield seam, so a dies trigger (including the
     // source's own) observes it in the diff `apply_action` takes of the whole action.
     if cost.contains(&Cost::SacrificeThis) {
-        state.move_permanent_to_graveyard(permanent);
+        state.move_permanent_to_graveyard(permanent, db);
     }
 
     if is_mana_ability(&ability) {
@@ -374,7 +374,7 @@ pub(crate) fn apply_activate_ability_from_graveyard(
     // gone from the graveyard the ability is about to leave, which is what stops the source
     // paying for itself even if some future path forgets the *other* rule.
     crate::apply::exile_to_cost(state, controller, &crate::actions::exiles_of(payment));
-    crate::choice::discard_to_cost(state, controller, &crate::actions::discards_of(payment));
+    crate::choice::discard_to_cost(state, controller, &crate::actions::discards_of(payment), db);
 
     let id = state.mint_id();
     state.stack.push(StackObject {
@@ -579,14 +579,14 @@ fn pay_additional_cost(
     // Whatever a discard triggers is collected by `apply_action` diffing the whole
     // action, so paying the cost here needs no trigger pass of its own.
     let _ = db;
-    crate::choice::discard_to_cost(state, controller, &crate::actions::discards_of(payment));
+    crate::choice::discard_to_cost(state, controller, &crate::actions::discards_of(payment), db);
     // CR 701.17: the same move any other sacrifice makes, down the one
     // leaves-battlefield seam — so a permanent sacrificed to a cost is a real death that
     // its own dies trigger, and every other watcher, sees in the diff `apply_action`
     // takes of the whole action. Nothing here re-decides what may be sacrificed;
     // `action_is_legal` has already established that.
     for permanent in crate::actions::sacrifices_of(payment) {
-        state.move_permanent_to_graveyard(permanent);
+        state.move_permanent_to_graveyard(permanent, db);
     }
 }
 

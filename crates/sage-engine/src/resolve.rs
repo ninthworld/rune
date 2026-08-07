@@ -524,7 +524,7 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         .iter()
         .zip(crate::ability::group_target_counts(
             &groups,
-            object.targets.len(),
+            &object.targets,
         ))
         .flat_map(|(group, count)| std::iter::repeat_n(group.spec, count))
         .collect();
@@ -555,9 +555,7 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         // CR 707.10a: a copy that fizzles has no card to put anywhere and simply ceases
         // to exist, which is what happening nothing at all amounts to.
         if let StackObjectKind::Spell { card, .. } = object.kind {
-            if let Some(player) = state.players.get_mut(object.controller.0) {
-                player.graveyard.push(card);
-            }
+            state.put_card_in_graveyard(object.controller, card, db);
             // CR 608.2b: a spell removed for all-targets-illegal fizzled; log it so a
             // client can distinguish it from a spell that resolved or was countered.
             state.record_event(GameEvent::SpellFizzled {
@@ -715,8 +713,8 @@ pub(crate) fn put_resolved_spell_in_its_final_zone(
             spell.announced_x,
             db,
         );
-    } else if let Some(player) = state.players.get_mut(controller.0) {
-        player.graveyard.push(card);
+    } else {
+        state.put_card_in_graveyard(controller, card, db);
     }
 }
 
@@ -796,16 +794,21 @@ pub(crate) fn apply_effects_with_targets(
         // targeting one, and two for an effect whose slots do not share a spec.
         let groups = effect.target_groups();
         let taken: Vec<Target> = {
-            // The remaining queue's groups still owe their minimums; whatever is left
-            // over belongs to this effect, up to its groups' summed maximum.
-            let later: usize = queue
+            // Which of the remaining targets were announced for *this* effect's groups —
+            // the same pairing the announcement and the fizzle check use, over the
+            // remaining effects rather than over the whole object. Reading it here rather
+            // than counting is what lets two variable-arity groups be told apart at all
+            // ([`crate::ability::group_target_counts`]).
+            let remaining: Vec<Target> = targets.iter().copied().collect();
+            let all: Vec<crate::ability::TargetGroup> = groups
                 .iter()
-                .flat_map(Effect::target_groups)
-                .map(|g| usize::from(g.min))
+                .copied()
+                .chain(queue.iter().flat_map(Effect::target_groups))
+                .collect();
+            let take: usize = crate::ability::group_target_counts(&all, &remaining)
+                .into_iter()
+                .take(groups.len())
                 .sum();
-            let available = targets.len().saturating_sub(later);
-            let capacity: usize = groups.iter().map(|g| usize::from(g.max)).sum();
-            let take = available.min(capacity);
             (0..take).filter_map(|_| targets.pop_front()).collect()
         };
 
@@ -834,6 +837,18 @@ pub(crate) fn apply_effects_with_targets(
                     | crate::ability::PlayerRef::ThatPlayer,
                     Some(Target::Player(seat)),
                 ) => *seat,
+                // `unless **its controller** pays` — the same "that player", read off the
+                // object on the stack the sentence before it named.
+                (
+                    crate::ability::PlayerRef::TargetPlayer
+                    | crate::ability::PlayerRef::TargetOpponent
+                    | crate::ability::PlayerRef::ThatPlayer,
+                    Some(Target::Spell(id)),
+                ) => state
+                    .stack
+                    .iter()
+                    .find(|object| object.id == *id)
+                    .map_or(controller, |object| object.controller),
                 _ => *crate::apply::non_targeting_subjects(
                     state,
                     *chooser,

@@ -151,6 +151,16 @@ pub enum Effect {
     Destroy {
         /// What this effect is allowed to target (typically a creature).
         target: TargetSpec,
+        /// How many of them may be targeted — the `up to two target creatures` of a
+        /// planeswalker's ultimate. Defaults to exactly one, which is what every other
+        /// card authoring this effect says.
+        ///
+        /// The fourth effect to take an arity, joining [`Effect::PutCounters`],
+        /// [`Effect::Restrict`] and [`Effect::ReturnCardToHand`]: one field read in one
+        /// arm of [`Effect::target_groups`], with each destruction applied to each target
+        /// still legal on resolution (CR 608.2c).
+        #[serde(default)]
+        targets: TargetCount,
     },
     /// Destroy **every permanent in a named class** (CR 701.7) — `Destroy all
     /// creatures.`, `Destroy all artifacts and enchantments.` — the mass, non-targeting
@@ -950,6 +960,10 @@ pub enum Effect {
     ReturnCardToBattlefield {
         /// What this effect is allowed to target (a card in a graveyard).
         target: TargetSpec,
+        /// How many of them may be targeted — the `up to two creature cards from
+        /// graveyards` of a planeswalker's ultimate. Defaults to exactly one.
+        #[serde(default)]
+        targets: TargetCount,
         /// Whether it arrives **tapped** — the creating effect's say, exactly as it is
         /// for a token (CR 111.1). Defaults to untapped.
         #[serde(default)]

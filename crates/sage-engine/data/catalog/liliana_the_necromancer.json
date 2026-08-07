@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "functional_id": "liliana_the_necromancer",
+  "name": "Liliana, the Necromancer",
+  "supertypes": [
+    "legendary"
+  ],
+  "types": [
+    "planeswalker"
+  ],
+  "subtypes": [
+    "Liliana"
+  ],
+  "mana_cost": "{3}{B}{B}",
+  "colors": [
+    "black"
+  ],
+  "loyalty": 4,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": 1
+        }
+      ],
+      "effects": [
+        {
+          "kind": "lose_life",
+          "player_ref": "target_player",
+          "amount": 2
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": -1
+        }
+      ],
+      "effects": [
+        {
+          "kind": "return_card_to_hand",
+          "target": {
+            "card_in_graveyard": {
+              "class": "creature"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": -7
+        }
+      ],
+      "effects": [
+        {
+          "kind": "destroy",
+          "target": "any_creature",
+          "targets": {
+            "up_to": 2
+          }
+        },
+        {
+          "kind": "return_card_to_battlefield",
+          "target": {
+            "card_in_graveyard": {
+              "scope": "any",
+              "class": "creature"
+            }
+          },
+          "targets": {
+            "up_to": 2
+          }
+        }
+      ]
+    }
+  ]
+}

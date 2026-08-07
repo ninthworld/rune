@@ -80,9 +80,7 @@ pub(crate) fn apply_targeted_effect(
                     // stack already is.
                     if let StackObjectKind::Spell { card, .. } = countered.kind {
                         let owner = countered.controller;
-                        if let Some(player) = state.players.get_mut(owner.0) {
-                            player.graveyard.push(card);
-                        }
+                        state.put_card_in_graveyard(owner, card, db);
                         state.record_event(GameEvent::SpellCountered {
                             player: owner,
                             card,
@@ -392,7 +390,7 @@ pub(crate) fn apply_targeted_effect(
         }
         Effect::Mill { count, .. } => {
             if let Target::Player(seat) = target {
-                state.mill(seat, u32::from(*count));
+                state.mill(seat, u32::from(*count), db);
             }
         }
         // CR 613 layers 4 and 7b, as one sentence: the types are added and the base power

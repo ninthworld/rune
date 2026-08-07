@@ -153,12 +153,16 @@ fn validate_face_effects(
         });
     }
 
-    // At most one "up to N" target group per ability or spell, so the flat stored target
-    // list pairs back onto effects unambiguously.
-    if effect_lists(object)
-        .into_iter()
-        .any(|effects| variable_target_groups(&effects) > 1)
-    {
+    // At most one "up to N" target group per ability or spell **of each kind of object**,
+    // so the flat stored target list pairs back onto effects unambiguously: the engine
+    // pairs by what each target is, and two variable groups a permanent could satisfy
+    // equally well would be a guess. A card in a graveyard is never a permanent, which is
+    // what lets `destroy up to two target creatures. Put up to two creature cards from
+    // graveyards onto the battlefield` declare both and still be exact.
+    if effect_lists(object).into_iter().any(|effects| {
+        let (cards, others) = variable_target_groups_by_kind(&effects);
+        cards > 1 || others > 1
+    }) {
         return Err(Violation::TwoVariableTargetGroups {
             functional_id: named(),
         });

@@ -1105,6 +1105,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "amulet_of_safekeeping",
+    "collector_number": "226",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "arcane_encyclopedia",
     "collector_number": "227",
     "rarity": "uncommon"
@@ -1390,6 +1395,11 @@
     "rarity": "rare"
   },
   {
+    "functional_id": "liliana_the_necromancer",
+    "collector_number": "291",
+    "rarity": "mythic"
+  },
+  {
     "functional_id": "sarkhan_dragonsoul",
     "collector_number": "296",
     "rarity": "mythic"
@@ -1413,6 +1423,11 @@
     "functional_id": "vivien_s_jaguar",
     "collector_number": "305",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "nexus_of_fate",
+    "collector_number": "306",
+    "rarity": "mythic"
   },
   {
     "functional_id": "waterknot",

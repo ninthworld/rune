@@ -55,7 +55,9 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 damage_recipient(source, subject)
             )
         }
-        Effect::Destroy { target } => format!("destroy {}", target_noun(*target)),
+        Effect::Destroy { target, targets } => {
+            format!("destroy {}", target_phrase(*target, *targets))
+        }
         // "It", because the sentence before it named the host: an Aura's ability is about
         // the creature it is already on, and the card prints a pronoun rather than a
         // second choice.
@@ -530,6 +532,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         }
         Effect::ReturnCardToBattlefield {
             target,
+            targets,
             tapped,
             types,
             subtypes,
@@ -537,7 +540,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         } => {
             let return_it = format!(
                 "put {} onto the battlefield under your control{}",
-                target_noun(*target),
+                target_phrase(*target, *targets),
                 if *tapped { " tapped" } else { "" }
             );
             // The card prints the continuous half as its own sentence about "that
@@ -1023,8 +1026,17 @@ fn target_subject(spec: TargetSpec, count: TargetCount) -> String {
 }
 
 /// A target spec pluralized — "target creatures" — for a group that names more than one.
+///
+/// English pluralizes the **head** noun, which is not always the last word: a card in a
+/// graveyard is "target creature card**s** in a graveyard", never "…in a graveyard**s**".
+/// The head runs up to the first preposition, and every phrase this vocabulary produces
+/// has at most one.
 fn plural_target_noun(spec: TargetSpec) -> String {
-    format!("{}s", target_noun(spec))
+    let noun = target_noun(spec);
+    match noun.find(" in ") {
+        Some(at) => format!("{}s{}", &noun[..at], &noun[at..]),
+        None => format!("{noun}s"),
+    }
 }
 
 /// A signed per-unit amount as the `-` or `+` a card prints before its X.

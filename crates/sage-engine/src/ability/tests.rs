@@ -446,6 +446,7 @@ fn issue_149_destroy_round_trips_with_its_target_spec() {
     assert_eq!(
         effect,
         Effect::Destroy {
+            targets: crate::ability::TargetCount::default(),
             target: TargetSpec::AnyCreature,
         }
     );
@@ -1079,7 +1080,13 @@ fn issue_737_a_fight_declares_two_groups_of_its_own_specs() {
     assert_eq!(minimum_targets(&effects), 2);
     assert_eq!(maximum_targets(&effects), 2);
     assert_eq!(
-        target_counts(&effects, 2),
+        target_counts(
+            &effects,
+            &[
+                Target::Permanent(crate::id::PermanentId(1)),
+                Target::Permanent(crate::id::PermanentId(2)),
+            ]
+        ),
         vec![1, 1],
         "one target per group, counted per group rather than per effect"
     );

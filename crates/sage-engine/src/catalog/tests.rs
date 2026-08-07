@@ -508,13 +508,13 @@ fn issue_610_targets_outside_an_optional_effect_are_untouched() {
 
 #[test]
 fn issue_725_an_optional_variable_arity_group_is_still_counted() {
-    // The "at most one up-to-N group" invariant looks through the wrapper too: an
-    // optional "return up to two" is as variable-arity as a bare one, and pairing two
-    // of them back onto effects would be a guess.
+    // The invariant looks through the wrapper too: an optional "restrict up to two" is as
+    // variable-arity as a bare one, and two groups a *permanent* could satisfy equally
+    // well leave the pairing a guess.
     let json = r#", "spell_effects": [
-        {"kind": "may", "effects": [{"kind": "return_card_to_hand",
-                                     "target": {"card_in_graveyard": {"class": "creature"}},
-                                     "targets": {"up_to": 2}}]},
+        {"kind": "may", "effects": [{"kind": "restrict", "target": "any_creature",
+                                     "targets": {"up_to": 2},
+                                     "restriction": "cant_be_blocked"}]},
         {"kind": "put_counters", "target": "any_creature", "targets": {"up_to": 2},
          "counter": "plus_one_plus_one", "count": 1}]"#;
     assert_eq!(
@@ -523,6 +523,19 @@ fn issue_725_an_optional_variable_arity_group_is_still_counted() {
             functional_id: "test_card".to_string(),
         }),
     );
+}
+
+#[test]
+fn issue_706_two_variable_groups_of_different_kinds_are_told_apart() {
+    // A permanent and a card in a graveyard are never the same object, so an announcement
+    // that names both splits unambiguously — which is what lets one ability destroy up to
+    // two creatures and reanimate up to two cards.
+    let json = r#", "spell_effects": [
+        {"kind": "destroy", "target": "any_creature", "targets": {"up_to": 2}},
+        {"kind": "return_card_to_battlefield",
+         "target": {"card_in_graveyard": {"scope": "any", "class": "creature"}},
+         "targets": {"up_to": 2}}]"#;
+    assert!(validate_definition(None, &definition(json)).is_ok());
 }
 
 #[test]
