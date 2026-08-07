@@ -51,7 +51,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         Effect::DealDamage { subject, amount } => {
             format!(
                 "{source} deals {amount} damage to {}",
-                damage_recipient(subject)
+                damage_recipient(source, subject)
             )
         }
         Effect::Destroy { target } => format!("destroy {}", target_noun(*target)),
@@ -65,7 +65,10 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         // has to be put in one shape or the other here.
         Effect::DealDamageByAmount { subject, amount } => match amount {
             DerivedAmount::AnnouncedX => {
-                format!("{source} deals X damage to {}", damage_recipient(subject))
+                format!(
+                    "{source} deals X damage to {}",
+                    damage_recipient(source, subject)
+                )
             }
             DerivedAmount::LifeGainedThisTurn
             | DerivedAmount::MilledThisWay { .. }
@@ -75,7 +78,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             | DerivedAmount::HalfRoundedUp { .. } => format!(
                 "{source} deals damage equal to {} to {}",
                 amount_noun(amount, PlayerRef::Controller),
-                damage_recipient(subject),
+                damage_recipient(source, subject),
             ),
         },
         // The life rider is a second sentence, where the card prints it, and "its" points
@@ -174,11 +177,11 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             toughness,
         } => format!(
             "{} get {power:+}/{toughness:+} until end of turn",
-            mass_subject(affects)
+            mass_subject(source, affects)
         ),
         Effect::GrantKeywordAll { affects, keyword } => format!(
             "{} gain {} until end of turn",
-            mass_subject(affects),
+            mass_subject(source, affects),
             keyword_word(*keyword)
         ),
         // A restriction is already a predicate ("can't be blocked"), so it needs no
@@ -200,7 +203,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             restriction,
         } => format!(
             "{} {} this turn",
-            mass_subject(affects),
+            mass_subject(source, affects),
             restriction_predicate(restriction)
         ),
         // A self-referential effect names the source by name, so the sentence reads
@@ -459,7 +462,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             count_of,
         } => format!(
             "{source} deals {amount_per} damage to {} for each {}",
-            damage_recipient(subject),
+            damage_recipient(source, subject),
             count_noun(count_of)
         ),
         // The three derived-number verbs of a symmetric sweeper, each one sentence in the
@@ -1105,14 +1108,22 @@ fn possessive_subject(player_ref: PlayerRef) -> &'static str {
 /// The class a mass, non-targeting effect names, as the subject of its sentence. A
 /// subtype replaces the noun outright — "Dragons you control", never "Dragon creatures
 /// you control", which is not how a card is written.
-fn mass_subject(affects: &MassAffects) -> String {
+fn mass_subject(source: &str, affects: &MassAffects) -> String {
     match affects {
-        MassAffects::CreaturesYouControl { subtype, min_power } => {
+        MassAffects::CreaturesYouControl {
+            subtype,
+            min_power,
+            below_source_power,
+        } => {
             let noun = match subtype {
                 Some(subtype) => format!("{subtype}s"),
                 None => "creatures".to_string(),
             };
-            format!("{noun} you control{}", mass_power_clause(*min_power))
+            format!(
+                "{noun} you control{}{}",
+                mass_power_clause(*min_power),
+                relative_power_clause(source, *below_source_power)
+            )
         }
         MassAffects::EachCreature => "creatures".to_string(),
         MassAffects::CreaturesYourOpponentsControl => {
@@ -1129,14 +1140,22 @@ fn mass_subject(affects: &MassAffects) -> String {
 /// acts ("creatures you control get +2/+1") and a distributive "each" when it is acted
 /// on ("deals 2 damage to each creature you control"). One function per position keeps
 /// both exhaustive, so a new [`MassAffects`] variant must be given words for each.
-fn mass_recipient(affects: &MassAffects) -> String {
+fn mass_recipient(source: &str, affects: &MassAffects) -> String {
     match affects {
-        MassAffects::CreaturesYouControl { subtype, min_power } => {
+        MassAffects::CreaturesYouControl {
+            subtype,
+            min_power,
+            below_source_power,
+        } => {
             let noun = match subtype {
                 Some(subtype) => subtype.clone(),
                 None => "creature".to_string(),
             };
-            format!("each {noun} you control{}", mass_power_clause(*min_power))
+            format!(
+                "each {noun} you control{}{}",
+                mass_power_clause(*min_power),
+                relative_power_clause(source, *below_source_power)
+            )
         }
         MassAffects::EachCreature => "each creature".to_string(),
         MassAffects::CreaturesYourOpponentsControl => {
@@ -1144,6 +1163,18 @@ fn mass_recipient(affects: &MassAffects) -> String {
         }
         MassAffects::CreaturesWithoutFlying => "each creature without flying".to_string(),
         MassAffects::AttackingCreatures => "each attacking creature".to_string(),
+    }
+}
+
+/// The " with power less than Lena's power" that trails a mass class when the bound is the
+/// source's own power rather than a printed number. The source is named, because a card
+/// naming itself in its own text uses its name (CR 201.4) — and the reader needs to know
+/// which creature the comparison is against.
+fn relative_power_clause(source: &str, below_source_power: bool) -> String {
+    if below_source_power {
+        format!(" with power less than {source}'s power")
+    } else {
+        String::new()
     }
 }
 
@@ -1162,11 +1193,11 @@ fn mass_power_clause(min_power: Option<i32>) -> String {
 /// The three subjects read as one sentence shape — "deals 2 damage to *any target*",
 /// "…to *each opponent*", "…to *each creature*" — so a player reads a class-damage
 /// effect the same way they read a targeted one, minus the word "target".
-fn damage_recipient(subject: &DamageSubject) -> String {
+fn damage_recipient(source: &str, subject: &DamageSubject) -> String {
     match subject {
         DamageSubject::Target(spec) => target_noun(*spec).to_string(),
         DamageSubject::Players(player_ref) => player_noun(*player_ref).to_string(),
-        DamageSubject::Permanents(affects) => mass_recipient(affects),
+        DamageSubject::Permanents(affects) => mass_recipient(source, affects),
     }
 }
 

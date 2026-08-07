@@ -1033,6 +1033,17 @@ every time it resolved. One flag rather than a three-way choice, because only th
 direction is printed — a card that counted tokens would add the other value and nothing
 here would move.
 
+A mass class (`affects`) takes the same `min_power` bound, and one more that a printed number
+cannot express: `below_source_power` restricts the class to creatures whose power is **strictly
+less than the effect's own source's**. The number is not knowable when the card is authored and
+changes with the source, which is why it is a flag rather than a value.
+
+Both sides are read through the computed characteristics at the moment of resolution. A source
+that has **left** — sacrificed to its own cost, which is exactly the shape that prints this —
+is compared against its **last known power** (CR 608.2h), recorded when the ability was
+activated and before any cost was paid. A source with no power at all protects nobody rather
+than everybody: "less than its power" with no number is not a bound that lets every creature in.
+
 `min_power` is the one exception to that, and the exception is the point: it is read
 through the **computed** characteristics, because power is what the implemented layers
 actually change. "If you control a creature with power 4 or greater" is satisfied by a 3/3

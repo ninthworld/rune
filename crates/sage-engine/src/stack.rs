@@ -39,6 +39,17 @@ pub struct PaidCost {
     /// exactly one. A cost that took several would make the phrase ambiguous on the card
     /// before it made it ambiguous here.
     pub sacrificed_power: Option<i32>,
+    /// The power the ability's **own source** had when it was activated (CR 608.2h), or
+    /// `None` for a source that has none — a spell, an emblem, a noncreature permanent.
+    ///
+    /// Last known information, and recorded for the same reason
+    /// [`Self::sacrificed_power`] is: a cost that sacrifices the source — `Sacrifice this
+    /// creature:` — takes the number with it, so by the time the ability resolves there is
+    /// nothing left to read. A card that says *creatures with power less than this
+    /// creature's power* is asking about the creature that is already gone.
+    ///
+    /// Read **before** any cost is paid, which is the only moment it exists.
+    pub source_power: Option<i32>,
 }
 
 /// One object on the stack.

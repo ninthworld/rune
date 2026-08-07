@@ -563,6 +563,28 @@ pub enum MassAffects {
         /// system, so there is no computation to recurse into.
         #[serde(default)]
         min_power: Option<i32>,
+        /// Restrict to creatures whose power is **strictly less than the source's** — the
+        /// "creatures you control with power less than Lena's power" of a sacrifice that
+        /// protects the small.
+        ///
+        /// A bound relative to another permanent rather than to a printed number, which is
+        /// why it is its own flag beside [`min_power`](Self::CreaturesYouControl::min_power)
+        /// rather than a value: the number it compares against is not knowable when the card
+        /// is authored, and it changes with the source.
+        ///
+        /// Both sides are read through the **computed** characteristics at the moment of
+        /// resolution (CR 613.1f / CR 611.2c), so a source pumped before the ability resolves
+        /// protects more, and a creature pumped past it drops out. Safe for the same reason
+        /// `min_power` is: a mass effect is enumerated from inside a resolution, outside the
+        /// layer system, so there is no computation to recurse into.
+        ///
+        /// A source that has **left** — sacrificed to its own cost, which is exactly what
+        /// Lena does — takes its power with it, and the class is then empty rather than
+        /// everything: "less than Lena's power" with no Lena is not a bound that lets every
+        /// creature in. The caller reads the source's power *before* paying the cost and
+        /// passes it in.
+        #[serde(default)]
+        below_source_power: bool,
     },
     /// Every creature on the battlefield at the moment the effect resolves,
     /// whoever controls it — the symmetric class a sweeper names.
