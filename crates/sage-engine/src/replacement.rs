@@ -204,6 +204,11 @@ pub struct PendingEntry {
     /// CR 306.5b is a rule about every planeswalker rather than a replacement effect
     /// anyone could order, and it is applied where the permanent is built.
     pub counters: Vec<(CounterKind, u32)>,
+    /// The X the spell that is entering was cast for (CR 601.2b), for the one
+    /// replacement that reads it — `enters with X +1/+1 counters on it`. `None` for every
+    /// entry that is not a resolving spell, and for a spell whose cost has no X, which is
+    /// the same answer that replacement wants: no counters.
+    pub announced_x: Option<u32>,
     /// Whether the object is entering because a **spell was cast** and resolved
     /// (CR 608.3), rather than being put there by an effect or created as a token.
     ///
@@ -244,6 +249,22 @@ pub struct PendingEntry {
     ///
     /// [`Self::chosen_color`]'s sibling in every other respect, including why it is here.
     pub copied: Option<Option<crate::copy::CopiedValues>>,
+    /// Whether the `as this enters, put a counter on …` question has been settled, for a
+    /// card that asks one (Phylactery Lich).
+    ///
+    /// A **bool** where its siblings carry an answer, because the answer does not travel:
+    /// the counter goes on a permanent that is already on the battlefield, so it is placed
+    /// where the question is answered and nothing about the arrival needs to remember
+    /// which permanent it went on. What the event still needs is the thing every one of
+    /// these slots provides — a record that the question is behind it, so re-entering the
+    /// seam does not ask again.
+    ///
+    /// `false` on every arrival, and simply never consulted for the ones nobody asks: a
+    /// card with no such ability is never looked at, and a controller with nothing to put
+    /// a counter on is not asked either — a question with no legal answer is not posed
+    /// (ADR 0013 §5), and the Lich enters with no counter anywhere, which is exactly the
+    /// board its own ability is watching for.
+    pub counter_placed: bool,
 }
 
 /// One replacement effect that could apply to an event, named by where it comes from.
@@ -506,8 +527,23 @@ pub(crate) fn apply_to_entry(
                 .nth(index);
             match ability {
                 Some(Ability::EntersTapped) => entry.tapped = true,
-                Some(Ability::EntersWithCounters { counter, count }) => {
-                    entry.counters.push((counter, count));
+                Some(Ability::EntersWithCounters {
+                    counter,
+                    count,
+                    from_announced_x,
+                }) => {
+                    // `enters with X +1/+1 counters` takes the X the spell was cast for
+                    // (CR 601.2b); an entry that is not a resolving spell announced none,
+                    // and a reanimated Hungering Hydra is a 0/0 that dies — which is the
+                    // rule, not a gap.
+                    let count = if from_announced_x {
+                        entry.announced_x.unwrap_or(0)
+                    } else {
+                        count
+                    };
+                    if count > 0 {
+                        entry.counters.push((counter, count));
+                    }
                 }
                 // Applicability was established from the same list; anything else here
                 // would be a replacement that is not one, and changing nothing is the

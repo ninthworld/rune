@@ -434,23 +434,55 @@ pub(crate) fn choices_for_effect(
                     .collect(),
             )
         }
-        // The one question the *controller* always answers, whoever else the ability
-        // names: an optional effect is theirs to take or leave (CR 608.2).
+        // An optional effect is the controller's to take or leave (CR 608.2) — unless the
+        // card hands the decision to somebody else, which one does: `unless that player
+        // sacrifices a creature` is the targeted opponent's call, and nothing else about
+        // the offer changes.
         Effect::May {
+            chooser,
             cost,
             effects,
             otherwise,
-        } => Some(vec![(
-            controller,
-            ChoiceQuestion::Confirm(ConfirmRequest {
-                cost: cost.clone(),
-                source: source_permanent,
-                effects: effects.clone(),
-                reflexive: false,
-                otherwise: otherwise.clone(),
-                targets: targets.to_vec(),
-            }),
-        )]),
+        } => {
+            let asked = match (chooser, target) {
+                // A targeting reference names the one seat that was aimed at, exactly as
+                // it does for a discard.
+                (
+                    crate::ability::PlayerRef::TargetPlayer
+                    | crate::ability::PlayerRef::TargetOpponent
+                    | crate::ability::PlayerRef::ThatPlayer,
+                    Some(Target::Player(seat)),
+                ) => seat,
+                _ => *crate::apply::non_targeting_subjects(
+                    state,
+                    *chooser,
+                    controller,
+                    resolution.chosen_player,
+                )
+                .first()
+                // A decision nobody is there to make is the controller's, which is what
+                // every `you may` means and what an unresolvable reference falls back to.
+                .unwrap_or(&controller),
+            };
+            Some(vec![(
+                asked,
+                ChoiceQuestion::Confirm(ConfirmRequest {
+                    cost: cost.clone(),
+                    source: source_permanent,
+                    effects: effects.clone(),
+                    reflexive: false,
+                    otherwise: otherwise.clone(),
+                    targets: targets.to_vec(),
+                    // Which sentence the announcement aimed: the consequence, when the
+                    // accepted branch names no target of its own.
+                    targets_are_the_consequence: effects
+                        .iter()
+                        .flat_map(Effect::target_groups)
+                        .next()
+                        .is_none(),
+                }),
+            )])
+        }
         // The same yes-or-no, and the same payment; what differs is where the effects go
         // once it is answered (CR 603.11).
         Effect::MayPayForTrigger { cost, effects } => Some(vec![(
@@ -462,6 +494,7 @@ pub(crate) fn choices_for_effect(
                 reflexive: true,
                 otherwise: Vec::new(),
                 targets: Vec::new(),
+                targets_are_the_consequence: false,
             }),
         )]),
         _ => None,

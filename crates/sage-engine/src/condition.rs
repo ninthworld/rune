@@ -57,6 +57,9 @@ pub(crate) fn condition_holds(
         Condition::ControlsAtLeast { permanents, count } => {
             count_permanents(state, permanents, controller, db) >= *count
         }
+        Condition::ControlsNone { permanents } => {
+            count_permanents(state, permanents, controller, db) == 0
+        }
         Condition::MilledThisWay { filter } => events_since(state, resolution_start).any(|event| {
             matches!(event, GameEvent::CardsMilled { player, cards, .. }
                 if *player == controller
@@ -211,6 +214,14 @@ fn permanents_matching<'a>(
                 .is_none_or(|color| face.colors().contains(&color));
         if !printed_ok {
             return false;
+        }
+        // A counter is not a characteristic — nothing in the layer system produces one —
+        // so this is read straight off the permanent and is safe from anywhere, a static
+        // ability's condition included.
+        if let Some(counter) = wanted.with_counter {
+            if perm.counters.get(&counter).copied().unwrap_or(0) == 0 {
+                return false;
+            }
         }
         // Computed, and only when a bound is authored (see this function's docs). A
         // permanent with no power — a land, an enchantment — satisfies no bound.

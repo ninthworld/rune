@@ -50,6 +50,6 @@ pub use rule_modification::{DamageCharacteristic, RuleModification};
 
 // Re-export for internal use: these are crate-visible only
 pub(crate) use helpers::{
-    chooses_color_on_entry, copies_on_entry, names_a_card_on_entry, spell_effects_of,
-    spell_matches_class, stored_abilities_of_permanent,
+    chooses_color_on_entry, copies_on_entry, names_a_card_on_entry, puts_counter_on_entry,
+    spell_effects_of, spell_matches_class, stored_abilities_of_permanent,
 };

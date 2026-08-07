@@ -264,8 +264,22 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 format!("{source} {} until end of turn", parts.join(" and "))
             }
         }
-        Effect::PutCountersOnSelf { counter, count } => {
-            format!("put {} on {source}", counters(*counter, *count))
+        Effect::PutCountersOnSelf {
+            counter,
+            count,
+            that_many,
+        } => {
+            // "that many" is the card's own words for a number the trigger event fixes;
+            // the printed sentence has no value to show, and by the time one is written
+            // in, this text has already been read.
+            if *that_many {
+                format!(
+                    "put that many {} counters on {source}",
+                    counter_symbol(*counter)
+                )
+            } else {
+                format!("put {} on {source}", counters(*counter, *count))
+            }
         }
         // The self-referential return: the source names itself, and the graveyard it comes
         // out of is the one the ability functions in (CR 113.6) — so both halves of the
@@ -416,6 +430,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         // the condition is written on every card that has one, and running it together
         // with "and" would read as though both halves happened.
         Effect::May {
+            chooser,
             cost,
             effects,
             otherwise,
@@ -424,12 +439,22 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             // With a consequence attached, the card prints it the other way round —
             // "sacrifice it unless you pay {1}" — because the consequence is what
             // happens and the payment is what avoids it. Cards that print the pair
-            // this way never also print a "if you do" half, and none of them targets.
+            // this way never also print a "if you do" half.
             if !otherwise.is_empty() {
                 let cost = cost
                     .as_ref()
-                    .map_or_else(|| "you do".to_string(), optional_cost_phrase);
-                return format!("{} unless you {cost}", clauses(source, otherwise));
+                    .map_or_else(|| "does".to_string(), optional_cost_phrase);
+                // Who is paying decides the subject and the agreement: "unless you pay
+                // {1}", "unless that player sacrifices a creature". The verb is the first
+                // word of the cost phrase, and every one of them is regular.
+                let clause = match chooser {
+                    PlayerRef::Controller => format!("you {cost}"),
+                    other => match cost.split_once(' ') {
+                        Some((verb, rest)) => format!("{} {rest}", conjugate(*other, verb)),
+                        None => conjugate(*other, &cost),
+                    },
+                };
+                return format!("{} unless {clause}", clauses(source, otherwise));
             }
             match cost {
                 Some(cost) => format!("you may {}. If you do, {what}", optional_cost_phrase(cost)),
@@ -1140,7 +1165,7 @@ pub(crate) fn restriction_phrase(restriction: &ManaRestriction) -> String {
 }
 
 /// An intervening-if condition as the clause following the word "if".
-fn condition_clause(condition: &Condition) -> String {
+pub(super) fn condition_clause(condition: &Condition) -> String {
     match condition {
         // The same composer the static `as long as …` clause uses. It was worth sharing
         // rather than duplicating: the local phrasing read "you control 1 or more
@@ -1148,6 +1173,11 @@ fn condition_clause(condition: &Condition) -> String {
         // control" and this clause said it again.
         Condition::ControlsAtLeast { permanents, count } => {
             format!("you control {}", counted_permanents(permanents, *count))
+        }
+        // The negative form says "no", where the counted one says a number — and it is
+        // the plural class rather than one of them, which is what "no permanents" means.
+        Condition::ControlsNone { permanents } => {
+            format!("you control no {}", counted_permanents_plural(permanents))
         }
         // The one condition about the resolving object rather than about the board.
         Condition::CastFromHand => "this spell was cast from your hand".to_string(),

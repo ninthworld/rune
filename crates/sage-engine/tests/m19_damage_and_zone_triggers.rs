@@ -216,6 +216,56 @@ fn rogues_gloves_draw_when_the_equipped_creature_connects() {
     );
 }
 
+/// **The word "combat" is load-bearing.** The Gloves say `combat damage`, so damage the
+/// equipped creature deals any other way is not what they are watching.
+///
+/// Nothing about the damage *afterwards* can tell the two apart — marked damage is marked
+/// damage, and a player who lost two life lost two life — so the recorded event carries
+/// which it was, exactly as it carries who dealt it.
+#[test]
+fn issue_706_rogues_gloves_ignore_noncombat_damage_from_the_equipped_creature() {
+    let db = db();
+    let mut state = main_phase(&db);
+    let snipe = place(&mut state, &db, "guttersnipe", PlayerId(0));
+    let gloves = place(&mut state, &db, "rogue_s_gloves", PlayerId(0));
+    if let Some(perm) = state.battlefield.iter_mut().find(|perm| perm.id == gloves) {
+        perm.attached_to = Some(snipe);
+    }
+    let shock = to_hand(&mut state, &db, "shock", PlayerId(0));
+    let life = state.players[1].life;
+
+    // Casting an instant makes the equipped creature deal two damage to the opponent —
+    // its own damage, dealt to a player, and not in combat.
+    let state = apply_action(
+        &state,
+        &Action::CastSpell {
+            card: shock,
+            mode: None,
+            x: None,
+            targets: vec![Target::Player(PlayerId(1))],
+            payment: Vec::new(),
+        },
+        &db,
+    );
+    let mut state = state;
+    for _ in 0..8 {
+        if state.stack.is_empty() {
+            break;
+        }
+        state = apply_action(&state, &Action::PassPriority, &db);
+    }
+
+    assert_eq!(
+        state.players[1].life,
+        life - 4,
+        "two from the Guttersnipe and two from the spell"
+    );
+    assert!(
+        pending_player_choice(&state).is_none(),
+        "the Gloves watch combat damage, and none was dealt"
+    );
+}
+
 /// A creature card leaving your graveyard makes a Bat — once, however many left.
 #[test]
 fn desecrated_tomb_makes_one_bat_however_many_cards_left() {

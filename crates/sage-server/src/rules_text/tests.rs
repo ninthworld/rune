@@ -1960,3 +1960,36 @@ fn issue_706_a_sentence_about_a_choice_the_one_before_it_made() {
          1 damage to each creature that player controls."
     );
 }
+
+#[test]
+fn issue_706_the_x_it_was_cast_for_and_the_damage_it_survives() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "hungering_hydra"),
+        "Hungering Hydra can't be blocked by more than one creature.\n\
+         Hungering Hydra enters the battlefield with X +1/+1 counters on it.\n\
+         Whenever Hungering Hydra is dealt damage, put that many +1/+1 counters on \
+         Hungering Hydra."
+    );
+}
+
+#[test]
+fn issue_706_an_unless_somebody_else_answers() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "demanding_dragon"),
+        "Flying\nWhen Demanding Dragon enters the battlefield, Demanding Dragon \
+         deals 5 damage to target opponent unless that player sacrifices a creature."
+    );
+}
+
+#[test]
+fn issue_706_a_counter_placed_as_it_enters_and_the_state_that_undoes_it() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "phylactery_lich"),
+        "Indestructible\nAs Phylactery Lich enters the battlefield, put a phylactery \
+         counter on an artifact you control.\nWhen you control no permanents with \
+         phylactery counters on them, sacrifice it."
+    );
+}

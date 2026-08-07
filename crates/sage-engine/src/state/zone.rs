@@ -265,11 +265,13 @@ impl GameState {
                 attacking: None,
                 attached_to,
                 counters: Vec::new(),
+                announced_x: None,
                 cast: false,
                 applied: Vec::new(),
                 chosen_color: None,
                 named_card: None,
                 copied: None,
+                counter_placed: false,
             },
             db,
         )
@@ -288,6 +290,7 @@ impl GameState {
         card: crate::id::CardInstance,
         controller: PlayerId,
         attached_to: Option<PermanentId>,
+        announced_x: Option<u32>,
         db: &CardDatabase,
     ) -> Option<PermanentId> {
         self.begin_battlefield_entry(
@@ -301,11 +304,13 @@ impl GameState {
                 attacking: None,
                 attached_to,
                 counters: Vec::new(),
+                announced_x,
                 cast: true,
                 applied: Vec::new(),
                 chosen_color: None,
                 named_card: None,
                 copied: None,
+                counter_placed: false,
             },
             db,
         )
@@ -455,6 +460,38 @@ impl GameState {
             // board holds something to name — an `enters as a copy` with no legal choice
             // copies nothing and enters as itself, rather than posing a question with no
             // answer.
+            // The fourth CR 614.12 question, and the only one whose answer lands on a
+            // permanent other than the one arriving: `as this creature enters, put a
+            // phylactery counter on an artifact you control`. Asked only when the board
+            // holds something to name — a controller with no artifact is not asked, and
+            // the Lich enters with no counter anywhere, which is the board its own
+            // state-triggered ability is watching for.
+            if !entry.counter_placed {
+                if let Some((counter, card_type)) =
+                    crate::card::puts_counter_on_entry(db, card.card, entry.face)
+                {
+                    let request = crate::choice::PermanentRequest {
+                        subject: entry.controller,
+                        card_type,
+                        subtype: None,
+                        except: None,
+                        min: 1,
+                        max: 1,
+                        outcome: crate::choice::PermanentOutcome::CounterOnEntry {
+                            counter,
+                            entry: Box::new(entry.clone()),
+                        },
+                    };
+                    if !crate::choice::permanent_choice_candidates(self, &request, db).is_empty() {
+                        self.pending_choices.push(crate::choice::PendingChoice {
+                            chooser: entry.controller,
+                            question: crate::choice::ChoiceQuestion::Permanents(request),
+                            resume: None,
+                        });
+                        return None;
+                    }
+                }
+            }
             if entry.copied.is_none() {
                 if let Some(copying) = crate::card::copies_on_entry(db, card.card, entry.face) {
                     let candidates =
@@ -593,11 +630,13 @@ impl GameState {
                 attacking,
                 attached_to: None,
                 counters: Vec::new(),
+                announced_x: None,
                 cast: false,
                 applied: Vec::new(),
                 chosen_color: None,
                 named_card: None,
                 copied: None,
+                counter_placed: false,
             },
             db,
         )
@@ -712,10 +751,10 @@ impl GameState {
         }
         match damage.recipient {
             DamageRecipient::Player(player) => {
-                self.deal_damage_to_player(player, amount, damage.source)
+                self.deal_damage_to_player(player, amount, damage.source, damage.combat)
             }
             DamageRecipient::Permanent(id) => {
-                self.deal_damage_to_permanent(id, amount, damage.source, db)
+                self.deal_damage_to_permanent(id, amount, damage.source, damage.combat, db)
             }
         }
     }
@@ -733,6 +772,7 @@ impl GameState {
         player: PlayerId,
         amount: u32,
         source: Option<PermanentId>,
+        combat: bool,
     ) -> u32 {
         let Some(p) = self.players.get_mut(player.0) else {
             return 0;
@@ -743,6 +783,7 @@ impl GameState {
                 target: DamageTarget::Player(player),
                 amount,
                 source,
+                combat,
             });
         }
         amount
@@ -777,6 +818,7 @@ impl GameState {
         id: PermanentId,
         amount: u32,
         source: Option<PermanentId>,
+        combat: bool,
         db: &CardDatabase,
     ) -> u32 {
         let is_planeswalker = self
@@ -786,7 +828,7 @@ impl GameState {
             .and_then(|p| p.printed.face(db))
             .is_some_and(|face| face.has_type(CardType::Planeswalker));
         if !is_planeswalker {
-            return self.mark_damage_on_permanent(id, amount, source);
+            return self.mark_damage_on_permanent(id, amount, source, combat);
         }
         let Some(perm) = self.battlefield.iter_mut().find(|p| p.id == id) else {
             return 0;
@@ -804,6 +846,7 @@ impl GameState {
                 target: DamageTarget::Permanent(logged),
                 amount,
                 source,
+                combat,
             });
         }
         amount
@@ -821,6 +864,7 @@ impl GameState {
         id: PermanentId,
         amount: u32,
         source: Option<PermanentId>,
+        combat: bool,
     ) -> u32 {
         let Some(perm) = self.battlefield.iter_mut().find(|p| p.id == id) else {
             return 0;
@@ -832,6 +876,7 @@ impl GameState {
                 target: DamageTarget::Permanent(logged),
                 amount,
                 source,
+                combat,
             });
         }
         amount

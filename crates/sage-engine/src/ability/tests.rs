@@ -277,6 +277,7 @@ fn issue_155_enters_with_counters_replacement_round_trips() {
         Ability::EntersWithCounters {
             counter: CounterKind::PlusOnePlusOne,
             count: 2,
+            from_announced_x: false,
         }
     );
     assert!(!is_mana_ability(&ability));

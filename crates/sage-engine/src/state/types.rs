@@ -184,6 +184,11 @@ pub enum GameEvent {
         /// *this creature deals damage* has nowhere else to read it from — by the time
         /// the damage is marked, the recipient knows only that it was hit.
         source: Option<PermanentId>,
+        /// Whether this was **combat** damage (CR 510.1). **Engine-internal** for the
+        /// same reason [`source`](Self::DamageDealt::source) is, and here for the same
+        /// kind of reader: `whenever equipped creature deals combat damage to a player`
+        /// asks a question about the damage that marked damage cannot answer afterwards.
+        combat: bool,
     },
     /// A player drew cards; individual hidden cards are deliberately not recorded.
     CardsDrawn {
@@ -368,6 +373,13 @@ pub enum CounterKind {
     /// A **corpse** counter: a marker on a creature returned from a graveyard, whose
     /// only reader is the ability that put it there.
     Corpse,
+    /// A **phylactery** counter: the marker Phylactery Lich puts on an artifact as it
+    /// enters, and the thing its own state-triggered ability then watches for.
+    ///
+    /// The first counter whose reader is a *different permanent* from the one it sits
+    /// on — which changes nothing here, because a counter has never been more than a
+    /// name and a count, and who reads it is the reader's business.
+    Phylactery,
 }
 
 /// An **emblem** (CR 114): a marker a player owns, whose only characteristics are its

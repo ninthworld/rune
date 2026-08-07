@@ -12,10 +12,6 @@
     "blocker": "a permanent notices an object put on the stack naming it as a target (CR 603.6e), narrowed to spells alone and to an opponent's objects; a *player* is never the subject — nothing watches for \"whenever you become the target\" — and no trigger reads the targets of an object that was already on the stack"
   },
   {
-    "name": "Abilities that trigger on damage being **received**",
-    "blocker": "a permanent notices damage *it* — or the permanent it is attached to — dealt (CR 609.7), narrowed to combat damage and to a player or an opponent, read from the recorded event that now carries its dealer; nothing watches damage being taken, so a creature that grows when it is dealt damage is unwritable, and no amount is read off the damage either way"
-  },
-  {
     "name": "Abilities that trigger on a card entering or leaving a hand, a library, or exile",
     "blocker": "cards leaving a graveyard are noticed by diffing it — every road out at once, counted as the one-or-more a card prints — and a permanent entering the battlefield or leaving it for a graveyard is read the same way; no condition names a hand, a library, or exile, so nothing watches a card moving into or out of one"
   },
@@ -54,10 +50,6 @@
   {
     "name": "Delayed triggers that wait for anything but the next spell cast",
     "blocker": "a resolution may leave one delayed trigger behind, the single condition it can wait for is the next spell of a named class its controller casts, firing spends it (CR 603.7b), and the turn boundary clears it; nothing waits for a step, a zone change, or an attack declaration, and no delayed trigger outlives the turn that created it"
-  },
-  {
-    "name": "Effects that act on a player unless that player pays",
-    "blocker": "the one cost an effect asks for mid-resolution belongs to an optional effect and is posed to the asking ability's own controller, never to a player the effect merely names; declining may now splice a consequence of its own onto the remainder — `sacrifice it unless you pay {1}` — but only the controller is ever the one asked, so an effect that acts on an *opponent* unless that opponent pays is unwritable"
   },
   {
     "name": "Effects that ask a player to name a type",
@@ -129,7 +121,7 @@
   },
   {
     "name": "Conditional branches that choose a target, and a \"when you do\" after a cost",
-    "blocker": "a resolution may create a reflexive triggered ability (CR 603.11) for the one event it can watch — a creature it put onto the battlefield — and that ability goes on the stack unaimed and is aimed by its controller like any other trigger; but an optional effect still declares the target group of the one effect it wraps, so a conditional's branches, a wrapper over two targeting effects, and a \"when you do\" that watches a cost being paid have no group one announcement could fill and no event this vocabulary names"
+    "blocker": "a resolution may create a reflexive triggered ability (CR 603.11) for the one event it can watch — a creature it put onto the battlefield — and that ability goes on the stack unaimed and is aimed by its controller like any other trigger; an optional effect declares the target group of the one effect that aims, on whichever of its two branches names it, so a conditional's branches, a wrapper over two targeting effects, and a “when you do” that watches a cost being paid still have no group one announcement could fill and no event this vocabulary names"
   },
   {
     "name": "Optional costs paid by spending the asking permanent itself",
@@ -157,7 +149,7 @@
   },
   {
     "name": "X anywhere but a spell's own mana cost",
-    "blocker": "a cast announces X, folds it into the cost as generic mana, and locks it on the stack for the resolution and the generated text to read; nothing announces X for an activation or on a trigger, and the announced value feeds only the amounts a derived amount already feeds — never the counters a permanent enters with, a token count, or a mana-value filter"
+    "blocker": "a cast announces X, folds it into the cost as generic mana, and locks it on the stack for the resolution, the entering permanent's counters, and the generated text to read; nothing announces X for an activation or on a trigger, and the announced value feeds only the amounts a derived amount already feeds — never a token count or a mana-value filter"
   },
   {
     "name": "Static abilities that affect a class of the source's controller's own noncreature permanents, or a class of tokens",

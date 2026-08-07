@@ -540,6 +540,11 @@
     "rarity": "rare"
   },
   {
+    "functional_id": "phylactery_lich",
+    "collector_number": "113",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "plague_mare",
     "collector_number": "114",
     "rarity": "uncommon"
@@ -643,6 +648,11 @@
     "functional_id": "dark_dweller_oracle",
     "collector_number": "134",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "demanding_dragon",
+    "collector_number": "135",
+    "rarity": "rare"
   },
   {
     "functional_id": "dismissive_pyromancer",
@@ -903,6 +913,11 @@
     "functional_id": "highland_game",
     "collector_number": "188",
     "rarity": "common"
+  },
+  {
+    "functional_id": "hungering_hydra",
+    "collector_number": "189",
+    "rarity": "rare"
   },
   {
     "functional_id": "naturalize",

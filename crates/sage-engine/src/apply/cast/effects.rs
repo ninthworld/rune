@@ -562,7 +562,7 @@ pub(crate) fn apply_effect(
                 state.shuffle_permanent_into_library(id);
             }
         }
-        Effect::PutCountersOnSelf { counter, count } => {
+        Effect::PutCountersOnSelf { counter, count, .. } => {
             if let Some(id) = permanent_source {
                 if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
                     *perm.counters.entry(*counter).or_insert(0) += *count;

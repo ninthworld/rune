@@ -200,9 +200,9 @@ pub(super) fn colorless_pips(amount: u8) -> String {
     "{C}".repeat(usize::from(amount))
 }
 
-/// `count` counters of `kind`, e.g. `a +1/+1 counter` or `two -1/-1 counters`.
-pub(crate) fn counters(kind: CounterKind, count: u32) -> String {
-    let symbol = match kind {
+/// How a counter kind is written on a card, e.g. `+1/+1` or `charge`.
+pub(crate) fn counter_symbol(kind: CounterKind) -> &'static str {
+    match kind {
         CounterKind::PlusOnePlusOne => "+1/+1",
         CounterKind::MinusOneMinusOne => "-1/-1",
         CounterKind::Loyalty => "loyalty",
@@ -210,7 +210,25 @@ pub(crate) fn counters(kind: CounterKind, count: u32) -> String {
         CounterKind::Gold => "gold",
         CounterKind::Wish => "wish",
         CounterKind::Corpse => "corpse",
-    };
+        CounterKind::Phylactery => "phylactery",
+    }
+}
+
+/// The counters an `enters with counters` ability names — [`counters`] for a printed
+/// number, and `X +1/+1 counters` for the one that reads the X its spell was cast for.
+///
+/// X is written as the letter rather than as a value: the sentence is the card's text,
+/// printed before anything has been cast, and there is no number to put there yet.
+pub(crate) fn entering_counters(kind: CounterKind, count: u32, from_announced_x: bool) -> String {
+    if from_announced_x {
+        return format!("X {} counters", counter_symbol(kind));
+    }
+    counters(kind, count)
+}
+
+/// `count` counters of `kind`, e.g. `a +1/+1 counter` or `two -1/-1 counters`.
+pub(crate) fn counters(kind: CounterKind, count: u32) -> String {
+    let symbol = counter_symbol(kind);
     match count {
         1 => format!("a {symbol} counter"),
         n => format!("{} {symbol} counters", number(n)),

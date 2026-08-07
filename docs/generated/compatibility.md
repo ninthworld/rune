@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (281)
+## Supported cards (284)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -63,6 +63,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `daybreak_chaplain` | Daybreak Chaplain | functional definition |
 | `death_baron` | Death Baron | functional definition |
 | `declare_dominance` | Declare Dominance | functional definition |
+| `demanding_dragon` | Demanding Dragon | functional definition |
 | `demon_of_catastrophes` | Demon of Catastrophes | functional definition |
 | `departed_deckhand` | Departed Deckhand | functional definition |
 | `desecrated_tomb` | Desecrated Tomb | functional definition |
@@ -130,6 +131,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `hired_blade` | Hired Blade | functional definition |
 | `horizon_scholar` | Horizon Scholar | functional definition |
 | `hostile_minotaur` | Hostile Minotaur | functional definition |
+| `hungering_hydra` | Hungering Hydra | functional definition |
 | `infectious_horror` | Infectious Horror | functional definition |
 | `infernal_reckoning` | Infernal Reckoning | functional definition |
 | `infernal_scarring` | Infernal Scarring | functional definition |
@@ -190,6 +192,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `pegasus_courser` | Pegasus Courser | functional definition |
 | `pelakka_wurm` | Pelakka Wurm | functional definition |
 | `pendulum_of_patterns` | Pendulum of Patterns | functional definition |
+| `phylactery_lich` | Phylactery Lich | functional definition |
 | `plague_mare` | Plague Mare | functional definition |
 | `plains` | Plains | functional definition |
 | `plummet` | Plummet | functional definition |
@@ -295,7 +298,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `windreader_sphinx` | Windreader Sphinx | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (48)
+## Excluded (46)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
@@ -305,14 +308,13 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Abilities that trigger on a **player** becoming the target of a spell or ability | a permanent notices an object put on the stack naming it as a target (CR 603.6e), narrowed to spells alone and to an opponent's objects; a *player* is never the subject — nothing watches for "whenever you become the target" — and no trigger reads the targets of an object that was already on the stack |
 | Abilities that trigger on a card entering or leaving a hand, a library, or exile | cards leaving a graveyard are noticed by diffing it — every road out at once, counted as the one-or-more a card prints — and a permanent entering the battlefield or leaving it for a graveyard is read the same way; no condition names a hand, a library, or exile, so nothing watches a card moving into or out of one |
 | Abilities that trigger on a mana ability being activated | the activation condition watches the objects a transition put on the stack, which a mana ability never reaches (CR 605.3a) |
-| Abilities that trigger on damage being **received** | a permanent notices damage *it* — or the permanent it is attached to — dealt (CR 609.7), narrowed to combat damage and to a player or an opponent, read from the recorded event that now carries its dealer; nothing watches damage being taken, so a creature that grows when it is dealt damage is unwritable, and no amount is read off the damage either way |
 | Abilities that trigger on someone else drawing a card | the draw trigger condition observes only its own controller's draws |
 | Attack requirements | a block requirement is maximised over the whole declaration (CR 509.1c), but nothing can force a creature into the attacker declaration (CR 508.1d) — and the one requirement modeled is that every creature able to block an attacker does so, never that one particular creature blocks |
 | Auras that enchant a player, or move between hosts | an Aura's enchant restriction is any class the target vocabulary names, so a creature and a land are both hosts, and its grant may be P/T, keywords, combat restrictions, or a written-out ability; but no attachment names a player, and once attached an Aura stays on the host it entered on — nothing moves one |
 | Cards that ask which kind of attachment they carry | an attachment grants power/toughness, keywords, combat restrictions, card types and subtypes, and written-out abilities at CR 613 layers 4, 6 and 7c — one block for both kinds, so an Equipment grants exactly as an Aura does; but a continuous ability may ask only whether its own source has *something* attached, never whether that something is an Aura, an Equipment, or one of several |
 | Changing what a permanent is a copy of while it stays on the battlefield | CR 707.4 needs a copy effect created after the entry seam; copiable values are only ever recorded as a permanent enters (CR 614.12) |
 | Combat damage assigned by anything but the assigning creature's own power or toughness | an attacker or blocker assigns its current power, or its current toughness while a continuous effect names that one instead, read at the single place the combat-damage step asks how much a creature assigns; no other characteristic can be named, nothing assigns a fixed amount or a count, and nothing reads another object's characteristic |
-| Conditional branches that choose a target, and a "when you do" after a cost | a resolution may create a reflexive triggered ability (CR 603.11) for the one event it can watch — a creature it put onto the battlefield — and that ability goes on the stack unaimed and is aimed by its controller like any other trigger; but an optional effect still declares the target group of the one effect it wraps, so a conditional's branches, a wrapper over two targeting effects, and a "when you do" that watches a cost being paid have no group one announcement could fill and no event this vocabulary names |
+| Conditional branches that choose a target, and a "when you do" after a cost | a resolution may create a reflexive triggered ability (CR 603.11) for the one event it can watch — a creature it put onto the battlefield — and that ability goes on the stack unaimed and is aimed by its controller like any other trigger; an optional effect declares the target group of the one effect that aims, on whichever of its two branches names it, so a conditional's branches, a wrapper over two targeting effects, and a “when you do” that watches a cost being paid still have no group one announcement could fill and no event this vocabulary names |
 | Conditions other than a permanent count, a mill, a discard, life gained this turn, or what one permanent has attacked, blocked, or damaged | a condition asks one of six questions — how many permanents a class holds, or how many distinct names are among them; what this resolution milled or discarded; whether the resolving spell was cast from its controller's hand; how much life that controller gained this turn; and whether the ability's own source attacked or blocked — and no other: not the size or contents of a hand, a library, or a graveyard, not a spell's mana value, and never an upper bound |
 | Copying a permanent spell, an ability, or a card in a zone | CR 707 is modelled for a creature named as a permanent enters and for an instant or sorcery on the stack; a copy of a permanent spell would have to become a token (CR 707.10f), and copying an activated or triggered ability or a card outside the stack has no seam |
 | Cost modification of another player's spells, or of an ability's activation cost | a permanent continuously takes generic mana off, or puts it on, the cost of a class of spell its own controller casts (CR 601.2f), read wherever a cast's cost is read; nothing reaches a spell another player casts, no modification applies to an activated ability's cost, and a coloured or colourless requirement is never changed |
@@ -320,7 +322,6 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Damage prevention beyond a blanket shield for the turn | a shield prevents all damage — or all combat damage — for the rest of the turn, consulted at the one seam damage is dealt, and a spell may declare its own damage unpreventable to defeat it; nothing prevents a fixed amount, names a recipient or a source, redirects damage, or lasts anything but the turn |
 | Delayed triggers that wait for anything but the next spell cast | a resolution may leave one delayed trigger behind, the single condition it can wait for is the next spell of a named class its controller casts, firing spends it (CR 603.7b), and the turn boundary clears it; nothing waits for a step, a zone change, or an attack declaration, and no delayed trigger outlives the turn that created it |
 | Effects that **replace** a permanent's types or colours, or animate a class | a continuous effect may add card types, subtypes and colours to one permanent — one it targeted, or the one it just put onto the battlefield — and set that permanent's base power and toughness (CR 613 layers 4, 5 and 7b), for the turn or for as long as its source remains; nothing *removes* a type or a colour, no effect names a class of permanents to animate, and no layer 7d switches power with toughness; and a colour a layer-5 effect added is read by the rules that ask about one object at a time — an evasion restriction, a colourless target — but not by a *counted class*, which is evaluated from inside a static ability's own condition and would recurse through the characteristics it is computing |
-| Effects that act on a player unless that player pays | the one cost an effect asks for mid-resolution belongs to an optional effect and is posed to the asking ability's own controller, never to a player the effect merely names; declining may now splice a consequence of its own onto the remainder — `sacrifice it unless you pay {1}` — but only the controller is ever the one asked, so an effect that acts on an *opponent* unless that opponent pays is unwritable |
 | Effects that ask a player to name a type | a permanent records the colour and the card its controller named as it entered — the card as a functional identity chosen from the catalog, never a string — but a card or creature type has no recorded identity, only a nonbasic land may be named, and nothing on a spell records a choice at all |
 | Effects that let a player choose the order of the cards a scry keeps on top | a look bottoms its rest in an order the looker picks or at random, as the card says, but the cards a scry leaves on top stay in their printed order |
 | Effects that return a card from a graveyard to a zone other than a hand or the battlefield | a targeted card returns from a graveyard to a hand or to the battlefield, and a whole graveyard can be exiled; nothing else moves a card out of one |
@@ -348,4 +349,4 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | The CR 613.8 dependency rules | continuous effects are ordered by CR 613.7 timestamp alone; the layer-6 walk gates each source with that source's *stored* abilities — until-end-of-turn effects and the attachments on it — and never with another permanent's printed static ability, which is the one place the walk is cut so it cannot recurse, so a permanent silenced by a printed static ability still contributes its own |
 | The legend-rule choice among duplicates | CR 704.5j applies, but which copy survives is a deterministic policy (the newest) rather than the controller's choice |
 | Tokens created as copies of another permanent | create_token authors a token's characteristics inline and nothing points one at another permanent's copiable values; CR 707.8a's two-faced token copy is unbuilt with it |
-| X anywhere but a spell's own mana cost | a cast announces X, folds it into the cost as generic mana, and locks it on the stack for the resolution and the generated text to read; nothing announces X for an activation or on a trigger, and the announced value feeds only the amounts a derived amount already feeds — never the counters a permanent enters with, a token count, or a mana-value filter |
+| X anywhere but a spell's own mana cost | a cast announces X, folds it into the cost as generic mana, and locks it on the stack for the resolution, the entering permanent's counters, and the generated text to read; nothing announces X for an activation or on a trigger, and the announced value feeds only the amounts a derived amount already feeds — never a token count or a mana-value filter |

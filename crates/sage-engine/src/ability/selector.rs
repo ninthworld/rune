@@ -21,6 +21,18 @@ pub enum Condition {
         /// The threshold, inclusive.
         count: u32,
     },
+    /// The effect's controller controls **no** permanents matching `permanents` — the
+    /// `when you control no permanents with phylactery counters on them` a Lich watches
+    /// for.
+    ///
+    /// The negation rather than a zero threshold, because a threshold of zero is
+    /// satisfied by an empty board and by a full one alike: "at least none" is true of
+    /// every game state and says nothing. Written as its own question so a card that
+    /// means "none" reads as one.
+    ControlsNone {
+        /// Which permanents are looked for, relative to the effect's controller.
+        permanents: PermanentCount,
+    },
     /// At least one card matching `filter` was **milled by this resolution** — the
     /// `if at least one Zombie card was milled this way` of a self-mill payoff.
     ///
@@ -363,6 +375,15 @@ pub struct PermanentCount {
     /// catalog defines; an upper one arrives with the card that needs it.
     #[serde(default)]
     pub min_power: Option<i32>,
+    /// Restrict to permanents with at least one counter of this kind on them — the
+    /// "permanents with **phylactery counters** on them" a Lich's life depends on.
+    ///
+    /// Read off the permanent's own counters, which is where a counter is: it is not a
+    /// characteristic, nothing in the layer system produces one, and so unlike
+    /// [`min_power`](Self::min_power) this can be asked from anywhere, static conditions
+    /// included.
+    #[serde(default)]
+    pub with_counter: Option<CounterKind>,
     /// Count only permanents that are **not tokens** (CR 111) — the "number of
     /// **nontoken** creatures you control" a card counts before making tokens of its own.
     ///
