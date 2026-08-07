@@ -741,6 +741,14 @@ pub struct SuspendedSpell {
     pub card: CardInstance,
     /// The spell's chosen targets, in slot order — read by the Aura attachment path.
     pub targets: Vec<Target>,
+    /// The X the spell was cast for (CR 601.2b), `None` for a spell whose cost has no X.
+    ///
+    /// Carried here rather than read off the resolution because the permanent enters
+    /// *after* the effects are done — and for a creature that enters with X counters
+    /// there are no effects at all, only this last step. The value is announced once, at
+    /// cast, and a permanent's `enters with X counters` is the only thing on the far side
+    /// of resolution that can still ask for it.
+    pub announced_x: Option<u32>,
 }
 
 /// The choice the game is currently waiting on, or `None` when it is waiting on none.

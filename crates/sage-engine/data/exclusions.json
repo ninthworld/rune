@@ -12,10 +12,6 @@
     "blocker": "a permanent notices an object put on the stack naming it as a target (CR 603.6e), narrowed to spells alone and to an opponent's objects; a *player* is never the subject — nothing watches for \"whenever you become the target\" — and no trigger reads the targets of an object that was already on the stack"
   },
   {
-    "name": "Abilities that trigger on damage being **received**",
-    "blocker": "a permanent notices damage *it* — or the permanent it is attached to — dealt (CR 609.7), narrowed to combat damage and to a player or an opponent, read from the recorded event that now carries its dealer; nothing watches damage being taken, so a creature that grows when it is dealt damage is unwritable, and no amount is read off the damage either way"
-  },
-  {
     "name": "Abilities that trigger on a card entering or leaving a hand, a library, or exile",
     "blocker": "cards leaving a graveyard are noticed by diffing it — every road out at once, counted as the one-or-more a card prints — and a permanent entering the battlefield or leaving it for a graveyard is read the same way; no condition names a hand, a library, or exile, so nothing watches a card moving into or out of one"
   },
@@ -157,7 +153,7 @@
   },
   {
     "name": "X anywhere but a spell's own mana cost",
-    "blocker": "a cast announces X, folds it into the cost as generic mana, and locks it on the stack for the resolution and the generated text to read; nothing announces X for an activation or on a trigger, and the announced value feeds only the amounts a derived amount already feeds — never the counters a permanent enters with, a token count, or a mana-value filter"
+    "blocker": "a cast announces X, folds it into the cost as generic mana, and locks it on the stack for the resolution, the entering permanent's counters, and the generated text to read; nothing announces X for an activation or on a trigger, and the announced value feeds only the amounts a derived amount already feeds — never a token count or a mana-value filter"
   },
   {
     "name": "Static abilities that affect a class of the source's controller's own noncreature permanents, or a class of tokens",

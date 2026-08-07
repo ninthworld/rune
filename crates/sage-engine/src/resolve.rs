@@ -601,6 +601,7 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         StackObjectKind::Spell { card, .. } => Some(SuspendedSpell {
             card: *card,
             targets: object.targets.clone(),
+            announced_x,
         }),
         // A copy owes its card no final zone, because it has no card: when it finishes
         // resolving it simply ceases to exist (CR 707.10a). That is the whole of how a
@@ -707,7 +708,13 @@ pub(crate) fn put_resolved_spell_in_its_final_zone(
         // are collected, so a 0/0 that enters with two +1/+1 counters is a 2/2 and lives.
         // This is the one seam that records the entry as a **cast** one, which is what a
         // replacement saying `without being cast` reads.
-        state.resolve_permanent_spell_onto_battlefield(card, controller, attached_to, db);
+        state.resolve_permanent_spell_onto_battlefield(
+            card,
+            controller,
+            attached_to,
+            spell.announced_x,
+            db,
+        );
     } else if let Some(player) = state.players.get_mut(controller.0) {
         player.graveyard.push(card);
     }

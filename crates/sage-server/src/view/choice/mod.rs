@@ -286,9 +286,13 @@ fn offered_replacement_label(offered: &OfferedReplacement) -> String {
     let clause = match offered {
         OfferedReplacement::SelfReplacement(ability) => match ability {
             Ability::EntersTapped => "it enters tapped".to_string(),
-            Ability::EntersWithCounters { counter, count } => format!(
+            Ability::EntersWithCounters {
+                counter,
+                count,
+                from_announced_x,
+            } => format!(
                 "it enters with {} on it",
-                crate::rules_text::counters(*counter, *count)
+                crate::rules_text::entering_counters(*counter, *count, *from_announced_x)
             ),
             // Every other ability shape is filtered out before it reaches here; a
             // generic label is the right amount of damage for one that somehow did.

@@ -905,6 +905,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "hungering_hydra",
+    "collector_number": "189",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "naturalize",
     "collector_number": "190",
     "rarity": "common"

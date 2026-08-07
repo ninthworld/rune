@@ -265,6 +265,7 @@ impl GameState {
                 attacking: None,
                 attached_to,
                 counters: Vec::new(),
+                announced_x: None,
                 cast: false,
                 applied: Vec::new(),
                 chosen_color: None,
@@ -288,6 +289,7 @@ impl GameState {
         card: crate::id::CardInstance,
         controller: PlayerId,
         attached_to: Option<PermanentId>,
+        announced_x: Option<u32>,
         db: &CardDatabase,
     ) -> Option<PermanentId> {
         self.begin_battlefield_entry(
@@ -301,6 +303,7 @@ impl GameState {
                 attacking: None,
                 attached_to,
                 counters: Vec::new(),
+                announced_x,
                 cast: true,
                 applied: Vec::new(),
                 chosen_color: None,
@@ -593,6 +596,7 @@ impl GameState {
                 attacking,
                 attached_to: None,
                 counters: Vec::new(),
+                announced_x: None,
                 cast: false,
                 applied: Vec::new(),
                 chosen_color: None,

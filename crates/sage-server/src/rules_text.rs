@@ -355,9 +355,13 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
         // Self-replacements (CR 614.1c) read as statements about entering, not as
         // things that happen afterwards — which is exactly what they are.
         Ability::EntersTapped => format!("{source} enters the battlefield tapped."),
-        Ability::EntersWithCounters { counter, count } => format!(
+        Ability::EntersWithCounters {
+            counter,
+            count,
+            from_announced_x,
+        } => format!(
             "{source} enters the battlefield with {} on it.",
-            counters(*counter, *count)
+            entering_counters(*counter, *count, *from_announced_x)
         ),
         // "As …" rather than "When …", and the distinction is the rule (CR 614.12): the
         // colour is named as part of entering, not by an ability that goes on the stack

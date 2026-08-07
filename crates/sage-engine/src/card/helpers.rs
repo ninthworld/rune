@@ -414,6 +414,7 @@ mod tests {
             vec![Ability::EntersWithCounters {
                 counter: CounterKind::PlusOnePlusOne,
                 count: 2,
+                from_announced_x: false,
             }]
         );
     }

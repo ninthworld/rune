@@ -109,8 +109,21 @@ pub enum Ability {
         /// the wire because the enum already reserves the `type` tag for its own
         /// discriminant.
         counter: CounterKind,
-        /// How many counters of that kind the permanent enters with.
+        /// How many counters of that kind the permanent enters with. Ignored when
+        /// [`from_announced_x`](Self::EntersWithCounters::from_announced_x) is set, which
+        /// is where the number comes from then — and omitted on the card that sets it,
+        /// which prints no number at all.
+        #[serde(default)]
         count: u32,
+        /// Whether the number is the **X its controller announced** as the spell was cast
+        /// (CR 601.2b) — `This creature enters with X +1/+1 counters on it`.
+        ///
+        /// A flag rather than a general amount, because the only thing a printed card
+        /// puts here is its own X: the counters are placed as the permanent enters, and a
+        /// number read off the board at that moment would be read before the permanent is
+        /// there to be counted among.
+        #[serde(default)]
+        from_announced_x: bool,
     },
     /// A choice made **as this permanent enters** (CR 614.12): its controller names one
     /// of the five colors, and the answer is kept on the permanent for as long as it is

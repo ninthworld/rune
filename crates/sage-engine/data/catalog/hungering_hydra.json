@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "functional_id": "hungering_hydra",
+  "name": "Hungering Hydra",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Hydra"
+  ],
+  "mana_cost": "{X}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 0,
+  "toughness": 0,
+  "restrictions": [
+    "cant_be_blocked_by_more_than_one"
+  ],
+  "abilities": [
+    {
+      "type": "enters_with_counters",
+      "counter": "plus_one_plus_one",
+      "from_announced_x": true
+    },
+    {
+      "type": "triggered",
+      "event": {
+        "deals_damage": {
+          "received": true
+        }
+      },
+      "effects": [
+        {
+          "kind": "put_counters_on_self",
+          "counter": "plus_one_plus_one",
+          "that_many": true
+        }
+      ]
+    }
+  ]
+}
