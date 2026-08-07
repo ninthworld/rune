@@ -1716,10 +1716,11 @@ because they are undecided in principle — and each names what would settle it.
    that asked whether a card had become unreadable. A row is sized by the viewport and the card
    takes what it is given, at any size. Settled by: a sweep across the supported range that reports
    the smallest permanent each shape produces, checked against §5's table by the maintainer.
-2. **The deck editor at catalog scale** (§9.7). The screen exists and is playable, but it has only
-   ever been built against a catalog of ~134 cards, where every filter is instant and no list is
-   long enough to need virtualising. Settled by: driving it with a catalog large enough to make the
-   pool grid and the search expensive, and reporting where it stops feeling immediate.
+2. **The deck editor at catalog scale** (§9.7). The screen exists and is playable. It was designed
+   against a catalog of ~134 cards, where every filter is instant and no list is long enough to
+   need virtualising; the catalog is 299 today — the whole of Core Set 2019 — and has not been
+   re-judged at that size. Settled by: driving it with a catalog large enough to make the pool grid
+   and the search expensive, and reporting where it stops feeling immediate.
 3. **A game with three or more seats, played.** The prototype tiles up to eight and focus works, but
    nobody has played a four-player game on it. Whether a seat at one quarter of the table is enough
    to play from is a judgment only playing can make.
