@@ -298,6 +298,13 @@ pub(crate) fn apply_answer_permanent(
 /// established by [`crate::apply_action`]'s gate. An answer with no yes-or-no pending is
 /// a no-op.
 pub(crate) fn apply_answer_confirm(state: &mut GameState, accept: bool, db: &CardDatabase) {
+    // CR 608.2f: the same "no" also declines an offer to play a card (issue #787). It is
+    // the only answer that question takes — the "yes" is the player really playing it —
+    // so it is settled here rather than in a variant of its own.
+    if pending_player_choice(state).is_some_and(|p| p.question.play_card().is_some()) {
+        decline_offered_play(state, db);
+        return;
+    }
     let Some(ChoiceQuestion::Confirm(_)) = pending_player_choice(state).map(|p| &p.question) else {
         return;
     };
@@ -331,4 +338,35 @@ pub(crate) fn apply_answer_confirm(state: &mut GameState, accept: bool, db: &Car
         }
     }
     resume_after_choice(state, resume, db);
+}
+
+/// The player declined an offer to play a card (CR 608.2f, issue #787): the card takes the
+/// other branch its own sentence named, and the suspended resolution picks up.
+///
+/// The consequence rides on the request rather than on the effects that follow, because by
+/// the time the answer arrives nothing else knows which card was offered.
+fn decline_offered_play(state: &mut GameState, db: &CardDatabase) {
+    let answered = state.pending_choices.remove(0);
+    state.interrupted_priority = None;
+    if let Some(request) = answered.question.play_card() {
+        match request.declined {
+            crate::choice::DeclineOutcome::Exile => {
+                if let Some(player) = state.players.get_mut(request.subject.0) {
+                    if let Some(pos) = player
+                        .library
+                        .iter()
+                        .position(|card| card.id == request.card.id)
+                    {
+                        let card = player.library.remove(pos);
+                        player.exile.push(card);
+                    }
+                }
+            }
+            // Nothing to do: the card is where it was, which is the whole of the branch.
+            crate::choice::DeclineOutcome::Stay => {}
+        }
+    }
+    if let Some(resume) = answered.resume {
+        crate::resolve::resume_after_choice(state, resume, db);
+    }
 }

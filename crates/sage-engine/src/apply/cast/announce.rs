@@ -91,6 +91,9 @@ pub(crate) fn apply_play_land(state: &mut GameState, card: CardInstance, db: &Ca
             player.graveyard.remove(pos);
         } else if let Some(pos) = player.exile.iter().position(|&c| c.id == card.id) {
             player.exile.remove(pos);
+        } else if let Some(pos) = player.library.iter().position(|&c| c.id == card.id) {
+            // And a land offered off the top of a library (CR 608.2f, issue #787).
+            player.library.remove(pos);
         } else {
             return;
         }
@@ -469,6 +472,12 @@ pub(crate) fn apply_cast_spell(
             // exile for the stack exactly as a hand cast does, and everything downstream —
             // countering, fizzling, resolving as a permanent — is the ordinary path.
             player.exile.remove(pos);
+        } else if let Some(pos) = player.library.iter().position(|&c| c.id == card.id) {
+            // The top of a library, while a resolution is offering that very card
+            // (CR 608.2f, issue #787). The offer gate has already established that this is
+            // the card the pending question named — nothing else makes a library card
+            // castable — so this moves it and lets the ordinary path take over.
+            player.library.remove(pos);
         } else {
             return;
         }

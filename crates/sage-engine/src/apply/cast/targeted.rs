@@ -420,6 +420,7 @@ pub(crate) fn apply_targeted_effect(
         Effect::Discard { .. }
         | Effect::Scry { .. }
         | Effect::LookAtTop { .. }
+        | Effect::RevealTopAndMayPlay { .. }
         | Effect::SearchLibrary { .. }
         | Effect::May { .. } => {}
         // Shrink (or pump) the targeted creature by a count taken **now** (CR 608.2):

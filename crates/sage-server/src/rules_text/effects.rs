@@ -620,6 +620,19 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         // what you may do with it. "That card" and "those cards" is the permission naming
         // exactly what this effect exiled (CR 116.2a — *play*, since a land among them is
         // played rather than cast).
+        // Three sentences where the card prints three, in its order: what is revealed,
+        // what you may do with it, and what happens if you don't.
+        Effect::RevealTopAndMayPlay { free } => {
+            let price = if *free {
+                " without paying its mana cost"
+            } else {
+                ""
+            };
+            format!(
+                "reveal the top card of your library. You may play that card{price}. \
+                 If you don't, exile it"
+            )
+        }
         Effect::ExileTopForPlay { count } => {
             if *count == 1 {
                 "exile the top card of your library. Until end of turn, you may play that card"

@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "functional_id": "djinn_of_wishes",
+  "name": "Djinn of Wishes",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Djinn"
+  ],
+  "mana_cost": "{3}{U}{U}",
+  "colors": [
+    "blue"
+  ],
+  "power": 4,
+  "toughness": 4,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "enters_with_counters",
+      "counter": "wish",
+      "count": 3
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{2}{U}{U}"
+        },
+        {
+          "kind": "remove_counters",
+          "counter": "wish",
+          "count": 1
+        }
+      ],
+      "effects": [
+        {
+          "kind": "reveal_top_and_may_play",
+          "free": true
+        }
+      ]
+    }
+  ]
+}

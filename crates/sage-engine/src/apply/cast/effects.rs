@@ -490,6 +490,7 @@ pub(crate) fn apply_effect(
         | Effect::Sacrifice { .. }
         | Effect::Scry { .. }
         | Effect::LookAtTop { .. }
+        | Effect::RevealTopAndMayPlay { .. }
         | Effect::SearchLibrary { .. }
         | Effect::May { .. }
         // A conditional is likewise intercepted by the resolve loop, which evaluates it
