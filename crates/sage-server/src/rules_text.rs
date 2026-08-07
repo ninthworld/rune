@@ -355,6 +355,9 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
             PlayerModification::PlayLandsFromGraveyard => {
                 "You may play lands from your graveyard.".to_string()
             }
+            PlayerModification::CastFromHandWithoutPaying => {
+                "You may cast spells from your hand without paying their mana costs.".to_string()
+            }
         },
         // A cost modifier's subject is a class of *spells*, and the sentence names the
         // caster because the ability does: it reaches its controller's casts and nobody

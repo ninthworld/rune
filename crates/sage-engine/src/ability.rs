@@ -308,6 +308,24 @@ pub enum PlayerModification {
     /// big number: a sentinel would compare, print, and project as a number nobody
     /// printed, and every call site would have to know which number meant "none".
     NoMaximumHandSize,
+    /// CR 601.2b: the controller may **cast spells from their hand without paying their
+    /// mana costs** — Omniscience.
+    ///
+    /// An *alternative cost* rather than a reduction, and the difference is why this is a
+    /// permission rather than a [`CostModifier`](Ability::CostModifier) of minus
+    /// everything: a reduction adjusts the mana component and cannot take a coloured pip
+    /// off, while this replaces it outright. It is read where every cost is read
+    /// ([`total_cast_cost`](crate::total_cast_cost)), so the offer, the payment search,
+    /// the charge, and the view agree by construction.
+    ///
+    /// **The mana component only.** An additional cost the card names (a discard, a
+    /// sacrifice) is still paid, because CR 601.2b replaces the mana cost and nothing
+    /// else. `{X}` is `0` when nothing pays for it (CR 107.3b).
+    ///
+    /// Scoped to the **hand** because that is what the card says. Casting without paying
+    /// from a graveyard, from exile, or off a library is a different permission each
+    /// time, and each names its own zone.
+    CastFromHandWithoutPaying,
     /// CR 305.9 / CR 116.2a: the controller may **play lands from their graveyard**,
     /// as though those cards were in their hand.
     ///

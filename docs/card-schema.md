@@ -1611,6 +1611,30 @@ Like every other per-turn permission it is recorded with the turn it was granted
 at the turn boundary. The cards stay in exile when it lapses — the permission ends, not the
 exile.
 
+### Casting without paying a mana cost
+
+`cast_from_hand_without_paying` is a `player_static` permission — Omniscience:
+
+```json
+{ "type": "player_static", "modification": { "kind": "cast_from_hand_without_paying" } }
+```
+
+An **alternative cost** (CR 601.2b), not a reduction, which is why it is a permission rather
+than a `cost_modifier` of minus everything: a reduction adjusts the generic component and can
+never take a coloured pip off, while this replaces the mana cost outright.
+
+It is answered where every cost is answered (`total_cast_cost`), so the offer, the payment
+search, the legality gate, the charge, the pips, and the view agree by construction — a spell
+is never advertised free and then charged. **The mana component only:** an additional cost the
+card names is still owed, every non-mana cost is still paid, and `{X}` is `0` when nothing pays
+for it (CR 107.3b). Scoped to the **hand**, because that is what the card says; casting free
+from a graveyard, from exile, or off a library is a different permission each time, and each
+names its own zone.
+
+Like every other continuous permission it is derived on each read: it begins when its source
+reaches the battlefield and ends when it leaves, with nothing stored and nothing to prune. A
+spell already on the stack stays cast if the source is destroyed in response.
+
 ### Ignoring hexproof
 
 `ignore_hexproof` grants a player permission to aim spells and abilities **as though hexproof

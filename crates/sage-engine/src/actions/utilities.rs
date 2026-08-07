@@ -395,6 +395,26 @@ pub(crate) fn cast_cost(
         base
     };
     let cost = crate::cost_modification::modified_cast_cost(state, db, caster, card.card, total);
+    // **Without paying its mana cost** (CR 601.2b) — Omniscience. An alternative cost is
+    // applied last, after the tax and after every modification, because it *replaces* the
+    // mana component rather than adjusting it: a reduction applied afterwards would be
+    // arithmetic on a cost nobody is paying.
+    //
+    // Here rather than at each caller for the reason every other cost rule is here: the
+    // offer, the payment search, the legality gate, the charge, the pips, and the view all
+    // ask this one function, so a spell cannot be advertised free and then charged. That is
+    // the same guarantee `total_cast_cost` documents, and it is why this is a *cost* answer
+    // and not a flag every caller would have to remember to check.
+    //
+    // **The mana component only.** An additional cost the card names (CR 601.2b — a
+    // discard, a sacrifice) is still paid, and so is every non-mana cost; those are asked
+    // elsewhere and this does not reach them. An `{X}` in the cost is `0` when nothing is
+    // paid for it (CR 107.3b), which falls out of the same emptying.
+    if crate::player::casts_from_hand_without_paying(state, caster, db)
+        && player.hand.iter().any(|c| c.id == card.id)
+    {
+        return Some((crate::mana::ManaCost::default(), data.subtypes.clone()));
+    }
     Some((cost, data.subtypes.clone()))
 }
 

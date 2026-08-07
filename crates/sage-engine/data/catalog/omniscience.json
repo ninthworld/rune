@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "functional_id": "omniscience",
+  "name": "Omniscience",
+  "types": [
+    "enchantment"
+  ],
+  "mana_cost": "{7}{U}{U}{U}",
+  "colors": [
+    "blue"
+  ],
+  "abilities": [
+    {
+      "type": "player_static",
+      "modification": {
+        "kind": "cast_from_hand_without_paying"
+      }
+    }
+  ]
+}
