@@ -1204,6 +1204,22 @@ pub enum Effect {
         #[serde(default = "one")]
         count: u8,
     },
+    /// **Reveal the top card of your library; you may play it without paying its mana
+    /// cost; if you don't, exile it** (CR 608.2f) — Djinn of Wishes.
+    ///
+    /// The card is played *during this resolution*, not under a permission that outlives
+    /// it: the resolution suspends, the player is offered that one card's real cast or
+    /// land play, and the branch they did not take is what the card says happens instead.
+    /// See [`PlayCardRequest`](crate::PlayCardRequest) for why that offer is an action
+    /// rather than an answer.
+    ///
+    /// An empty library reveals nothing and asks nothing, which is not a loss (CR 704.5b
+    /// is about drawing).
+    RevealTopAndMayPlay {
+        /// Whether it is played without paying its mana cost.
+        #[serde(default)]
+        free: bool,
+    },
     /// Let the referenced player aim spells and abilities **as though hexproof were not
     /// there** for the rest of the turn (`Creatures your opponents control with hexproof
     /// can be the targets of spells and abilities you control as though they didn't have

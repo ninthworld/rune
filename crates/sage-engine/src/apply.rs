@@ -118,6 +118,13 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         Action::Concede => apply_concede(&mut next),
     }
 
+    // CR 608.2f: a resolution that offered a card has been answered by the player playing
+    // it. The offer was the question, so taking it settles the question — the pending entry
+    // is dropped and the suspended resolution picks up where it left off. Done here rather
+    // than inside the cast so that the cast stays the ordinary one, with nothing about
+    // being-offered threaded through it.
+    settle_offered_play(&mut next, action, db);
+
     // Enters-the-battlefield self-replacements (CR 614.1c/614.12 — "enters tapped",
     // "enters with counters") are NOT a stage here: a replacement modifies the entry
     // event itself, so it is applied at the battlefield-entry seam inside step 3
@@ -231,4 +238,39 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
     }
 
     next
+}
+
+/// Settle a [`ChoiceQuestion::PlayCard`] the player answered by **playing the card**
+/// (CR 608.2f, issue #787).
+///
+/// The card has already moved and the spell is already on the stack, or the land is already
+/// on the battlefield — this only drops the question that offered it and resumes what was
+/// suspended. A play of some *other* card cannot reach here: while the question stands, the
+/// offer path returns that one card's play and nothing else, and the legality gate re-checks
+/// it against the same list.
+///
+/// Separate from the cast itself so the cast stays the ordinary one, with nothing about
+/// being-offered threaded through it.
+fn settle_offered_play(state: &mut GameState, action: &Action, db: &CardDatabase) {
+    let played = match action {
+        Action::CastSpell { card, .. } | Action::PlayLand { card } => card.id,
+        _ => return,
+    };
+    let Some(pending) = state.pending_choices.first() else {
+        return;
+    };
+    if pending
+        .question
+        .play_card()
+        .is_none_or(|request| request.card.id != played)
+    {
+        return;
+    }
+    let answered = state.pending_choices.remove(0);
+    // The freeze is over: whoever was interrupted gets priority back, exactly as when any
+    // other question is answered.
+    state.interrupted_priority = None;
+    if let Some(resume) = answered.resume {
+        crate::resolve::resume_after_choice(state, resume, db);
+    }
 }

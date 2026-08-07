@@ -87,6 +87,62 @@ pub struct PendingChoice {
     pub resume: Option<Resume>,
 }
 
+/// **You may play this card, now, as part of a resolution** (CR 608.2f).
+///
+/// The card is named by instance, because the offer is about *that* card and not about a
+/// class: a reveal hands the player the one card it turned over, and no other card in the
+/// library, the hand, or anywhere else becomes playable while the question stands.
+///
+/// `free` is the price, and it is scoped to this request rather than to the player: a
+/// continuous permission like Omniscience's belongs on the battlefield, and this one lasts
+/// exactly as long as the question. It is read where every cost is read
+/// ([`total_cast_cost`](crate::total_cast_cost)), so the offer, the payment, and the charge
+/// agree by construction.
+///
+/// **Timing restrictions based on card type do not apply** (CR 608.2f): a sorcery revealed
+/// this way may be cast even though something is resolving, because the instruction to play
+/// it *is* the resolution. Everything else about the cast is ordinary — its targets are
+/// announced, its additional costs are paid, and it goes on the stack to be responded to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlayCardRequest {
+    /// The player who may play it — the resolving object's controller.
+    pub subject: PlayerId,
+    /// The card being offered, by instance.
+    pub card: crate::id::CardInstance,
+    /// Which zone it is in while the offer stands, so the play can move it from there.
+    pub zone: PlayZone,
+    /// Whether it is played **without paying its mana cost** (CR 608.2b).
+    pub free: bool,
+    /// What becomes of the card if the offer is declined — the *if you don't, exile it*
+    /// half of the sentence.
+    ///
+    /// Carried on the request rather than left to the effects that follow, because it is
+    /// about the card the offer named and nothing else knows which card that was by the
+    /// time the answer arrives.
+    pub declined: DeclineOutcome,
+}
+
+/// What happens to an offered card the player did not play.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeclineOutcome {
+    /// It is exiled — Djinn of Wishes.
+    Exile,
+    /// It stays where it was. No card needs this yet; it is here because *nothing happens*
+    /// is the other thing a printed card can say, and a variant is cheaper than a `bool`
+    /// that would have to be read as one.
+    Stay,
+}
+
+/// Where a card offered by a [`PlayCardRequest`] currently is.
+///
+/// A small closed set rather than a general zone enum: only the zones a card can be
+/// *offered from* mid-resolution appear, and each arrives with the card that needs it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PlayZone {
+    /// On top of its owner's library, revealed — Djinn of Wishes.
+    LibraryTop,
+}
+
 /// What one [`PendingChoice`] asks — the shapes of question the engine can pose in the
 /// middle of a resolution.
 ///
@@ -166,6 +222,22 @@ pub enum ChoiceQuestion {
     /// It is a **choice, not a target** (CR 115.1): nothing is aimed, no slot is filled at
     /// announcement, and hexproof has nothing to say about it.
     Permanent(CopyChoiceRequest),
+    /// **You may play this card** — the CR 608.2f offer a resolution makes when it hands
+    /// the player a specific card and lets them play it on the spot ([`PlayCardRequest`]).
+    ///
+    /// The one question in this enum whose answer is **an action taken on the game**
+    /// rather than an answer to a question. Every other variant is settled by an
+    /// `Answer…` action carrying a value; this one is settled by the player really
+    /// casting the card, really playing the land, or declining — so the offer while it
+    /// stands is a genuine [`Action::CastSpell`](crate::Action) or
+    /// [`Action::PlayLand`](crate::Action) for that one card, announced with its own
+    /// targets and modes like any other, plus a decline.
+    ///
+    /// That is why it could not be expressed as a [`Confirm`](Self::Confirm): a yes would
+    /// still leave the card to be announced, and an announcement is not something the
+    /// choice queue can carry. The queue's other invariants are unchanged — one chooser,
+    /// one [`Resume`], and no other seat may act while it stands.
+    PlayCard(PlayCardRequest),
 }
 
 impl ChoiceQuestion {
@@ -177,6 +249,26 @@ impl ChoiceQuestion {
         match self {
             ChoiceQuestion::Cards(request) => Some(request),
             ChoiceQuestion::Confirm(_)
+            | ChoiceQuestion::Color(_)
+            | ChoiceQuestion::CardName(_)
+            | ChoiceQuestion::Replacement(_)
+            | ChoiceQuestion::Order(_)
+            | ChoiceQuestion::Permanents(_)
+            | ChoiceQuestion::Permanent(_)
+            | ChoiceQuestion::PlayCard(_) => None,
+        }
+    }
+
+    /// The play-this-card offer this question makes, or `None` when it is not one.
+    ///
+    /// The one question whose answer is an action, so the offer path and the cost reader
+    /// both ask for it by name rather than matching every variant.
+    #[must_use]
+    pub fn play_card(&self) -> Option<&PlayCardRequest> {
+        match self {
+            ChoiceQuestion::PlayCard(request) => Some(request),
+            ChoiceQuestion::Cards(_)
+            | ChoiceQuestion::Confirm(_)
             | ChoiceQuestion::Color(_)
             | ChoiceQuestion::CardName(_)
             | ChoiceQuestion::Replacement(_)
@@ -197,7 +289,8 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Replacement(_)
             | ChoiceQuestion::Order(_)
             | ChoiceQuestion::Permanents(_)
-            | ChoiceQuestion::Permanent(_) => None,
+            | ChoiceQuestion::Permanent(_)
+            | ChoiceQuestion::PlayCard(_) => None,
         }
     }
 
@@ -212,7 +305,8 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Replacement(_)
             | ChoiceQuestion::Order(_)
             | ChoiceQuestion::Permanents(_)
-            | ChoiceQuestion::Permanent(_) => None,
+            | ChoiceQuestion::Permanent(_)
+            | ChoiceQuestion::PlayCard(_) => None,
         }
     }
 
@@ -227,7 +321,8 @@ impl ChoiceQuestion {
             | ChoiceQuestion::Replacement(_)
             | ChoiceQuestion::Order(_)
             | ChoiceQuestion::Permanents(_)
-            | ChoiceQuestion::Permanent(_) => None,
+            | ChoiceQuestion::Permanent(_)
+            | ChoiceQuestion::PlayCard(_) => None,
         }
     }
 
@@ -242,7 +337,8 @@ impl ChoiceQuestion {
             | ChoiceQuestion::CardName(_)
             | ChoiceQuestion::Replacement(_)
             | ChoiceQuestion::Permanents(_)
-            | ChoiceQuestion::Permanent(_) => None,
+            | ChoiceQuestion::Permanent(_)
+            | ChoiceQuestion::PlayCard(_) => None,
         }
     }
 
@@ -257,7 +353,8 @@ impl ChoiceQuestion {
             | ChoiceQuestion::CardName(_)
             | ChoiceQuestion::Replacement(_)
             | ChoiceQuestion::Order(_)
-            | ChoiceQuestion::Permanent(_) => None,
+            | ChoiceQuestion::Permanent(_)
+            | ChoiceQuestion::PlayCard(_) => None,
         }
     }
 
@@ -272,7 +369,8 @@ impl ChoiceQuestion {
             | ChoiceQuestion::CardName(_)
             | ChoiceQuestion::Order(_)
             | ChoiceQuestion::Permanents(_)
-            | ChoiceQuestion::Permanent(_) => None,
+            | ChoiceQuestion::Permanent(_)
+            | ChoiceQuestion::PlayCard(_) => None,
         }
     }
 
@@ -287,7 +385,8 @@ impl ChoiceQuestion {
             | ChoiceQuestion::CardName(_)
             | ChoiceQuestion::Replacement(_)
             | ChoiceQuestion::Order(_)
-            | ChoiceQuestion::Permanents(_) => None,
+            | ChoiceQuestion::Permanents(_)
+            | ChoiceQuestion::PlayCard(_) => None,
         }
     }
 }

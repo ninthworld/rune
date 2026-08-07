@@ -64,6 +64,11 @@ pub(crate) fn player_choice_prompts(state: &GameState, db: &CardDatabase) -> Vec
         ChoiceQuestion::CardName(request) => vec![card_name_prompt(request, db)],
         ChoiceQuestion::Permanents(request) => vec![permanent_choice_prompt(state, db, request)],
         ChoiceQuestion::Permanent(request) => vec![permanent_prompt(state, db, request)],
+        // The offer to play a card poses **no prompt at all**: its answers are real
+        // actions the client already knows how to draw — a cast, a land play, and a
+        // decline — so a slot here would be a second way to say the same thing
+        // (issue #787).
+        ChoiceQuestion::PlayCard(_) => Vec::new(),
     }
 }
 
@@ -478,6 +483,14 @@ pub(crate) fn player_choice_label(state: &GameState, db: &CardDatabase) -> Strin
         }
         Some(ChoiceQuestion::Color(request)) => color_question(request, db),
         Some(ChoiceQuestion::Replacement(_)) => replacement_question(),
+        Some(ChoiceQuestion::PlayCard(request)) => {
+            let name = card_name(request.card.card, db);
+            if request.free {
+                format!("You may play {name} without paying its mana cost")
+            } else {
+                format!("You may play {name}")
+            }
+        }
         Some(ChoiceQuestion::Order(_)) => card_order_question(),
         Some(ChoiceQuestion::Permanent(request)) => permanent_question(request),
         Some(ChoiceQuestion::Permanents(request)) => {
@@ -505,6 +518,24 @@ pub(crate) fn revealed_to(state: &GameState, db: &CardDatabase, viewer: PlayerId
     let Some(pending) = pending_player_choice(state) else {
         return Vec::new();
     };
+    // **A reveal is public** (CR 701.16a, issue #787). An offer to play a revealed card
+    // shows that card to *every* seat, not only to the player deciding — the card said
+    // "reveal", and a reveal only its chooser can see is a look wearing the wrong word.
+    // This is the one question here whose cards are not private, which is why it is
+    // answered before the chooser test rather than inside the match below.
+    if let Some(request) = pending.question.play_card() {
+        return state
+            .players
+            .get(request.subject.0)
+            .and_then(|player| {
+                player
+                    .library
+                    .iter()
+                    .find(|card| card.id == request.card.id)
+            })
+            .map(|card| vec![card_view(card_entity_id(card.id), card.card, db)])
+            .unwrap_or_default();
+    }
     if pending.chooser != viewer {
         return Vec::new();
     }
@@ -539,6 +570,8 @@ pub(crate) fn revealed_to(state: &GameState, db: &CardDatabase, viewer: PlayerId
         // The battlefield is public: a sacrifice, and a permanent named as a card
         // enters, reveal nothing to anybody.
         | ChoiceQuestion::Permanents(_)
+        // Answered above, before the chooser test, because its card is public.
+        | ChoiceQuestion::PlayCard(_)
         | ChoiceQuestion::Permanent(_) => Vec::new(),
     };
     shown

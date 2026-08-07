@@ -1646,6 +1646,41 @@ Like every other continuous permission it is derived on each read: it begins whe
 reaches the battlefield and ends when it leaves, with nothing stored and nothing to prune. A
 spell already on the stack stays cast if the source is destroyed in response.
 
+### Playing a card as part of a resolution
+
+`reveal_top_and_may_play` reveals the top card of the controller's library and offers it to
+them **there and then** — Djinn of Wishes:
+
+```json
+{ "kind": "reveal_top_and_may_play", "free": true }
+```
+
+CR 608.2f: the card is played *during this resolution*, not under a permission that outlives
+it. The resolution suspends, and what the player is offered is the **real thing** — that one
+card's own `CastSpell`, announced with its own targets and modes, or its `PlayLand` under the
+ordinary one-per-turn allowance — plus a decline. No other action is offered while the offer
+stands, exactly as for every other suspension.
+
+**This is the one question whose answer is an action rather than an answer.** Every other
+mid-resolution question is settled by an `Answer…` carrying a value; this one is settled by
+the player really playing the card. A yes-or-no could not express it, because a "yes" would
+still leave the spell to be announced, and an announcement is not something the choice queue
+can carry.
+
+**Timing restrictions based on card type do not apply**: a sorcery revealed this way may be
+cast although something is resolving and the stack is not empty, because the instruction to
+play it *is* the resolution. Everything else is ordinary — additional costs are paid, targets
+are chosen, and the spell goes on the stack to be responded to.
+
+`free` prices it at nothing, and that price is scoped to **the offered card instance**: a
+second copy of the same card in the same hand still costs what it prints. It is read where
+every cost is read, so the offer, the payment, and the charge agree by construction.
+
+The reveal is **public** (CR 701.16a): every seat sees the card, not only the player deciding.
+Declining exiles it, which is the other half of the printed sentence and rides on the request
+rather than on the effects that follow — by the time the answer arrives, nothing else knows
+which card was offered.
+
 ### Ignoring hexproof
 
 `ignore_hexproof` grants a player permission to aim spells and abilities **as though hexproof

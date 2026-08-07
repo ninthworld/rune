@@ -96,6 +96,37 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 // question too; the answer names one of the freshly derived candidates
                 // ([`crate::copy_choice_candidates`]), or none where the card said "may".
                 ChoiceQuestion::Permanent(_) => vec![Action::AnswerPermanent { chosen: None }],
+                // CR 608.2f: the one question answered by *playing something*. The offer
+                // is the real thing — a cast announced with its own targets and modes, or
+                // a land play — for **that one card** and no other, plus the decline that
+                // takes the card's other branch.
+                //
+                // Timing restrictions based on card type do not apply: the instruction to
+                // play it is the resolution, so a sorcery is offered here while an object
+                // is mid-resolution and the stack is not empty. Everything else about the
+                // cast is ordinary, which is why this is a `CastSpell` rather than a
+                // second casting path.
+                ChoiceQuestion::PlayCard(request) => {
+                    let mut offers = vec![Action::AnswerConfirm { accept: false }];
+                    if let Some(data) = db.card(request.card.card) {
+                        if is_land(db, request.card.card) {
+                            // A land played this way still spends the turn's allowance
+                            // (CR 305.2), which is the one ordinary rule that survives.
+                            if !state.land_played {
+                                offers.push(Action::PlayLand { card: request.card });
+                            }
+                        } else if is_castable_spell(data) {
+                            offers.push(Action::CastSpell {
+                                card: request.card,
+                                mode: None,
+                                x: None,
+                                targets: Vec::new(),
+                                payment: Vec::new(),
+                            });
+                        }
+                    }
+                    offers
+                }
             };
             // CR 605.3a: a player asked to pay a cost while something resolves may
             // activate mana abilities to pay it — the one thing the freeze lets

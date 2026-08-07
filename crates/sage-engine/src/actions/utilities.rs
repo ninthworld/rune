@@ -434,6 +434,18 @@ pub(crate) fn cast_cost(
     {
         return Some((crate::mana::ManaCost::default(), data.subtypes.clone()));
     }
+    // And the other free cast (CR 608.2f, issue #787): a resolution that handed this very
+    // card to this very player and said *without paying its mana cost*. Scoped to the
+    // pending offer rather than to the player, so it lasts exactly as long as the question
+    // and reaches no other cast — not even another copy of the same card.
+    if crate::pending_player_choice(state)
+        .and_then(|pending| pending.question.play_card())
+        .is_some_and(|request| {
+            request.free && request.subject == caster && request.card.id == card.id
+        })
+    {
+        return Some((crate::mana::ManaCost::default(), data.subtypes.clone()));
+    }
     Some((cost, data.subtypes.clone()))
 }
 

@@ -176,6 +176,7 @@ impl Effect {
             // is theirs by definition (CR 115.1).
             | Effect::Scry { .. }
             | Effect::LookAtTop { .. }
+            | Effect::RevealTopAndMayPlay { .. }
             | Effect::SearchLibrary { .. }
             // A conditional declares no slot: it has two branches and one flat target
             // list, so a group named in either one could not be paired back onto the

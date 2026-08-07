@@ -43,6 +43,9 @@ pub(crate) fn pose_choices(
                     question
                 }
             }
+            // Always answerable: declining is an answer, and a card that cannot legally
+            // be played is still a card the player may decline. Nothing to clamp.
+            ChoiceQuestion::PlayCard(_) => question,
             ChoiceQuestion::Confirm(request) => {
                 if !cost_could_be_paid(state, chooser, request, db) {
                     state.record_event(GameEvent::OptionalDeclined { player: chooser });
@@ -298,6 +301,21 @@ pub(crate) fn choices_for_effect(
                 },
             }),
         )]),
+        // The offer is posed over the card the reveal turned over; the reveal itself is
+        // public information and happens as the question is asked.
+        Effect::RevealTopAndMayPlay { free } => {
+            let card = *state.players.get(controller.0)?.library.last()?;
+            Some(vec![(
+                controller,
+                ChoiceQuestion::PlayCard(crate::choice::PlayCardRequest {
+                    subject: controller,
+                    card,
+                    zone: crate::choice::PlayZone::LibraryTop,
+                    free: *free,
+                    declined: crate::choice::DeclineOutcome::Exile,
+                }),
+            )])
+        }
         Effect::SearchLibrary {
             take,
             take_amount,

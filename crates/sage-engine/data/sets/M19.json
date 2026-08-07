@@ -220,6 +220,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "djinn_of_wishes",
+    "collector_number": "52",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "essence_scatter",
     "collector_number": "54",
     "rarity": "common"
