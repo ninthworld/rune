@@ -10,10 +10,10 @@ beautiful. The first milestone is the vertical slice of that: two people click a
 a real game in a browser.
 
 > **Status: the browser client is playable, and now looks like a table.** A dark board of real
-> card frames drawn from structured data, a lobby, a deck editor, and a settings panel. Several
-> surfaces are drawn but inert because nothing on the wire carries them yet — chat, the
-> who-is-here roster, and the per-table undo rule. Visual polish still comes after the game is
-> good to play, not before.
+> card frames drawn from structured data, a lobby, a deck editor, a spectator's chair, and a
+> settings panel. Two surfaces are drawn but inert because nothing on the wire carries them yet —
+> chat and the who-is-here roster. Visual polish still comes after the game is good to play, not
+> before.
 
 The engine plays deterministic multiplayer games to a single winner: casting, targeting, the
 stack, combat with per-attacker targets and player-chosen damage assignment, elimination, common
@@ -22,16 +22,21 @@ has is the format's decision, not a global constant — the lobby plumbs 2–8, 
 name says which game it seats: `starter-1v1` and `standard_2p` (the web client's `1v1`) seat
 exactly 2, `standard_ffa` seats 3–4, `commander` seats 2–4, and the permissive
 `standard_multiplayer` catch-all is the one that allows the full 2–8 range. The server provides rooms,
-validated decks, reconnect tokens, decision timers, priority automation (the *settle*), and
-spectators.
+validated decks, reconnect tokens, decision timers, priority automation (the *settle*),
+spectators, and an optional per-table undo that is off unless a host turns it on.
 
-Replacement effects exist only as a card's own enters-the-battlefield self-replacements (CR
-614.1c — "enters tapped", "enters with counters"). There is no general replacement layer, so
-damage prevention, regeneration, and cost modification are out of scope for now.
+Replacement and prevention effects (CR 614, CR 615) cover two events: a permanent's arrival on
+the battlefield, and damage. Where several apply at once the affected object's controller orders
+them (CR 616.1), asked as a decision mid-resolution. They come from a card's own
+self-replacements ("enters tapped", "enters with counters") and from the one-shot replacements an
+ability creates for the turn; a *static* replacement ability on a permanent is not modeled, and
+neither is regeneration. Cost modification takes generic mana off, or puts it on, the spells its
+own controller casts — never another player's, and never an activated ability's cost.
 
 The card IR's expressive vocabulary — not authoring throughput — is the current constraint on
-catalog growth. Growing it is the primary engine workstream. The catalog holds a verified slice
-of Core Set 2019, never a full set; the generated
+catalog growth. Growing it is the primary engine workstream. The catalog covers Core Set 2019 in
+full — 299 functional definitions, one for every card in the set — and claims nothing beyond that
+one set; the generated
 [compatibility report](docs/generated/compatibility.md) is the checkable list of exactly which
 cards are supported and which mechanics are deliberately excluded, with the single blocker
 behind each exclusion. It is regenerated from the catalog, and `make check` fails if it drifts.
@@ -68,6 +73,7 @@ See the [project brief](docs/brief.md) for scope and the
 | `crates/sage-protocol` | Shared Rust wire types |
 | `crates/sage-server` | WebSocket lobby, rooms, and view projection |
 | `crates/sage-cli` | Interactive terminal and deterministic-agent client |
+| `crates/sage-scenario` | Development-only runner that opens the client on an exact position |
 | `clients/web` | Browser client and the TypeScript protocol mirror |
 | `clients/prototype` | Throwaway design sandbox; nothing ships from it |
 | `docs` | Brief, protocol, card schema, coding standards, and ADRs |
@@ -127,15 +133,16 @@ Named here so the summary above is not read as more than it is:
 - **Presence roster** — `LobbyView` states the directory, the room, and your own seat, and
   nothing about who else is where. The lobby's *Players* and the room's *Watching* tabs show
   the counts the server does state and an empty list otherwise.
-- **Spectators** — the server implements them (join, redacted `SpectatorView`, an advertised
-  count), but a spectator's identity is never published, so no watcher list can be shown.
-- **Undo** — offered as a table rule at creation and restated in the room, with no command
-  behind it. Nothing is undone today.
-- **Deck building** — an in-client editor over one flat decklist. There is no sideboard on the
-  wire, no saved decks, and no import format.
-- **Replacement effects, cost modification, and X costs** — see the compatibility report.
-- **A legible settle** — the brief names this as the product hypothesis; today a settle is a run
-  of log lines. It, and the gaps above, are tracked as open questions in
+- **A spectator's name** — a watcher sees the board from behind a chair, but a spectator's
+  identity is never published, so no watcher list can be shown.
+- **Deck building** — an in-client editor over one decklist, kept on the device that built it and
+  sent nowhere else. The editor holds a sideboard and a commander; `submit_deck` carries the
+  decklist and the commander, never the sideboard. There is no import format.
+- **Replacement effects and cost modification** — real, and narrower than the sentences above
+  might suggest. See the compatibility report for exactly which shapes exist.
+- **Whether the settle reads** — the band is built (`docs/client-design.md` §6.9), so a settle is
+  no longer a run of log lines. Whether a player who missed a five-event settle feels caught up is
+  a judgment only playing can make. It, and the gaps above, are tracked as open questions in
   [`docs/client-design.md` §10](docs/client-design.md).
 
 ## Documentation
