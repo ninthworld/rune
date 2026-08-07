@@ -78,9 +78,24 @@ export interface Session {
 /** Per **tab**, as `docs/protocol.md` specifies: two tabs are two players, not one. */
 const TOKEN_KEY = 'sage.session'
 
-const readToken = (): string | undefined => {
+/**
+ * The room this tab is watching, if it is watching one.
+ *
+ * A seat is held open across a disconnect and a **spectator is not**: it owns no seat, so the
+ * server drops it from the room's roster and says so plainly — "reconnect for a spectator is
+ * `spectate_room`, which reconstructs the whole public board from its first `SpectatorView`"
+ * (`lobby/connection.rs`). So the one thing a reconnecting spectator has to carry is *which room
+ * it was watching*, which is a fact about this conversation rather than about the game — exactly
+ * what the token beside it is, and kept the same way and in the same place, per tab.
+ *
+ * Without it a dropped socket leaves a spectator on a board that has stopped moving, with the
+ * server's lobby view arriving behind it and nothing to put the two together.
+ */
+const SPECTATING_KEY = 'sage.spectating'
+
+const readTab = (key: string): string | undefined => {
   try {
-    return window.sessionStorage.getItem(TOKEN_KEY) ?? undefined
+    return window.sessionStorage.getItem(key) ?? undefined
   } catch {
     // Storage can be unavailable (a sandboxed frame, a hardened browser). A tab that cannot
     // remember its token still plays; it just cannot reclaim its seat.
@@ -88,14 +103,17 @@ const readToken = (): string | undefined => {
   }
 }
 
-const writeToken = (token: string | undefined): void => {
+const writeTab = (key: string, value: string | undefined): void => {
   try {
-    if (token === undefined) window.sessionStorage.removeItem(TOKEN_KEY)
-    else window.sessionStorage.setItem(TOKEN_KEY, token)
+    if (value === undefined) window.sessionStorage.removeItem(key)
+    else window.sessionStorage.setItem(key, value)
   } catch {
-    /* see `readToken` */
+    /* see `readTab` */
   }
 }
+
+const readToken = (): string | undefined => readTab(TOKEN_KEY)
+const writeToken = (token: string | undefined): void => writeTab(TOKEN_KEY, token)
 
 /**
  * The token this tab holds, if any.
@@ -122,6 +140,11 @@ export function useSession(url: string = defaultServerUrl(), factory?: SocketFac
   // Read through refs inside the frame handler so it never re-subscribes the socket.
   const token = useRef<string | undefined>(readToken())
   const seated = useRef(false)
+  // The room this tab is watching, and whether the *current* socket has already asked to watch
+  // it again. Asking once per socket is what keeps a room that has since ended — which answers
+  // with an error and an unchanged lobby view — from being asked forever.
+  const watching = useRef<string | undefined>(readTab(SPECTATING_KEY))
+  const asked = useRef(false)
 
   const onFrame = useCallback((frame: ServerFrame) => {
     switch (frame.kind) {
@@ -130,6 +153,13 @@ export function useSession(url: string = defaultServerUrl(), factory?: SocketFac
         if (frame.view.session !== undefined && !seated.current) {
           token.current = frame.view.session
           writeToken(frame.view.session)
+        }
+        // A lobby view on a tab that was watching is the server having dropped a spectator it
+        // was holding no seat for. Ask again, with the board still on screen behind it: the next
+        // `SpectatorView` is a whole public game, so resuming is indistinguishable from joining.
+        if (watching.current !== undefined && !seated.current && !asked.current) {
+          asked.current = true
+          connection.current?.send({ type: 'spectate_room', room_id: watching.current })
         }
         break
       case 'game':
@@ -148,6 +178,14 @@ export function useSession(url: string = defaultServerUrl(), factory?: SocketFac
         break
       case 'lobby_error':
         setLobbyError(frame.frame.lobby_error)
+        // The only command this tab sent on this socket was the request to watch again, so an
+        // error on it is that request's: the room has ended, or is no longer one that can be
+        // watched. Stop holding a board that will never move again and let the lobby through.
+        if (watching.current !== undefined && asked.current) {
+          watching.current = undefined
+          writeTab(SPECTATING_KEY, undefined)
+          setSpectator(undefined)
+        }
         break
       case 'unknown':
         // A newer server may send something this client has no concept of. Count it so the
@@ -188,6 +226,9 @@ export function useSession(url: string = defaultServerUrl(), factory?: SocketFac
         factory,
       )
       connection.current = active
+      // A fresh socket has asked this server nothing yet, which is what makes one resume
+      // attempt per socket exactly one attempt.
+      asked.current = false
       // The token is what proves this connection owns a held-open seat; the first ever `hello`
       // has none and is issued a fresh identity.
       active.send({ type: 'hello', ...(token.current ? { token: token.current } : {}) })
@@ -204,12 +245,22 @@ export function useSession(url: string = defaultServerUrl(), factory?: SocketFac
   }, [url, factory, onFrame])
 
   const send = useCallback((message: LobbyCommand | ClientMessage) => {
+    // Which room this tab asked to watch is noted as it goes past rather than being threaded
+    // down to the button that asks: the lobby row sends the command it was advertised
+    // (`lobby.ts`) and knows nothing about reconnecting, which is where this belongs.
+    if ('type' in message && message.type === 'spectate_room') {
+      watching.current = message.room_id
+      writeTab(SPECTATING_KEY, message.room_id)
+      asked.current = true
+    }
     connection.current?.send(message)
   }, [])
 
   const restart = useCallback(() => {
     token.current = undefined
     seated.current = false
+    watching.current = undefined
+    writeTab(SPECTATING_KEY, undefined)
     writeToken(undefined)
     setGame(undefined)
     setSpectator(undefined)

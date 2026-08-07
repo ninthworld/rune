@@ -32,6 +32,8 @@ import type { CardFace } from './card-face'
 import { initialAddress, readConnection, writeConnection } from './connect'
 import { list } from './normalize'
 import { Board } from './ui/game/Board'
+import { Watch } from './ui/game/Watch'
+import { watched } from './watch'
 import { Connect } from './ui/Connect'
 import { Pregame } from './ui/pregame/Pregame'
 import { Settings } from './ui/Settings'
@@ -64,7 +66,7 @@ export function App() {
   // screen asking them to introduce themselves to the server they are still talking to. Set
   // during render rather than in an effect: it is state adjusted from what just arrived, and an
   // effect would draw the connect screen for one frame first.
-  if (session.game && !connected) setConnected(true)
+  if ((session.game || session.spectator) && !connected) setConnected(true)
 
   const enter = useCallback((chosen: string, chosenAddress: string) => {
     writeConnection(deviceStorage(), { name: chosen, server: chosenAddress })
@@ -103,11 +105,13 @@ export function App() {
       onSettings={() => setSettingsOpen(true)}
     />
   ) : session.spectator ? (
-    <div className="lobby">
-      <div className="lobby-main">
-        <div className="zone-empty">Watching — the spectator screen is not built yet.</div>
-      </div>
-    </div>
+    <Watch
+      view={watched(session.spectator)}
+      connection={session.status}
+      epoch={session.epoch}
+      leave={session.restart}
+      onSettings={() => setSettingsOpen(true)}
+    />
   ) : !connected ? (
     <Connect
       name={name}

@@ -1285,6 +1285,60 @@ game went, and saying it twice spends a band whose whole budget is three lines.
 
 ---
 
+## 6.10 Watching
+
+**Watching is the board, minus the seat.** The observer contract the server offers (issue #351) is
+`GameView`'s public half with every receiver field removed, which is not an accident of the wire —
+it is what makes a spectator renderable by the table a player already sits at rather than by a
+second one built beside it. Every region is the same surface, in the same stylesheet, over the same
+derived answers. Whatever is learnt about reading a board holds while watching one, and the two
+cannot drift into disagreeing about the same objects.
+
+**Somebody is always nearest.** The view names no seat as the reader's and never will, so a board
+drawn straight from it would have both halves of the table empty of a chair. The spectator is put
+*behind* one — the first seat in seat order that is still in the game — and the rest of the table
+sits across from it, which makes watching a two-player game the same picture as playing one.
+Clicking a seat's own bar moves behind that seat, eliminated or not: being out is not being gone,
+and what a dead seat left behind is still worth reading. What being out disqualifies a seat from is
+being the *default* chair, because an eliminated seat controls nothing and the nearest region of the
+table is the last one to spend on nothing. Which chair that is, is presentation and device-local in the manner of which seat
+is focused: a refresh puts the spectator behind the first seat again, and the board is otherwise
+identical, which is the complete-view principle holding rather than an exception to it.
+
+Nobody is called *You*. A chair is where the reader is sitting, not a claim about whose game it is,
+and a spectator told a seat was theirs would then be told everyone else was an opponent (§2.1) in a
+game they are not in.
+
+**One row's difference, and one band re-purposed.** The hand row is gone, because there is no hand,
+and the board takes its share; keeping a row for an absent hand would be 3fr of table given to
+nothing. The action bar's band stays and keeps its tone — green on the turn's bookends, blue in a
+main phase, red once combat is live (§6.5) — because where in the turn the game is, is exactly what
+a watcher reads it for. What it carries is a sentence rather than a question: that this is watching,
+who the view said holds priority, where in the turn that is, and the way out. It does **not** keep
+the dock's fixed height: that band is the tallest question the design admits, and a strip that is
+never asked one takes the height of the two lines it holds.
+
+**Nothing on screen can move the game, and that is structural rather than enforced.** There is no
+hand, no action bar, no target slot, no payment, no object menu, no pace preference and no concede —
+not because a flag hides them, but because the composition that draws a watched board imports none
+of the modules that make them. It is the same argument the server makes one layer down: redaction by
+a type with no field to leak. The turn strip is still drawn whole, and every step in it is a
+read-out; a stop is a preference belonging to a seat, and a *disabled* control would say "not now"
+where the honest thing to say to somebody who is not at the table is nothing.
+
+Reading, on the other hand, is everything a watcher does, so every gesture resolves to it: the
+pointer previews, a click pins, and a public pile opens in the dialog §6.6 already specifies.
+
+**Leaving is a new session, not a message.** A spectator connection is one-way — the server ignores
+what a client writes to it — so the way out of watching is the way out of a finished game. The way
+*back in* after a dropped socket is the same asymmetry read forwards: a spectator holds no seat, so
+nothing is held open for it and the reconnect is a fresh request to watch the same room rather than
+a reclaimed one. The tab remembers which room, in the way it remembers its token, and asks once per
+socket — a room that has since ended answers with an error, and the board it would never move again
+is given up rather than left on screen pretending to be a game.
+
+---
+
 ## 7. Type
 
 **There are two scales, and they are measured in different units.** That is the correction this
@@ -1667,8 +1721,12 @@ because they are undecided in principle — and each names what would settle it.
    read from one `GameView` and never queued. What is still open is whether it is *enough* — the
    band says what happened, and whether a player who missed a five-event settle feels caught up is
    a judgment only playing can make.
-5. **Spectating** — a count in the room and nowhere else. A connection the server puts on the
-   spectator contract still lands on a screen that says only that it is not built.
+5. ~~**Spectating**~~ — answered by §6.10 (issue #708): the board minus the seat, watched from
+   behind a chair. What is still open is whether a spectator wants to *choose* the chair at all —
+   both halves show the same public facts, so switching is a change of vantage rather than of
+   information, and whether that earns its gesture is a judgment only watching a real game can
+   make. Settled by: watching a four-player game played to a winner and reporting whether the near
+   half was ever moved.
 6. **Chat, and who is in the lobby.** The client draws both panels and says they carry nothing,
    which is a placement decision rather than a design for either. What a table's chat should be —
    and whether the lobby's is the same surface — is unanswered.

@@ -321,4 +321,65 @@ mod tests {
         // leak one: `result` is simply absent on a live game.
         assert!(view.result.is_none());
     }
+
+    /// The second half of the spectator contract the first fixture leaves untouched: more than
+    /// two seats, a Commander game's public state, and a finished match. Pinned here and
+    /// replayed by the web client (issue #708) so the multiplayer and Commander surfaces a
+    /// watcher reads are driven by the wire rather than by a hand-written object.
+    #[test]
+    fn issue_708_commander_spectator_fixture_round_trips_and_matches_typed_fields() {
+        let json = include_str!("../fixtures/spectatorview-commander.json");
+        let view: SpectatorView = serde_json::from_str(json).unwrap();
+
+        let reencoded = serde_json::to_string(&view).unwrap();
+        let back: SpectatorView = serde_json::from_str(&reencoded).unwrap();
+        assert_eq!(back, view);
+
+        // Every seat, including the two that are out: `seat_order` carries eliminated players
+        // so a watcher's table keeps its shape after somebody loses (issue #345).
+        assert_eq!(view.players.len(), 4);
+        assert_eq!(view.seat_order.len(), 4);
+        assert!(view.players[0].eliminated);
+        assert!(view.players[3].eliminated);
+        assert!(view.players[2].ai);
+
+        // The public Commander projection, all of it keyed by designation rather than by
+        // where a commander currently is.
+        assert_eq!(view.commander_identity.len(), 4);
+        assert_eq!(view.commander_tax.len(), 2);
+        assert_eq!(view.commander_damage.len(), 2);
+        assert_eq!(view.commander_damage[0].amount, 21);
+        assert_eq!(view.command.len(), 1);
+        assert_eq!(view.command[0].player_id, "p2");
+        assert!(view.format.as_ref().is_some_and(|f| f.commander));
+
+        // Public piles other than a graveyard, and an emblem, which is public and in no zone.
+        assert_eq!(view.exile.len(), 1);
+        assert_eq!(view.emblems.len(), 1);
+
+        // A terminal result rides the spectator contract exactly as it rides a seated one.
+        let result = view.result.as_ref().unwrap();
+        assert_eq!(result.winner.as_deref(), Some("p1"));
+        assert_eq!(result.losers, vec!["p0".to_string(), "p3".to_string()]);
+        assert_eq!(result.reason, GameOverReason::CommanderDamage);
+
+        // Still no receiver field to leak, on a view that carries far more than the first one.
+        let raw: serde_json::Value = serde_json::from_str(json).unwrap();
+        for field in [
+            "you",
+            "me",
+            "my_hand",
+            "revealed",
+            "mana_pool",
+            "valid_actions",
+            "action_deadline",
+            "stops",
+            "own_turn_stops",
+            "auto_passed",
+            "auto_passed_steps",
+            "action_rejected",
+        ] {
+            assert!(raw.get(field).is_none(), "{field} is not a spectator's");
+        }
+    }
 }
