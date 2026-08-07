@@ -8,10 +8,6 @@
     "blocker": "the draw trigger condition observes only its own controller's draws"
   },
   {
-    "name": "Abilities that trigger on a **player** becoming the target of a spell or ability",
-    "blocker": "a permanent notices an object put on the stack naming it as a target (CR 603.6e), narrowed to spells alone and to an opponent's objects; a *player* is never the subject — nothing watches for \"whenever you become the target\" — and no trigger reads the targets of an object that was already on the stack"
-  },
-  {
     "name": "Abilities that trigger on a card entering or leaving a hand, a library, or exile",
     "blocker": "cards leaving a graveyard are noticed by diffing it — every road out at once, counted as the one-or-more a card prints — and a permanent entering the battlefield or leaving it for a graveyard is read the same way; no condition names a hand, a library, or exile, so nothing watches a card moving into or out of one"
   },
@@ -152,8 +148,8 @@
     "blocker": "a cast announces X, folds it into the cost as generic mana, and locks it on the stack for the resolution, the entering permanent's counters, and the generated text to read; nothing announces X for an activation or on a trigger, and the announced value feeds only the amounts a derived amount already feeds — never a token count or a mana-value filter"
   },
   {
-    "name": "Static abilities that affect a class of the source's controller's own noncreature permanents, or a class of tokens",
-    "blocker": "the continuous-effect selector names the source, one class of that controller's creatures, or permanents an opponent controls filtered by card type and by the card name the source was given as it entered; it cannot name a class of the controller's own noncreature permanents, and nothing anywhere filters a class by token-ness"
+    "name": "Static abilities that affect a class of the source's controller's own noncreature permanents",
+    "blocker": "the continuous-effect selector names the source, one class of that controller's creatures, permanents an opponent controls filtered by card type and by the card name the source was given as it entered, or every creature token on the battlefield; it cannot name a class of the controller's own noncreature permanents"
   },
   {
     "name": "Static abilities that select by a keyword a permanent was granted",

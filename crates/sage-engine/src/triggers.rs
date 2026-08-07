@@ -5,7 +5,8 @@
 //! calls [`collect_triggers`] and puts each resulting [`Trigger`] on the stack.
 
 use crate::ability::{
-    Ability, ActivatorScope, ObservedActivation, ObservedPermanent, TriggerCondition, TurnScope,
+    Ability, ActivatorScope, ObservedActivation, ObservedPermanent, ObservedTargeting,
+    TriggerCondition, TurnScope,
 };
 use crate::card::abilities_of_permanent;
 use crate::card_type::CardType;
@@ -369,7 +370,7 @@ fn collect_from(
             // named — the event fixed the subject, exactly as a delayed ability's "that
             // spell" is fixed (CR 603.7c) — so one fire is one discarder rather than a
             // count with nobody attached.
-            let named = named_subjects(&event, watcher, before, after);
+            let named = named_subjects(&event, watcher, before, after, db);
             // And a condition whose sentence says "**that many**" arrives with the number
             // already measured, for the same reason: the event fixed it, and by resolution
             // the damage that fixed it is marked and indistinguishable from any other.
@@ -388,9 +389,7 @@ fn collect_from(
                     ),
                     // A printed trigger names nothing yet: its controller aims it once it
                     // is on the stack (CR 603.3d). The exception is the one above.
-                    targets: named.get(index).map_or_else(Vec::new, |player| {
-                        vec![crate::ability::Target::Player(*player)]
-                    }),
+                    targets: named.get(index).map_or_else(Vec::new, |named| vec![*named]),
                 });
             }
         }
@@ -518,19 +517,76 @@ fn named_subjects(
     watcher: Watcher<'_>,
     before: &GameState,
     after: &GameState,
-) -> Vec<PlayerId> {
-    let TriggerCondition::PlayerDiscards(observes) = event else {
-        return Vec::new();
-    };
-    events_in(before, after)
-        .filter_map(|event| match event {
-            GameEvent::CardsDiscarded { player, count } => Some((*player, *count)),
-            _ => None,
+    db: &CardDatabase,
+) -> Vec<crate::ability::Target> {
+    match event {
+        TriggerCondition::PlayerDiscards(observes) => events_in(before, after)
+            .filter_map(|event| match event {
+                GameEvent::CardsDiscarded { player, count } => Some((*player, *count)),
+                _ => None,
+            })
+            .filter(|(player, _)| !observes.opponents_only || *player != watcher.controller)
+            // One entry per card, so the list lines up with the fire count above.
+            .flat_map(|(player, count)| std::iter::repeat_n(player, count as usize))
+            .map(crate::ability::Target::Player)
+            .collect(),
+        // `Counter **that** spell or ability` names the very object the event was about,
+        // and there is no other way to reach it: by the time the trigger resolves the
+        // stack holds it among others, and nothing about the ability would say which.
+        TriggerCondition::SelfBecomesTarget(observes) if observes.you => {
+            targeting_objects(*observes, watcher, before, after, db)
+                .map(crate::ability::Target::Spell)
+                .collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// The objects this transition put on the stack that **named** what `observes` watches —
+/// the source permanent, or its controller — and satisfy its narrowings, in stack order.
+///
+/// The shared body of the two questions a becoming-a-target condition is asked: how many
+/// times it fired, and *which* object each fire was about. One reading, so a card that
+/// counts one object and then acts on another is impossible by construction.
+fn targeting_objects<'a>(
+    observes: ObservedTargeting,
+    watcher: Watcher<'a>,
+    before: &'a GameState,
+    after: &'a GameState,
+    db: &'a CardDatabase,
+) -> impl Iterator<Item = crate::stack::StackId> + 'a {
+    let source = watcher
+        .permanent()
+        .filter(|perm| on_battlefield(after, perm));
+    // Which of the two objects the sentence could be about: the source, or — for a card
+    // whose ability is about its controller — the player.
+    let named = source.map(|perm| {
+        if observes.you {
+            crate::ability::Target::Player(watcher.controller)
+        } else {
+            crate::ability::Target::Permanent(perm.id)
+        }
+    });
+    let chosen_color = source.and_then(|perm| perm.chosen_color);
+    named
+        .into_iter()
+        .flat_map(move |named| targeted_by(before, after, named))
+        .filter(move |object| {
+            // A class of spells implies a spell: no ability is an Aura.
+            !(observes.spells_only || observes.class.is_some())
+                || matches!(object.kind, StackObjectKind::Spell { .. })
         })
-        .filter(|(player, _)| !observes.opponents_only || *player != watcher.controller)
-        // One entry per card, so the list lines up with the fire count above.
-        .flat_map(|(player, count)| std::iter::repeat_n(player, count as usize))
-        .collect()
+        .filter(move |object| !observes.opponents_only || object.controller != watcher.controller)
+        .filter(move |object| !observes.controller_only || object.controller == watcher.controller)
+        .filter(move |object| {
+            observes.class.is_none_or(|class| match object.kind {
+                StackObjectKind::Spell { card, .. } => {
+                    crate::card::spell_matches_class(db, card.card, class, chosen_color)
+                }
+                _ => false,
+            })
+        })
+        .map(|object| object.id)
 }
 
 /// The permanents that entered the battlefield across the diff: present in `after`,
@@ -563,18 +619,14 @@ fn died<'a>(before: &'a GameState, after: &GameState) -> Vec<&'a Permanent> {
 fn targeted_by<'a>(
     before: &GameState,
     after: &'a GameState,
-    permanent: PermanentId,
+    named: crate::ability::Target,
 ) -> impl Iterator<Item = &'a crate::stack::StackObject> {
     let already: Vec<crate::stack::StackId> = before.stack.iter().map(|object| object.id).collect();
     after
         .stack
         .iter()
         .filter(move |object| !already.contains(&object.id))
-        .filter(move |object| {
-            object
-                .targets
-                .contains(&crate::ability::Target::Permanent(permanent))
-        })
+        .filter(move |object| object.targets.contains(&named))
 }
 
 /// The permanents **declared as attackers** across the diff: attacking in `after` and
@@ -839,37 +891,9 @@ fn fire_count(
         // afterwards, so an object that was already there has just targeted nothing.
         //
         // Counted per **object**, not per target word: one announcement is one becoming.
-        TriggerCondition::SelfBecomesTarget(observes) => watcher
-            .permanent()
-            .filter(|perm| on_battlefield(after, perm))
-            .map_or(0, |perm| {
-                targeted_by(before, after, perm.id)
-                    .filter(|object| {
-                        // A class of spells implies a spell: no ability is an Aura.
-                        !(observes.spells_only || observes.class.is_some())
-                            || matches!(object.kind, StackObjectKind::Spell { .. })
-                    })
-                    .filter(|object| {
-                        !observes.opponents_only || object.controller != watcher.controller
-                    })
-                    .filter(|object| {
-                        !observes.controller_only || object.controller == watcher.controller
-                    })
-                    .filter(|object| {
-                        observes.class.is_none_or(|class| match object.kind {
-                            StackObjectKind::Spell { card, .. } => {
-                                crate::card::spell_matches_class(
-                                    db,
-                                    card.card,
-                                    class,
-                                    perm.chosen_color,
-                                )
-                            }
-                            _ => false,
-                        })
-                    })
-                    .count()
-            }),
+        TriggerCondition::SelfBecomesTarget(observes) => {
+            targeting_objects(*observes, watcher, before, after, db).count()
+        }
         // CR 609.7: read from the damage events this transition recorded, which is the
         // only place the dealer survives. Prevented damage records nothing (CR 615.1), so
         // a shield stops this without a clause about it here.

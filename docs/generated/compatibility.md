@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (293)
+## Supported cards (294)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -27,6 +27,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `ajani_s_welcome` | Ajani's Welcome | functional definition |
 | `ajani_wise_counselor` | Ajani, Wise Counselor | functional definition |
 | `alpine_moon` | Alpine Moon | functional definition |
+| `amulet_of_safekeeping` | Amulet of Safekeeping | functional definition |
 | `angel_of_the_dawn` | Angel of the Dawn | functional definition |
 | `anticipate` | Anticipate | functional definition |
 | `apex_of_power` | Apex of Power | functional definition |
@@ -307,14 +308,13 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `windreader_sphinx` | Windreader Sphinx | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (46)
+## Excluded (45)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
 | Excluded | Blocker |
 | --- | --- |
 | Abilities that trigger on a **loyalty** ability specifically | an observed activation is filtered by who activated it and by the source's card type and printed subtype — `an ability of a Sarkhan planeswalker` — but nothing asks whether the ability activated was a *loyalty* ability rather than any other (CR 606.1), so a walker's mana ability would satisfy the same watcher |
-| Abilities that trigger on a **player** becoming the target of a spell or ability | a permanent notices an object put on the stack naming it as a target (CR 603.6e), narrowed to spells alone and to an opponent's objects; a *player* is never the subject — nothing watches for "whenever you become the target" — and no trigger reads the targets of an object that was already on the stack |
 | Abilities that trigger on a card entering or leaving a hand, a library, or exile | cards leaving a graveyard are noticed by diffing it — every road out at once, counted as the one-or-more a card prints — and a permanent entering the battlefield or leaving it for a graveyard is read the same way; no condition names a hand, a library, or exile, so nothing watches a card moving into or out of one |
 | Abilities that trigger on a mana ability being activated | the activation condition watches the objects a transition put on the stack, which a mana ability never reaches (CR 605.3a) |
 | Abilities that trigger on someone else drawing a card | the draw trigger condition observes only its own controller's draws |
@@ -352,7 +352,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Rules that apply as though a permanent lacked a keyword other than defender | one as-though permission is modeled — attacking as though the creature did not have defender (CR 609.4), granted as a continuous effect that is in no layer and read only at the attacker declaration, so the keyword itself is untouched everywhere else; no other keyword can be ignored by a rule, and nothing applies as though a permanent had a keyword it does not |
 | Selectors that filter by toughness | a selector or a count may bound a permanent's power — at least a printed number, or strictly below the power of the effect's own source, read at resolution and from last known information when that source is already gone; toughness bounds nothing, and no bound compares two permanents neither of which is the source |
 | Shuffling anything but the effect's own source into a library | a resolution shuffles its own source in and nothing else: the destination is reachable — a targeted permanent can be put on top of a library — but the shuffle variant is self-referential, so a card that shuffles a permanent it targeted away is unwritable |
-| Static abilities that affect a class of the source's controller's own noncreature permanents, or a class of tokens | the continuous-effect selector names the source, one class of that controller's creatures, or permanents an opponent controls filtered by card type and by the card name the source was given as it entered; it cannot name a class of the controller's own noncreature permanents, and nothing anywhere filters a class by token-ness |
+| Static abilities that affect a class of the source's controller's own noncreature permanents | the continuous-effect selector names the source, one class of that controller's creatures, permanents an opponent controls filtered by card type and by the card name the source was given as it entered, or every creature token on the battlefield; it cannot name a class of the controller's own noncreature permanents |
 | Static abilities that select by a keyword a permanent was granted | a printed static ability's class may be filtered by keyword, and the keyword is read off the **printed** face: the selector is evaluated from inside the CR 613 layer-6 fold that is computing the affected permanent's keyword set, so it cannot ask for the answer being produced — a creature *granted* defender falls outside a class that names defender, exactly as the printed-subtype read beside it already does |
 | Target specs that name a blocker, or the planeswalker a source is attacking | a target spec may narrow to a creature that is **attacking** and, relative to the ability's own source, to the creatures of the player that source is attacking (CR 508.1a); nothing narrows to a creature that is *blocking*, nothing names the attacker a blocker is blocking or the blocker of an attacker, and the planeswalker a source is attacking is resolved to its controller rather than named as a target |
 | The CR 613.8 dependency rules | continuous effects are ordered by CR 613.7 timestamp alone; the layer-6 walk gates each source with that source's *stored* abilities — until-end-of-turn effects and the attachments on it — and never with another permanent's printed static ability, which is the one place the walk is cut so it cannot recurse, so a permanent silenced by a printed static ability still contributes its own |

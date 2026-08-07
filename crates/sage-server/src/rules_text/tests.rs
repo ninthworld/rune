@@ -2078,3 +2078,14 @@ fn issue_706_a_card_that_replaces_its_own_graveyard_entry_says_so() {
          Fate and shuffle it into its owner's library instead."
     );
 }
+
+#[test]
+fn issue_706_a_toll_on_being_targeted_and_a_class_of_tokens() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "amulet_of_safekeeping"),
+        "Whenever you become the target of a spell or ability an opponent controls, \
+         counter target spell unless that player pays {1}.\n\
+         Creature tokens get -1/+0."
+    );
+}

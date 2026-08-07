@@ -96,6 +96,16 @@ pub enum StaticAffects {
         #[serde(default)]
         with_the_named_card: bool,
     },
+    /// Every **creature token** on the battlefield, whoever controls it — Amulet of
+    /// Safekeeping's `creature tokens get -1/-0`.
+    ///
+    /// The first class here that is symmetric: it reaches its own controller's tokens and
+    /// an opponent's alike, because the card names none of them. It is also the first that
+    /// filters by what a permanent *is* rather than by what it is printed as — a token has
+    /// no card (CR 111), which the state already records
+    /// ([`Printed::is_token`](crate::Printed::is_token)), so this is read off the object
+    /// rather than inferred from a missing card handle.
+    EachCreatureToken,
 }
 
 /// What has to be true for a printed [`Ability::Static`] to be **in force** — the

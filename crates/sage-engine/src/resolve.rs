@@ -837,6 +837,18 @@ pub(crate) fn apply_effects_with_targets(
                     | crate::ability::PlayerRef::ThatPlayer,
                     Some(Target::Player(seat)),
                 ) => *seat,
+                // `unless **its controller** pays` — the same "that player", read off the
+                // object on the stack the sentence before it named.
+                (
+                    crate::ability::PlayerRef::TargetPlayer
+                    | crate::ability::PlayerRef::TargetOpponent
+                    | crate::ability::PlayerRef::ThatPlayer,
+                    Some(Target::Spell(id)),
+                ) => state
+                    .stack
+                    .iter()
+                    .find(|object| object.id == *id)
+                    .map_or(controller, |object| object.controller),
                 _ => *crate::apply::non_targeting_subjects(
                     state,
                     *chooser,

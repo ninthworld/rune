@@ -1105,6 +1105,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "amulet_of_safekeeping",
+    "collector_number": "226",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "arcane_encyclopedia",
     "collector_number": "227",
     "rarity": "uncommon"

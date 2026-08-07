@@ -348,6 +348,14 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                 // CR 603.6e. Both narrowings are printed where the card prints them:
                 // the class of object first, then whose it has to be.
                 TriggerCondition::SelfBecomesTarget(observes) => {
+                    // Whose becoming it is: the source's, or its controller's for the one
+                    // card whose ability is about the player rather than the permanent —
+                    // and the second person takes the bare verb where a name takes the -s.
+                    let (who, becomes) = if observes.you {
+                        ("you".to_string(), "become")
+                    } else {
+                        (source.to_string(), "becomes")
+                    };
                     let what = if observes.spells_only {
                         "a spell"
                     } else {
@@ -358,7 +366,7 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                     } else {
                         ""
                     };
-                    format!("Whenever {source} becomes the target of {what}{whose}")
+                    format!("Whenever {who} {becomes} the target of {what}{whose}")
                 }
                 // A watching condition's subject is the class it observes, not the
                 // source — "whenever another creature dies", not "whenever this does".
@@ -697,6 +705,9 @@ fn static_subject(affects: &StaticAffects, source: &str) -> String {
         // A class of one reads as the card's own name, which is how a printed card
         // refers to itself in a standing statement.
         StaticAffects::Source => source.to_string(),
+        // The one symmetric class, and the one that names what a permanent is rather than
+        // who controls it — so the sentence names nobody at all.
+        StaticAffects::EachCreatureToken => "creature tokens".to_string(),
         // The other class of one, and it is *not* the card's name: an attachment's
         // sentence about its host names the host by what it is to the attachment
         // (CR 303.4). Only an Aura prints this today; an Equipment would say "equipped
@@ -791,7 +802,8 @@ fn subject_is_plural(affects: &StaticAffects) -> bool {
         // Both classes of one are singular: one card's name, one enchanted creature.
         StaticAffects::Source | StaticAffects::AttachedTo => false,
         StaticAffects::CreaturesYouControl { .. }
-        | StaticAffects::PermanentsYourOpponentsControl { .. } => true,
+        | StaticAffects::PermanentsYourOpponentsControl { .. }
+        | StaticAffects::EachCreatureToken => true,
     }
 }
 
