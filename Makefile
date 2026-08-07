@@ -21,10 +21,13 @@ engine-lint:
 engine-fmt:
 	cargo fmt --all
 
-# Regenerate the deterministic card-compatibility report (issue #258) from the
-# catalog + data/exclusions.json. Commit the result; `make check` fails if it drifts.
+# Regenerate the two deterministic reports: card compatibility (issue #258) from the
+# catalog + data/exclusions.json, and the catalog test-coverage audit (issue #774) from
+# the catalog + the engine's own sources. Commit both; `make check` fails on drift in
+# either. The coverage report gates only its own freshness — never its contents.
 compat:
 	cargo run -q -p sage-engine --bin gen-compat
+	cargo run -q -p sage-engine --bin gen-coverage
 
 engine-test:
 	cargo test --workspace
