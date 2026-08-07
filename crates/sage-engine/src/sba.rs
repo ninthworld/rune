@@ -284,11 +284,25 @@ pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) 
         // outliving its permanent (no dangling static effect). Anthem-style
         // selectors are left alone — they track a live set, not one object.
         let before = state.static_effects.len();
-        state.static_effects.retain(|effect| match effect.affects {
-            EffectAffects::SpecificPermanent(id) => {
-                state.battlefield.iter().any(|perm| perm.id == id)
-            }
-            EffectAffects::CreaturesControlledBy(_) => true,
+        state.static_effects.retain(|effect| {
+            // `For as long as this remains on the battlefield` ends when the source does
+            // (CR 611.2b). The source is the effect's timestamp — a permanent's own object
+            // id — so the question is whether that permanent is still there. Nothing else
+            // consults this duration on a stored effect, because every other producer of
+            // one synthesizes it fresh on each read; an until-end-of-turn effect is ended
+            // by the cleanup step instead.
+            let source_present = effect.duration != crate::state::Duration::WhileOnBattlefield
+                || state
+                    .battlefield
+                    .iter()
+                    .any(|perm| perm.id.0 == effect.source);
+            source_present
+                && match effect.affects {
+                    EffectAffects::SpecificPermanent(id) => {
+                        state.battlefield.iter().any(|perm| perm.id == id)
+                    }
+                    EffectAffects::CreaturesControlledBy(_) => true,
+                }
         });
         if state.static_effects.len() != before {
             changed = true;

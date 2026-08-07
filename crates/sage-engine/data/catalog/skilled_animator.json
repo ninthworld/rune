@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "functional_id": "skilled_animator",
+  "name": "Skilled Animator",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Artificer"
+  ],
+  "mana_cost": "{2}{U}",
+  "colors": [
+    "blue"
+  ],
+  "power": 1,
+  "toughness": 3,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "animate",
+          "target": "any_artifact_you_control",
+          "types": [
+            "creature"
+          ],
+          "power": 5,
+          "toughness": 5
+        }
+      ]
+    }
+  ]
+}

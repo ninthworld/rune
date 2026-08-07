@@ -226,8 +226,9 @@ pub(crate) fn legal_targets_for_spec(
         | TargetSpec::AnotherAttackingCreature
         | TargetSpec::AnotherCreatureYouControl
         | TargetSpec::AnyCreatureDefendingPlayerControls
-        | TargetSpec::AnyArtifactCreatureYouControl
         | TargetSpec::AnyArtifact
+        | TargetSpec::AnyArtifactYouControl
+        | TargetSpec::AnyArtifactCreatureYouControl
         | TargetSpec::AnyEnchantment
         | TargetSpec::AnyArtifactOrEnchantment
         | TargetSpec::AnyArtifactEnchantmentOrCreatureWithFlying

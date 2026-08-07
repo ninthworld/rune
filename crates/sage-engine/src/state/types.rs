@@ -849,6 +849,44 @@ pub enum Modification {
     /// subtracts as well as adds ([`Self::LoseKeyword`], [`Self::LoseAllAbilities`]):
     /// a grant after a removal grants, and a removal after a grant removes. Among
     /// grants alone the order is still immaterial.
+    /// **CR 613 layer 4**: the permanent gains these card types and subtypes, *in
+    /// addition* to the ones it has — `becomes an artifact creature`, `is a Knight in
+    /// addition to its other types`.
+    ///
+    /// Addition only, because addition is what every printed card in this catalog does.
+    /// A card that *replaced* a permanent's types ("loses all creature types and becomes
+    /// …") would need a second variant, and the exclusion list says so rather than this
+    /// one pretending to cover it.
+    ///
+    /// It is the first modification that changes what a permanent **is**, so it is folded
+    /// before every layer that asks: an artifact that became a creature is inside an
+    /// anthem's class, can attack, and dies to a creature sweeper.
+    AddTypes {
+        /// Card types gained.
+        types: Vec<crate::card_type::CardType>,
+        /// Subtypes gained.
+        subtypes: Vec<String>,
+    },
+    /// **CR 613 layer 7b**: the permanent's base power and toughness *become* these
+    /// numbers — `with base power and toughness 5/5`.
+    ///
+    /// Layer 7b sits after the characteristic-defining abilities of 7a and before the
+    /// counters and modifiers of 7c, which is exactly what the card means: an artifact
+    /// animated to 5/5 and then given a `+1/+1` counter is a 6/6, and one whose
+    /// characteristic-defining ability said 3/3 is a 5/5 anyway.
+    ///
+    /// It also *gives* power and toughness to a permanent that printed none. That is the
+    /// whole point on an artifact: without it, "becomes a creature" would make something
+    /// with no power that could attack for nothing.
+    SetBasePowerToughness {
+        /// The base power it becomes.
+        power: i32,
+        /// The base toughness it becomes.
+        toughness: i32,
+    },
+    /// CR 613 **layer 6** (CR 613.1f): the affected permanent **gains** this keyword
+    /// ability for as long as the effect lasts. Redundant grants are idempotent
+    /// (CR 702.2c).
     GrantKeyword(Keyword),
     /// CR 613 **layer 6** (CR 613.1f): the affected permanent **loses** this keyword
     /// ability — `loses defender until end of turn`. The subtracting counterpart of

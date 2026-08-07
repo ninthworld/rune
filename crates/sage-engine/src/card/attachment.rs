@@ -136,6 +136,14 @@ pub struct Attachment {
     /// Redundant grants are idempotent.
     #[serde(default)]
     pub keywords: Vec<Keyword>,
+    /// Card types the attached object **gains** (CR 613 layer 4), in addition to its own.
+    /// Empty for every attachment that changes only how big its host is.
+    #[serde(default)]
+    pub types: Vec<crate::card_type::CardType>,
+    /// Subtypes the attached object gains — the `is a Knight in addition to its other
+    /// types` of an Equipment that knights its bearer. Empty for most.
+    #[serde(default)]
+    pub subtypes: Vec<String>,
     /// The combat restrictions this imposes on the attached object at CR 613 layer 6
     /// (CR 613.1f) — the "can neither attack nor block" of a pacifism effect.
     /// Empty for an attachment that only pumps or only grants keywords.
@@ -200,6 +208,8 @@ mod tests {
         assert_eq!(
             aegis.attachment,
             Some(Attachment {
+                types: Vec::new(),
+                subtypes: Vec::new(),
                 kind: AttachmentKind::Aura,
                 attach_to: TargetSpec::AnyCreature,
                 equip: None,
@@ -219,6 +229,8 @@ mod tests {
         assert_eq!(
             curse.attachment,
             Some(Attachment {
+                types: Vec::new(),
+                subtypes: Vec::new(),
                 kind: AttachmentKind::Aura,
                 attach_to: TargetSpec::AnyCreature,
                 equip: None,
@@ -254,6 +266,8 @@ mod tests {
         assert_eq!(
             axe.attachment,
             Some(Attachment {
+                types: Vec::new(),
+                subtypes: Vec::new(),
                 kind: AttachmentKind::Equipment,
                 attach_to: TargetSpec::AnyCreatureYouControl,
                 equip: Some("{2}".to_string()),

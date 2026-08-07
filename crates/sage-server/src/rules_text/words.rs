@@ -254,6 +254,7 @@ pub(super) fn target_noun(spec: TargetSpec) -> String {
         TargetSpec::AnyColorlessCreature => "target colorless creature".to_string(),
         TargetSpec::AnyTappedCreature => "target tapped creature".to_string(),
         TargetSpec::AnyArtifact => "target artifact".to_string(),
+        TargetSpec::AnyArtifactYouControl => "target artifact you control".to_string(),
         TargetSpec::AnyEnchantment => "target enchantment".to_string(),
         TargetSpec::AnyArtifactOrEnchantment => "target artifact or enchantment".to_string(),
         TargetSpec::AnyLand => "target land".to_string(),
@@ -338,6 +339,7 @@ pub(super) fn object_noun(spec: TargetSpec) -> String {
         }
         TargetSpec::AnotherAttackingCreature => "another attacking creature".to_string(),
         TargetSpec::AnotherCreatureYouControl => "another creature you control".to_string(),
+        TargetSpec::AnyArtifactYouControl => "artifact you control".to_string(),
         TargetSpec::AnyCreatureDefendingPlayerControls => {
             "creature defending player controls".to_string()
         }
@@ -390,7 +392,7 @@ pub(super) fn granted_subject(spec: TargetSpec) -> &'static str {
         | TargetSpec::AnyCreatureDefendingPlayerControls
         | TargetSpec::CreatureSpellOnStack => "this creature",
         TargetSpec::AnyLand => "this land",
-        TargetSpec::AnyArtifact => "this artifact",
+        TargetSpec::AnyArtifact | TargetSpec::AnyArtifactYouControl => "this artifact",
         TargetSpec::AnyEnchantment => "this enchantment",
         TargetSpec::AnyCreatureOrPlaneswalker => "this permanent",
         TargetSpec::AnyPermanent

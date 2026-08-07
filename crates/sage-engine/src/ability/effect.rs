@@ -1542,6 +1542,41 @@ pub enum Effect {
         /// What may be dealt to. One slot, chosen when the ability goes on the stack.
         target: TargetSpec,
     },
+    /// The targeted permanent **becomes** a creature of the named types with a base power
+    /// and toughness — Skilled Animator's `target artifact you control becomes an artifact
+    /// creature with base power and toughness 5/5 for as long as this creature remains on
+    /// the battlefield`.
+    ///
+    /// Two layers in one effect because the card is one sentence: the types are added at
+    /// CR 613 layer 4 and the base P/T is set at 7b. Neither replaces anything — an
+    /// artifact that becomes an artifact creature is still an artifact, which is exactly
+    /// what "in addition" means, and the base P/T is a *base*, so counters and anthems
+    /// fold onto it afterwards.
+    ///
+    /// The duration is what the printed card says. `for as long as this creature remains
+    /// on the battlefield` is [`Duration::WhileOnBattlefield`](crate::Duration) keyed to
+    /// the source, and `until end of turn` is the other one — the same two durations every
+    /// continuous effect in the engine has, rather than a vocabulary of its own.
+    Animate {
+        /// What may be animated.
+        target: TargetSpec,
+        /// Card types it gains (CR 613 layer 4).
+        #[serde(default)]
+        types: Vec<crate::card_type::CardType>,
+        /// Subtypes it gains.
+        #[serde(default)]
+        subtypes: Vec<String>,
+        /// The base power it becomes, when the card names one (CR 613 layer 7b).
+        #[serde(default)]
+        power: Option<i32>,
+        /// The base toughness it becomes.
+        #[serde(default)]
+        toughness: Option<i32>,
+        /// Whether the effect lasts only until end of turn. `false` is `for as long as`
+        /// the source remains on the battlefield.
+        #[serde(default)]
+        until_end_of_turn: bool,
+    },
     /// **Sacrifice this ability's own source** (CR 701.17) — the `sacrifice it` of a land
     /// that asks for a toll on the way in.
     ///

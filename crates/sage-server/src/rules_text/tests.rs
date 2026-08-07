@@ -1877,3 +1877,23 @@ fn issue_706_becoming_the_target_says_what_kind_of_object_and_whose() {
          you control can't be blocked except by Spirits this turn."
     );
 }
+
+#[test]
+fn issue_706_animating_reads_as_what_it_becomes_and_for_how_long() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "skilled_animator"),
+        "When Skilled Animator enters the battlefield, target artifact you control \
+         becomes a creature with base power and toughness 5/5 for as long as Skilled \
+         Animator remains on the battlefield."
+    );
+    // An Equipment's grants are one sentence, and the type sits among them.
+    assert_eq!(
+        text_of(&db, "sigiled_sword_of_valeron"),
+        "Equipped creature gets +2/+0.\nEquipped creature has vigilance.\nEquipped \
+         creature is a Knight in addition to its other types.\nEquipped creature has \
+         \"Whenever this creature attacks, you create a tapped 2/2 white Knight creature \
+         token with vigilance that's attacking.\"\n{3}: Attach Sigiled Sword of Valeron \
+         to target creature you control."
+    );
+}

@@ -88,8 +88,8 @@
     "blocker": "an exile moves the permanent an effect targeted one way and records nothing about what moved it; there is no linked-object reference (CR 610.3) and no effect watching for a source's departure, so nothing an exile removes ever comes back"
   },
   {
-    "name": "Effects that change a permanent's types, or set its base power and toughness",
-    "blocker": "CR 613 layer 1 copies a permanent's copiable values and layer 7a lets a characteristic-defining ability say what its power is, but nothing between them applies: every card type and subtype the engine reads is the printed one, no effect adds or removes a type, no layer-7b effect sets a base power and toughness, and no layer 7d switches the two"
+    "name": "Effects that **replace** a permanent's types, or set its base power and toughness by a class",
+    "blocker": "a continuous effect may add card types and subtypes to one permanent it targeted (CR 613 layer 4) and set that permanent's base power and toughness (layer 7b), for the turn or for as long as its source remains; nothing *removes* a type — `loses all creature types and becomes` is unwritable — no effect names a class of permanents to animate, and no layer 7d switches power with toughness"
   },
   {
     "name": "Effects that untap a permanent it did not just take",
@@ -104,8 +104,8 @@
     "blocker": "an emblem carries static and triggered abilities only; nothing offers a way to activate one"
   },
   {
-    "name": "Equipment that grants a type, and cards that ask which kind of attachment they carry",
-    "blocker": "an attachment grants power/toughness, keywords, combat restrictions, and written-out abilities at CR 613 layers 6 and 7c — one block for both kinds, so an Equipment grants an ability exactly as an Aura does; it adds no type, and a continuous ability may ask only whether its own source has *something* attached, never whether that something is an Aura, an Equipment, or one of several"
+    "name": "Cards that ask which kind of attachment they carry",
+    "blocker": "an attachment grants power/toughness, keywords, combat restrictions, card types and subtypes, and written-out abilities at CR 613 layers 4, 6 and 7c — one block for both kinds, so an Equipment grants exactly as an Aura does; but a continuous ability may ask only whether its own source has *something* attached, never whether that something is an Aura, an Equipment, or one of several"
   },
   {
     "name": "Gaining control of a permanent for longer than a turn, and exchanging control",

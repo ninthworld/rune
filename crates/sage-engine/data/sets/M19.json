@@ -340,6 +340,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "skilled_animator",
+    "collector_number": "73",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "sleep",
     "collector_number": "74",
     "rarity": "uncommon"
@@ -1133,6 +1138,11 @@
     "functional_id": "rogue_s_gloves",
     "collector_number": "243",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "sigiled_sword_of_valeron",
+    "collector_number": "244",
+    "rarity": "rare"
   },
   {
     "functional_id": "skyscanner",

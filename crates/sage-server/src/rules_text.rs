@@ -791,7 +791,7 @@ pub(super) fn counted_permanents(permanents: &PermanentCount, count: u32) -> Str
 
 /// "a" or "an" for `noun` — read off its first letter, which is right for every noun
 /// this composer can produce.
-fn indefinite_article(noun: &str) -> &'static str {
+pub(super) fn indefinite_article(noun: &str) -> &'static str {
     match noun.chars().next() {
         Some('a' | 'e' | 'i' | 'o' | 'u' | 'A' | 'E' | 'I' | 'O' | 'U') => "an",
         _ => "a",
@@ -944,6 +944,22 @@ fn attachment_text(data: &CardData, attachment: &Attachment) -> Vec<String> {
             .map(|&kw| keyword_word(kw))
             .collect();
         lines.push(sentence_case(&format!("{host} has {}.", words.join(", "))));
+    }
+    if !attachment.types.is_empty() || !attachment.subtypes.is_empty() {
+        // CR 613 layer 4, and the card's own words for it: the type is *added*, which is
+        // the whole difference between this and a card that replaces what its host is.
+        let mut what: Vec<String> = attachment.subtypes.clone();
+        what.extend(
+            attachment
+                .types
+                .iter()
+                .map(|&kind| card_type_word(kind).to_string()),
+        );
+        let named = what.join(" ");
+        lines.push(sentence_case(&format!(
+            "{host} is {} {named} in addition to its other types.",
+            indefinite_article(&named)
+        )));
     }
     if !attachment.abilities.is_empty() {
         // A granted ability is quoted, because the words inside it are the host's: it is

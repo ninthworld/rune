@@ -351,6 +351,12 @@ pub(crate) fn target_is_legal(
                 })
             })
         }
+        (TargetSpec::AnyArtifactYouControl, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| {
+                has_type(p, CardType::Artifact, db)
+                    && crate::characteristics::controller_of(state, p) == controller
+            })
+        }
         (TargetSpec::AnyArtifact, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| has_type(p, CardType::Artifact, db))
         }

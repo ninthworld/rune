@@ -133,3 +133,104 @@ pub(super) fn ordered_pt_modifiers(
     effects.sort_by_key(StaticEffect::timestamp);
     effects
 }
+
+/// The **base power and toughness** a continuous effect sets on `perm` (CR 613 layer 7b),
+/// or `None` when none does.
+///
+/// The latest timestamp wins (CR 613.7): two effects each saying what this permanent's
+/// base P/T *is* do not add up, and the later one is the answer. Today no card can produce
+/// a second, so the ordering exists to make that determinate rather than incidental.
+///
+/// Read from the **stored** effects alone, for the reason layer 4 is: this runs from
+/// inside the computation of `perm`'s characteristics, and a walk that asked every source
+/// permanent for its abilities would not terminate.
+#[must_use]
+pub(super) fn set_base_pt(
+    state: &GameState,
+    perm: &Permanent,
+    db: &CardDatabase,
+) -> Option<(i32, i32)> {
+    let mut ordered: Vec<&StaticEffect> = state
+        .static_effects
+        .iter()
+        .filter(|effect| stored_affects(state, effect, perm, db))
+        .collect();
+    ordered.sort_by_key(|effect| effect.timestamp());
+    ordered
+        .into_iter()
+        .rev()
+        .find_map(|effect| match effect.modification {
+            Modification::SetBasePowerToughness { power, toughness } => Some((power, toughness)),
+            _ => None,
+        })
+}
+
+/// The card types and subtypes continuous effects **add** to `perm` (CR 613 layer 4).
+///
+/// Additive and order-independent — every printed card in this catalog says "in addition
+/// to its other types", and nothing removes one — so unlike layer 7b there is no last-one-
+/// wins to apply. Gathered from the stored effects and from the attachments on `perm`,
+/// which is where an Equipment that makes its bearer a Knight lives.
+#[must_use]
+pub(super) fn added_types(
+    state: &GameState,
+    perm: &Permanent,
+    db: &CardDatabase,
+) -> (Vec<crate::card_type::CardType>, Vec<String>) {
+    let mut types = Vec::new();
+    let mut subtypes = Vec::new();
+    let mut take = |modification: &Modification| {
+        if let Modification::AddTypes {
+            types: added,
+            subtypes: added_subtypes,
+        } = modification
+        {
+            types.extend(added.iter().copied());
+            subtypes.extend(added_subtypes.iter().cloned());
+        }
+    };
+    for effect in &state.static_effects {
+        if stored_affects(state, effect, perm, db) {
+            take(&effect.modification);
+        }
+    }
+    for attachment in &state.battlefield {
+        if attachment.attached_to != Some(perm.id) {
+            continue;
+        }
+        let Some(grant) = attachment
+            .printed
+            .face(db)
+            .and_then(|face| face.attachment())
+        else {
+            continue;
+        };
+        if !grant.types.is_empty() || !grant.subtypes.is_empty() {
+            take(&Modification::AddTypes {
+                types: grant.types.clone(),
+                subtypes: grant.subtypes.clone(),
+            });
+        }
+    }
+    (types, subtypes)
+}
+
+/// Whether a **stored** effect applies to `perm`, for the two layers that are folded
+/// before the current types are known.
+///
+/// Only the keyed form is honoured — an effect naming this one permanent — because those
+/// are the only ones these two layers are ever created as: a card animates *a* permanent
+/// it targeted, never a class of them. A class-scoped effect is skipped rather than
+/// guessed at, which is the conservative direction.
+fn stored_affects(
+    state: &GameState,
+    effect: &StaticEffect,
+    perm: &Permanent,
+    db: &CardDatabase,
+) -> bool {
+    let _ = (state, db);
+    matches!(
+        effect.affects,
+        crate::state::EffectAffects::SpecificPermanent(id) if id == perm.id
+    )
+}

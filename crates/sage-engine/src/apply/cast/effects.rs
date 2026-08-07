@@ -207,7 +207,7 @@ pub(crate) fn apply_effect(
         }
         // Aimed at a chosen permanent, so it is applied through [`apply_targeted_effect`]
         // and this arm is never the one that runs it.
-        Effect::SelfDealsDamage { .. } => {}
+        Effect::SelfDealsDamage { .. } | Effect::Animate { .. } => {}
         // CR 701.17: the source itself, through the one battlefield→graveyard seam a
         // death takes — so a sacrifice fires the dies triggers and logs the death exactly
         // as any other does. A source that has already left sacrifices nothing.
@@ -886,10 +886,13 @@ fn permanents_in(
     source_power: Option<i32>,
     db: &CardDatabase,
 ) -> Vec<PermanentId> {
+    // CR 613 layer 4 has already run by the time a resolution asks: an artifact animated
+    // into a creature is in every class of creatures, which is what makes it die to a
+    // sweeper. Safe to read the computed types here, outside the layer system.
     let is_creature = |perm: &Permanent| {
-        perm.printed
-            .face(db)
-            .is_some_and(|face| face.has_type(crate::card_type::CardType::Creature))
+        crate::characteristics::characteristics(state, perm.id, db)
+            .types
+            .contains(&crate::card_type::CardType::Creature)
     };
     // Every class but one is a class of creatures, so the type test is applied once here
     // rather than restated in each arm. The exception names planeswalkers outright and

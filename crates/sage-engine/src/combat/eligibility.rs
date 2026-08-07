@@ -146,7 +146,7 @@ pub fn attacker_candidates(state: &GameState, db: &CardDatabase) -> Vec<Permanen
         .iter()
         .filter(|perm| {
             crate::characteristics::controller_of(state, perm) == active
-                && super::helpers::is_creature(perm, db)
+                && super::helpers::is_creature(state, perm, db)
                 && !perm.tapped
                 // CR 302.6, with the CR 702.10b haste exemption: a hasty creature
                 // ignores the summoning-sickness attack restriction.
@@ -189,7 +189,7 @@ pub fn blocker_candidates_for(
         .iter()
         .filter(|perm| {
             crate::characteristics::controller_of(state, perm) == defender
-                && super::helpers::is_creature(perm, db)
+                && super::helpers::is_creature(state, perm, db)
                 && !perm.tapped
                 && !permanent_has_restriction(state, perm.id, CombatRestriction::CantBlock, db)
         })

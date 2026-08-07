@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "functional_id": "sigiled_sword_of_valeron",
+  "name": "Sigiled Sword of Valeron",
+  "types": [
+    "artifact"
+  ],
+  "subtypes": [
+    "Equipment"
+  ],
+  "mana_cost": "{3}",
+  "colors": [],
+  "attachment": {
+    "kind": "equipment",
+    "attach_to": "any_creature_you_control",
+    "equip": "{3}",
+    "power": 2,
+    "toughness": 0,
+    "keywords": [
+      "vigilance"
+    ],
+    "subtypes": [
+      "Knight"
+    ],
+    "abilities": [
+      {
+        "type": "triggered",
+        "event": "self_attacks",
+        "effects": [
+          {
+            "kind": "create_token",
+            "count": 1,
+            "tapped": true,
+            "attacking": true,
+            "token": {
+              "name": "Knight",
+              "types": [
+                "creature"
+              ],
+              "subtypes": [
+                "Knight"
+              ],
+              "colors": [
+                "white"
+              ],
+              "power": 2,
+              "toughness": 2,
+              "keywords": [
+                "vigilance"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

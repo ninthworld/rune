@@ -232,10 +232,13 @@ fn issue_150_while_on_battlefield_effect_is_not_ended_by_cleanup() {
     let db = db();
     let mut state = GameState::new_two_player();
     state.step = Step::End; // player 0, turn 1; empty hand.
-    let _creature = place_permanent(&mut state, fixture("walking_corpse"), PlayerId(0), false, 0);
-    let source = state.mint_id();
+    let creature = place_permanent(&mut state, fixture("walking_corpse"), PlayerId(0), false, 0);
+    // The source is a real permanent, because that is what the duration is about: "for as
+    // long as **this** remains on the battlefield" (CR 611.2b). A stored effect whose
+    // source has left is ended by the state-based-action pass, so an effect with no source
+    // at all would be testing a state the rules cannot produce.
     state.static_effects.push(StaticEffect {
-        source,
+        source: creature.0,
         affects: EffectAffects::CreaturesControlledBy(PlayerId(0)),
         modification: Modification::PowerToughness {
             power: 1,
