@@ -302,16 +302,15 @@ pub(crate) fn target_is_legal(
                     && has_type(p, CardType::Creature, db)
             })
         }
-        // CR 105.2: colourless is the absence of every colour, read off the printed
-        // face — the same reading the count selector and the blocking restriction use,
-        // because no colour-changing layer exists to disagree with them.
+        // CR 105.2: colourless is the absence of every colour, read through the computed
+        // characteristics — the same reading the count selector and the blocking
+        // restriction take, so a creature a layer-5 effect made black stops being a legal
+        // target for all three at once.
         (TargetSpec::AnyColorlessCreature, Target::Permanent(id)) => {
-            permanent_matches(state, id, |p| {
-                has_type(p, CardType::Creature, db)
-                    && p.printed
-                        .face(db)
-                        .is_some_and(|face| face.colors().is_empty())
-            })
+            permanent_matches(state, id, |p| has_type(p, CardType::Creature, db))
+                && crate::characteristics::characteristics(state, id, db)
+                    .colors
+                    .is_empty()
         }
         (TargetSpec::AnyTappedCreature, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| {

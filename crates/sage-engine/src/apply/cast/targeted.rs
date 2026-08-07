@@ -382,6 +382,7 @@ pub(crate) fn apply_targeted_effect(
         Effect::Animate {
             types,
             subtypes,
+            colors,
             power,
             toughness,
             until_end_of_turn,
@@ -397,13 +398,14 @@ pub(crate) fn apply_targeted_effect(
                 // so the effect ends when the source leaves — which is what that phrase
                 // means and what the pruning already does for every attachment's grant.
                 let timestamp = source.map_or_else(|| state.mint_id(), |perm| perm.0);
-                if !types.is_empty() || !subtypes.is_empty() {
+                if !types.is_empty() || !subtypes.is_empty() || !colors.is_empty() {
                     state.static_effects.push(crate::state::StaticEffect {
                         source: timestamp,
                         affects: crate::state::EffectAffects::SpecificPermanent(id),
                         modification: crate::state::Modification::AddTypes {
                             types: types.clone(),
                             subtypes: subtypes.clone(),
+                            colors: colors.clone(),
                         },
                         duration,
                     });
@@ -536,10 +538,34 @@ pub(crate) fn apply_targeted_effect(
         // own enters-the-battlefield replacements, and is seen by the trigger diff
         // exactly as a resolving creature spell is. The caller has re-checked that the
         // card is still there and still matches (CR 608.2b).
-        Effect::ReturnCardToBattlefield { tapped, .. } => {
+        Effect::ReturnCardToBattlefield {
+            tapped,
+            types,
+            subtypes,
+            colors,
+            ..
+        } => {
             if let Target::Card(instance) = target {
                 if let Some(card) = take_from_a_graveyard(state, instance) {
-                    state.put_card_onto_battlefield(card, controller, *tapped, None, db);
+                    let made = state.put_card_onto_battlefield(card, controller, *tapped, None, db);
+                    // `That creature is a black Zombie in addition to its other colors and
+                    // types`: a continuous effect on the permanent this just made, keyed
+                    // to that permanent so it lasts exactly as long as it does. Nothing
+                    // else could name it — it did not exist when the spell was cast.
+                    if let Some(made) = made.filter(|_| {
+                        !types.is_empty() || !subtypes.is_empty() || !colors.is_empty()
+                    }) {
+                        state.static_effects.push(crate::state::StaticEffect {
+                            source: made.0,
+                            affects: crate::state::EffectAffects::SpecificPermanent(made),
+                            modification: crate::state::Modification::AddTypes {
+                                types: types.clone(),
+                                subtypes: subtypes.clone(),
+                                colors: colors.clone(),
+                            },
+                            duration: crate::state::Duration::WhileOnBattlefield,
+                        });
+                    }
                 }
             }
         }

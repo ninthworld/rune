@@ -894,6 +894,22 @@ pub enum Effect {
         /// for a token (CR 111.1). Defaults to untapped.
         #[serde(default)]
         tapped: bool,
+        /// Card types the permanent it makes gains (CR 613 layer 4), in addition to its
+        /// own — the `That creature is a black **Zombie** in addition to its other colors
+        /// and types` a reanimation spell prints as its second sentence.
+        #[serde(default)]
+        types: Vec<crate::card_type::CardType>,
+        /// Subtypes it gains.
+        #[serde(default)]
+        subtypes: Vec<String>,
+        /// Colours it gains (CR 613 layer 5).
+        ///
+        /// The three ride this effect rather than a separate `animate` beside it because
+        /// they are about **the permanent this effect just made**, which nothing else can
+        /// name: it did not exist when the spell was cast, so no target could have been
+        /// chosen for it. The continuous effect lasts as long as that permanent does.
+        #[serde(default)]
+        colors: Vec<crate::mana::Color>,
     },
     /// Return the **card in a graveyard** this effect targets to its owner's **hand**
     /// (`Return target creature card from your graveyard to your hand.`) — the
@@ -1566,6 +1582,10 @@ pub enum Effect {
         /// Subtypes it gains.
         #[serde(default)]
         subtypes: Vec<String>,
+        /// Colours it gains (CR 613 layer 5) — `is a **black** Zombie in addition to its
+        /// other colors and types`. Added, never replaced.
+        #[serde(default)]
+        colors: Vec<crate::mana::Color>,
         /// The base power it becomes, when the card names one (CR 613 layer 7b).
         #[serde(default)]
         power: Option<i32>,

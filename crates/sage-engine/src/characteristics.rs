@@ -91,6 +91,12 @@ pub struct Characteristics {
     /// Current mana cost in curly-brace notation (e.g. `"{2}{G}"`); empty for a
     /// permanent with no mana cost, such as a basic land.
     pub mana_cost: String,
+    /// Current colours (CR 105.2), printed unioned with any a CR 613 **layer 5** effect
+    /// added. Empty for a colourless permanent.
+    ///
+    /// A colour is *added*, never removed: every printed card in this catalog says "in
+    /// addition to its other colors", and the exclusion list names the replacing form.
+    pub colors: Vec<crate::mana::Color>,
     /// Current power, for creatures; `None` for non-creatures.
     pub power: Option<i32>,
     /// Current toughness, for creatures; `None` for non-creatures.
@@ -183,7 +189,7 @@ pub fn characteristics(
     // layer 6 bottoms out on — because the third, a printed static ability, is collected
     // by reading each source permanent's abilities, and asking for those from inside this
     // computation would not terminate.
-    let (added_types, added_subtypes) = added_types(state, perm, db);
+    let (added_types, added_subtypes, added_colors) = added_types(state, perm, db);
     let mut types = face.types().to_vec();
     for card_type in added_types {
         if !types.contains(&card_type) {
@@ -194,6 +200,12 @@ pub fn characteristics(
     for subtype in added_subtypes {
         if !subtypes.contains(&subtype) {
             subtypes.push(subtype);
+        }
+    }
+    let mut colors = face.colors().to_vec();
+    for color in added_colors {
+        if !colors.contains(&color) {
+            colors.push(color);
         }
     }
     // CR 613 layer 7c (after counters, ADR 0005 §3): static `+X/+Y` modifiers in
@@ -229,6 +241,7 @@ pub fn characteristics(
         types,
         subtypes,
         mana_cost: face.mana_cost().to_string(),
+        colors,
         power: seed_power.map(|base| {
             base.saturating_add(counter_delta)
                 .saturating_add(static_power)

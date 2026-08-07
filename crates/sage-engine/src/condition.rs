@@ -195,6 +195,17 @@ fn permanents_matching<'a>(
                 .subtype
                 .as_deref()
                 .is_none_or(|subtype| face.has_subtype(subtype))
+            // Colour stays **printed** here, and it is the one read in the engine that
+            // CR 613 layer 5 did not move. This selector is asked from inside a static
+            // ability's condition (Gearsmith Guardian counts blue creatures to decide
+            // whether it is bigger), and a static ability's condition is evaluated from
+            // inside the very characteristics computation a layer-5 read would ask for.
+            // That is the same recursion `min_power` has, and the power bound solves it by
+            // being *refused* in a static condition — which a colour cannot be, because a
+            // bundled card already prints one.
+            //
+            // What it costs is named in `exclusions.json`: a permanent a layer-5 effect
+            // made black is outside a counted class of black permanents.
             && wanted
                 .color
                 .is_none_or(|color| face.colors().contains(&color));

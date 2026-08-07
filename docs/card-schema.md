@@ -808,6 +808,7 @@ and the base power and toughness it takes on:
 | Field | Means |
 | --- | --- |
 | `types`, `subtypes` | what it gains at **layer 4**, *in addition* to what it is |
+| `colors` | what it gains at **layer 5** — `is a **black** Zombie in addition to its other colors` |
 | `power`, `toughness` | the base it takes on at **layer 7b** |
 | `until_end_of_turn` | the duration; absent is `for as long as` the source remains on the battlefield |
 
@@ -819,9 +820,33 @@ sweeper kills it. Nothing about those rules knows it was ever not a creature.
 animated 5/5 with a `+1/+1` counter is a 6/6. It also *gives* P/T to a permanent that
 printed none, which is the whole point on an artifact.
 
-Nothing **removes** a type: every printed card in this catalog says "in addition to its
-other types", and the exclusion list names the replacing form rather than this pretending
-to cover it.
+Nothing **removes** a type or a colour: every printed card in this catalog says "in
+addition to its other colors and types", and the exclusion list names the replacing form
+rather than this pretending to cover it.
+
+Layer 5 is a layer in the same sense layer 4 is — the rules that ask about one object at a
+time read what it produced. A creature made black is black to `can't be blocked by black
+creatures` and is no longer a legal target for a spell that may target only a colourless
+creature.
+
+**One read stays printed**, and deliberately: the `color` of a counted class. That selector
+is asked from inside a static ability's own condition — Gearsmith Guardian counts blue
+creatures to decide whether it is bigger — and a static condition is evaluated from inside
+the very characteristics computation a layer-5 read would ask for. It is the same recursion
+`min_power` has, and the power bound escapes it by being *refused* in a static condition,
+which a colour cannot be while a bundled card prints one. The exclusion list says so.
+
+`return_card_to_battlefield` carries the same three fields, for the permanent it makes:
+
+```json
+{ "kind": "return_card_to_battlefield",
+  "target": { "card_in_graveyard": { "scope": "any", "class": "creature" } },
+  "subtypes": ["Zombie"], "colors": ["black"] }
+```
+
+They ride that effect rather than a separate `animate` beside it because they are about a
+permanent that **did not exist when the spell was cast** — no target could have been
+chosen for it — and the continuous effect lasts exactly as long as it does.
 
 An **attachment** grants the same layer-4 addition through `types`/`subtypes` in its own
 block, beside the power, keywords and restrictions it already grants — that is where

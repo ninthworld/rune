@@ -88,8 +88,8 @@
     "blocker": "an exile moves the permanent an effect targeted one way and records nothing about what moved it; there is no linked-object reference (CR 610.3) and no effect watching for a source's departure, so nothing an exile removes ever comes back"
   },
   {
-    "name": "Effects that **replace** a permanent's types, or set its base power and toughness by a class",
-    "blocker": "a continuous effect may add card types and subtypes to one permanent it targeted (CR 613 layer 4) and set that permanent's base power and toughness (layer 7b), for the turn or for as long as its source remains; nothing *removes* a type — `loses all creature types and becomes` is unwritable — no effect names a class of permanents to animate, and no layer 7d switches power with toughness"
+    "name": "Effects that **replace** a permanent's types or colours, or animate a class",
+    "blocker": "a continuous effect may add card types, subtypes and colours to one permanent — one it targeted, or the one it just put onto the battlefield — and set that permanent's base power and toughness (CR 613 layers 4, 5 and 7b), for the turn or for as long as its source remains; nothing *removes* a type or a colour, no effect names a class of permanents to animate, and no layer 7d switches power with toughness; and a colour a layer-5 effect added is read by the rules that ask about one object at a time — an evasion restriction, a colourless target — but not by a *counted class*, which is evaluated from inside a static ability's own condition and would recurse through the characteristics it is computing"
   },
   {
     "name": "Effects that untap a permanent it did not just take",

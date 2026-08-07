@@ -162,15 +162,12 @@ pub fn blocker_can_block_attacker(
     }
     // CR 509.1b: the attacker's own evasion restrictions, read through the computed
     // characteristics so a granted one restricts exactly as a printed one does.
-    let blocker_colors = blk
-        .printed
-        .face(db)
-        .map(|face| face.colors().to_vec())
-        .unwrap_or_default();
-    // The blocker's power and subtypes, unlike its colour, are read through the computed
-    // characteristics: a pumped blocker really has escaped a power-based evasion, and
-    // reading computed subtypes is already right for the day CR 613 layer 4 lands.
+    // The blocker's colour, power and subtypes all read through the computed
+    // characteristics: a pumped blocker really has escaped a power-based evasion, a
+    // creature made black really is black to `can't be blocked by black creatures`
+    // (CR 613 layer 5), and the same holds for a type a layer-4 effect added.
     let blocker_characteristics = crate::characteristics::characteristics(state, blocker, db);
+    let blocker_colors = blocker_characteristics.colors.clone();
     let blocker_power = blocker_characteristics.power;
     let blocker_subtypes = blocker_characteristics.subtypes;
     for restriction in permanent_restrictions(state, attacker, db) {
