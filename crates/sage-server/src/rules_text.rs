@@ -266,6 +266,16 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                 }
                 TriggerCondition::SelfDies => format!("When {source} dies"),
                 TriggerCondition::SelfAttacks => format!("Whenever {source} attacks"),
+                // The blocking mirror, and the one whose subject may be somebody else: an
+                // Aura says "enchanted creature" where a creature says its own name.
+                TriggerCondition::SelfBlocks(observes) => {
+                    let who = if observes.by_attached {
+                        "enchanted creature".to_string()
+                    } else {
+                        source.to_string()
+                    };
+                    format!("Whenever {who} blocks")
+                }
                 // CR 609.7. The subject is the source or its host, and the two narrowings
                 // trail it where the card prints them.
                 TriggerCondition::DealsDamage(observes) => {

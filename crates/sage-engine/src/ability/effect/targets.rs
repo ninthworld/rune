@@ -210,6 +210,7 @@ impl Effect {
             // An Aura's host was chosen when the Aura was cast; tapping it aims at
             // nothing (CR 303.4a).
             | Effect::TapAttached
+            | Effect::DestroyAttached
             // A card that sacrifices itself names the permanent by saying "it".
             | Effect::SacrificeSelf
             // And one that becomes something else names itself the same way.
