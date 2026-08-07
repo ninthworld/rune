@@ -421,11 +421,24 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 BottomOrder::Chosen => "any order",
             },
         ),
+        // The open form first, because it names no number at all: "any number of Dragon
+        // creature cards" is what the card prints where the others print a ceiling.
+        Effect::SearchLibrary {
+            filter,
+            destination,
+            any_number: true,
+            ..
+        } => format!(
+            "search your library for any number of {}, put them {}, then shuffle",
+            filter_noun(filter, true),
+            destination_phrase(*destination),
+        ),
         Effect::SearchLibrary {
             take,
             take_amount,
             filter,
             destination,
+            ..
         } => match take_amount {
             // A card whose search size is a derived number says "up to that many" and
             // never a figure, so the phrase names the amount rather than a count.

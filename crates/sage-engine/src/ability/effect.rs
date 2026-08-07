@@ -686,8 +686,9 @@ pub enum Effect {
     SearchLibrary {
         /// How many matching cards may be found.
         ///
-        /// Ignored when [`take_amount`](Self::SearchLibrary::take_amount) is present,
-        /// which is where the number comes from then.
+        /// Ignored when [`take_amount`](Self::SearchLibrary::take_amount) or
+        /// [`any_number`](Self::SearchLibrary::any_number) is present, either of which is
+        /// where the number comes from then.
         take: u8,
         /// Where the number of cards comes from, when the card does not print one — the
         /// `up to that many` of `Sacrifice any number of lands. Search your library for
@@ -710,6 +711,18 @@ pub enum Effect {
         /// Where a found card goes. Defaults to its owner's hand.
         #[serde(default)]
         destination: FoundDestination,
+        /// **Any number** of them — the `search your library for any number of Dragon
+        /// creature cards` of a planeswalker's ultimate, where the card prints no ceiling
+        /// at all.
+        ///
+        /// The open form of the same question rather than a second verb, exactly as an
+        /// absent amount is the open form of [`Effect::Sacrifice`]: the ceiling becomes
+        /// the whole matching set, which the choice bounds clamp to what the library
+        /// actually holds. The floor is unchanged at none, because failing to find is
+        /// always legal (CR 701.19c) — so "any number" already includes zero and needs no
+        /// clause saying so.
+        #[serde(default)]
+        any_number: bool,
     },
     /// **Create** `count` tokens with the characteristics `token` describes (CR 111.1):
     /// `create a 1/1 red Goblin creature token`, `create two 1/1 white Soldier creature

@@ -866,6 +866,7 @@ fn issue_604_the_choice_effects_round_trip_with_their_defaults() {
     assert_eq!(
         serde_json::from_str::<Effect>(search).unwrap(),
         Effect::SearchLibrary {
+            any_number: false,
             take_amount: None,
             take: 1,
             filter: CardFilter::SameNameAsSource,
