@@ -1583,8 +1583,19 @@ that watches the game live with all hidden information redacted. Unlike `join_ro
 consume a seat, so it succeeds on a room whose seats are full — but the room’s game must already
 be running (spectating a `gathering` room is rejected with the lobby’s non-fatal error, since
 there is no board to watch yet). On success the connection stops receiving `LobbyView`s and
-begins receiving `SpectatorView`s (below); it sends nothing back. `leave` ends the spectator
-session. Spectators are advertised to the directory as `RoomSummary.spectators` (a count only).
+begins receiving `SpectatorView`s (below). Spectators are advertised to the directory as
+`RoomSummary.spectators` (a count only).
+
+**A spectator connection is one-way.** After the hand-off the server answers pings and notices a
+close, and every text frame the client writes is ignored rather than decoded — there is no command
+a spectator can send, `leave` included. Closing the socket is what ends the session.
+
+**A spectator is not held open across a disconnect**, because it owns no seat to hold: the server
+drops it from the room's roster the moment its socket goes. Reconnecting is therefore an ordinary
+`hello` — which lands the connection back in the lobby — followed by a fresh `spectate_room` for
+the same room, and the `SpectatorView` that answers it is a whole public game, so resuming and
+joining mid-game are the same thing. A client that wants to resume must remember which room it was
+watching; the server, by design, does not remember for it.
 
 `set_name` sets the connection’s public display name (issue #294). The server validates it
 authoritatively — it trims surrounding whitespace and rejects a name that is empty, longer

@@ -379,6 +379,7 @@ pub(crate) fn choices_for_effect(
             take_amount,
             filter,
             destination,
+            any_number,
         } => Some(vec![(
             controller,
             ChoiceQuestion::Cards(ChoiceRequest {
@@ -391,11 +392,14 @@ pub(crate) fn choices_for_effect(
                 // The printed number, or the one the card takes off the game — read once,
                 // here, because it is the size of the question rather than something the
                 // answer could still change (CR 608.2).
-                max: match take_amount {
-                    Some(amount) => crate::condition::derived_amount(
+                max: match (any_number, take_amount) {
+                    // The open form: every matching card is a legal find, and the bounds
+                    // clamp that to what the library holds.
+                    (true, _) => u32::MAX,
+                    (false, Some(amount)) => crate::condition::derived_amount(
                         state, amount, controller, controller, resolution, db,
                     ),
-                    None => u32::from(*take),
+                    (false, None) => u32::from(*take),
                 },
                 outcome: ChoiceOutcome::TakeAndShuffle(*destination),
             }),
@@ -453,6 +457,21 @@ pub(crate) fn choices_for_effect(
                     | crate::ability::PlayerRef::ThatPlayer,
                     Some(Target::Player(seat)),
                 ) => seat,
+                // `unless **its controller** pays` — the offer's own target is an object
+                // on the stack, and the player the sentence means is whoever put it
+                // there. Resolved here rather than named by a reference of its own,
+                // because it is the same "that player": the one the sentence before it
+                // just named.
+                (
+                    crate::ability::PlayerRef::TargetPlayer
+                    | crate::ability::PlayerRef::TargetOpponent
+                    | crate::ability::PlayerRef::ThatPlayer,
+                    Some(Target::Spell(id)),
+                ) => state
+                    .stack
+                    .iter()
+                    .find(|object| object.id == id)
+                    .map_or(controller, |object| object.controller),
                 _ => *crate::apply::non_targeting_subjects(
                     state,
                     *chooser,

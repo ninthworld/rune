@@ -446,6 +446,7 @@ fn issue_149_destroy_round_trips_with_its_target_spec() {
     assert_eq!(
         effect,
         Effect::Destroy {
+            targets: crate::ability::TargetCount::default(),
             target: TargetSpec::AnyCreature,
         }
     );
@@ -460,6 +461,7 @@ fn issue_149_put_counters_round_trips_with_both_kinds() {
     assert_eq!(
         serde_json::from_str::<Effect>(plus).unwrap(),
         Effect::PutCounters {
+            count_amount: None,
             targets: crate::ability::TargetCount::Exactly(1),
             target: TargetSpec::AnyCreature,
             counter: CounterKind::PlusOnePlusOne,
@@ -470,6 +472,7 @@ fn issue_149_put_counters_round_trips_with_both_kinds() {
     assert_eq!(
         serde_json::from_str::<Effect>(minus).unwrap(),
         Effect::PutCounters {
+            count_amount: None,
             targets: crate::ability::TargetCount::Exactly(1),
             target: TargetSpec::AnyCreature,
             counter: CounterKind::MinusOneMinusOne,
@@ -864,6 +867,7 @@ fn issue_604_the_choice_effects_round_trip_with_their_defaults() {
     assert_eq!(
         serde_json::from_str::<Effect>(search).unwrap(),
         Effect::SearchLibrary {
+            any_number: false,
             take_amount: None,
             take: 1,
             filter: CardFilter::SameNameAsSource,
@@ -1076,7 +1080,13 @@ fn issue_737_a_fight_declares_two_groups_of_its_own_specs() {
     assert_eq!(minimum_targets(&effects), 2);
     assert_eq!(maximum_targets(&effects), 2);
     assert_eq!(
-        target_counts(&effects, 2),
+        target_counts(
+            &effects,
+            &[
+                Target::Permanent(crate::id::PermanentId(1)),
+                Target::Permanent(crate::id::PermanentId(2)),
+            ]
+        ),
         vec![1, 1],
         "one target per group, counted per group rather than per effect"
     );

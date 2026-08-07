@@ -458,6 +458,7 @@ fn issue_401_highland_game_gains_two_life_when_it_dies() {
         &mut state,
         elk,
         vec![Effect::Destroy {
+            targets: crate::ability::TargetCount::default(),
             target: TargetSpec::AnyCreature,
         }],
         vec![Target::Permanent(elk)],
@@ -554,6 +555,7 @@ fn issue_401_pelakka_wurm_gains_seven_life_on_etb_and_draws_when_it_dies() {
         &mut state,
         onbf,
         vec![Effect::Destroy {
+            targets: crate::ability::TargetCount::default(),
             target: TargetSpec::AnyCreature,
         }],
         vec![Target::Permanent(onbf)],

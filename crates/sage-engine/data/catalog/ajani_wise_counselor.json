@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "functional_id": "ajani_wise_counselor",
+  "name": "Ajani, Wise Counselor",
+  "supertypes": [
+    "legendary"
+  ],
+  "types": [
+    "planeswalker"
+  ],
+  "subtypes": [
+    "Ajani"
+  ],
+  "mana_cost": "{3}{W}{W}",
+  "colors": [
+    "white"
+  ],
+  "loyalty": 5,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": 2
+        }
+      ],
+      "effects": [
+        {
+          "kind": "gain_life_by_count",
+          "player_ref": "controller",
+          "amount_per": 1,
+          "count_of": {
+            "card_type": "creature"
+          }
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": -3
+        }
+      ],
+      "effects": [
+        {
+          "kind": "pump_all",
+          "affects": {
+            "scope": "creatures_you_control"
+          },
+          "power": 2,
+          "toughness": 2
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": -9
+        }
+      ],
+      "effects": [
+        {
+          "kind": "put_counters",
+          "target": "any_creature",
+          "counter": "plus_one_plus_one",
+          "count_amount": {
+            "source": "your_life_total"
+          }
+        }
+      ]
+    }
+  ]
+}

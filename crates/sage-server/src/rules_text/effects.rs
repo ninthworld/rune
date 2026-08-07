@@ -55,7 +55,9 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 damage_recipient(source, subject)
             )
         }
-        Effect::Destroy { target } => format!("destroy {}", target_noun(*target)),
+        Effect::Destroy { target, targets } => {
+            format!("destroy {}", target_phrase(*target, *targets))
+        }
         // "It", because the sentence before it named the host: an Aura's ability is about
         // the creature it is already on, and the card prints a pronoun rather than a
         // second choice.
@@ -76,6 +78,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 )
             }
             DerivedAmount::LifeGainedThisTurn
+            | DerivedAmount::YourLifeTotal
             | DerivedAmount::MilledThisWay { .. }
             | DerivedAmount::GreatestManaValue { .. }
             | DerivedAmount::SacrificedThisWay
@@ -153,11 +156,24 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             targets,
             counter,
             count,
-        } => format!(
-            "put {} on {}",
-            counters(*counter, *count),
-            target_phrase(*target, *targets)
-        ),
+            count_amount,
+        } => {
+            // "X +1/+1 counters, where X is your life total" — the letter in quantity
+            // position and the source named after it, which is how a card prints an
+            // amount it does not know when it is printed.
+            let what = match count_amount {
+                None => counters(*counter, *count),
+                Some(_) => format!("X {} counters", crate::rules_text::counter_symbol(*counter)),
+            };
+            let clause = format!("put {what} on {}", target_phrase(*target, *targets));
+            match count_amount {
+                None => clause,
+                Some(amount) => format!(
+                    "{clause}, where X is {}",
+                    amount_noun(amount, PlayerRef::Controller)
+                ),
+            }
+        }
         // One effect, one target, one sentence: the keywords a pump also grants are
         // granted to the same creature, so they read as a second verb on the same
         // subject rather than as a sentence with a subject of its own.
@@ -407,11 +423,24 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 BottomOrder::Chosen => "any order",
             },
         ),
+        // The open form first, because it names no number at all: "any number of Dragon
+        // creature cards" is what the card prints where the others print a ceiling.
+        Effect::SearchLibrary {
+            filter,
+            destination,
+            any_number: true,
+            ..
+        } => format!(
+            "search your library for any number of {}, put them {}, then shuffle",
+            filter_noun(filter, true),
+            destination_phrase(*destination),
+        ),
         Effect::SearchLibrary {
             take,
             take_amount,
             filter,
             destination,
+            ..
         } => match take_amount {
             // A card whose search size is a derived number says "up to that many" and
             // never a figure, so the phrase names the amount rather than a count.
@@ -503,6 +532,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         }
         Effect::ReturnCardToBattlefield {
             target,
+            targets,
             tapped,
             types,
             subtypes,
@@ -510,7 +540,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         } => {
             let return_it = format!(
                 "put {} onto the battlefield under your control{}",
-                target_noun(*target),
+                target_phrase(*target, *targets),
                 if *tapped { " tapped" } else { "" }
             );
             // The card prints the continuous half as its own sentence about "that
@@ -959,6 +989,10 @@ fn target_phrase(spec: TargetSpec, count: TargetCount) -> String {
             number(u32::from(n)),
             plural_target_noun(spec)
         ),
+        // "up to one target creature", singular and with no "each of" in front of it:
+        // there is no *each* about a group that names at most one, and the noun agrees
+        // with the number the way a printed card writes it.
+        TargetCount::UpTo(1) => format!("up to one {}", target_noun(spec)),
         TargetCount::UpTo(n) => format!(
             "each of up to {} {}",
             number(u32::from(n)),
@@ -980,6 +1014,7 @@ fn target_subject(spec: TargetSpec, count: TargetCount) -> String {
         TargetCount::Exactly(n) => {
             format!("{} {}", number(u32::from(n)), plural_target_noun(spec))
         }
+        TargetCount::UpTo(1) => format!("up to one {}", target_noun(spec)),
         TargetCount::UpTo(n) => {
             format!(
                 "up to {} {}",
@@ -991,8 +1026,17 @@ fn target_subject(spec: TargetSpec, count: TargetCount) -> String {
 }
 
 /// A target spec pluralized — "target creatures" — for a group that names more than one.
+///
+/// English pluralizes the **head** noun, which is not always the last word: a card in a
+/// graveyard is "target creature card**s** in a graveyard", never "…in a graveyard**s**".
+/// The head runs up to the first preposition, and every phrase this vocabulary produces
+/// has at most one.
 fn plural_target_noun(spec: TargetSpec) -> String {
-    format!("{}s", target_noun(spec))
+    let noun = target_noun(spec);
+    match noun.find(" in ") {
+        Some(at) => format!("{}s{}", &noun[..at], &noun[at..]),
+        None => format!("{noun}s"),
+    }
 }
 
 /// A signed per-unit amount as the `-` or `+` a card prints before its X.
@@ -1028,6 +1072,7 @@ fn count_subject(count: &PermanentCount) -> String {
 fn amount_noun(amount: &DerivedAmount, subject: PlayerRef) -> String {
     match amount {
         DerivedAmount::LifeGainedThisTurn => "the amount of life you gained this turn".to_string(),
+        DerivedAmount::YourLifeTotal => "your life total".to_string(),
         // "milled this way" is the wording the intervening-if clause already uses for the
         // same window; one phrase, so the yes-or-no and the count cannot describe the
         // same mill two ways.

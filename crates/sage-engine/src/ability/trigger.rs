@@ -348,6 +348,16 @@ pub struct ObservedTargeting {
     /// both, which is what "a spell or ability" means.
     #[serde(default)]
     pub spells_only: bool,
+    /// Watch the ability's **controller** becoming a target rather than its source —
+    /// Amulet of Safekeeping's `whenever you become the target of a spell or ability an
+    /// opponent controls`.
+    ///
+    /// One flag rather than a second condition, because everything else about the question
+    /// is identical: the same stack diff, the same narrowings, the same once-per-object
+    /// count. What changes is only which of the two things an object could have named is
+    /// looked for — a player is a legal target (CR 115.1) exactly as a permanent is.
+    #[serde(default)]
+    pub you: bool,
     /// Notice only objects the watching ability's **own controller** put on the stack —
     /// the `whenever **you** cast an Aura spell that targets this creature` of a card
     /// that rewards you for suiting it up. The mirror of

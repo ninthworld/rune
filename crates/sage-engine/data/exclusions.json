@@ -8,10 +8,6 @@
     "blocker": "the draw trigger condition observes only its own controller's draws"
   },
   {
-    "name": "Abilities that trigger on a **player** becoming the target of a spell or ability",
-    "blocker": "a permanent notices an object put on the stack naming it as a target (CR 603.6e), narrowed to spells alone and to an opponent's objects; a *player* is never the subject — nothing watches for \"whenever you become the target\" — and no trigger reads the targets of an object that was already on the stack"
-  },
-  {
     "name": "Abilities that trigger on a card entering or leaving a hand, a library, or exile",
     "blocker": "cards leaving a graveyard are noticed by diffing it — every road out at once, counted as the one-or-more a card prints — and a permanent entering the battlefield or leaving it for a graveyard is read the same way; no condition names a hand, a library, or exile, so nothing watches a card moving into or out of one"
   },
@@ -81,7 +77,7 @@
   },
   {
     "name": "Effects whose amount is derived from a source outside the ones the IR names",
-    "blocker": "an amount may be a count of permanents (feeding power/toughness, life, damage, a token count, and an attachment's static grant), the life gained this turn, a count of what this resolution milled, the greatest mana value among a class of permanents, the X its controller announced, how many permanents this resolution has sacrificed, the power the creature a cost sacrificed had, or half a named player's life total, hand, or creature count rounded up — the last seven feeding power/toughness, a draw, damage, a search's size, a life loss, a discard, and a sacrifice, which may instead name no amount at all and take any number the sacrificing player picks; a count of cards in a graveyard feeds a characteristic-defining power and nothing else, and a chosen permanent's power feeds only the life gained by the exile that removes it — nothing else may: not a whole life total, hand, or graveyard feeding an effect, not one named object's mana value, not another surviving object's power (an ability's own source's power is read by an effect whose sentence is about it, never by an amount), not a chosen permanent's toughness or mana value, not half of anything rounded down, and not the permanent an effect just put onto the battlefield"
+    "blocker": "an amount may be a count of permanents (feeding power/toughness, life, damage, a token count, and an attachment's static grant), the life gained this turn, the controller's life total, a count of what this resolution milled, the greatest mana value among a class of permanents, the X its controller announced, how many permanents this resolution has sacrificed, the power the creature a cost sacrificed had, or half a named player's life total, hand, or creature count rounded up"
   },
   {
     "name": "Emblems with an activated ability",
@@ -136,8 +132,8 @@
     "blocker": "there is no protection layer: nothing stops a spell, a block, an aura, or damage by a quality the way CR 702.16 does"
   },
   {
-    "name": "Replacement effects other than one modifying a permanent entering the battlefield",
-    "blocker": "the entering object's own self-replacements and a one-shot replacement an ability created for the turn are collected, ordered by the affected permanent's controller (CR 616.1), and applied once each (CR 614.5); damage is reached only by a prevention shield, and no other event can be replaced — not a permanent leaving the battlefield, a draw, or life gained — no permanent carries a static replacement ability, and the only substitution an entry can be given is exile"
+    "name": "Replacement effects other than one modifying a battlefield entry or a card's own arrival in a graveyard",
+    "blocker": "the entering object's own self-replacements and a one-shot replacement an ability created for the turn are collected, ordered by the affected permanent's controller (CR 616.1), and applied once each (CR 614.5), and a card may replace its **own** arrival in a graveyard from anywhere by being shuffled into its owner's library; damage is reached only by a prevention shield, and no other event can be replaced — not a permanent leaving the battlefield, a draw, or life gained — no permanent carries a static replacement ability that reaches another object, and the only substitution an entry can be given is exile"
   },
   {
     "name": "Selectors that filter by toughness",
@@ -152,8 +148,8 @@
     "blocker": "a cast announces X, folds it into the cost as generic mana, and locks it on the stack for the resolution, the entering permanent's counters, and the generated text to read; nothing announces X for an activation or on a trigger, and the announced value feeds only the amounts a derived amount already feeds — never a token count or a mana-value filter"
   },
   {
-    "name": "Static abilities that affect a class of the source's controller's own noncreature permanents, or a class of tokens",
-    "blocker": "the continuous-effect selector names the source, one class of that controller's creatures, or permanents an opponent controls filtered by card type and by the card name the source was given as it entered; it cannot name a class of the controller's own noncreature permanents, and nothing anywhere filters a class by token-ness"
+    "name": "Static abilities that affect a class of the source's controller's own noncreature permanents",
+    "blocker": "the continuous-effect selector names the source, one class of that controller's creatures, permanents an opponent controls filtered by card type and by the card name the source was given as it entered, or every creature token on the battlefield; it cannot name a class of the controller's own noncreature permanents"
   },
   {
     "name": "Static abilities that select by a keyword a permanent was granted",

@@ -72,16 +72,71 @@ impl GameState {
     /// to log a creature death), or `None` when no permanent with that id was on the
     /// battlefield. This is a bare zone move and records no log event; a creature
     /// death is logged by [`Self::destroy_permanent`], which routes through here.
-    pub(crate) fn move_permanent_to_graveyard(&mut self, id: PermanentId) -> Option<Permanent> {
+    pub(crate) fn move_permanent_to_graveyard(
+        &mut self,
+        id: PermanentId,
+        db: &CardDatabase,
+    ) -> Option<Permanent> {
         let pos = self.battlefield.iter().position(|p| p.id == id)?;
         let perm = self.battlefield.remove(pos);
-        if let (Some(card), Some(owner)) =
-            (card_leaving(&perm), self.players.get_mut(perm.controller.0))
-        {
-            owner.graveyard.push(card);
-            flag_commander_return(owner, perm.instance);
+        if let Some(card) = card_leaving(&perm) {
+            let owner = perm.controller;
+            if self.put_card_in_graveyard(owner, card, db) {
+                if let Some(player) = self.players.get_mut(owner.0) {
+                    flag_commander_return(player, perm.instance);
+                }
+            }
         }
         Some(perm)
+    }
+
+    /// Put `card` into `owner`'s graveyard — **the** graveyard seam, and the one place a
+    /// card's own `if this would be put into a graveyard from anywhere` replacement is
+    /// applied (CR 614.1c).
+    ///
+    /// Every road to a graveyard ends here: a permanent that died, a spell that resolved,
+    /// a spell that was countered or fizzled, a discard, a mill. That is what makes "from
+    /// anywhere" one fact rather than one per road — and why the replacement is applied
+    /// here rather than at any of them.
+    ///
+    /// Returns whether the card really reached the graveyard. A caller with something to
+    /// do about a card that arrived (the commander's CR 903.9a decision) reads it; the
+    /// rest ignore it, because a card that went somewhere else is simply not in the
+    /// graveyard and every later question about it answers itself.
+    pub(crate) fn put_card_in_graveyard(
+        &mut self,
+        owner: PlayerId,
+        card: CardInstance,
+        db: &CardDatabase,
+    ) -> bool {
+        if crate::card::abilities_of(db, card.card)
+            .iter()
+            .any(|ability| {
+                matches!(
+                    ability,
+                    crate::ability::Ability::ShuffledIntoLibraryInsteadOfGraveyard
+                )
+            })
+        {
+            // Shuffled in (CR 701.16), from the seeded stream like every other shuffle, so
+            // a replay of the same seed puts it in the same place.
+            //
+            // The **reveal** the card also calls for records nothing: a library is a
+            // hidden zone and a graveyard is a public one, so the card's identity is
+            // already known to every seat from having been where it was. There is no wire
+            // event for a reveal and inventing one to say "this card, which you just saw,
+            // is now somewhere you cannot see" would tell a client less than the zone
+            // change it can already read.
+            if let Some(player) = self.players.get_mut(owner.0) {
+                player.library.push(card);
+            }
+            self.shuffle_library(owner);
+            return false;
+        }
+        if let Some(player) = self.players.get_mut(owner.0) {
+            player.graveyard.push(card);
+        }
+        true
     }
 
     /// Move the permanent `id` from the battlefield to its owner's exile zone — the
@@ -651,7 +706,7 @@ impl GameState {
     /// the CR 704.5c decking loss reads. Routing every mill through this one seam is what
     /// keeps that distinction from being re-derived (and got wrong) per effect. Returns the
     /// number of cards moved.
-    pub(crate) fn mill(&mut self, player: PlayerId, count: u32) -> u32 {
+    pub(crate) fn mill(&mut self, player: PlayerId, count: u32, db: &CardDatabase) -> u32 {
         let mut milled = Vec::new();
         for _ in 0..count {
             let Some(p) = self.players.get_mut(player.0) else {
@@ -660,7 +715,9 @@ impl GameState {
             let Some(card) = p.library.pop() else {
                 break;
             };
-            p.graveyard.push(card);
+            // Through the one graveyard seam, so a card that replaces its own arrival
+            // there is milled and put back rather than milled into a graveyard.
+            self.put_card_in_graveyard(player, card, db);
             milled.push(card);
         }
         let moved = u32::try_from(milled.len()).unwrap_or(u32::MAX);
@@ -690,7 +747,7 @@ impl GameState {
     /// engine (type-changing effects are unmodeled). Returns whether a permanent
     /// moved.
     pub(crate) fn destroy_permanent(&mut self, id: PermanentId, db: &CardDatabase) -> bool {
-        let Some(perm) = self.move_permanent_to_graveyard(id) else {
+        let Some(perm) = self.move_permanent_to_graveyard(id, db) else {
             return false;
         };
         if perm

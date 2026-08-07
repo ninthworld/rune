@@ -190,6 +190,13 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   which is what makes a one-click action safe. A click is routed to the slot the server listed
   that id in, never to a cursor the client advances; that is what lets one action ask "who
   attacks" and "what does each attack" at the same time.
+- `src/watch.ts` — a `SpectatorView` as the thing every board module already reads. The wire type is
+  `GameView`'s public half with `players` in the place of `opponents` (`docs/protocol.md`), so the
+  join is a **rename over the rest** and never a field-by-field copy: a copy would be revisited
+  every time the public half grows, and the field somebody forgot is a fact the server sent and the
+  spectator was never shown. It notably does not fill in `you` — a spectator sits behind a chair,
+  and telling `normalize.playerLabel` the chair is theirs prints *You* over somebody else's seat.
+  `table.seats`, `relations`, `board`, `motion` and `turn` are then reached unmodified.
 - `src/connect.ts` — where this client connects and who it says it is, both device-local in the
   manner of ADR 0012's art preference. The server list is **client-side configuration**: the
   protocol has no server directory and this is not one, `PUBLIC_SERVERS` is empty because none is
@@ -203,7 +210,11 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   token is claimed once and then defended** — a fresh socket is issued its own identity before
   its `hello` is read, so a lobby frame carrying a different session is routine during a
   reconnect and adopting it would discard the token that owns the seat. Leaving a finished game
-  is the deliberate opposite: forget the token, and connect as somebody new.
+  is the deliberate opposite: forget the token, and connect as somebody new. **A spectator has no
+  seat to reclaim**, so the server drops it and the reconnect is a fresh `spectate_room` — which is
+  why the room being watched is remembered beside the token, per tab, and asked for again **once
+  per socket**: a room that has since ended answers with an error, and the board that will never
+  move again is dropped rather than left on screen.
 - `src/ui/card/` — the card, which is one drawing everywhere it appears (§6). `Card.tsx` is one
   SVG in the printed grid — a title bar the name leads and the cost follows, an art window, a
   type bar, a text field, the stat on a plaque — and **there is no variant to pass**: the
@@ -230,6 +241,12 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   Every surface tags what it draws with `data-anchor`, which is how a line finds its two ends,
   where `ObjectMenu` opens, and what `Motion` moves — so a surface gets all three by tagging.
   Public piles open as a dialog over the table and may scroll, because a pile is not the board.
+  `Watch.tsx` is the same table with nobody at it (§6.10): every surface beside it, unchanged, over
+  the same derived answers — and deliberately **a different file rather than a flag**, because it
+  imports neither `interaction.ts`, `submission.ts`, `keys.ts` nor `send`, so "no control can move
+  the game" is true by what it reaches for rather than by what it branches on. That is the server's
+  own argument one layer down: redaction by a type with no field to leak. Add a region to the board
+  and it belongs in both.
 - `src/ui/pregame/` — the screens in front of a game (§9), and `Pregame.tsx` holds what they share:
   the catalog, the deck this device has chosen, and the one dialog that loads a deck wherever it is
   opened from. **Which screen is on is the server's answer** — a `LobbyView` with a `room` is a
@@ -262,9 +279,9 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   added to every screen that borrows the name.
 - `e2e/smoke.spec.ts` — the blocking gate: one path against the real server.
 - `e2e/*views.spec.ts` — the non-blocking tier: committed fixtures replayed over an intercepted
-  socket, no server involved. Five files sharing `e2e/frames.ts` — the board, the pre-game
-  screens, the card, the announcement surfaces of §6.7, and the sweep across viewports; the
-  `views` project matches on the suffix.
+  socket, no server involved. Six files sharing `e2e/frames.ts` — the board, the pre-game
+  screens, the card, the announcement surfaces of §6.7, the watched board, and the sweep across
+  viewports; the `views` project matches on the suffix.
 
 Keep logic out of components. Anything worth a test belongs in one of the modules above, which
 are pure and need neither React nor a browser.

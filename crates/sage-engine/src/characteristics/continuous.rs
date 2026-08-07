@@ -212,6 +212,13 @@ fn static_affects_match(
                 .and_then(|source| source.named_card);
             named.is_some() && named == perm.printed.card()
         }
+        // Symmetric, and read off what the permanent *is*: a token has no card (CR 111),
+        // which the state records rather than leaving to be inferred from a missing card
+        // handle. Creature-ness comes from the same `is_creature` the anthem above uses —
+        // the one the caller has already computed — because a token's characteristics are
+        // whatever the effect that made it wrote down (ADR 0015) rather than a printed
+        // face this could read.
+        StaticAffects::EachCreatureToken => perm.printed.is_token() && is_creature,
     }
 }
 

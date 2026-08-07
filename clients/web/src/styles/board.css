@@ -26,6 +26,38 @@
     'hand log';
 }
 
+/* Watching (§6.10): the same grid with the hand row taken out, because a spectator has no
+   hand and a row kept for an absent one would be 3fr of table given to nothing. The action
+   bar's band stays — it still says where in the turn the game is, in the colour that has
+   always said it — so the only difference from a seated board is one row. */
+.layout-watch {
+  grid-template-rows: 32px minmax(0, 1fr) auto;
+  grid-template-areas:
+    'topbar topbar'
+    'battlefield log'
+    'actionbar log';
+}
+
+/* The band the dock reserves is the tallest *question* the design admits (§6.5 rule 5), and a
+   watching strip is never asked one: it carries two lines and takes the height of two lines.
+   The tone is what a watcher reads it for and that is what it keeps. */
+.layout-watch .action-bar {
+  min-height: 0;
+}
+
+/* a step nobody may set a stop on: the same pill, drawn as the read-out it is.
+   A span needs the box a button brought with it, and none of the affordance. */
+span.phase,
+span.phase:hover {
+  display: inline-block;
+  color: #6b6f78;
+  cursor: default;
+}
+
+span.phase.phase-current {
+  color: #cfe0f4;
+}
+
 /* the phase bar under the top bar exists only in narrow mode */
 .phase-bar.phase-top {
   display: none;

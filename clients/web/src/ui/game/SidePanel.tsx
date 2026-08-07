@@ -18,7 +18,9 @@
  * only where the server said this table allows it, disabled where the server said nothing is left
  * to take back, and it carries the count so a player can see the history running out. The client
  * decides neither — `GameView.undo` is the whole of what it knows, and pressing it sends one
- * `undo` and renders whatever comes back.
+ * `undo` and renders whatever comes back. A **watcher** gets none of the strip, undo included:
+ * pace is a preference the server stores against a seat, and `SpectatorView` carries no `undo`
+ * field at all, so there is nothing for a watcher to be offered.
  *
  * Then the tabs. **Stack comes first because it is the only one you have to read now** — it is
  * the game asking you to respond — and its tab carries a count, so a spell going on the stack is
@@ -99,13 +101,20 @@ export function SidePanel({
   log: readonly GameLogEntry[]
   label(id: string): string
   preset?: StopPreset
-  onPreset(preset: StopPreset): void
+  /**
+   * Absent for a reader with no seat: pace is a preference the server stores against one, and a
+   * spectator has none. With no concede either, the strip is not drawn empty — it is not drawn.
+   */
+  onPreset?(preset: StopPreset): void
   /** Absent when the server is not currently offering the action. */
   onConcede?(): void
   concedeAsked: boolean
-  /** What undo can do here, or nothing at a table that does not allow it (issue #648). */
+  /**
+   * What undo can do here, or nothing at a table that does not allow it (issue #648) — and
+   * nothing for a watcher either, since `SpectatorView` has no such field to carry.
+   */
   undo?: UndoView
-  onUndo(): void
+  onUndo?(): void
   surface: Surface
 }) {
   const [tab, setTab] = useState<Tab>('Stack')
@@ -125,41 +134,44 @@ export function SidePanel({
         )}
       </div>
 
-      <div className="helper-strip" role="group" aria-label="Pace">
-        {PRESETS.map((entry) => (
-          <button
-            key={entry}
-            className={`helper-btn${preset === entry ? ' view-on' : ''}`}
-            title={presetWording(entry)}
-            aria-pressed={preset === entry}
-            onClick={() => onPreset(entry)}
-          >
-            {PRESET_LABELS[entry]}
-          </button>
-        ))}
-        {/* Drawn only where the table allows it, and unpressable where the room has nothing
-            left to restore — both facts the server stated, neither one worked out here. The
-            count is the history running out, in the open, so it is never a surprise. */}
-        {undo && (
-          <button
-            className="helper-btn helper-undo"
-            onClick={onUndo}
-            disabled={undo.available === 0}
-            title={
-              undo.available === 0
-                ? 'Nothing earlier is left to go back to'
-                : `Take the last action back — ${undo.available} of ${undo.limit} kept`
-            }
-          >
-            Undo{undo.available > 0 && <span className="panel-count">{undo.available}</span>}
-          </button>
-        )}
-        {onConcede && (
-          <button className="helper-btn helper-concede" onClick={onConcede}>
-            {concedeAsked ? 'Yes, concede the game' : 'Concede'}
-          </button>
-        )}
-      </div>
+      {(onPreset || onConcede || (undo && onUndo)) && (
+        <div className="helper-strip" role="group" aria-label="Pace">
+          {onPreset &&
+            PRESETS.map((entry) => (
+              <button
+                key={entry}
+                className={`helper-btn${preset === entry ? ' view-on' : ''}`}
+                title={presetWording(entry)}
+                aria-pressed={preset === entry}
+                onClick={() => onPreset(entry)}
+              >
+                {PRESET_LABELS[entry]}
+              </button>
+            ))}
+          {/* Drawn only where the table allows it, and unpressable where the room has nothing
+              left to restore — both facts the server stated, neither one worked out here. The
+              count is the history running out, in the open, so it is never a surprise. */}
+          {undo && onUndo && (
+            <button
+              className="helper-btn helper-undo"
+              onClick={onUndo}
+              disabled={undo.available === 0}
+              title={
+                undo.available === 0
+                  ? 'Nothing earlier is left to go back to'
+                  : `Take the last action back — ${undo.available} of ${undo.limit} kept`
+              }
+            >
+              Undo{undo.available > 0 && <span className="panel-count">{undo.available}</span>}
+            </button>
+          )}
+          {onConcede && (
+            <button className="helper-btn helper-concede" onClick={onConcede}>
+              {concedeAsked ? 'Yes, concede the game' : 'Concede'}
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="panel">
         <div className="panel-tabs">

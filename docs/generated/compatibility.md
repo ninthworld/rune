@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (288)
+## Supported cards (294)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -25,7 +25,9 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `ajani_s_influence` | Ajani's Influence | functional definition |
 | `ajani_s_pridemate` | Ajani's Pridemate | functional definition |
 | `ajani_s_welcome` | Ajani's Welcome | functional definition |
+| `ajani_wise_counselor` | Ajani, Wise Counselor | functional definition |
 | `alpine_moon` | Alpine Moon | functional definition |
+| `amulet_of_safekeeping` | Amulet of Safekeeping | functional definition |
 | `angel_of_the_dawn` | Angel of the Dawn | functional definition |
 | `anticipate` | Anticipate | functional definition |
 | `apex_of_power` | Apex of Power | functional definition |
@@ -155,6 +157,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `lightning_strike` | Lightning Strike | functional definition |
 | `liliana_s_contract` | Liliana's Contract | functional definition |
 | `liliana_s_spoils` | Liliana's Spoils | functional definition |
+| `liliana_the_necromancer` | Liliana, the Necromancer | functional definition |
 | `liliana_untouched_by_death` | Liliana, Untouched by Death | functional definition |
 | `llanowar_elves` | Llanowar Elves | functional definition |
 | `loxodon_line_breaker` | Loxodon Line Breaker | functional definition |
@@ -179,6 +182,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `murder` | Murder | functional definition |
 | `mystic_archaeologist` | Mystic Archaeologist | functional definition |
 | `naturalize` | Naturalize | functional definition |
+| `nexus_of_fate` | Nexus of Fate | functional definition |
 | `nicol_bolas_the_ravager` | Nicol Bolas, the Ravager | functional definition |
 | `nightmare_s_thirst` | Nightmare's Thirst | functional definition |
 | `novice_knight` | Novice Knight | functional definition |
@@ -223,6 +227,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `rustwing_falcon` | Rustwing Falcon | functional definition |
 | `sai_master_thopterist` | Sai, Master Thopterist | functional definition |
 | `salvager_of_secrets` | Salvager of Secrets | functional definition |
+| `sarkhan_dragonsoul` | Sarkhan, Dragonsoul | functional definition |
 | `sarkhan_fireblood` | Sarkhan, Fireblood | functional definition |
 | `sarkhan_s_dragonfire` | Sarkhan's Dragonfire | functional definition |
 | `sarkhan_s_unsealing` | Sarkhan's Unsealing | functional definition |
@@ -290,6 +295,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `viashino_pyromancer` | Viashino Pyromancer | functional definition |
 | `vigilant_baloth` | Vigilant Baloth | functional definition |
 | `vine_mare` | Vine Mare | functional definition |
+| `vivien_of_the_arkbow` | Vivien of the Arkbow | functional definition |
 | `vivien_reid` | Vivien Reid | functional definition |
 | `vivien_s_invocation` | Vivien's Invocation | functional definition |
 | `vivien_s_jaguar` | Vivien's Jaguar | functional definition |
@@ -302,14 +308,13 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `windreader_sphinx` | Windreader Sphinx | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (46)
+## Excluded (45)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
 | Excluded | Blocker |
 | --- | --- |
 | Abilities that trigger on a **loyalty** ability specifically | an observed activation is filtered by who activated it and by the source's card type and printed subtype — `an ability of a Sarkhan planeswalker` — but nothing asks whether the ability activated was a *loyalty* ability rather than any other (CR 606.1), so a walker's mana ability would satisfy the same watcher |
-| Abilities that trigger on a **player** becoming the target of a spell or ability | a permanent notices an object put on the stack naming it as a target (CR 603.6e), narrowed to spells alone and to an opponent's objects; a *player* is never the subject — nothing watches for "whenever you become the target" — and no trigger reads the targets of an object that was already on the stack |
 | Abilities that trigger on a card entering or leaving a hand, a library, or exile | cards leaving a graveyard are noticed by diffing it — every road out at once, counted as the one-or-more a card prints — and a permanent entering the battlefield or leaving it for a graveyard is read the same way; no condition names a hand, a library, or exile, so nothing watches a card moving into or out of one |
 | Abilities that trigger on a mana ability being activated | the activation condition watches the objects a transition put on the stack, which a mana ability never reaches (CR 605.3a) |
 | Abilities that trigger on someone else drawing a card | the draw trigger condition observes only its own controller's draws |
@@ -330,7 +335,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Effects that let a player choose the order of the cards a scry keeps on top | a look bottoms its rest in an order the looker picks or at random, as the card says, but the cards a scry leaves on top stay in their printed order |
 | Effects that return a card from a graveyard to a zone other than a hand or the battlefield | a targeted card returns from a graveyard to a hand or to the battlefield, and a whole graveyard can be exiled; nothing else moves a card out of one |
 | Effects that untap a permanent it did not just take | untapping rides on the control change that steals a creature, because one effect names one target; nothing else brings an untap forward |
-| Effects whose amount is derived from a source outside the ones the IR names | an amount may be a count of permanents (feeding power/toughness, life, damage, a token count, and an attachment's static grant), the life gained this turn, a count of what this resolution milled, the greatest mana value among a class of permanents, the X its controller announced, how many permanents this resolution has sacrificed, the power the creature a cost sacrificed had, or half a named player's life total, hand, or creature count rounded up — the last seven feeding power/toughness, a draw, damage, a search's size, a life loss, a discard, and a sacrifice, which may instead name no amount at all and take any number the sacrificing player picks; a count of cards in a graveyard feeds a characteristic-defining power and nothing else, and a chosen permanent's power feeds only the life gained by the exile that removes it — nothing else may: not a whole life total, hand, or graveyard feeding an effect, not one named object's mana value, not another surviving object's power (an ability's own source's power is read by an effect whose sentence is about it, never by an amount), not a chosen permanent's toughness or mana value, not half of anything rounded down, and not the permanent an effect just put onto the battlefield |
+| Effects whose amount is derived from a source outside the ones the IR names | an amount may be a count of permanents (feeding power/toughness, life, damage, a token count, and an attachment's static grant), the life gained this turn, the controller's life total, a count of what this resolution milled, the greatest mana value among a class of permanents, the X its controller announced, how many permanents this resolution has sacrificed, the power the creature a cost sacrificed had, or half a named player's life total, hand, or creature count rounded up |
 | Emblems with an activated ability | an emblem carries static and triggered abilities only; nothing offers a way to activate one |
 | Gaining control of a permanent for longer than a turn | a control change either lasts until end of turn — the theft that unteaps and grants haste — or is an **exchange**, which swaps two permanents indefinitely (CR 701.10) and is all or nothing; nothing takes one permanent for good, and no duration sits between the two |
 | Kicker and other optional additional costs | no optional cost declared on announcement |
@@ -343,11 +348,11 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Playing a card from a zone other than the hand, the command zone, or a permitted graveyard | a graveyard is reached three ways — a one-turn permission to cast from it, a continuous permission to play lands from it, and an activated or triggered ability that returns its own card out of it — exile is reached by a one-turn permission naming the very cards an effect exiled, which may permit playing them or only casting the spells among them, a continuous permission lets a player cast from their hand without paying a mana cost, and a resolution may hand its controller a card to play on the spot (CR 608.2f), off their own library or out of the exile it just dug from another player's; no permission to cast for free outlives the resolution that granted it except from the hand, and no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure) exists |
 | Prohibiting counters from being put on a permanent or a player | counters reach a permanent from an effect, from its own entry, and from a planeswalker's loyalty, and each of those writes them with nothing to consult first; no continuous effect refuses a counter, and a player bears no counters at all |
 | Protection | there is no protection layer: nothing stops a spell, a block, an aura, or damage by a quality the way CR 702.16 does |
-| Replacement effects other than one modifying a permanent entering the battlefield | the entering object's own self-replacements and a one-shot replacement an ability created for the turn are collected, ordered by the affected permanent's controller (CR 616.1), and applied once each (CR 614.5); damage is reached only by a prevention shield, and no other event can be replaced — not a permanent leaving the battlefield, a draw, or life gained — no permanent carries a static replacement ability, and the only substitution an entry can be given is exile |
+| Replacement effects other than one modifying a battlefield entry or a card's own arrival in a graveyard | the entering object's own self-replacements and a one-shot replacement an ability created for the turn are collected, ordered by the affected permanent's controller (CR 616.1), and applied once each (CR 614.5), and a card may replace its **own** arrival in a graveyard from anywhere by being shuffled into its owner's library; damage is reached only by a prevention shield, and no other event can be replaced — not a permanent leaving the battlefield, a draw, or life gained — no permanent carries a static replacement ability that reaches another object, and the only substitution an entry can be given is exile |
 | Rules that apply as though a permanent lacked a keyword other than defender | one as-though permission is modeled — attacking as though the creature did not have defender (CR 609.4), granted as a continuous effect that is in no layer and read only at the attacker declaration, so the keyword itself is untouched everywhere else; no other keyword can be ignored by a rule, and nothing applies as though a permanent had a keyword it does not |
 | Selectors that filter by toughness | a selector or a count may bound a permanent's power — at least a printed number, or strictly below the power of the effect's own source, read at resolution and from last known information when that source is already gone; toughness bounds nothing, and no bound compares two permanents neither of which is the source |
 | Shuffling anything but the effect's own source into a library | a resolution shuffles its own source in and nothing else: the destination is reachable — a targeted permanent can be put on top of a library — but the shuffle variant is self-referential, so a card that shuffles a permanent it targeted away is unwritable |
-| Static abilities that affect a class of the source's controller's own noncreature permanents, or a class of tokens | the continuous-effect selector names the source, one class of that controller's creatures, or permanents an opponent controls filtered by card type and by the card name the source was given as it entered; it cannot name a class of the controller's own noncreature permanents, and nothing anywhere filters a class by token-ness |
+| Static abilities that affect a class of the source's controller's own noncreature permanents | the continuous-effect selector names the source, one class of that controller's creatures, permanents an opponent controls filtered by card type and by the card name the source was given as it entered, or every creature token on the battlefield; it cannot name a class of the controller's own noncreature permanents |
 | Static abilities that select by a keyword a permanent was granted | a printed static ability's class may be filtered by keyword, and the keyword is read off the **printed** face: the selector is evaluated from inside the CR 613 layer-6 fold that is computing the affected permanent's keyword set, so it cannot ask for the answer being produced — a creature *granted* defender falls outside a class that names defender, exactly as the printed-subtype read beside it already does |
 | Target specs that name a blocker, or the planeswalker a source is attacking | a target spec may narrow to a creature that is **attacking** and, relative to the ability's own source, to the creatures of the player that source is attacking (CR 508.1a); nothing narrows to a creature that is *blocking*, nothing names the attacker a blocker is blocking or the blocker of an attacker, and the planeswalker a source is attacking is resolved to its controller rather than named as a target |
 | The CR 613.8 dependency rules | continuous effects are ordered by CR 613.7 timestamp alone; the layer-6 walk gates each source with that source's *stored* abilities — until-end-of-turn effects and the attachments on it — and never with another permanent's printed static ability, which is the one place the walk is cut so it cannot recurse, so a permanent silenced by a printed static ability still contributes its own |

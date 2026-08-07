@@ -299,7 +299,7 @@ fn targets_fill_groups(
     let mut rest = chosen;
     for (group, take) in groups
         .iter()
-        .zip(crate::ability::group_target_counts(groups, chosen.len()))
+        .zip(crate::ability::group_target_counts(groups, chosen))
     {
         let (slice, remaining) = rest.split_at(take.min(rest.len()));
         rest = remaining;

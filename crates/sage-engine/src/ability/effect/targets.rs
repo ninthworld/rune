@@ -67,6 +67,10 @@ impl Effect {
             | Effect::Restrict {
                 target, targets, ..
             }
+            | Effect::Destroy { target, targets }
+            | Effect::ReturnCardToBattlefield {
+                target, targets, ..
+            }
             | Effect::ReturnCardToHand { target, targets } => {
                 vec![TargetGroup::counted(*target, *targets)]
             }
@@ -111,14 +115,12 @@ impl Effect {
             // is the ability's source, never a slot (CR 609.7).
             | Effect::SelfDealsDamage { target }
             | Effect::CounterSpell { target }
-            | Effect::Destroy { target }
             | Effect::Exile { target, .. }
             | Effect::Pump { target, .. }
             | Effect::PumpByCount { target, .. }
             | Effect::PumpByAmount { target, .. }
             | Effect::GrantKeyword { target, .. }
             | Effect::GainControl { target, .. }
-            | Effect::ReturnCardToBattlefield { target, .. }
             | Effect::PutOnTopOfLibrary { target }
             // An equip names its *host* as a target and its own source as everything
             // else, so it declares exactly one slot (CR 702.6b).

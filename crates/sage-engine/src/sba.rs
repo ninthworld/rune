@@ -189,7 +189,7 @@ pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) 
             .map(|perm| perm.id)
             .collect();
         for id in spent {
-            if state.move_permanent_to_graveyard(id).is_some() {
+            if state.move_permanent_to_graveyard(id, db).is_some() {
                 changed = true;
             }
         }
@@ -247,7 +247,7 @@ pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) 
             // An Aura leaving for the graveyard is a zone change, not a death (CR
             // 700.4 — only creatures "die"), so it uses the bare zone move and logs
             // no `permanent_died`.
-            if state.move_permanent_to_graveyard(id).is_some() {
+            if state.move_permanent_to_graveyard(id, db).is_some() {
                 changed = true;
             }
         }

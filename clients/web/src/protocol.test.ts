@@ -48,6 +48,7 @@ const CASES: ReadonlyArray<readonly [string, ZodType]> = [
   ['lobbyview-open.json', LobbyView],
   ['catalogview.json', CatalogView],
   ['spectatorview.json', SpectatorView],
+  ['spectatorview-commander.json', SpectatorView],
 ]
 
 describe('protocol mirror parity', () => {

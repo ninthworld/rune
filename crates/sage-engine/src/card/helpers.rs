@@ -488,6 +488,7 @@ mod tests {
         assert_eq!(
             murder.spell_effects,
             vec![Effect::Destroy {
+                targets: crate::ability::TargetCount::default(),
                 target: TargetSpec::AnyCreature
             }]
         );
@@ -524,6 +525,7 @@ mod tests {
             vec![Ability::Triggered {
                 event: TriggerCondition::SelfEntersBattlefield,
                 effects: vec![Effect::PutCounters {
+                    count_amount: None,
                     targets: crate::ability::TargetCount::Exactly(1),
                     target: TargetSpec::AnyCreature,
                     counter: CounterKind::PlusOnePlusOne,
@@ -541,6 +543,7 @@ mod tests {
         assert_eq!(
             crate::card::tests::card_named(&inline, "test_wither").spell_effects,
             vec![Effect::PutCounters {
+                count_amount: None,
                 targets: crate::ability::TargetCount::Exactly(1),
                 target: TargetSpec::AnyCreature,
                 counter: CounterKind::MinusOneMinusOne,

@@ -63,6 +63,7 @@ fn issue_151_dies_trigger_fires_from_a_destroy_effect_cr_701_7() {
         &mut state,
         lurker,
         vec![Effect::Destroy {
+            targets: crate::ability::TargetCount::default(),
             target: TargetSpec::AnyCreature,
         }],
         vec![Target::Permanent(lurker)],
@@ -94,6 +95,7 @@ fn issue_151_dies_trigger_fires_from_a_minus_one_counter_toughness_drop() {
         &mut state,
         lurker,
         vec![Effect::PutCounters {
+            count_amount: None,
             targets: crate::ability::TargetCount::Exactly(1),
             target: TargetSpec::AnyCreature,
             counter: CounterKind::MinusOneMinusOne,
@@ -132,6 +134,7 @@ fn issue_151_dies_trigger_is_a_synthetic_stack_entry_resolving_after_priority_cr
         &mut state,
         lurker,
         vec![Effect::Destroy {
+            targets: crate::ability::TargetCount::default(),
             target: TargetSpec::AnyCreature,
         }],
         vec![Target::Permanent(lurker)],

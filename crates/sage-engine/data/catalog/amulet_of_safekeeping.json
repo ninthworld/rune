@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "functional_id": "amulet_of_safekeeping",
+  "name": "Amulet of Safekeeping",
+  "types": [
+    "artifact"
+  ],
+  "mana_cost": "{2}",
+  "colors": [],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "self_becomes_target": {
+          "you": true,
+          "opponents_only": true
+        }
+      },
+      "effects": [
+        {
+          "kind": "may",
+          "chooser": "that_player",
+          "cost": {
+            "kind": "mana",
+            "mana": "{1}"
+          },
+          "effects": [],
+          "otherwise": [
+            {
+              "kind": "counter_spell",
+              "target": "spell_on_stack"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "static",
+      "affects": {
+        "scope": "each_creature_token"
+      },
+      "modification": {
+        "kind": "power_toughness",
+        "power": -1,
+        "toughness": 0
+      }
+    }
+  ]
+}

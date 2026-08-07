@@ -1058,6 +1058,7 @@ fn issue_725_an_optional_effect_that_targets_reads_as_the_card_prints_it() {
         optional_effect_question(
             None,
             &[Effect::Destroy {
+                targets: sage_engine::TargetCount::default(),
                 target: TargetSpec::AnyArtifactOrEnchantment,
             }]
         ),
@@ -2025,5 +2026,66 @@ fn issue_706_a_class_named_as_one_choice_and_a_spell_that_stands() {
         "Lightning Mare can't be blocked by blue creatures.\n\
          Lightning Mare can't be countered.\n\
          {1}{R}: Lightning Mare gets +1/+0 until end of turn."
+    );
+}
+
+#[test]
+fn issue_706_three_planeswalkers_state_their_three_amounts() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "ajani_wise_counselor"),
+        "+2: You gain 1 life for each creature you control.\n\
+         −3: Creatures you control get +2/+2 until end of turn.\n\
+         −9: Put X +1/+1 counters on target creature, where X is your life total."
+    );
+    assert_eq!(
+        text_of(&db, "sarkhan_dragonsoul"),
+        "+2: Sarkhan, Dragonsoul deals 1 damage to each opponent and Sarkhan, Dragonsoul \
+         deals 1 damage to each creature your opponents control.\n\
+         −3: Sarkhan, Dragonsoul deals 4 damage to target player or planeswalker.\n\
+         −9: Search your library for any number of Dragon creature cards, put them \
+         onto the battlefield, then shuffle."
+    );
+    assert_eq!(
+        text_of(&db, "vivien_of_the_arkbow"),
+        "+2: Put two +1/+1 counters on up to one target creature.\n\
+         −3: Target creature you control deals damage equal to its power to target \
+         creature an opponent controls.\n\
+         −9: Creatures you control get +4/+4 until end of turn and creatures you control \
+         gain trample until end of turn."
+    );
+}
+
+#[test]
+fn issue_706_an_ultimate_that_names_two_classes_states_both() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "liliana_the_necromancer"),
+        "+1: Target player loses 2 life.\n\
+         −1: Return target creature card in your graveyard to its owner's hand.\n\
+         −7: Destroy each of up to two target creatures and put each of up to two \
+         target creature cards in a graveyard onto the battlefield under your control."
+    );
+}
+
+#[test]
+fn issue_706_a_card_that_replaces_its_own_graveyard_entry_says_so() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "nexus_of_fate"),
+        "Take an extra turn after this one.\n\
+         If Nexus of Fate would be put into a graveyard from anywhere, reveal Nexus of \
+         Fate and shuffle it into its owner's library instead."
+    );
+}
+
+#[test]
+fn issue_706_a_toll_on_being_targeted_and_a_class_of_tokens() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "amulet_of_safekeeping"),
+        "Whenever you become the target of a spell or ability an opponent controls, \
+         counter target spell unless that player pays {1}.\n\
+         Creature tokens get -1/+0."
     );
 }

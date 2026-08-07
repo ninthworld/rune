@@ -1105,6 +1105,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "amulet_of_safekeeping",
+    "collector_number": "226",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "arcane_encyclopedia",
     "collector_number": "227",
     "rarity": "uncommon"
@@ -1375,6 +1380,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "ajani_wise_counselor",
+    "collector_number": "281",
+    "rarity": "mythic"
+  },
+  {
     "functional_id": "riddlemaster_sphinx",
     "collector_number": "287",
     "rarity": "rare"
@@ -1385,9 +1395,24 @@
     "rarity": "rare"
   },
   {
+    "functional_id": "liliana_the_necromancer",
+    "collector_number": "291",
+    "rarity": "mythic"
+  },
+  {
+    "functional_id": "sarkhan_dragonsoul",
+    "collector_number": "296",
+    "rarity": "mythic"
+  },
+  {
     "functional_id": "sarkhan_s_whelp",
     "collector_number": "299",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "vivien_of_the_arkbow",
+    "collector_number": "301",
+    "rarity": "mythic"
   },
   {
     "functional_id": "ursine_champion",
@@ -1398,6 +1423,11 @@
     "functional_id": "vivien_s_jaguar",
     "collector_number": "305",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "nexus_of_fate",
+    "collector_number": "306",
+    "rarity": "mythic"
   },
   {
     "functional_id": "waterknot",

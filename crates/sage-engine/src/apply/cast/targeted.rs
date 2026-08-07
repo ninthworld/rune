@@ -80,9 +80,7 @@ pub(crate) fn apply_targeted_effect(
                     // stack already is.
                     if let StackObjectKind::Spell { card, .. } = countered.kind {
                         let owner = countered.controller;
-                        if let Some(player) = state.players.get_mut(owner.0) {
-                            player.graveyard.push(card);
-                        }
+                        state.put_card_in_graveyard(owner, card, db);
                         state.record_event(GameEvent::SpellCountered {
                             player: owner,
                             card,
@@ -181,10 +179,30 @@ pub(crate) fn apply_targeted_effect(
         // folds `+1/+1` / `-1/-1` counters in on demand (CR 613.7c), so a `-1/-1`
         // counter can turn lethal by lowering toughness to at or below marked
         // damage; the SBA loop then destroys it (CR 704.5g).
-        Effect::PutCounters { counter, count, .. } => {
+        Effect::PutCounters {
+            counter,
+            count,
+            count_amount,
+            ..
+        } => {
+            // The printed number, or the one the game supplies (CR 608.2) — read here
+            // rather than once for the whole effect, which changes nothing: an amount is
+            // a question about the game, and nothing between two targets of one effect
+            // can answer it differently.
+            let count = match count_amount {
+                None => *count,
+                Some(amount) => crate::condition::derived_amount(
+                    state,
+                    amount,
+                    controller,
+                    controller,
+                    resolution,
+                    db,
+                ),
+            };
             if let Target::Permanent(id) = target {
                 if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
-                    *perm.counters.entry(*counter).or_insert(0) += *count;
+                    *perm.counters.entry(*counter).or_insert(0) += count;
                 }
             }
         }
@@ -372,7 +390,7 @@ pub(crate) fn apply_targeted_effect(
         }
         Effect::Mill { count, .. } => {
             if let Target::Player(seat) = target {
-                state.mill(seat, u32::from(*count));
+                state.mill(seat, u32::from(*count), db);
             }
         }
         // CR 613 layers 4 and 7b, as one sentence: the types are added and the base power

@@ -419,6 +419,7 @@ fn issue_149_put_counters_ability_lands_on_its_target_cr_122() {
             source: crate::stack::AbilitySource::Permanent(creature),
             origin: AbilityOrigin::Activated,
             effects: vec![Effect::PutCounters {
+                count_amount: None,
                 targets: crate::ability::TargetCount::Exactly(1),
                 target: TargetSpec::AnyCreature,
                 counter: CounterKind::PlusOnePlusOne,

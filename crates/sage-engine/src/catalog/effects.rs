@@ -170,13 +170,54 @@ pub(super) fn effect_lists(
     lists
 }
 
-/// How many of `effects` declare an `"up_to"` target count — the variable-arity groups
-/// one announcement would have to split its flat target list between.
-pub(super) fn variable_target_groups(effects: &[&serde_json::Value]) -> usize {
-    effects
-        .iter()
-        .filter(|effect| declares_variable_group(effect))
-        .count()
+/// How many variable-arity groups `effects` declares **that name a card in a graveyard**,
+/// and how many name anything else — the split that decides whether two of them can be
+/// told apart.
+///
+/// The engine pairs an object's flat target list back onto its groups by what each target
+/// *is* ([`TargetSpec::names`](crate::TargetSpec)), so two variable groups are
+/// unambiguous exactly when no object could belong to both. This validator asks the
+/// narrower question the one card that needs it asks — a permanent and a card in a
+/// graveyard are never the same object — and treats every other spec as
+/// indistinguishable from every other.
+///
+/// Deliberately conservative in that direction: a spec added to the IR without a thought
+/// here keeps the strict rule rather than silently unlocking a pairing the engine would
+/// then have to guess at.
+pub(super) fn variable_target_groups_by_kind(effects: &[&serde_json::Value]) -> (usize, usize) {
+    let mut cards = 0;
+    let mut others = 0;
+    for effect in effects {
+        if !declares_variable_group(effect) {
+            continue;
+        }
+        if names_a_card_in_a_graveyard(effect) {
+            cards += 1;
+        } else {
+            others += 1;
+        }
+    }
+    (cards, others)
+}
+
+/// Whether `effect`'s target spec is the one that names a **card in a graveyard** —
+/// authored as an object under that key, where every spec that names a permanent, a
+/// player, or a spell is authored as a plain string.
+fn names_a_card_in_a_graveyard(effect: &serde_json::Value) -> bool {
+    if effect
+        .get("target")
+        .and_then(serde_json::Value::as_object)
+        .is_some_and(|spec| spec.contains_key("card_in_graveyard"))
+    {
+        return true;
+    }
+    // Looking through a `may` exactly as [`declares_variable_group`] does, so the two
+    // agree about which effect the group belongs to.
+    is_optional(effect)
+        && effect
+            .get("effects")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|nested| nested.iter().any(names_a_card_in_a_graveyard))
 }
 
 /// Whether `effect` declares an `"up_to"` target count, looking **through** a `may` —
