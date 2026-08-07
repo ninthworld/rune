@@ -360,6 +360,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "windreader_sphinx",
+    "collector_number": "84",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "abnormal_endurance",
     "collector_number": "85",
     "rarity": "common"
@@ -1233,5 +1238,10 @@
     "functional_id": "forest",
     "collector_number": "280",
     "rarity": "common"
+  },
+  {
+    "functional_id": "riddlemaster_sphinx",
+    "collector_number": "287",
+    "rarity": "rare"
   }
 ]
