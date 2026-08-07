@@ -245,6 +245,7 @@ impl GameState {
             blockers_declared: false,
             damage_orders: Vec::new(),
             loyalty_activations: Vec::new(),
+            limited_activations: Vec::new(),
             blockers_declared_by: Vec::new(),
             interrupted_priority: None,
             pending_choices: Vec::new(),

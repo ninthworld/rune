@@ -78,6 +78,9 @@ pub fn equip_ability(data: &super::CardData) -> Option<Ability> {
         effects: vec![Effect::Attach {
             target: attachment.attach_to,
         }],
+        // Equip has no per-turn allowance (CR 702.6b), so the printed-text field stays
+        // at its default here, exactly as the timing note below says of its own.
+        once_each_turn: false,
         // CR 702.6b's sorcery timing is derived from the ability *being* an equip
         // ability, not authored — so the printed-text field stays at its default here.
         timing: crate::ability::ActivationTiming::AnyTime,
@@ -573,6 +576,7 @@ mod tests {
         assert_eq!(
             elves.abilities,
             vec![Ability::Activated {
+                once_each_turn: false,
                 cost: vec![Cost::Tap],
                 effects: vec![Effect::AddMana {
                     color: Color::Green,
@@ -595,6 +599,7 @@ mod tests {
         assert_eq!(
             lodestone.abilities,
             vec![Ability::Activated {
+                once_each_turn: false,
                 cost: vec![Cost::Tap],
                 effects: vec![Effect::AddColorlessMana { amount: 1 }],
                 timing: crate::ability::ActivationTiming::AnyTime,

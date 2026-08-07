@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "functional_id": "ursine_champion",
+  "name": "Ursine Champion",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Berserker"
+  ],
+  "mana_cost": "{1}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 2,
+  "toughness": 2,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{5}{G}"
+        }
+      ],
+      "once_each_turn": true,
+      "effects": [
+        {
+          "kind": "pump_self",
+          "power": 3,
+          "toughness": 3
+        },
+        {
+          "kind": "animate_self",
+          "subtypes": [
+            "Bear",
+            "Berserker"
+          ],
+          "replace_subtypes": true
+        }
+      ]
+    }
+  ]
+}

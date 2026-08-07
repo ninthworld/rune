@@ -322,6 +322,7 @@ mod tests {
         assert_eq!(
             grant.abilities,
             vec![Ability::Activated {
+                once_each_turn: false,
                 cost: vec![Cost::Tap],
                 effects: vec![Effect::AddManaAnyColor {
                     amount: 2,

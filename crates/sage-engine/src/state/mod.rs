@@ -182,6 +182,14 @@ pub struct GameState {
     /// a planeswalker that leaves and returns is a new object with a fresh allowance,
     /// which is exactly what CR 606.3 says. Cleared when the next turn begins.
     pub loyalty_activations: Vec<crate::id::PermanentId>,
+    /// The abilities that print `Activate only once each turn` and have been activated
+    /// this turn (CR 602.5f), as `(permanent, ability index)`.
+    ///
+    /// The same raw stored history [`Self::loyalty_activations`] is, and separate from it
+    /// for one reason: a loyalty allowance is per *permanent* (CR 606.3 — one loyalty
+    /// ability of it), and this one is per **ability**, so a card with two limited
+    /// abilities spends them independently. Cleared when the next turn begins.
+    pub limited_activations: Vec<(crate::id::PermanentId, usize)>,
     /// The attacked players who have already declared blockers this combat, in the
     /// order they declared (issue #344). When attackers are split across several
     /// defenders each attacked player gets their own declare-blockers decision,

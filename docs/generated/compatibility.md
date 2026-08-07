@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (275)
+## Supported cards (277)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -50,6 +50,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `centaur_courser` | Centaur Courser | functional definition |
 | `chaos_wand` | Chaos Wand | functional definition |
 | `child_of_night` | Child of Night | functional definition |
+| `chromium_the_mutable` | Chromium, the Mutable | functional definition |
 | `cinder_barrens` | Cinder Barrens | functional definition |
 | `cleansing_nova` | Cleansing Nova | functional definition |
 | `colossal_dreadmaw` | Colossal Dreadmaw | functional definition |
@@ -272,6 +273,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `trusty_packbeast` | Trusty Packbeast | functional definition |
 | `two_headed_zombie` | Two-Headed Zombie | functional definition |
 | `uncomfortable_chill` | Uncomfortable Chill | functional definition |
+| `ursine_champion` | Ursine Champion | functional definition |
 | `valiant_knight` | Valiant Knight | functional definition |
 | `vampire_neonate` | Vampire Neonate | functional definition |
 | `vampire_sovereign` | Vampire Sovereign | functional definition |

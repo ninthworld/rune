@@ -852,6 +852,31 @@ An **attachment** grants the same layer-4 addition through `types`/`subtypes` in
 block, beside the power, keywords and restrictions it already grants — that is where
 `is a Knight in addition to its other types` goes.
 
+### Becoming something else, said of yourself
+
+`animate_self` is [`animate`](#becoming-something-else-cr-613-layers-4-and-7b) with the
+source as its subject — self-referential like `pump_self`, so it chooses nothing, fills no
+slot, and can never fizzle. It lasts until end of turn, which is what every printed card
+that says "becomes" of itself says.
+
+```json
+{ "kind": "animate_self", "subtypes": ["Bear", "Berserker"], "replace_subtypes": true }
+```
+
+`replace_subtypes` is the one field it has that `animate` does not, and it is **CR
+205.1b**: `becomes a Human` *sets* the creature types where `is a Knight in addition to
+its other types` adds one. A card that means the first and is authored as the second stays
+an Elder Dragon — which a Dragon lord would still pump, and which is exactly the mistake
+the flag exists to prevent.
+
+### Activating only once each turn
+
+An activated ability may print `once_each_turn: true` (CR 602.5f). The allowance is
+recorded per **permanent and ability**, so a card with two limited abilities spends them
+independently — which is the difference from the loyalty allowance beside it, that being
+per permanent (CR 606.3). Both are cleared at the same turn boundary, and both are
+re-derived when a submitted action is checked rather than trusted from the offer.
+
 ### An attachment's own sentence about its host
 
 An `attachment` block already carries the grants a card prints most often — `power`,

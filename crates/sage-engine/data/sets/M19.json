@@ -1015,6 +1015,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "chromium_the_mutable",
+    "collector_number": "214",
+    "rarity": "mythic"
+  },
+  {
     "functional_id": "draconic_disciple",
     "collector_number": "215",
     "rarity": "uncommon"
@@ -1338,6 +1343,11 @@
     "functional_id": "sarkhan_s_whelp",
     "collector_number": "299",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "ursine_champion",
+    "collector_number": "304",
+    "rarity": "common"
   },
   {
     "functional_id": "waterknot",

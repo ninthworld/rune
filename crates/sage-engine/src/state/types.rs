@@ -866,6 +866,10 @@ pub enum Modification {
         types: Vec<crate::card_type::CardType>,
         /// Subtypes gained.
         subtypes: Vec<String>,
+        /// Whether the subtypes **replace** the permanent's printed ones (CR 205.1b) —
+        /// the `becomes a Human` of a card that stops being what it was, as against the
+        /// `is a Knight in addition to its other types` beside it.
+        replace_subtypes: bool,
         /// Colours gained at CR 613 **layer 5** — `is a **black** Zombie in addition to
         /// its other colors and types`.
         ///
