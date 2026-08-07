@@ -2115,3 +2115,16 @@ fn issue_706_a_walker_that_turns_cards_down_states_what_they_become() {
          They're 5/5 artifact creatures."
     );
 }
+
+#[test]
+fn issue_706_a_trigger_with_one_slot_per_seat_names_the_seats_collectively() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "vaevictis_asmadi_the_dire"),
+        "Flying\n\
+         Whenever Vaevictis Asmadi, the Dire attacks, for each player, choose target permanent that \
+         player controls. Those players sacrifice those permanents. Each player who \
+         sacrificed a permanent this way reveals the top card of their library, then \
+         puts it onto the battlefield if it's a permanent card."
+    );
+}

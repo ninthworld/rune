@@ -1110,6 +1110,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "vaevictis_asmadi_the_dire",
+    "collector_number": "225",
+    "rarity": "mythic"
+  },
+  {
     "functional_id": "amulet_of_safekeeping",
     "collector_number": "226",
     "rarity": "rare"
