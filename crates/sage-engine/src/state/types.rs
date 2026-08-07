@@ -446,6 +446,13 @@ pub struct ExilePlaying {
     pub cards: Vec<crate::id::CardInstanceId>,
     /// The turn the permission was granted on; it lapses when that turn ends.
     pub turn: u32,
+    /// Whether only **spells** may be cast under it, rather than any card being playable.
+    ///
+    /// *You may play that card* and *you may cast spells from among them* are two printed
+    /// sentences, and the difference is whether a land among the cards may be played
+    /// (CR 116.2a). Recorded per permission because two of them can be in force at once
+    /// and each says its own thing.
+    pub cast_only: bool,
 }
 
 /// A permission to aim spells and abilities **as though hexproof were not there**,

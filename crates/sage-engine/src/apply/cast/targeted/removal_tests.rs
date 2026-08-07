@@ -27,6 +27,7 @@ fn issue_148_counterspell_counters_a_creature_spell_end_to_end_cr_701_5() {
             card: boar,
             mode: None,
             x: None,
+            from_hand: true,
         },
         targets: Vec::new(),
     });
@@ -113,6 +114,7 @@ fn issue_148_counterspell_fizzles_when_its_target_resolves_first_cr_608_2b() {
             card: negation,
             mode: None,
             x: None,
+            from_hand: true,
         },
         targets: vec![Target::Spell(boar_sid)],
     });
@@ -125,6 +127,7 @@ fn issue_148_counterspell_fizzles_when_its_target_resolves_first_cr_608_2b() {
             card: boar,
             mode: None,
             x: None,
+            from_hand: true,
         },
         targets: Vec::new(),
     });

@@ -127,6 +127,7 @@ mod tests {
                 card: spell,
                 mode: None,
                 x: None,
+                from_hand: true,
             },
             targets: Vec::new(),
         });

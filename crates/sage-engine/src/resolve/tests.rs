@@ -89,6 +89,7 @@ fn issue_47_non_permanent_spell_resolves_to_graveyard_not_battlefield() {
             card: bolt,
             mode: None,
             x: None,
+            from_hand: true,
         },
         targets: Vec::new(),
     });
@@ -278,6 +279,7 @@ fn issue_148_spell_on_stack_target_is_legal_only_while_the_spell_is_on_the_stack
             card: spell,
             mode: None,
             x: None,
+            from_hand: true,
         },
         targets: Vec::new(),
     });
@@ -809,6 +811,7 @@ fn issue_155_etb_trigger_observes_the_replaced_counters_state_cr_614_12() {
             card: broodling,
             mode: None,
             x: None,
+            from_hand: true,
         },
         targets: Vec::new(),
     });

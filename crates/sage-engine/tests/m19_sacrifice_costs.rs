@@ -301,7 +301,7 @@ fn the_cost_is_paid_after_the_spell_is_on_the_stack() {
     );
     assert!(
         cast.stack.iter().any(|object| matches!(object.kind,
-                sage_engine::StackObjectKind::Spell { card, mode: None, x: None } if card.id == spell.id)),
+                sage_engine::StackObjectKind::Spell { card, mode: None, x: None, .. } if card.id == spell.id)),
         "the spell reached the stack"
     );
     assert!(

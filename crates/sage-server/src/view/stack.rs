@@ -26,7 +26,7 @@ pub(crate) fn stack_item(state: &GameState, object: &StackObject, db: &CardDatab
     // is what makes a reconnect mid-resolution rebuild the same relationships.
     let targets = object.targets.iter().map(stack_target).collect();
     match &object.kind {
-        StackObjectKind::Spell { card, mode, x } => StackItem {
+        StackObjectKind::Spell { card, mode, x, .. } => StackItem {
             id: stack_entity_id(object.id),
             controller: player_id(object.controller),
             description: announced_spell_description(*card, *mode, *x, db),
@@ -271,6 +271,7 @@ mod tests {
                 card: shock,
                 mode: None,
                 x: None,
+                from_hand: true,
             },
             vec![Target::Permanent(ogre)],
         );
@@ -364,6 +365,7 @@ mod tests {
                 card: twin,
                 mode: None,
                 x: None,
+                from_hand: true,
             },
             // One damage to the creature, one to its controller.
             vec![Target::Permanent(bear), Target::Player(PlayerId(1))],
@@ -377,6 +379,7 @@ mod tests {
                 card: counter,
                 mode: None,
                 x: None,
+                from_hand: true,
             },
             vec![Target::Spell(bolt)],
         );
@@ -478,6 +481,7 @@ mod tests {
                 card: twin,
                 mode: None,
                 x: None,
+                from_hand: true,
             },
             vec![Target::Permanent(bear), Target::Player(PlayerId(1))],
         );

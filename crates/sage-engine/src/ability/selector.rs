@@ -39,6 +39,14 @@ pub enum Condition {
     /// empty hand. Read from the recorded events over the same window
     /// [`Self::MilledThisWay`] uses.
     DiscardedThisWay,
+    /// The resolving object is a **spell that was cast from its controller's hand**
+    /// (CR 601.2a) — the `if this spell was cast from your hand` of a card that pays out
+    /// only when it was played the ordinary way.
+    ///
+    /// Read off what the resolution knows about itself rather than from any zone: by the
+    /// time it resolves the card is on the stack, and every road that put it there ends in
+    /// the same place. False for an ability, which is not cast at all.
+    CastFromHand,
     /// The effect's controller has **gained at least `amount` life this turn** — the
     /// `if you gained life this turn` of a Bat-making end step, and the `if you gained
     /// 5 or more life this turn` of an Angel-making one.

@@ -657,14 +657,22 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                  If you don't, exile it"
             )
         }
-        Effect::ExileTopForPlay { count } => {
+        Effect::ExileTopForPlay { count, cast_only } => {
+            // Two printed sentences, and the difference is whether a land among them may
+            // be played: *you may play that card* against *you may cast spells from among
+            // them* (CR 116.2a).
+            let permission = if *cast_only {
+                "you may cast spells from among them".to_string()
+            } else if *count == 1 {
+                "you may play that card".to_string()
+            } else {
+                "you may play those cards".to_string()
+            };
             if *count == 1 {
-                "exile the top card of your library. Until end of turn, you may play that card"
-                    .to_string()
+                format!("exile the top card of your library. Until end of turn, {permission}")
             } else {
                 format!(
-                    "exile the top {} cards of your library. Until end of turn, you may play \
-                     those cards",
+                    "exile the top {} cards of your library. Until end of turn, {permission}",
                     number(u32::from(*count)),
                 )
             }
@@ -973,6 +981,8 @@ fn condition_clause(condition: &Condition) -> String {
         Condition::ControlsAtLeast { permanents, count } => {
             format!("you control {}", counted_permanents(permanents, *count))
         }
+        // The one condition about the resolving object rather than about the board.
+        Condition::CastFromHand => "this spell was cast from your hand".to_string(),
         Condition::MilledThisWay { filter } => {
             format!(
                 "at least one {} was milled this way",

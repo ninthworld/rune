@@ -416,6 +416,7 @@ mod tests {
                 card: boar,
                 mode: None,
                 x: None,
+                from_hand: true,
             },
             targets: Vec::new(),
         });

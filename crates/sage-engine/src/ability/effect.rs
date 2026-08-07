@@ -1203,6 +1203,15 @@ pub enum Effect {
         /// How many cards are exiled from the top. Defaults to one.
         #[serde(default = "one")]
         count: u8,
+        /// Whether only **spells** may be cast from among them, rather than any card
+        /// being playable.
+        ///
+        /// The difference between two printed sentences: *you may play that card* lets a
+        /// land among them be played (CR 116.2a), and *you may cast spells from among
+        /// them* does not. Apex of Power says the second, Dark-Dweller Oracle the first,
+        /// and a land exiled by Apex simply stays in exile.
+        #[serde(default)]
+        cast_only: bool,
     },
     /// **Reveal the top card of your library; you may play it without paying its mana
     /// cost; if you don't, exile it** (CR 608.2f) — Djinn of Wishes.

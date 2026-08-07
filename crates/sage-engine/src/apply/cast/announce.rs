@@ -439,6 +439,9 @@ pub(crate) fn apply_cast_spell(
     // and lets its controller cast what it finds, so the caster's zones do not hold it.
     let offered_elsewhere = offered_from_another_seat(state, card.id);
     let mut take_elsewhere = false;
+    // Which zone it actually left, for the one question a card can ask about it
+    // (CR 601.2a). Set by the hand branch below and by nothing else.
+    let mut from_hand = false;
     {
         let Some(player) = state.players.get_mut(controller.0) else {
             return;
@@ -464,6 +467,7 @@ pub(crate) fn apply_cast_spell(
             }
         } else if let Some(pos) = player.hand.iter().position(|&c| c.id == card.id) {
             player.hand.remove(pos);
+            from_hand = true;
         } else if let Some(pos) = player.graveyard.iter().position(|&c| c.id == card.id) {
             // A card cast from the graveyard under a permission granted this turn
             // ([`Effect::AllowCastingFromGraveyard`]). It leaves the graveyard for the
@@ -508,7 +512,12 @@ pub(crate) fn apply_cast_spell(
         // The announcement travels with the object (CR 601.2b): the mode decides which
         // effects will resolve, and the X is now locked — the same number that was just
         // charged is the one the resolution and every reader of this object will see.
-        kind: StackObjectKind::Spell { card, mode, x },
+        kind: StackObjectKind::Spell {
+            card,
+            mode,
+            x,
+            from_hand,
+        },
         // The targets chosen as part of casting this spell (CR 601.2c), already
         // validated against freshly computed legal sets in `action_is_legal` and
         // re-checked once more on resolution (CR 608.2b). Empty for a spell that

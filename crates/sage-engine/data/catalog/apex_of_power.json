@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "functional_id": "apex_of_power",
+  "name": "Apex of Power",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{7}{R}{R}{R}",
+  "colors": [
+    "red"
+  ],
+  "spell_effects": [
+    {
+      "kind": "exile_top_for_play",
+      "count": 7,
+      "cast_only": true
+    },
+    {
+      "kind": "conditional",
+      "condition": {
+        "kind": "cast_from_hand"
+      },
+      "then": [
+        {
+          "kind": "add_mana_any_color",
+          "amount": 10,
+          "same_color": true
+        }
+      ]
+    }
+  ]
+}

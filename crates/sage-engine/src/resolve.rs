@@ -55,6 +55,13 @@ pub struct Resolution {
     /// as the object goes on the stack, so the permanents it ate are gone by the time it
     /// resolves.
     pub paid: crate::stack::PaidCost,
+    /// Whether the object resolving is a **spell that was cast from its controller's
+    /// hand** (CR 601.2a) — read by [`Condition::CastFromHand`](crate::Condition).
+    ///
+    /// `false` for an ability, which is not cast at all, and for a spell that came from
+    /// anywhere else. Settled here with everything else the resolution knows about itself,
+    /// because the card is on the stack by now and the zone it left is not recoverable.
+    pub cast_from_hand: bool,
     /// How many permanents **this resolution has sacrificed so far** (CR 701.17) — read by
     /// [`DerivedAmount::SacrificedThisWay`](crate::DerivedAmount), the `that many` of
     /// `Sacrifice any number of lands. Search your library for up to that many land cards`.
@@ -532,6 +539,14 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         // permanents it names have left, which is why it was written down rather than
         // looked up.
         paid: object.paid,
+        // Where the spell came from, recorded on the stack object at announcement.
+        cast_from_hand: matches!(
+            object.kind,
+            crate::stack::StackObjectKind::Spell {
+                from_hand: true,
+                ..
+            }
+        ),
         // Nothing has been sacrificed by a resolution that has not started; the answer to
         // an open sacrifice writes this on its way back in.
         sacrificed: 0,
@@ -652,7 +667,7 @@ pub(crate) fn apply_effects_with_targets(
                 condition,
                 controller,
                 source.and_then(AbilitySource::permanent),
-                resolution.start,
+                resolution,
                 db,
             ) {
                 then

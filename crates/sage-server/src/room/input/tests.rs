@@ -341,6 +341,7 @@ async fn issue_264_a_castable_instant_is_never_auto_passed() {
             card: boar,
             mode: None,
             x: None,
+            from_hand: true,
         },
         targets: Vec::new(),
     });
