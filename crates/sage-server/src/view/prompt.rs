@@ -174,6 +174,14 @@ pub(crate) fn target_spec_prompt(spec: TargetSpec) -> String {
         TargetSpec::AnyArtifactCreatureYouControl => {
             "Choose target artifact creature you control".to_string()
         }
+        // Both source-relative classes say what they are relative to, because the player
+        // choosing cannot see the ability's source from the slot alone.
+        TargetSpec::AnotherAttackingCreature => {
+            "Choose another target attacking creature".to_string()
+        }
+        TargetSpec::AnyCreatureDefendingPlayerControls => {
+            "Choose target creature defending player controls".to_string()
+        }
         TargetSpec::AnyCreature => "Choose target creature".to_string(),
         TargetSpec::AnyCreatureYouControl => "Choose target creature you control".to_string(),
         TargetSpec::AnyCreatureAnOpponentControls => {

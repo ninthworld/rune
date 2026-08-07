@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (255)
+## Supported cards (257)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -180,6 +180,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `oreskos_swiftclaw` | Oreskos Swiftclaw | functional definition |
 | `palladia_mors_the_ruiner` | Palladia-Mors, the Ruiner | functional definition |
 | `patient_rebuilding` | Patient Rebuilding | functional definition |
+| `pegasus_courser` | Pegasus Courser | functional definition |
 | `pelakka_wurm` | Pelakka Wurm | functional definition |
 | `pendulum_of_patterns` | Pendulum of Patterns | functional definition |
 | `plague_mare` | Plague Mare | functional definition |
@@ -226,6 +227,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `snapping_drake` | Snapping Drake | functional definition |
 | `sovereign_s_bite` | Sovereign's Bite | functional definition |
 | `spit_flame` | Spit Flame | functional definition |
+| `star_crowned_stag` | Star-Crowned Stag | functional definition |
 | `stitcher_s_supplier` | Stitcher's Supplier | functional definition |
 | `stone_quarry` | Stone Quarry | functional definition |
 | `strangling_spores` | Strangling Spores | functional definition |
@@ -321,7 +323,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Static abilities that affect a class of the source's controller's own noncreature permanents, or a class of tokens | the continuous-effect selector names the source, one class of that controller's creatures, or permanents an opponent controls filtered by card type and by the card name the source was given as it entered; it cannot name a class of the controller's own noncreature permanents, and nothing anywhere filters a class by token-ness |
 | Static abilities that select by a keyword a permanent was granted | a printed static ability's class may be filtered by keyword, and the keyword is read off the **printed** face: the selector is evaluated from inside the CR 613 layer-6 fold that is computing the affected permanent's keyword set, so it cannot ask for the answer being produced — a creature *granted* defender falls outside a class that names defender, exactly as the printed-subtype read beside it already does |
 | Taking an extra turn | the turn structure hands the next turn to a player already owed one, but nothing puts a player on that list: no effect in the vocabulary reaches the turn order, and none skips a turn or a step either |
-| Target specs scoped to the combat in progress | a target spec names a card type, a controller, a keyword, a mana value, or a graveyard, each answered without reference to combat; no slot narrows to a creature that is attacking or blocking, and none resolves the player or planeswalker a source is attacking |
+| Target specs that name a blocker, or the planeswalker a source is attacking | a target spec may narrow to a creature that is **attacking** and, relative to the ability's own source, to the creatures of the player that source is attacking (CR 508.1a); nothing narrows to a creature that is *blocking*, nothing names the attacker a blocker is blocking or the blocker of an attacker, and the planeswalker a source is attacking is resolved to its controller rather than named as a target |
 | The CR 613.8 dependency rules | continuous effects are ordered by CR 613.7 timestamp alone; the layer-6 walk gates each source with that source's *stored* abilities — until-end-of-turn effects and the attachments on it — and never with another permanent's printed static ability, which is the one place the walk is cut so it cannot recurse, so a permanent silenced by a printed static ability still contributes its own |
 | The legend-rule choice among duplicates | CR 704.5j applies, but which copy survives is a deterministic policy (the newest) rather than the controller's choice |
 | Tokens created as copies of another permanent | create_token authors a token's characteristics inline and nothing points one at another permanent's copiable values; CR 707.8a's two-faced token copy is unbuilt with it |

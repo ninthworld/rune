@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "functional_id": "pegasus_courser",
+  "name": "Pegasus Courser",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Pegasus"
+  ],
+  "mana_cost": "{2}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 1,
+  "toughness": 3,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_attacks",
+      "effects": [
+        {
+          "kind": "grant_keyword",
+          "target": "another_attacking_creature",
+          "keyword": "flying"
+        }
+      ]
+    }
+  ]
+}

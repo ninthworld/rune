@@ -178,8 +178,14 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         // choice — it has one — so CR 603.3c has nothing to say about it.
         let unanswerable = trigger.targets.is_empty()
             && specs.iter().any(|&spec| {
-                crate::actions::legal_targets_for_spec(spec, &next, trigger.controller, db)
-                    .is_empty()
+                crate::actions::legal_targets_for_spec(
+                    spec,
+                    &next,
+                    trigger.controller,
+                    trigger.source.permanent(),
+                    db,
+                )
+                .is_empty()
             });
         if unanswerable {
             continue;

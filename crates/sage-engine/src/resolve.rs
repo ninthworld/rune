@@ -189,12 +189,21 @@ fn ignores_hexproof(state: &GameState, player: PlayerId) -> bool {
 /// added. Because it is controller-relative — "can't be the target of spells or
 /// abilities your **opponents** control" — the `controller` this already takes is
 /// exactly the frame it needs.
+///
+/// `source` is the **permanent the ability is on**, when there is one, and it is what
+/// the source-relative specs are relative to: "another target attacking creature" is
+/// another one than *this* creature, and "target creature defending player controls"
+/// names the player *this* creature is attacking. It is `None` for a spell (a spell has
+/// no permanent on the battlefield) and for an ability whose source has left, and every
+/// source-relative spec answers `false` then rather than falling back to a wider class —
+/// a card whose sentence is about a permanent that is not there names nothing.
 #[must_use]
 pub(crate) fn target_is_legal(
     spec: TargetSpec,
     target: Target,
     state: &GameState,
     controller: PlayerId,
+    source: Option<PermanentId>,
     db: &CardDatabase,
 ) -> bool {
     // CR 702.11b: a hexproof permanent is off limits to its controller's opponents and
@@ -307,6 +316,30 @@ pub(crate) fn target_is_legal(
         (TargetSpec::AnyTappedCreature, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| {
                 p.tapped && has_type(p, CardType::Creature, db)
+            })
+        }
+        // "Another target attacking creature" (CR 508.1): attacking, a creature, and not
+        // the source. With no source there is no "another", so nothing is legal — a
+        // permanent that has left the battlefield takes its own sentence with it.
+        (TargetSpec::AnotherAttackingCreature, Target::Permanent(id)) => {
+            source.is_some_and(|own| own != id)
+                && permanent_matches(state, id, |p| {
+                    p.attacking.is_some() && has_type(p, CardType::Creature, db)
+                })
+        }
+        // "Target creature defending player controls" (CR 508.1a): the player this
+        // source is attacking is read off its own declaration, and a source that is not
+        // attacking names nobody.
+        (TargetSpec::AnyCreatureDefendingPlayerControls, Target::Permanent(id)) => {
+            let defender = source
+                .and_then(|own| state.battlefield.iter().find(|p| p.id == own))
+                .and_then(|own| own.attacking)
+                .and_then(|attack| attack.defending_player(state));
+            defender.is_some_and(|seat| {
+                permanent_matches(state, id, |p| {
+                    has_type(p, CardType::Creature, db)
+                        && crate::characteristics::controller_of(state, p) == seat
+                })
             })
         }
         (TargetSpec::AnyArtifact, Target::Permanent(id)) => {
@@ -479,7 +512,16 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         && chosen_specs
             .iter()
             .zip(&object.targets)
-            .all(|(&spec, &target)| !target_is_legal(spec, target, state, object.controller, db))
+            .all(|(&spec, &target)| {
+                !target_is_legal(
+                    spec,
+                    target,
+                    state,
+                    object.controller,
+                    object_source_permanent(&object.kind),
+                    db,
+                )
+            })
     {
         // CR 707.10a: a copy that fizzles has no card to put anywhere and simply ceases
         // to exist, which is what happening nothing at all amounts to.
@@ -640,6 +682,15 @@ pub(crate) fn put_resolved_spell_in_its_final_zone(
     }
 }
 
+/// The permanent a stack object's source-relative targeting is relative to — the
+/// permanent an ability is on, and nothing for a spell or a copy of one.
+fn object_source_permanent(kind: &StackObjectKind) -> Option<crate::id::PermanentId> {
+    match kind {
+        StackObjectKind::Ability { source, .. } => source.permanent(),
+        StackObjectKind::Spell { .. } | StackObjectKind::SpellCopy { .. } => None,
+    }
+}
+
 /// Apply `effects` in order on behalf of `controller`, pairing each targeting
 /// effect with the next entry of `stored` targets. A targeting effect applies
 /// only while its chosen target is still legal against current state (CR 608.2c —
@@ -748,7 +799,14 @@ pub(crate) fn apply_effects_with_targets(
             // wasting the whole ability and it doing half its work.
             [group] => {
                 for target in taken {
-                    if target_is_legal(group.spec, target, state, controller, db) {
+                    if target_is_legal(
+                        group.spec,
+                        target,
+                        state,
+                        controller,
+                        source.and_then(AbilitySource::permanent),
+                        db,
+                    ) {
                         apply_targeted_effect(
                             state, &effect, target, controller, source, resolution, db,
                         );
@@ -764,7 +822,14 @@ pub(crate) fn apply_effects_with_targets(
             slots => {
                 let filled = taken.len() == slots.len()
                     && slots.iter().zip(&taken).all(|(group, &target)| {
-                        target_is_legal(group.spec, target, state, controller, db)
+                        target_is_legal(
+                            group.spec,
+                            target,
+                            state,
+                            controller,
+                            source.and_then(AbilitySource::permanent),
+                            db,
+                        )
                     });
                 if filled {
                     apply_multi_target_effect(state, &effect, &taken, db);

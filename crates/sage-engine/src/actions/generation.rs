@@ -505,10 +505,11 @@ pub(super) fn groups_are_fillable(
     groups: &[crate::ability::TargetGroup],
     state: &GameState,
     actor: crate::id::PlayerId,
+    source: Option<crate::id::PermanentId>,
     db: &CardDatabase,
 ) -> bool {
     groups.iter().all(|group| {
-        group.min == 0 || !legal_targets_for_spec(group.spec, state, actor, db).is_empty()
+        group.min == 0 || !legal_targets_for_spec(group.spec, state, actor, source, db).is_empty()
     })
 }
 
@@ -530,11 +531,19 @@ fn cast_is_announceable(
     actor: crate::id::PlayerId,
 ) -> bool {
     if !data.is_modal() {
-        return groups_are_fillable(&data.cast_target_groups(None), state, actor, db);
+        return groups_are_fillable(&data.cast_target_groups(None), state, actor, None, db);
     }
     (0..data.modes.len())
         .filter_map(|index| u8::try_from(index).ok())
-        .any(|index| groups_are_fillable(&data.cast_target_groups(Some(index)), state, actor, db))
+        .any(|index| {
+            groups_are_fillable(
+                &data.cast_target_groups(Some(index)),
+                state,
+                actor,
+                None,
+                db,
+            )
+        })
 }
 
 /// Whether `data`'s additional cast cost (CR 601.2b) can be paid by `actor` right now,
@@ -710,7 +719,7 @@ fn offer_activations(
                     _ => Vec::new(),
                 };
                 if cost_payable(state, db, cost, perm)
-                    && groups_are_fillable(&groups, state, seat, db)
+                    && groups_are_fillable(&groups, state, seat, Some(perm.id), db)
                 {
                     actions.push(Action::ActivateAbility {
                         permanent: perm.id,
@@ -757,8 +766,10 @@ fn offer_graveyard_activations(
             };
             let groups: Vec<crate::ability::TargetGroup> =
                 effects.iter().flat_map(Effect::target_groups).collect();
+            // A card in a graveyard is not a permanent, so nothing here is relative to
+            // one (CR 113.6).
             if graveyard_cost_payable(state, db, seat, card.id, cost)
-                && groups_are_fillable(&groups, state, seat, db)
+                && groups_are_fillable(&groups, state, seat, None, db)
             {
                 actions.push(Action::ActivateAbilityFromGraveyard {
                     card,

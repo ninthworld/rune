@@ -1,6 +1,7 @@
 //! Action targeting — enumeration of legal targets per action and target slot.
 
 use crate::ability::{Ability, Effect, GraveyardScope, Target, TargetGroup, TargetSpec};
+use crate::id::PermanentId;
 use crate::id::PlayerId;
 use crate::resolve::target_is_legal;
 use crate::state::GameState;
@@ -33,6 +34,8 @@ pub fn target_requirements(
     // ([`acting_player`]). That is what makes "target creature you control"
     // enumerate *their* creatures.
     let controller = acting_player(state, action);
+    // What "another" and "defending player" are relative to, for the specs that ask.
+    let source = action_source(state, action);
     action_target_groups(state, db, action)
         .into_iter()
         // One group becomes one slot per target it may take, so the client answers a
@@ -40,7 +43,7 @@ pub fn target_requirements(
         // group's minimum are the ones the player may leave empty — "up to two target
         // creatures" is one required slot's worth of nothing and two optional ones.
         .flat_map(|group| {
-            let candidates = legal_targets_for_spec(group.spec, state, controller, db);
+            let candidates = legal_targets_for_spec(group.spec, state, controller, source, db);
             (0..group.max).map(move |index| TargetRequirement {
                 spec: group.spec,
                 optional: index >= group.min,
@@ -150,6 +153,28 @@ pub(crate) fn acting_player(state: &GameState, action: &Action) -> PlayerId {
     }
 }
 
+/// The **permanent an action's targeting is relative to**, when there is one.
+///
+/// An activation's source is the permanent whose ability it is; a trigger being aimed
+/// reads it off the stack object the game put there. A cast has none — a spell is not a
+/// permanent, and no source-relative spec is authorable on one for that reason.
+pub(crate) fn action_source(state: &GameState, action: &Action) -> Option<PermanentId> {
+    match action {
+        Action::ActivateAbility { permanent, .. } => Some(*permanent),
+        Action::ChooseTriggerTargets { ability, .. } => state
+            .stack
+            .iter()
+            .find(|object| object.id == *ability)
+            .and_then(|object| match object.kind {
+                crate::stack::StackObjectKind::Ability { source, .. } => source.permanent(),
+                // Neither a spell nor a copy of one is a permanent.
+                crate::stack::StackObjectKind::Spell { .. }
+                | crate::stack::StackObjectKind::SpellCopy { .. } => None,
+            }),
+        _ => None,
+    }
+}
+
 /// The set of [`Target`]s legal for `spec` against current `state`, as a single
 /// O(N) pass over the candidate universe the spec names.
 ///
@@ -162,6 +187,7 @@ pub(crate) fn legal_targets_for_spec(
     spec: TargetSpec,
     state: &GameState,
     controller: PlayerId,
+    source: Option<PermanentId>,
     db: &CardDatabase,
 ) -> Vec<Target> {
     // The candidate *universe* is the coarse zone a spec draws from; the fine
@@ -195,6 +221,10 @@ pub(crate) fn legal_targets_for_spec(
         | TargetSpec::AnyCreatureWithFlying
         | TargetSpec::AnyColorlessCreature
         | TargetSpec::AnyTappedCreature
+        // Both source-relative specs draw from the battlefield like every other permanent
+        // spec; what makes them relative is the filter, which `target_is_legal` applies.
+        | TargetSpec::AnotherAttackingCreature
+        | TargetSpec::AnyCreatureDefendingPlayerControls
         | TargetSpec::AnyArtifactCreatureYouControl
         | TargetSpec::AnyArtifact
         | TargetSpec::AnyEnchantment
@@ -248,6 +278,6 @@ pub(crate) fn legal_targets_for_spec(
     };
     universe
         .into_iter()
-        .filter(|&target| target_is_legal(spec, target, state, controller, db))
+        .filter(|&target| target_is_legal(spec, target, state, controller, source, db))
         .collect()
 }

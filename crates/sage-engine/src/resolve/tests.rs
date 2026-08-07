@@ -226,6 +226,7 @@ fn target_legality_tracks_current_state() {
         target,
         &state,
         PlayerId(0),
+        None,
         &db
     ));
     assert!(target_is_legal(
@@ -233,6 +234,7 @@ fn target_legality_tracks_current_state() {
         target,
         &state,
         PlayerId(0),
+        None,
         &db
     ));
     // …a player is a legal AnyPlayer target, but not an AnyCreature one.
@@ -241,6 +243,7 @@ fn target_legality_tracks_current_state() {
         Target::Player(PlayerId(1)),
         &state,
         PlayerId(0),
+        None,
         &db
     ));
     assert!(!target_is_legal(
@@ -248,6 +251,7 @@ fn target_legality_tracks_current_state() {
         Target::Player(PlayerId(1)),
         &state,
         PlayerId(0),
+        None,
         &db
     ));
 
@@ -258,6 +262,7 @@ fn target_legality_tracks_current_state() {
         target,
         &state,
         PlayerId(0),
+        None,
         &db
     ));
 }
@@ -302,6 +307,7 @@ fn issue_148_spell_on_stack_target_is_legal_only_while_the_spell_is_on_the_stack
         Target::Spell(sid),
         &state,
         PlayerId(0),
+        None,
         &db
     ));
     assert!(
@@ -310,6 +316,7 @@ fn issue_148_spell_on_stack_target_is_legal_only_while_the_spell_is_on_the_stack
             Target::Spell(aid),
             &state,
             PlayerId(0),
+            None,
             &db
         ),
         "an ability on the stack is not a spell"
@@ -322,6 +329,7 @@ fn issue_148_spell_on_stack_target_is_legal_only_while_the_spell_is_on_the_stack
         Target::Spell(sid),
         &state,
         PlayerId(0),
+        None,
         &db
     ));
 }
@@ -338,6 +346,7 @@ fn issue_149_any_target_is_legal_for_creatures_and_in_game_players() {
         Target::Permanent(creature),
         &state,
         PlayerId(0),
+        None,
         &db
     ));
     assert!(target_is_legal(
@@ -345,6 +354,7 @@ fn issue_149_any_target_is_legal_for_creatures_and_in_game_players() {
         Target::Player(PlayerId(0)),
         &state,
         PlayerId(0),
+        None,
         &db
     ));
 
@@ -374,6 +384,7 @@ fn issue_149_any_target_is_legal_for_creatures_and_in_game_players() {
         Target::Permanent(forest),
         &state,
         PlayerId(0),
+        None,
         &db
     ));
 
@@ -384,6 +395,7 @@ fn issue_149_any_target_is_legal_for_creatures_and_in_game_players() {
         Target::Player(PlayerId(1)),
         &state,
         PlayerId(0),
+        None,
         &db
     ));
 }
@@ -448,6 +460,7 @@ fn a_possessive_target_spec_means_a_different_set_from_each_seat() {
             Target::Permanent(from_zero),
             &state,
             PlayerId(0),
+            None,
             &db
         ));
         assert!(!target_is_legal(
@@ -455,6 +468,7 @@ fn a_possessive_target_spec_means_a_different_set_from_each_seat() {
             Target::Permanent(from_one),
             &state,
             PlayerId(0),
+            None,
             &db
         ));
         // The mirror image holds from the other seat.
@@ -463,6 +477,7 @@ fn a_possessive_target_spec_means_a_different_set_from_each_seat() {
             Target::Permanent(from_one),
             &state,
             PlayerId(1),
+            None,
             &db
         ));
     }
@@ -473,6 +488,7 @@ fn a_possessive_target_spec_means_a_different_set_from_each_seat() {
         Target::Player(PlayerId(1)),
         &state,
         PlayerId(0),
+        None,
         &db
     ));
     assert!(!target_is_legal(
@@ -480,6 +496,7 @@ fn a_possessive_target_spec_means_a_different_set_from_each_seat() {
         Target::Player(PlayerId(0)),
         &state,
         PlayerId(0),
+        None,
         &db
     ));
     // An opponent who has left the game is no longer a legal target either.
@@ -489,6 +506,7 @@ fn a_possessive_target_spec_means_a_different_set_from_each_seat() {
         Target::Player(PlayerId(1)),
         &state,
         PlayerId(0),
+        None,
         &db
     ));
     assert!(!target_is_legal(
@@ -496,6 +514,7 @@ fn a_possessive_target_spec_means_a_different_set_from_each_seat() {
         Target::Permanent(theirs),
         &state,
         PlayerId(0),
+        None,
         &db
     ));
 }
@@ -520,7 +539,14 @@ fn type_scoped_target_specs_admit_exactly_their_own_class() {
     ];
     for (spec, legal) in cases {
         assert!(
-            target_is_legal(spec, Target::Permanent(legal), &state, PlayerId(0), &db),
+            target_is_legal(
+                spec,
+                Target::Permanent(legal),
+                &state,
+                PlayerId(0),
+                None,
+                &db
+            ),
             "{spec:?} accepts its own class"
         );
     }
@@ -533,7 +559,14 @@ fn type_scoped_target_specs_admit_exactly_their_own_class() {
         (TargetSpec::AnyEnchantment, artifact),
     ] {
         assert!(
-            !target_is_legal(spec, Target::Permanent(illegal), &state, PlayerId(0), &db),
+            !target_is_legal(
+                spec,
+                Target::Permanent(illegal),
+                &state,
+                PlayerId(0),
+                None,
+                &db
+            ),
             "{spec:?} rejects the wrong class"
         );
     }
@@ -544,6 +577,7 @@ fn type_scoped_target_specs_admit_exactly_their_own_class() {
         Target::Permanent(creature),
         &state,
         PlayerId(0),
+        None,
         &db
     ));
     state
@@ -556,6 +590,7 @@ fn type_scoped_target_specs_admit_exactly_their_own_class() {
         Target::Permanent(creature),
         &state,
         PlayerId(0),
+        None,
         &db
     ));
     // A tapped *land* is still not a creature.
@@ -569,6 +604,7 @@ fn type_scoped_target_specs_admit_exactly_their_own_class() {
         Target::Permanent(land),
         &state,
         PlayerId(0),
+        None,
         &db
     ));
 }

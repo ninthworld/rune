@@ -1818,3 +1818,18 @@ fn issue_706_two_cards_the_vocabulary_could_already_say() {
         "Flying\nWhenever a creature with flying attacks, you may draw a card."
     );
 }
+
+#[test]
+fn issue_706_a_target_relative_to_the_attacker_says_what_it_is_relative_to() {
+    let db = bundled();
+    // "Another" goes before the word target, where the card prints it.
+    assert_eq!(
+        text_of(&db, "pegasus_courser"),
+        "Flying\nWhenever Pegasus Courser attacks, another target attacking creature \
+         gains flying until end of turn."
+    );
+    assert_eq!(
+        text_of(&db, "star_crowned_stag"),
+        "Whenever Star-Crowned Stag attacks, tap target creature defending player controls."
+    );
+}

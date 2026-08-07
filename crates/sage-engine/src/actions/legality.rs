@@ -253,8 +253,10 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
     //    set (and certainly without the cartesian product).
     let groups = action_target_groups(state, db, action);
     let actor = super::targeting::acting_player(state, action);
+    // The permanent the source-relative specs are relative to; `None` for a cast.
+    let source = super::targeting::action_source(state, action);
     let chosen = action.targets();
-    targets_fill_groups(&groups, chosen, state, actor, db)
+    targets_fill_groups(&groups, chosen, state, actor, source, db)
 }
 
 /// Whether `chosen` is a legal filling of `groups` against current state (CR 601.2c).
@@ -274,6 +276,7 @@ fn targets_fill_groups(
     chosen: &[crate::ability::Target],
     state: &GameState,
     actor: crate::id::PlayerId,
+    source: Option<crate::id::PermanentId>,
     db: &CardDatabase,
 ) -> bool {
     let minimum: usize = groups.iter().map(|g| usize::from(g.min)).sum();
@@ -293,7 +296,7 @@ fn targets_fill_groups(
         }
         if !slice
             .iter()
-            .all(|&target| target_is_legal(group.spec, target, state, actor, db))
+            .all(|&target| target_is_legal(group.spec, target, state, actor, source, db))
         {
             return false;
         }

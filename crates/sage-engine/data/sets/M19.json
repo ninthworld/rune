@@ -145,6 +145,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "pegasus_courser",
+    "collector_number": "32",
+    "rarity": "common"
+  },
+  {
     "functional_id": "remorseful_cleric",
     "collector_number": "33",
     "rarity": "rare"
@@ -162,6 +167,11 @@
   {
     "functional_id": "rustwing_falcon",
     "collector_number": "36",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "star_crowned_stag",
+    "collector_number": "38",
     "rarity": "common"
   },
   {
