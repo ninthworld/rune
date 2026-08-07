@@ -79,6 +79,7 @@ import type { ClientMessage, GameView, Phase, ValidAction } from './../../protoc
 import { entityNames, relationLines, relationNote, relations, UNNAMED } from './../../relations'
 import type { ConnectionStatus } from './../../socket'
 import { buildChooseAction, type Draft } from './../../submission'
+import { settleOf } from './../../settle'
 import { seats, type Seat, type SeatPile } from './../../table'
 import {
   phaseLabel,
@@ -187,6 +188,10 @@ export function Board({
   // board's own entries are built, since a permanent draws itself turned while it is spent.
   const current = focus(actions, interaction)
   const turning = tappedByDraft(current.slots)
+
+  // What the settle did before this view arrived, in words. Derived here with everything else
+  // the board reads off the view, and held nowhere.
+  const settleReport = settleOf(view, label)
 
   const handFaces = list(view.my_hand).map(cardFace)
   const revealedFaces = list(view.revealed).map(cardFace)
@@ -719,6 +724,9 @@ export function Board({
         {...(castCost ? { cost: castCost } : {})}
         pool={local?.manaPool ?? []}
         labelFor={surface.labelFor}
+        // What the server did while this seat had nothing to answer. A pure reading of this
+        // view (`settle.ts`), so a newer view replaces it and a reconnect shows none.
+        {...(settleReport ? { settle: settleReport } : {})}
         update={setInteraction}
         confirm={confirm}
         // One press out of the whole thing, whichever thing it is: a drafted action is

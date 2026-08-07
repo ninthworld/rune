@@ -179,3 +179,34 @@ test.describe('the board, from one view', () => {
     await expect(page.getByRole('status')).toContainText('could not be read')
   })
 })
+
+test.describe('the settle, made legible', () => {
+  test('says where the game went and what happened while nobody was asked', async ({ page }) => {
+    // `gameview-turn.json` is the issue's headline case, already on the wire: the server acted
+    // for this seat across a turn boundary, and a spell resolved, dealt damage, and killed a
+    // creature while it did. The board shows the result; this says how it got there (§6.9).
+    await serveFrames(page, [fixture('gameview-turn.json')])
+    await page.goto('/')
+
+    const band = page.getByRole('status')
+    await expect(band).toBeVisible()
+    // Where it ended, and how far it went — the two questions a jump raises.
+    await expect(band).toContainText('Passed 3 steps')
+    await expect(band).toContainText('Upkeep')
+    // And what a player would have watched happen. The words are the log's own.
+    await expect(band).toContainText('dies')
+
+    // It costs the board no height: the page still fits in both axes at this size (§3).
+    expect(await pageFits(page)).toEqual({ x: true, y: true })
+  })
+
+  test('says nothing on a view the player was asked for', async ({ page }) => {
+    // No mark, no band. This is also the reconnect case — a fresh view of the current state
+    // carries no settle for this receiver, so there is nothing to suppress.
+    await serveFrames(page, [fixture('gameview.json')])
+    await page.goto('/')
+
+    await expect(page.getByRole('region', { name: 'Actions' })).toBeVisible()
+    await expect(page.getByRole('status')).toHaveCount(0)
+  })
+})
