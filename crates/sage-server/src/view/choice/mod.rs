@@ -512,7 +512,25 @@ pub(crate) fn revealed_to(state: &GameState, db: &CardDatabase, viewer: PlayerId
     // rather than a zone: they show nobody anything, so there is nothing here for even
     // their own chooser.
     let shown: Vec<CardInstance> = match &pending.question {
-        ChoiceQuestion::Cards(request) => choice_candidates(state, request, db),
+        // **A look shows what it looks at, not what it lets you take** (issue #773). The two
+        // are different sets whenever the card names a class: *look at the top five … you may
+        // put a black card from among them into your hand* shows five cards and offers some
+        // of them. Projecting the candidates showed a player only the black ones and called
+        // that a look at five. The answer a client may submit is still bound to
+        // [`choice_candidates`](sage_engine::choice_candidates) — this widens what is *seen*,
+        // never what is answerable, and it is still sent to the chooser and to nobody else.
+        //
+        // **Only a look at the top of a library.** The count is printed on the card and seeing
+        // those cards is what the card grants, so showing all of them is the card being
+        // honoured. A **search** (`ChoiceZone::Library`) is a different verb: CR 701.19a does
+        // say the searcher looks at every card in that library, so today's projection — only
+        // the cards that match — understates it, but the surface for pouring a whole library
+        // into a view is a design question of its own and not this fix's to answer. A hand is
+        // not affected either way: its owner already holds it.
+        ChoiceQuestion::Cards(request) => match request.zone {
+            ChoiceZone::LibraryTop(_) => choice_looked_at(state, request),
+            ChoiceZone::Library | ChoiceZone::Hand => choice_candidates(state, request, db),
+        },
         ChoiceQuestion::Order(request) => order_candidates(state, request),
         ChoiceQuestion::Confirm(_)
         | ChoiceQuestion::Color(_)

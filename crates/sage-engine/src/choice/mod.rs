@@ -674,6 +674,40 @@ pub fn choice_candidates(
         .collect()
 }
 
+/// The cards `request` puts in front of its chooser — **everything it reaches**, before its
+/// filter narrows that to what may be picked.
+///
+/// [`choice_candidates`]'s sibling, and the distinction is the difference between *looking*
+/// and *taking* (issue #773). "Look at the top five cards of your library. You may put a
+/// black card from among them into your hand" grants two different things: the player sees
+/// five cards, and may take one of a smaller set. A surface built on the candidates alone
+/// shows a player only the black cards and calls it a look at five — and when none of the
+/// five is black it shows nothing at all, which is the shape the bug was reported in.
+///
+/// Same pool, same order (top of a library first), no filter. The distinction matters only
+/// where a filter exists; for a discard, whose filter is `Any`, the two agree exactly.
+///
+/// **This does not widen what may be answered.** A legal answer still comes from
+/// [`choice_candidates`]; this says only what the chooser is entitled to have seen, and it
+/// is theirs alone to see — the caller is responsible for showing it to no one else.
+#[must_use]
+pub fn choice_looked_at(state: &GameState, request: &ChoiceRequest) -> Vec<CardInstance> {
+    let Some(player) = state.players.get(request.subject.0) else {
+        return Vec::new();
+    };
+    match request.zone {
+        ChoiceZone::Hand => player.hand.clone(),
+        ChoiceZone::LibraryTop(count) => player
+            .library
+            .iter()
+            .rev()
+            .take(count as usize)
+            .copied()
+            .collect(),
+        ChoiceZone::Library => player.library.clone(),
+    }
+}
+
 /// How many cards a legal answer to `request` must name, clamped to what is actually
 /// there: `(min, max)`, inclusive.
 ///
