@@ -1577,6 +1577,21 @@ pub enum Effect {
         #[serde(default)]
         until_end_of_turn: bool,
     },
+    /// The referenced player **takes an extra turn** after this one (CR 720.1) —
+    /// Magistrate's Scepter's payoff for three charge counters.
+    ///
+    /// The turn is queued rather than taken: the game finishes the turn it is in, and the
+    /// rotation hands the next one to whoever this named
+    /// ([`GameState::with_extra_turn`](crate::GameState)). Extra turns are taken **last in
+    /// first out** (CR 720.1), which is already what that queue does — two of them granted
+    /// in one turn are taken in the order the second, then the first.
+    ///
+    /// The subject is a non-targeted [`PlayerRef`], and every printed card that says this
+    /// says "you". This effect chooses no target.
+    TakeExtraTurn {
+        /// Which player takes it.
+        player_ref: PlayerRef,
+    },
     /// **Sacrifice this ability's own source** (CR 701.17) — the `sacrifice it` of a land
     /// that asks for a toll on the way in.
     ///

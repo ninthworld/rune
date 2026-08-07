@@ -118,6 +118,22 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         Effect::LoseLife { player_ref, amount } => {
             format!("{} {amount} life", conjugate(*player_ref, "lose"))
         }
+        // CR 720.1, in the card's own words. "After this one" is not a fact about the
+        // effect a player chooses — every extra turn is taken after the current one — so
+        // it is printed rather than authored.
+        Effect::TakeExtraTurn { player_ref } => {
+            // "You" is dropped where the subject is the controller, exactly as it is for
+            // every other clause that reads as an instruction: the card says "take an
+            // extra turn after this one", never "you take" one.
+            let clause = format!(
+                "{} an extra turn after this one",
+                conjugate(*player_ref, "take")
+            );
+            match player_ref {
+                PlayerRef::Controller => without_you(&clause).to_string(),
+                _ => clause,
+            }
+        }
         // The shortest sentence a card can end on, and it takes the same conjugation
         // every other player-subject clause does: "you win the game".
         Effect::WinTheGame { player_ref } => {

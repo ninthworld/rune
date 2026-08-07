@@ -1897,3 +1897,13 @@ fn issue_706_animating_reads_as_what_it_becomes_and_for_how_long() {
          to target creature you control."
     );
 }
+
+#[test]
+fn issue_706_an_extra_turn_reads_as_the_card_prints_it() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "magistrate_s_scepter"),
+        "{4}, {T}: Put a charge counter on Magistrate's Scepter.\n{T}, Remove three \
+         charge counters from this permanent: Take an extra turn after this one."
+    );
+}
