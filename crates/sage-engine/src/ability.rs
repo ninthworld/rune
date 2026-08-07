@@ -79,6 +79,21 @@ pub enum Ability {
         /// nothing about that ability's cost or effect implies it.
         #[serde(default)]
         timing: ActivationTiming,
+        /// What must be **true of the board** for it to be activated at all (CR 602.5c) —
+        /// Vivien's Jaguar's `Activate only if you control a Vivien planeswalker.`
+        ///
+        /// The third restriction on the same line as the other two, and authored for the
+        /// same reason: it is a sentence printed on one particular ability. It differs
+        /// from them in what it reads — a fact about the game rather than about the turn —
+        /// which is why it is a [`Condition`] rather than a flag, and why it is checked
+        /// where legality is decided rather than once at load.
+        ///
+        /// Evaluated **from the ability's controller's point of view** and at the moment
+        /// activation is offered, so a permission that goes away takes the offer with it.
+        /// It is a restriction on announcing, not on resolving (CR 602.5c): an ability
+        /// already on the stack resolves whatever the board has become.
+        #[serde(default)]
+        condition: Option<Condition>,
     },
     /// A triggered ability: when its condition is met, its effects go on the
     /// stack (e.g. `When this enters the battlefield, draw a card.`).
@@ -428,6 +443,40 @@ pub fn is_sorcery_speed_ability(ability: &Ability) -> bool {
             timing: ActivationTiming::SorcerySpeed,
             ..
         }
+    )
+}
+
+/// Whether `ability`'s printed activation condition (CR 602.5c) holds for `controller`
+/// right now — `true` for the abilities that print none, which is nearly all of them.
+///
+/// [`is_sorcery_speed_ability`]'s neighbour, and a predicate for the same reason: the
+/// offer and the apply-time re-derivation ask one question, so a permission that has gone
+/// away cannot be spent by a stale action id.
+///
+/// The source is deliberately not passed. A condition of this kind is about the board its
+/// controller sees — `you control a Vivien planeswalker` — and the one card printing it
+/// activates from a **graveyard**, where there is no permanent to be relative to.
+#[must_use]
+pub fn activation_condition_holds(
+    state: &crate::GameState,
+    ability: &Ability,
+    controller: crate::id::PlayerId,
+    db: &crate::CardDatabase,
+) -> bool {
+    let Ability::Activated {
+        condition: Some(condition),
+        ..
+    } = ability
+    else {
+        return true;
+    };
+    crate::condition::condition_holds(
+        state,
+        condition,
+        controller,
+        None,
+        crate::resolve::Resolution::default(),
+        db,
     )
 }
 

@@ -682,6 +682,12 @@ fn offer_activations(
             if crate::ability::is_graveyard_ability(ability) {
                 continue;
             }
+            // CR 602.5c: `Activate only if …`. A restriction on announcing, so it is
+            // asked here where the offer is made and again where the action is checked —
+            // never at resolution, which is a window it has nothing to say about.
+            if !crate::ability::activation_condition_holds(state, ability, perm.controller, db) {
+                continue;
+            }
             if let Ability::Activated {
                 cost,
                 once_each_turn,
@@ -780,6 +786,7 @@ fn offer_graveyard_activations(
             // A card in a graveyard is not a permanent, so nothing here is relative to
             // one (CR 113.6).
             if graveyard_cost_payable(state, db, seat, card.id, cost)
+                && crate::ability::activation_condition_holds(state, &ability, seat, db)
                 && groups_are_fillable(&groups, state, seat, None, db)
             {
                 actions.push(Action::ActivateAbilityFromGraveyard {

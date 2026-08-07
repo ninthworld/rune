@@ -240,6 +240,7 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
             effects,
             timing,
             once_each_turn,
+            condition,
         } => {
             let costs: Vec<String> = cost.iter().map(cost_symbol).collect();
             // CR 602.5d and CR 602.5f: the restrictions are a second sentence on the same
@@ -251,6 +252,22 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                 (ActivationTiming::SorcerySpeed, false) => " Activate only as a sorcery.",
                 (ActivationTiming::SorcerySpeed, true) => {
                     " Activate only as a sorcery and only once each turn."
+                }
+            };
+            // CR 602.5c joins that same sentence where a card prints it: one
+            // `Activate only …` line carrying every restriction the ability is under.
+            let restriction = match condition {
+                None => restriction.to_string(),
+                Some(condition) => {
+                    let clause = format!("only if {}", condition_clause(condition));
+                    if restriction.is_empty() {
+                        format!(" Activate {clause}.")
+                    } else {
+                        // "Activate only as a sorcery and only if you control …" — the
+                        // second restriction joins the first rather than starting a
+                        // sentence of its own.
+                        format!("{} and {clause}.", restriction.trim_end_matches('.'))
+                    }
                 }
             };
             format!(
