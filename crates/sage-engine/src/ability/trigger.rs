@@ -246,6 +246,16 @@ pub struct ObservedDamage {
     /// notices both.
     #[serde(default)]
     pub to_player: bool,
+    /// Watch damage the source **receives** rather than damage it deals — Hungering
+    /// Hydra's `whenever this creature is dealt damage`.
+    ///
+    /// The mirror of the whole rest of this selector, and one flag rather than a second
+    /// condition because everything else about the question is the same: the same
+    /// recorded events, the same once-per-event count, and the same silence for damage a
+    /// shield prevented (CR 615.1), which is what the reminder text on that card means by
+    /// "it must survive the damage".
+    #[serde(default)]
+    pub received: bool,
 }
 
 /// Which cards leaving which graveyard satisfy

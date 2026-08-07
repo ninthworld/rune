@@ -264,8 +264,22 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 format!("{source} {} until end of turn", parts.join(" and "))
             }
         }
-        Effect::PutCountersOnSelf { counter, count } => {
-            format!("put {} on {source}", counters(*counter, *count))
+        Effect::PutCountersOnSelf {
+            counter,
+            count,
+            that_many,
+        } => {
+            // "that many" is the card's own words for a number the trigger event fixes;
+            // the printed sentence has no value to show, and by the time one is written
+            // in, this text has already been read.
+            if *that_many {
+                format!(
+                    "put that many {} counters on {source}",
+                    counter_symbol(*counter)
+                )
+            } else {
+                format!("put {} on {source}", counters(*counter, *count))
+            }
         }
         // The self-referential return: the source names itself, and the graveyard it comes
         // out of is the one the ability functions in (CR 113.6) — so both halves of the

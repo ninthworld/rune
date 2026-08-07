@@ -184,6 +184,11 @@ pub enum GameEvent {
         /// *this creature deals damage* has nowhere else to read it from — by the time
         /// the damage is marked, the recipient knows only that it was hit.
         source: Option<PermanentId>,
+        /// Whether this was **combat** damage (CR 510.1). **Engine-internal** for the
+        /// same reason [`source`](Self::DamageDealt::source) is, and here for the same
+        /// kind of reader: `whenever equipped creature deals combat damage to a player`
+        /// asks a question about the damage that marked damage cannot answer afterwards.
+        combat: bool,
     },
     /// A player drew cards; individual hidden cards are deliberately not recorded.
     CardsDrawn {

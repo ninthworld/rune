@@ -370,6 +370,10 @@ fn collect_from(
             // spell" is fixed (CR 603.7c) — so one fire is one discarder rather than a
             // count with nobody attached.
             let named = named_subjects(&event, watcher, before, after);
+            // And a condition whose sentence says "**that many**" arrives with the number
+            // already measured, for the same reason: the event fixed it, and by resolution
+            // the damage that fixed it is marked and indistinguishable from any other.
+            let measured = measured_amounts(&event, watcher, before, after);
             let fires = fire_count(&event, watcher, before, after, db);
             for index in 0..fires {
                 out.push(Trigger {
@@ -378,7 +382,10 @@ fn collect_from(
                     paid: crate::stack::PaidCost::default(),
                     source: watcher.source(),
                     controller: watcher.controller,
-                    effects: effects.clone(),
+                    effects: measured.get(index).map_or_else(
+                        || effects.clone(),
+                        |amount| with_measured_amount(&effects, *amount),
+                    ),
                     // A printed trigger names nothing yet: its controller aims it once it
                     // is on the stack (CR 603.3d). The exception is the one above.
                     targets: named.get(index).map_or_else(Vec::new, |player| {
@@ -388,6 +395,115 @@ fn collect_from(
             }
         }
     }
+}
+
+/// The number each fire of a condition **measured**, one per fire in fire order, for the
+/// conditions whose effects say "that many".
+///
+/// Empty for every other condition — like [`named_subjects`], and for the same reason: an
+/// ability that says "that many" is reading the event, and there is nowhere else the
+/// number survives.
+fn measured_amounts(
+    event: &TriggerCondition,
+    watcher: Watcher<'_>,
+    before: &GameState,
+    after: &GameState,
+) -> Vec<u32> {
+    match event {
+        TriggerCondition::DealsDamage(observes) => {
+            observed_damage(*observes, watcher, before, after)
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// `effects` with every "that many" filled in with `amount` — the substitution that turns
+/// a printed sentence into one fire's worth of it.
+///
+/// Written into the effect rather than carried beside it because a stack object holds
+/// effects and nothing else about where they came from: once the ability is on the stack,
+/// "that many" has to already be a number.
+fn with_measured_amount(effects: &[Effect], amount: u32) -> Vec<Effect> {
+    effects
+        .iter()
+        .cloned()
+        .map(|effect| match effect {
+            Effect::PutCountersOnSelf {
+                counter,
+                that_many: true,
+                ..
+            } => Effect::PutCountersOnSelf {
+                counter,
+                count: amount,
+                that_many: true,
+            },
+            other => other,
+        })
+        .collect()
+}
+
+/// The damage events this transition recorded that satisfy `observes`, as the **amounts**
+/// they dealt, in the order they happened — one entry per fire of
+/// [`TriggerCondition::DealsDamage`].
+///
+/// The amounts rather than a count, because one card asks for the number: `whenever this
+/// creature is dealt damage, put *that many* +1/+1 counters on it`. Returning them here is
+/// what keeps the fire count and the number the ability reads from being two independent
+/// readings of the same events that could disagree.
+///
+/// Prevented damage recorded no event (CR 615.1), so a shield is silent here without a
+/// clause about it — which is exactly what Hungering Hydra's reminder text means by "it
+/// must survive the damage".
+fn observed_damage(
+    observes: crate::ability::ObservedDamage,
+    watcher: Watcher<'_>,
+    before: &GameState,
+    after: &GameState,
+) -> Vec<u32> {
+    // Which permanent the sentence is about: the source, the thing it is attached to for
+    // an Equipment's `equipped creature`, and — for the received form — the same
+    // permanent, on the other side of the event.
+    let subject = watcher.permanent().and_then(|perm| {
+        if observes.by_attached {
+            perm.attached_to
+        } else {
+            Some(perm.id)
+        }
+    });
+    let Some(subject) = subject else {
+        return Vec::new();
+    };
+    events_in(before, after)
+        .filter_map(|event| {
+            let GameEvent::DamageDealt {
+                target,
+                amount,
+                source,
+                combat,
+            } = event
+            else {
+                return None;
+            };
+            if observes.combat_only && !combat {
+                return None;
+            }
+            let matches = if observes.received {
+                // The mirror: the subject is what was hit, and who hit it is not asked.
+                matches!(target, crate::state::DamageTarget::Permanent(hit) if hit.permanent == subject)
+            } else {
+                *source == Some(subject)
+                    && match target {
+                        crate::state::DamageTarget::Player(seat) => {
+                            !observes.to_opponent || *seat != watcher.controller
+                        }
+                        crate::state::DamageTarget::Permanent(_) => {
+                            !(observes.to_player || observes.to_opponent)
+                        }
+                    }
+            };
+            matches.then_some(*amount)
+        })
+        .collect()
 }
 
 /// The players a condition's own sentence names — one per fire, in fire order — for the
@@ -758,36 +874,7 @@ fn fire_count(
         // only place the dealer survives. Prevented damage records nothing (CR 615.1), so
         // a shield stops this without a clause about it here.
         TriggerCondition::DealsDamage(observes) => {
-            let dealer = watcher.permanent().and_then(|perm| {
-                if observes.by_attached {
-                    perm.attached_to
-                } else {
-                    Some(perm.id)
-                }
-            });
-            dealer.map_or(0, |dealer| {
-                events_in(before, after)
-                    .filter(|event| {
-                        let GameEvent::DamageDealt {
-                            target,
-                            source: Some(source),
-                            ..
-                        } = event
-                        else {
-                            return false;
-                        };
-                        *source == dealer
-                            && match target {
-                                crate::state::DamageTarget::Player(seat) => {
-                                    !observes.to_opponent || *seat != watcher.controller
-                                }
-                                crate::state::DamageTarget::Permanent(_) => {
-                                    !(observes.to_player || observes.to_opponent)
-                                }
-                            }
-                    })
-                    .count()
-            })
+            observed_damage(*observes, watcher, before, after).len()
         }
         // Diffing the graveyard is what "leave" means: every road out — a hand, the
         // battlefield, exile, a library — is a card that was there and is not.

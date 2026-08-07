@@ -556,7 +556,20 @@ pub enum Effect {
         /// effect enum already reserves the `kind` tag for its own discriminant.
         counter: CounterKind,
         /// How many counters of that kind to place.
+        #[serde(default)]
         count: u32,
+        /// Take the count from **the number the trigger event measured** rather than from
+        /// [`count`](Self::PutCountersOnSelf::count) — Hungering Hydra's `put *that many*
+        /// +1/+1 counters on it`, where "that many" is the damage it was just dealt.
+        ///
+        /// The number is written into the effect **when the trigger is collected**, where
+        /// the event that fixed it is still in hand (CR 603.3); by resolution this is an
+        /// ordinary count and nothing reads this flag. That is why the substitution is not
+        /// a lookup at resolution time: the damage event is long gone by then, and the
+        /// ability that says "that many" means the amount it saw, not whatever the board
+        /// looks like when it resolves.
+        #[serde(default)]
+        that_many: bool,
     },
     /// The referenced player puts the top `count` cards of their library into their
     /// graveyard (CR 701.13, "mill"). Milling an empty library simply moves fewer

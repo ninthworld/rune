@@ -712,10 +712,10 @@ impl GameState {
         }
         match damage.recipient {
             DamageRecipient::Player(player) => {
-                self.deal_damage_to_player(player, amount, damage.source)
+                self.deal_damage_to_player(player, amount, damage.source, damage.combat)
             }
             DamageRecipient::Permanent(id) => {
-                self.deal_damage_to_permanent(id, amount, damage.source, db)
+                self.deal_damage_to_permanent(id, amount, damage.source, damage.combat, db)
             }
         }
     }
@@ -733,6 +733,7 @@ impl GameState {
         player: PlayerId,
         amount: u32,
         source: Option<PermanentId>,
+        combat: bool,
     ) -> u32 {
         let Some(p) = self.players.get_mut(player.0) else {
             return 0;
@@ -743,6 +744,7 @@ impl GameState {
                 target: DamageTarget::Player(player),
                 amount,
                 source,
+                combat,
             });
         }
         amount
@@ -777,6 +779,7 @@ impl GameState {
         id: PermanentId,
         amount: u32,
         source: Option<PermanentId>,
+        combat: bool,
         db: &CardDatabase,
     ) -> u32 {
         let is_planeswalker = self
@@ -786,7 +789,7 @@ impl GameState {
             .and_then(|p| p.printed.face(db))
             .is_some_and(|face| face.has_type(CardType::Planeswalker));
         if !is_planeswalker {
-            return self.mark_damage_on_permanent(id, amount, source);
+            return self.mark_damage_on_permanent(id, amount, source, combat);
         }
         let Some(perm) = self.battlefield.iter_mut().find(|p| p.id == id) else {
             return 0;
@@ -804,6 +807,7 @@ impl GameState {
                 target: DamageTarget::Permanent(logged),
                 amount,
                 source,
+                combat,
             });
         }
         amount
@@ -821,6 +825,7 @@ impl GameState {
         id: PermanentId,
         amount: u32,
         source: Option<PermanentId>,
+        combat: bool,
     ) -> u32 {
         let Some(perm) = self.battlefield.iter_mut().find(|p| p.id == id) else {
             return 0;
@@ -832,6 +837,7 @@ impl GameState {
                 target: DamageTarget::Permanent(logged),
                 amount,
                 source,
+                combat,
             });
         }
         amount
