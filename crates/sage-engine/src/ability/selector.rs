@@ -355,6 +355,19 @@ pub struct PermanentCount {
     /// catalog defines; an upper one arrives with the card that needs it.
     #[serde(default)]
     pub min_power: Option<i32>,
+    /// Count only permanents that are **not tokens** (CR 111) — the "number of
+    /// **nontoken** creatures you control" a card counts before making tokens of its own.
+    ///
+    /// A flag rather than a three-way "token / nontoken / either", because only one
+    /// direction is printed: a card that counted *tokens* would add the other value here
+    /// and nothing about this field would have to move. Read off what the permanent is,
+    /// which the state already records ([`Printed::is_token`](crate::Printed::is_token)) —
+    /// never inferred from a missing card identity.
+    ///
+    /// It matters most on exactly the cards that carry it: a token-making effect that
+    /// counted its own tokens would grow every time it resolved.
+    #[serde(default)]
+    pub nontoken: bool,
 }
 
 /// Whose permanents a [`PermanentCount`] counts, relative to the effect's controller.

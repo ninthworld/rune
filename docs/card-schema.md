@@ -1023,8 +1023,15 @@ because a printed card asks them as one, and two combats in a turn both count.
 
 A `permanents` selector is a small product — `scope` (`you_control`, `opponents_control`,
 `any`; default `you_control`), optional `card_type`, optional `subtype`, optional `color`,
-and optional `min_power` — read against printed types, like every other selector in the
-engine.
+optional `min_power`, and the flag `nontoken` — read against printed types, like every
+other selector in the engine.
+
+`nontoken` counts only permanents that are not tokens (CR 111), which is the *"number of
+nontoken creatures you control"* a card names before making tokens of its own. It matters
+most on exactly those cards: a token-making effect that counted its own tokens would grow
+every time it resolved. One flag rather than a three-way choice, because only that
+direction is printed — a card that counted tokens would add the other value and nothing
+here would move.
 
 `min_power` is the one exception to that, and the exception is the point: it is read
 through the **computed** characteristics, because power is what the implemented layers

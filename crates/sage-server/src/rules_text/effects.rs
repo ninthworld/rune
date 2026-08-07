@@ -860,6 +860,11 @@ fn power_clause(class: &str, count: &PermanentCount) -> String {
 /// exhaustive.
 pub(super) fn count_noun(count: &PermanentCount) -> String {
     let mut noun = String::new();
+    // Printed ahead of the colour, the way a card prints it: "nontoken creature", and
+    // "nontoken white creature" if a card ever names both (CR 111).
+    if count.nontoken {
+        noun.push_str("nontoken ");
+    }
     if let Some(color) = count.color {
         noun.push_str(color.word());
         noun.push(' ');

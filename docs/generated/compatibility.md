@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (244)
+## Supported cards (245)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -133,6 +133,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `knightly_valor` | Knightly Valor | functional definition |
 | `lathliss_dragon_queen` | Lathliss, Dragon Queen | functional definition |
 | `lava_axe` | Lava Axe | functional definition |
+| `lena_selfless_champion` | Lena, Selfless Champion | functional definition |
 | `leonin_vanguard` | Leonin Vanguard | functional definition |
 | `leonin_warleader` | Leonin Warleader | functional definition |
 | `lich_s_caress` | Lich's Caress | functional definition |
@@ -258,13 +259,14 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `wall_of_vines` | Wall of Vines | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (49)
+## Excluded (51)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
 | Excluded | Blocker |
 | --- | --- |
 | Abilities that trigger on a card leaving a graveyard | the zone changes a trigger observes are a permanent entering the battlefield and a permanent leaving it for a graveyard, both read by diffing the battlefield; no condition names a zone, so a card moving out of a graveyard — or into or out of a hand, a library, or exile — is watched by nothing |
+| Abilities that trigger on a loyalty ability being activated | an observed activation is filtered by who activated it and by the source's card type, so "whenever a player activates a loyalty ability" cannot be told from any other activation that used the stack (CR 606.1) |
 | Abilities that trigger on a mana ability being activated | the activation condition watches the objects a transition put on the stack, which a mana ability never reaches (CR 605.3a) |
 | Abilities that trigger on a permanent becoming the target of a spell or ability | a trigger condition is a pure predicate over the states one action produced, and what it can find there is a zone change, an attack declaration, a draw, a life gain, a cast, an activation that used the stack, or a step boundary; a target is chosen at announcement and stored on the stack object, and no condition reads that list |
 | Abilities that trigger on damage being dealt | damage is dealt at one seam, and the only thing that reads it afterwards is the flag a permanent carries for whether it has dealt any yet — a question a continuous ability may ask about its own source and nothing else; no trigger condition reads that flag or the damage beside it, so nothing fires on a creature dealing damage or on a player being dealt it |
@@ -304,6 +306,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Replacement effects other than one modifying a permanent entering the battlefield | the entering object's own self-replacements and a one-shot replacement an ability created for the turn are collected, ordered by the affected permanent's controller (CR 616.1), and applied once each (CR 614.5); damage is reached only by a prevention shield, and no other event can be replaced — not a permanent leaving the battlefield, a draw, or life gained — no permanent carries a static replacement ability, and the only substitution an entry can be given is exile |
 | Rules that apply as though a permanent lacked a keyword other than defender | one as-though permission is modeled — attacking as though the creature did not have defender (CR 609.4), granted as a continuous effect that is in no layer and read only at the attacker declaration, so the keyword itself is untouched everywhere else; no other keyword can be ignored by a rule, and nothing applies as though a permanent had a keyword it does not |
 | Selectors that filter by toughness, or by a power relative to another permanent's | a permanent count, an enters-or-dies trigger selector, a blocking restriction, a card choice, a mass-effect class, and the class of spell a cast trigger or a cost modifier names each carry a fixed power threshold; a target spec and a static ability's condition carry none, no threshold reads toughness, and no threshold is another permanent's power |
+| Shuffling anything but the effect's own source into a library | a resolution shuffles its own source in and nothing else: the destination is reachable — a targeted permanent can be put on top of a library — but the shuffle variant is self-referential, so a card that shuffles a permanent it targeted away is unwritable |
 | Static abilities that affect a class of the source's controller's own noncreature permanents, or a class of tokens | the continuous-effect selector names the source, one class of that controller's creatures, or permanents an opponent controls filtered by card type and by the card name the source was given as it entered; it cannot name a class of the controller's own noncreature permanents, and nothing anywhere filters a class by token-ness |
 | Static abilities that select by a keyword a permanent was granted | a printed static ability's class may be filtered by keyword, and the keyword is read off the **printed** face: the selector is evaluated from inside the CR 613 layer-6 fold that is computing the affected permanent's keyword set, so it cannot ask for the answer being produced — a creature *granted* defender falls outside a class that names defender, exactly as the printed-subtype read beside it already does |
 | Taking an extra turn | the turn structure hands the next turn to a player already owed one, but nothing puts a player on that list: no effect in the vocabulary reaches the turn order, and none skips a turn or a step either |

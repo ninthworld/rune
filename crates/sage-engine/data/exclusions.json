@@ -76,6 +76,14 @@
     "blocker": "a targeted card returns from a graveyard to a hand or to the battlefield, and a whole graveyard can be exiled; nothing else moves a card out of one"
   },
   {
+    "name": "Shuffling anything but the effect's own source into a library",
+    "blocker": "a resolution shuffles its own source in and nothing else: the destination is reachable — a targeted permanent can be put on top of a library — but the shuffle variant is self-referential, so a card that shuffles a permanent it targeted away is unwritable"
+  },
+  {
+    "name": "Abilities that trigger on a loyalty ability being activated",
+    "blocker": "an observed activation is filtered by who activated it and by the source's card type, so \"whenever a player activates a loyalty ability\" cannot be told from any other activation that used the stack (CR 606.1)"
+  },
+  {
     "name": "Effects that exile a permanent until the source that exiled it leaves the battlefield",
     "blocker": "an exile moves the permanent an effect targeted one way and records nothing about what moved it; there is no linked-object reference (CR 610.3) and no effect watching for a source's departure, so nothing an exile removes ever comes back"
   },

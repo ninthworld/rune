@@ -161,6 +161,12 @@ fn permanents_matching<'a>(
         if !scope_ok {
             return false;
         }
+        // CR 111: a token is not a card, and a card that counts *nontoken* permanents
+        // says so because counting its own tokens would grow the number every time the
+        // effect resolved. Read off what the permanent is, never inferred.
+        if wanted.nontoken && perm.printed.is_token() {
+            return false;
+        }
         let Some(face) = perm.printed.face(db) else {
             return false;
         };
