@@ -98,6 +98,18 @@ pub enum PlayerRef {
     /// whole point of the cards that print it: a spell that makes each player discard
     /// half their hand makes its caster discard too.
     EachPlayer,
+    /// The player this resolution's most recent targeted effect **named** — the `its
+    /// controller` of `Destroy target creature. Its controller creates a 2/4 white Ox`.
+    ///
+    /// Not a target and never a slot: the choice was made by the sentence before it, and a
+    /// slot here would be a second choice the card does not ask for. Read from
+    /// [`Resolution::chosen_player`](crate::Resolution), which is written before the
+    /// naming effect is applied — so a creature that is destroyed still had a controller
+    /// when the question was asked (CR 608.2h).
+    ///
+    /// Names nobody in a resolution that has aimed at nothing, which is a card that could
+    /// not have been written: the phrase only exists after a sentence that chose.
+    ThatPlayer,
     /// One **targeted** player (CR 115.1), any seat still in the game: "target player".
     TargetPlayer,
     /// One **targeted** opponent of the controller: "target opponent". Distinct from
@@ -130,7 +142,12 @@ impl PlayerRef {
     #[must_use]
     pub fn target_spec(self) -> Option<TargetSpec> {
         match self {
-            PlayerRef::Controller | PlayerRef::EachOpponent | PlayerRef::EachPlayer => None,
+            // "That player" fills no slot for the same reason "you" does not: the sentence
+            // names them rather than asking anybody to choose.
+            PlayerRef::Controller
+            | PlayerRef::EachOpponent
+            | PlayerRef::EachPlayer
+            | PlayerRef::ThatPlayer => None,
             PlayerRef::TargetPlayer => Some(TargetSpec::AnyPlayer),
             PlayerRef::TargetOpponent => Some(TargetSpec::AnyOpponent),
         }

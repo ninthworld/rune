@@ -31,7 +31,8 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 PlayerRef::EachOpponent
                 | PlayerRef::EachPlayer
                 | PlayerRef::TargetPlayer
-                | PlayerRef::TargetOpponent => "controls",
+                | PlayerRef::TargetOpponent
+                | PlayerRef::ThatPlayer => "controls",
             };
             let tap = format!(
                 "tap all creatures {} {controls}",
@@ -1057,7 +1058,8 @@ fn relative_subject(player_ref: PlayerRef) -> &'static str {
         PlayerRef::EachOpponent
         | PlayerRef::EachPlayer
         | PlayerRef::TargetPlayer
-        | PlayerRef::TargetOpponent => "they",
+        | PlayerRef::TargetOpponent
+        | PlayerRef::ThatPlayer => "they",
     }
 }
 
@@ -1178,6 +1180,10 @@ fn subject_pronoun(player_ref: PlayerRef) -> &'static str {
         PlayerRef::EachPlayer => "each player",
         PlayerRef::TargetPlayer => "target player",
         PlayerRef::TargetOpponent => "target opponent",
+        // The card's own words for a player a sentence before this one chose: "its
+        // controller", where a destroy came first, reads as "that player" everywhere the
+        // engine has to name them in the abstract.
+        PlayerRef::ThatPlayer => "that player",
     }
 }
 
@@ -1188,7 +1194,8 @@ fn possessive_pronoun(player_ref: PlayerRef) -> &'static str {
         PlayerRef::EachOpponent
         | PlayerRef::EachPlayer
         | PlayerRef::TargetPlayer
-        | PlayerRef::TargetOpponent => "their",
+        | PlayerRef::TargetOpponent
+        | PlayerRef::ThatPlayer => "their",
     }
 }
 
@@ -1315,6 +1322,7 @@ fn possessive_subject(player_ref: PlayerRef) -> &'static str {
         PlayerRef::EachPlayer => "each player",
         PlayerRef::TargetPlayer => "target player",
         PlayerRef::TargetOpponent => "target opponent",
+        PlayerRef::ThatPlayer => "that player",
     }
 }
 
@@ -1342,6 +1350,7 @@ fn mass_subject(source: &str, affects: &MassAffects) -> String {
         MassAffects::CreaturesYourOpponentsControl => {
             "creatures your opponents control".to_string()
         }
+        MassAffects::CreaturesThatPlayerControls => "creatures that player controls".to_string(),
         MassAffects::CreaturesAndPlaneswalkersYourOpponentsControl => {
             "creatures and planeswalkers your opponents control".to_string()
         }
@@ -1376,6 +1385,9 @@ fn mass_recipient(source: &str, affects: &MassAffects) -> String {
         MassAffects::EachCreature => "each creature".to_string(),
         MassAffects::CreaturesYourOpponentsControl => {
             "each creature your opponents control".to_string()
+        }
+        MassAffects::CreaturesThatPlayerControls => {
+            "each creature that player controls".to_string()
         }
         // The card prints this one as a single breath about the seat and its board —
         // "each opponent and each creature and planeswalker they control" — so the
@@ -1432,5 +1444,6 @@ fn player_noun(player_ref: PlayerRef) -> &'static str {
         PlayerRef::EachPlayer => "each player",
         PlayerRef::TargetPlayer => "target player",
         PlayerRef::TargetOpponent => "target opponent",
+        PlayerRef::ThatPlayer => "that player",
     }
 }

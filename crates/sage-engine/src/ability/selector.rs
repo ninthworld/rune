@@ -630,6 +630,13 @@ pub enum MassAffects {
     /// planeswalker removes loyalty (CR 120.3c) at the same seam damage to a creature is
     /// marked, so nothing about the verb has to know which it hit.
     CreaturesAndPlaneswalkersYourOpponentsControl,
+    /// Every creature controlled by the player this resolution's most recent targeted
+    /// effect named — the `each creature **that player** controls` of a spell that hits a
+    /// player and their board in one sentence.
+    ///
+    /// The class counterpart of [`PlayerRef::ThatPlayer`], reading the same fact for the
+    /// same reason: the choice belongs to the sentence before it.
+    CreaturesThatPlayerControls,
     /// Every creature on the battlefield that does not currently have flying, whoever
     /// controls it — the scope of an effect that clears the ground.
     ///

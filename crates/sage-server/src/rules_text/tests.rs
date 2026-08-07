@@ -1950,3 +1950,13 @@ fn issue_706_an_exile_that_comes_back_and_an_exchange() {
         "Exchange control of two target creatures."
     );
 }
+
+#[test]
+fn issue_706_a_sentence_about_a_choice_the_one_before_it_made() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "radiating_lightning"),
+        "Radiating Lightning deals 3 damage to target player.\nRadiating Lightning deals \
+         1 damage to each creature that player controls."
+    );
+}

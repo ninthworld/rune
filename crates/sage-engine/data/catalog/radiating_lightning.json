@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "functional_id": "radiating_lightning",
+  "name": "Radiating Lightning",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{3}{R}",
+  "colors": [
+    "red"
+  ],
+  "spell_effects": [
+    {
+      "kind": "deal_damage",
+      "target": "any_player",
+      "amount": 3
+    },
+    {
+      "kind": "deal_damage",
+      "affects": {
+        "scope": "creatures_that_player_controls"
+      },
+      "amount": 1
+    }
+  ]
+}

@@ -904,6 +904,24 @@ again with nothing to clear.
 source is attached to, and **targets nothing**, because the Aura chose its host when it was
 cast (CR 601.2c).
 
+### `that player` — a sentence about a choice the one before it made
+
+`Destroy target creature. **Its controller** creates a 2/4 white Ox.` `…deals 3 damage to
+target player and 1 damage to each creature **that player** controls.`
+
+Neither phrase can be a second target slot: that would be a second choice, and the card
+asks for one. So the resolution records who its most recent *targeted* effect named — a
+player it aimed at, or the controller of a permanent it aimed at — and the sentence after
+it reads that:
+
+- `"player_ref": "that_player"` on any player-subject effect
+- `{"scope": "creatures_that_player_controls"}` as a mass class
+
+It is recorded **before** the naming effect is applied, which is the only moment that
+works: a creature about to be destroyed has a controller now and none afterwards
+(CR 608.2h). The same road `entered` and `sacrificed` already take — a resolution writing
+down what it did, for its own later sentences to read.
+
 ### Exiling until the source leaves (CR 610.3)
 
 ```json

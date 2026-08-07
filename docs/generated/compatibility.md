@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (279)
+## Supported cards (281)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -198,6 +198,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `psychic_corrosion` | Psychic Corrosion | functional definition |
 | `psychic_symbiont` | Psychic Symbiont | functional definition |
 | `rabid_bite` | Rabid Bite | functional definition |
+| `radiating_lightning` | Radiating Lightning | functional definition |
 | `ravenous_harpy` | Ravenous Harpy | functional definition |
 | `reassembling_skeleton` | Reassembling Skeleton | functional definition |
 | `reclamation_sage` | Reclamation Sage | functional definition |
@@ -271,6 +272,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `tormenting_voice` | Tormenting Voice | functional definition |
 | `totally_lost` | Totally Lost | functional definition |
 | `tranquil_expanse` | Tranquil Expanse | functional definition |
+| `transmogrifying_wand` | Transmogrifying Wand | functional definition |
 | `trumpet_blast` | Trumpet Blast | functional definition |
 | `trusty_packbeast` | Trusty Packbeast | functional definition |
 | `two_headed_zombie` | Two-Headed Zombie | functional definition |
@@ -293,7 +295,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `windreader_sphinx` | Windreader Sphinx | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (49)
+## Excluded (48)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
@@ -317,7 +319,6 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Costs paid by exiling from anywhere but a graveyard | a cast and an activation each carry the sacrifices, discards, and graveyard exiles their cost names on the action — always a fixed number, and always the payer's own, because a size the payer picks is a decision and belongs to a resolution — and an optional effect asks for its own mid-resolution, from the same vocabulary minus every component that names the source; a cost exiles only out of the payer's own graveyard, never from a hand, a library, or the battlefield |
 | Damage prevention beyond a blanket shield for the turn | a shield prevents all damage — or all combat damage — for the rest of the turn, consulted at the one seam damage is dealt, and a spell may declare its own damage unpreventable to defeat it; nothing prevents a fixed amount, names a recipient or a source, redirects damage, or lasts anything but the turn |
 | Delayed triggers that wait for anything but the next spell cast | a resolution may leave one delayed trigger behind, the single condition it can wait for is the next spell of a named class its controller casts, firing spends it (CR 603.7b), and the turn boundary clears it; nothing waits for a step, a zone change, or an attack declaration, and no delayed trigger outlives the turn that created it |
-| Effects acting on the controller of a permanent the same resolution chose | a player-subject effect names its player as the controller, each opponent, each player, a targeted player, or a targeted opponent, each resolved on its own; nothing reads a controller off a permanent another slot in the same resolution is pointed at, so a token created by *that permanent's* controller cannot be written |
 | Effects that **replace** a permanent's types or colours, or animate a class | a continuous effect may add card types, subtypes and colours to one permanent — one it targeted, or the one it just put onto the battlefield — and set that permanent's base power and toughness (CR 613 layers 4, 5 and 7b), for the turn or for as long as its source remains; nothing *removes* a type or a colour, no effect names a class of permanents to animate, and no layer 7d switches power with toughness; and a colour a layer-5 effect added is read by the rules that ask about one object at a time — an evasion restriction, a colourless target — but not by a *counted class*, which is evaluated from inside a static ability's own condition and would recurse through the characteristics it is computing |
 | Effects that act on a player unless that player pays | the one cost an effect asks for mid-resolution belongs to an optional effect and is posed to the asking ability's own controller, never to a player the effect merely names; declining may now splice a consequence of its own onto the remainder — `sacrifice it unless you pay {1}` — but only the controller is ever the one asked, so an effect that acts on an *opponent* unless that opponent pays is unwritable |
 | Effects that ask a player to name a type | a permanent records the colour and the card its controller named as it entered — the card as a functional identity chosen from the catalog, never a string — but a card or creature type has no recorded identity, only a nonbasic land may be named, and nothing on a spell records a choice at all |

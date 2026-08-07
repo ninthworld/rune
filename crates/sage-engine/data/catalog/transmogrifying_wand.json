@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "functional_id": "transmogrifying_wand",
+  "name": "Transmogrifying Wand",
+  "types": [
+    "artifact"
+  ],
+  "mana_cost": "{3}",
+  "colors": [],
+  "abilities": [
+    {
+      "type": "enters_with_counters",
+      "counter": "charge",
+      "count": 3
+    },
+    {
+      "type": "activated",
+      "timing": "sorcery_speed",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{1}"
+        },
+        {
+          "kind": "tap"
+        },
+        {
+          "kind": "remove_counters",
+          "counter": "charge",
+          "count": 1
+        }
+      ],
+      "effects": [
+        {
+          "kind": "destroy",
+          "target": "any_creature"
+        },
+        {
+          "kind": "create_token",
+          "player_ref": "that_player",
+          "token": {
+            "name": "Ox",
+            "types": [
+              "creature"
+            ],
+            "subtypes": [
+              "Ox"
+            ],
+            "colors": [
+              "white"
+            ],
+            "power": 2,
+            "toughness": 4
+          }
+        }
+      ]
+    }
+  ]
+}
