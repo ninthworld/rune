@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (295)
+## Supported cards (296)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -273,6 +273,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `tattered_mummy` | Tattered Mummy | functional definition |
 | `tectonic_rift` | Tectonic Rift | functional definition |
 | `tezzeret_artifice_master` | Tezzeret, Artifice Master | functional definition |
+| `tezzeret_cruel_machinist` | Tezzeret, Cruel Machinist | functional definition |
 | `tezzeret_s_gatebreaker` | Tezzeret's Gatebreaker | functional definition |
 | `tezzeret_s_strider` | Tezzeret's Strider | functional definition |
 | `thorn_lieutenant` | Thorn Lieutenant | functional definition |

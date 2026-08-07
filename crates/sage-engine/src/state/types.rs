@@ -70,6 +70,11 @@ impl LoggedPermanent {
             identity: match &perm.printed {
                 crate::token::Printed::Card { card, .. } => LoggedIdentity::Card(*card),
                 crate::token::Printed::Token(token) => LoggedIdentity::Token(token.name.clone()),
+                // A face-down permanent is named by what it looks like, not by the card
+                // it is: the log is public and the card is not (CR 708.2).
+                crate::token::Printed::FaceDown { values, .. } => {
+                    LoggedIdentity::Token(values.name.clone())
+                }
             },
         }
     }
@@ -832,6 +837,20 @@ pub enum Duration {
     /// (CR 514.2): a "+X/+Y until end of turn" pump. Removed simultaneously with
     /// the marked-damage wipe as a single cleanup turn-based action.
     UntilEndOfTurn,
+    /// The effect ends as `player`'s **next** turn begins (CR 611.2b) — the `until your
+    /// next turn` of Tezzeret, Cruel Machinist's second ability.
+    ///
+    /// It carries the turn it was created on because that is the only way to tell "your
+    /// next turn" from "this one": the ability is sorcery-speed, so it is created *during*
+    /// its controller's turn, and a duration that merely named the player would end at the
+    /// cleanup it was created in. The comparison is `>`, so it survives its own turn and
+    /// ends at the first cleanup of a later turn belonging to that player.
+    UntilNextTurnOf {
+        /// Whose next turn ends it.
+        player: PlayerId,
+        /// The turn it was created on.
+        since_turn: u32,
+    },
 }
 
 /// Selects the permanents a [`StaticEffect`] applies to.

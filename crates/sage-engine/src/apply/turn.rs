@@ -82,6 +82,28 @@ fn step_pauses_for_players(state: &GameState, db: &CardDatabase) -> bool {
     }
 }
 
+/// End every `until your next turn` effect whose player's next turn this is (CR 611.2b).
+///
+/// The untap step rather than the cleanup step, and that is the whole of the difference
+/// between this duration and the one beside it: `until end of turn` ends the turn it was
+/// made on, and this one ends when its player's *next* turn **begins** — so it stands
+/// through every other player's turn in between and is gone before its own player takes
+/// an action.
+///
+/// The turn it was created on rides the duration because it is the only way to tell that
+/// next turn from this one: the ability that makes one is sorcery-speed, so it is created
+/// during its controller's own turn, and a duration that named only the player would end
+/// at the untap step it was created after.
+fn end_until_your_next_turn_effects(state: &mut GameState) {
+    let (turn, active) = (state.turn, state.active_player);
+    state.static_effects.retain(|effect| match effect.duration {
+        Duration::UntilNextTurnOf { player, since_turn } => {
+            !(player == active && turn > since_turn)
+        }
+        Duration::UntilEndOfTurn | Duration::WhileOnBattlefield => true,
+    });
+}
+
 /// Whether the active player currently holds more cards than their maximum hand size
 /// allows and so owes a cleanup-step discard (CR 514.1). `false` on a seatless state,
 /// and `false` for a player who has no maximum at all.
@@ -100,7 +122,10 @@ pub(crate) fn active_player_over_hand_size(state: &GameState, db: &CardDatabase)
 /// a no-op.
 fn perform_turn_based_actions(state: &mut GameState, db: &CardDatabase) {
     match state.step {
-        Step::Untap => untap_active_players_permanents(state, db),
+        Step::Untap => {
+            end_until_your_next_turn_effects(state);
+            untap_active_players_permanents(state, db);
+        }
         Step::Draw => draw_for_turn(state),
         Step::CombatDamage => deal_combat_damage(state, db),
         Step::EndCombat => remove_creatures_from_combat(state),

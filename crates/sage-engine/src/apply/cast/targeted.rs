@@ -404,10 +404,16 @@ pub(crate) fn apply_targeted_effect(
             power,
             toughness,
             until_end_of_turn,
+            until_your_next_turn,
             ..
         } => {
             if let Target::Permanent(id) = target {
-                let duration = if *until_end_of_turn {
+                let duration = if *until_your_next_turn {
+                    crate::state::Duration::UntilNextTurnOf {
+                        player: controller,
+                        since_turn: state.turn,
+                    }
+                } else if *until_end_of_turn {
                     crate::state::Duration::UntilEndOfTurn
                 } else {
                     crate::state::Duration::WhileOnBattlefield
@@ -662,6 +668,7 @@ pub(crate) fn apply_targeted_effect(
         | Effect::TransformSelf
         | Effect::ExileSelfAndReturnTransformed
         | Effect::PutCountersOnSelf { .. }
+        | Effect::PutHandOntoBattlefieldFaceDown { .. }
         // A delayed trigger names an event, never a chosen object.
         | Effect::CreateDelayedTrigger { .. }
         // A reflexive ability names an event inside its own resolution, never a chosen

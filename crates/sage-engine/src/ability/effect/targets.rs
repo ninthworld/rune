@@ -250,7 +250,8 @@ impl Effect {
             // Turning a permanent over names its own source, whichever road it takes.
             | Effect::TransformSelf
             | Effect::ExileSelfAndReturnTransformed
-            | Effect::PutCountersOnSelf { .. } => Vec::new(),
+            | Effect::PutCountersOnSelf { .. }
+            | Effect::PutHandOntoBattlefieldFaceDown { .. } => Vec::new(),
         }
     }
 }

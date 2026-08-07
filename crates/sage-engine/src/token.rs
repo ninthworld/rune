@@ -132,6 +132,25 @@ pub enum Printed {
     /// so the common variant does not pay for the rare one — a [`Permanent`](crate::Permanent)
     /// is cloned on every [`apply_action`](crate::apply_action).
     Token(Box<TokenData>),
+    /// A **face-down** permanent (CR 708.2): a card whose printed characteristics are
+    /// hidden and replaced by whatever the effect that turned it down says it is —
+    /// Tezzeret, Cruel Machinist's `they're 5/5 artifact creatures`.
+    ///
+    /// It is exactly the two halves of the variants above, one from each: the
+    /// characteristics come from a carried blob, as a token's do, and the **card** is
+    /// still there, as an ordinary permanent's is. That second half is the whole reason
+    /// this is not a token — a face-down card that dies goes to its owner's graveyard as
+    /// itself (CR 708.4), where a token would simply cease to exist.
+    ///
+    /// A face-down permanent has **no name and no abilities**, which is not a rule stated
+    /// here: it is what the carried characteristics say, because the effect that made it
+    /// wrote them and wrote neither.
+    FaceDown {
+        /// The card it is, hidden until it leaves the battlefield.
+        card: CardId,
+        /// What it is *while* face down.
+        values: Box<TokenData>,
+    },
 }
 
 impl Default for Printed {
@@ -167,7 +186,9 @@ impl Printed {
     #[must_use]
     pub fn card(&self) -> Option<CardId> {
         match self {
-            Self::Card { card, .. } => Some(*card),
+            // A face-down permanent is a card and leaves as one (CR 708.4); only a token
+            // has none.
+            Self::Card { card, .. } | Self::FaceDown { card, .. } => Some(*card),
             Self::Token(_) => None,
         }
     }
@@ -178,7 +199,9 @@ impl Printed {
     pub fn face_up(&self) -> Face {
         match self {
             Self::Card { face, .. } => *face,
-            Self::Token(_) => Face::Front,
+            // A token has exactly one face, and a face-down permanent's characteristics
+            // are the ones it carries rather than either of its card's.
+            Self::Token(_) | Self::FaceDown { .. } => Face::Front,
         }
     }
 
@@ -206,6 +229,13 @@ impl Printed {
         matches!(self, Self::Token(_))
     }
 
+    /// Whether this permanent is **face down** (CR 708.2) — a card whose printed
+    /// characteristics are hidden behind the ones it carries.
+    #[must_use]
+    pub fn is_face_down(&self) -> bool {
+        matches!(self, Self::FaceDown { .. })
+    }
+
     /// This permanent's printed face: the catalog entry for a card, the carried
     /// characteristics for a token, or `None` when a card handle is not in `db` (the
     /// unknown-id case the engine surfaces rather than panics on).
@@ -213,7 +243,11 @@ impl Printed {
     pub fn face<'a>(&'a self, db: &'a crate::CardDatabase) -> Option<PrintedFace<'a>> {
         match self {
             Self::Card { card, face } => db.card(*card).and_then(|data| data.face(*face)),
-            Self::Token(token) => Some(PrintedFace::Token(token)),
+            // Both carried-characteristics variants read the same way: what the effect
+            // that made them wrote down is what they are.
+            Self::Token(token) | Self::FaceDown { values: token, .. } => {
+                Some(PrintedFace::Token(token))
+            }
         }
     }
 }

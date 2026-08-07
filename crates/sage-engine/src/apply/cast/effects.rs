@@ -627,6 +627,7 @@ pub(crate) fn apply_effect(
         | Effect::DiscardByAmount { .. }
         | Effect::Sacrifice { .. }
         | Effect::Scry { .. }
+        | Effect::PutHandOntoBattlefieldFaceDown { .. }
         | Effect::LookAtTop { .. }
         | Effect::RevealTopAndMayPlay { .. }
         | Effect::MayCastExiledThisWay { .. }

@@ -169,6 +169,10 @@ fn printed_abilities_of(
         // transformed offers exactly its back face's abilities and none of its front's.
         crate::token::Printed::Card { card, face } => abilities_of_face(db, *card, *face),
         crate::token::Printed::Token(token) => token.abilities.clone(),
+        // A face-down permanent has no abilities (CR 708.2) — which is not a rule stated
+        // here either: it is what the carried characteristics say, and the effect that
+        // turned the card down wrote none.
+        crate::token::Printed::FaceDown { values, .. } => values.abilities.clone(),
     }
 }
 

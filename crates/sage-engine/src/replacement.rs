@@ -113,6 +113,14 @@ pub enum EnteringObject {
     /// for the reason [`Printed::Token`] is — a [`PendingEntry`] is cloned with the
     /// state on every action.
     Token(Box<TokenData>),
+    /// A card arriving **face down** (CR 708.2): both of the above at once — the card it
+    /// is, and the characteristics it will have while it is down.
+    FaceDownCard {
+        /// The physical card entering.
+        card: CardInstance,
+        /// What it is while face down.
+        values: Box<TokenData>,
+    },
 }
 
 impl EnteringObject {
@@ -124,7 +132,8 @@ impl EnteringObject {
     #[must_use]
     pub fn card(&self) -> Option<CardInstance> {
         match self {
-            Self::Card(card) => Some(*card),
+            // A face-down card is a card: the whole point of it not being a token.
+            Self::Card(card) | Self::FaceDownCard { card, .. } => Some(*card),
             Self::Token(_) => None,
         }
     }
@@ -143,7 +152,12 @@ impl EnteringObject {
     pub fn face<'a>(&'a self, db: &'a CardDatabase, face: Face) -> Option<PrintedFace<'a>> {
         match self {
             Self::Card(card) => db.card(card.card).and_then(|data| data.face(face)),
-            Self::Token(token) => Some(PrintedFace::Token(token)),
+            // Both carried-characteristics arrivals read the same way, and a face-down
+            // card's printed face is deliberately *not* consulted: what it is while it is
+            // down is what the effect that turned it down said (CR 708.2).
+            Self::Token(token) | Self::FaceDownCard { values: token, .. } => {
+                Some(PrintedFace::Token(token))
+            }
         }
     }
 
@@ -156,6 +170,10 @@ impl EnteringObject {
                 face,
             },
             Self::Token(token) => Printed::Token(token.clone()),
+            Self::FaceDownCard { card, values } => Printed::FaceDown {
+                card: card.card,
+                values: values.clone(),
+            },
         }
     }
 }
@@ -416,7 +434,11 @@ fn is_entry_self_replacement(ability: &Ability) -> bool {
 fn entering_abilities(db: &CardDatabase, object: &EnteringObject, face: Face) -> Vec<Ability> {
     match object {
         EnteringObject::Card(card) => crate::card::abilities_of_face(db, card.card, face),
-        EnteringObject::Token(token) => token.abilities.clone(),
+        // A face-down card's own abilities are not among them: what it is while it is down
+        // is what the effect said, and that includes having none (CR 708.2).
+        EnteringObject::Token(token) | EnteringObject::FaceDownCard { values: token, .. } => {
+            token.abilities.clone()
+        }
     }
 }
 

@@ -1670,6 +1670,31 @@ pub enum Effect {
         /// the source remains on the battlefield.
         #[serde(default)]
         until_end_of_turn: bool,
+        /// Whether it lasts **until its controller's next turn** instead — the `until your
+        /// next turn` of a planeswalker's zero ability.
+        ///
+        /// A third answer to one question, and a flag beside the other rather than a
+        /// duration authored outright, because that is how the card reads: the effect is
+        /// the same animation, and this says only how long it stands. Takes precedence
+        /// over [`until_end_of_turn`](Self::Animate::until_end_of_turn), which no card
+        /// authors alongside it.
+        #[serde(default)]
+        until_your_next_turn: bool,
+    },
+    /// Put **any number of cards from the controller's hand** onto the battlefield face
+    /// down (CR 708.2), as `values` — Tezzeret, Cruel Machinist's ultimate.
+    ///
+    /// The open form of a hand selection, exactly as an absent amount is the open form of
+    /// a sacrifice: a floor of none and a ceiling of the whole hand, so a player with an
+    /// empty hand answers it with nothing rather than being stalled by it.
+    ///
+    /// What arrives is a card with the characteristics `values` names and none of its own
+    /// — no name, no abilities, no colour it printed — which is what being face down is
+    /// (CR 708.2). The card is still underneath, so one that dies reaches its owner's
+    /// graveyard as itself rather than ceasing to exist (CR 708.4).
+    PutHandOntoBattlefieldFaceDown {
+        /// What each card becomes while it is face down.
+        values: TokenData,
     },
     /// **Exchange control** of the two permanents this effect names (CR 701.10) —
     /// Switcheroo's `Exchange control of two target creatures.`
