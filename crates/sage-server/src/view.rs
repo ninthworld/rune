@@ -591,6 +591,9 @@ pub(crate) fn resolve_action(
             // A color choice is answered on the same slot with a color's option id
             // (issue #620) — again, only one the offer listed.
             Action::AnswerColor { .. } => bind_player_color(state, &offered, &choice.targets),
+            // An amount is answered on the same slot with the number itself, and only one
+            // the offer listed (issue #706).
+            Action::AnswerNumber { .. } => bind_player_number(state, &offered, &choice.targets),
             // The CR 616.1 replacement ordering is answered on the same slot with the
             // option id that *is* the position in the engine's derived list.
             Action::AnswerReplacement { .. } => {

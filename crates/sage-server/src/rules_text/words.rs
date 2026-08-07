@@ -129,6 +129,12 @@ pub(super) fn sacrifice_clause(noun: &str, count: SacrificeCount, another: bool)
 /// one vocabulary, so the printed sentence and the button that answers it cannot describe
 /// the same payment two different ways.
 pub(crate) fn optional_cost_phrase(cost: &OptionalCost) -> String {
+    // `{X}` is mana whose *amount* is chosen, so `OptionalCost::mana` answers `None` for
+    // it — there is no fixed string to parse a pool against. The words are still "pay",
+    // which is what the card prints.
+    if matches!(cost, OptionalCost::ManaX) {
+        return "pay {X}".to_string();
+    }
     match cost.mana() {
         Some(mana) => format!("pay {mana}"),
         None => {
@@ -307,6 +313,8 @@ fn graveyard_noun(spec: TargetSpec, targeted: bool) -> &'static str {
         scope,
         class,
         max_mana_value,
+        exact_mana_value,
+        mana_value_is_x,
     } = spec
     else {
         return "card in a graveyard";
@@ -323,6 +331,25 @@ fn graveyard_noun(spec: TargetSpec, targeted: bool) -> &'static str {
         GraveyardCardClass::Artifact => "artifact card",
         GraveyardCardClass::Land => "land card",
     };
+    // An exact value is what the card prints where a cap prints "or less". The
+    // unsubstituted form is the letter itself, which is what a card that follows a
+    // `you may pay {X}` prints — the number does not exist until somebody names it.
+    if mana_value_is_x {
+        return match (targeted, whose, kind) {
+            (true, "your graveyard", "creature card") => {
+                "target creature card with mana value X in your graveyard"
+            }
+            _ => "card in a graveyard",
+        };
+    }
+    if let Some(exact) = exact_mana_value {
+        return match (targeted, whose, kind, exact) {
+            (true, "your graveyard", "creature card", _) => {
+                "target creature card with that mana value in your graveyard"
+            }
+            _ => "card in a graveyard",
+        };
+    }
     match (targeted, whose, kind, max_mana_value) {
         (true, "your graveyard", "creature card", Some(2)) => {
             "target creature card with mana value 2 or less in your graveyard"

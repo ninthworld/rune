@@ -87,6 +87,21 @@ pub enum RuleModification {
     /// characteristics. It also does not stop counters being *removed* — the rule it
     /// modifies is the one that would have put them on.
     CannotHaveCountersPut,
+    /// CR 614.1a, applied as a redirection: this permanent is **exiled instead of being
+    /// put anywhere else** when it would leave the battlefield — Isareth the Awakener's
+    /// `if that creature would leave the battlefield, exile it instead of putting it
+    /// anywhere else`.
+    ///
+    /// Read at every zone seam that takes a permanent *off* the battlefield — the
+    /// graveyard, the hand, the top of a library, a shuffle — so it covers dying, being
+    /// destroyed, being bounced, and being tucked with one answer rather than four. The
+    /// exile seam itself does not ask: a permanent already on its way to exile is going
+    /// where this would send it.
+    ///
+    /// It replaces the *destination*, not the leaving. The permanent still leaves the
+    /// battlefield, so everything that watches a permanent leave — a dies trigger, an
+    /// Aura falling off — sees exactly what it saw before.
+    ExiledInsteadOfLeavingBattlefield,
     /// CR 702.3b, applied **as though** it were absent (CR 609.4): the creature may be
     /// declared as an attacker even though it has defender — Novice Knight's `can attack
     /// as though it didn't have defender`.

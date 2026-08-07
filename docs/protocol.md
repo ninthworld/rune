@@ -904,6 +904,14 @@ elided — so the range reads completely rather than by inference. A *divided* v
 posed as one `number` slot per recipient, each with its own bounds, and the server
 validates the total on resolution; the client never enforces a sum.
 
+Since issue #706 a `number` slot may also carry a **mid-resolution** X — the `you may pay
+{X}` of a triggered ability, which has no announcement to ride on. It rides the same
+`player_choice` action every other mid-resolution answer does, on the same `choice` slot,
+so a client that can answer a yes-or-no and announce an X can answer this with no new
+shape to learn. Its bounds are recomputed on every projection, because a player owed the
+question may still activate mana abilities before answering (CR 605.3a) — the range grows
+as they tap.
+
 `values` (issue #733) is present exactly when the number is **the X of a mana cost**, and
 it lists every legal value together with what announcing it costs:
 

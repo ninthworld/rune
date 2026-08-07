@@ -86,6 +86,16 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         return crate::choice::named_card_is_legal(state, *card, db);
     }
 
+    // 1a-quater-bis. An amount is judged against the bounds recomputed **now**
+    //     ([`crate::number_bounds`]) rather than against whatever the question was posed
+    //     with: a player owed this may still activate mana abilities (CR 605.3a), so the
+    //     pool they answer with is not necessarily the pool they were asked with. Zero is
+    //     always within them.
+    if let Action::AnswerNumber { value } = action {
+        let (min, max) = crate::number_bounds(state, db);
+        return *value >= min && *value <= max;
+    }
+
     // 1a-quinquies. A card ordering names *every* card of the pending remainder, once
     //     each, and is checked against that remainder recomputed now
     //     ([`crate::choice::order_answer_is_legal`]). A permutation has one legal size, so

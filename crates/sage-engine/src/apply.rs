@@ -101,6 +101,7 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         Action::AnswerChoice { chosen } => apply_answer_choice(&mut next, chosen, db),
         Action::AnswerConfirm { accept } => apply_answer_confirm(&mut next, *accept, db),
         Action::AnswerColor { color } => apply_answer_color(&mut next, *color, db),
+        Action::AnswerNumber { value } => apply_answer_number(&mut next, *value, db),
         Action::AnswerReplacement { index } => apply_answer_replacement(&mut next, *index, db),
         Action::AnswerCardName { card } => apply_answer_card_name(&mut next, *card, db),
         Action::AnswerOrder { order } => apply_answer_order(&mut next, order, db),

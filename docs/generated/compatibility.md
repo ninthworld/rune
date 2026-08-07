@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (298)
+## Supported cards (299)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -142,6 +142,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `inferno_hellion` | Inferno Hellion | functional definition |
 | `inspired_charge` | Inspired Charge | functional definition |
 | `invoke_the_divine` | Invoke the Divine | functional definition |
+| `isareth_the_awakener` | Isareth the Awakener | functional definition |
 | `island` | Island | functional definition |
 | `isolate` | Isolate | functional definition |
 | `kargan_dragonrider` | Kargan Dragonrider | functional definition |

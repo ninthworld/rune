@@ -205,6 +205,16 @@ fn optional_payment_question(
         // Neither of these poses a further question: mana is charged from the pool as the
         // answer is given, and the source a `sacrifice this` names is not picked.
         OptionalCost::Mana { .. } | OptionalCost::SacrificeThis => None,
+        // `{X}` is the one payment whose *size* is still owed. The effects it buys travel
+        // with the question, because the answer is what makes them mean anything: X is
+        // substituted into them the moment it is named.
+        OptionalCost::ManaX => Some((
+            chooser,
+            ChoiceQuestion::Number(NumberRequest {
+                source: request.source,
+                effects: request.effects.clone(),
+            }),
+        )),
         // CR 701.17b: a player sacrifices only what they control, so the subject is the
         // chooser and there is nothing to author about whose it is.
         OptionalCost::Sacrifice {

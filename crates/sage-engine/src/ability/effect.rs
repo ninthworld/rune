@@ -984,6 +984,25 @@ pub enum Effect {
         /// chosen for it. The continuous effect lasts as long as that permanent does.
         #[serde(default)]
         colors: Vec<crate::mana::Color>,
+        /// Counters the permanent enters with — the `with a corpse counter on it` of a
+        /// reanimation that marks what it brought back.
+        ///
+        /// Placed as part of *entering* (CR 614.12), so they are already there before any
+        /// state-based action or entry trigger looks — the same road
+        /// [`Ability::EntersWithCounters`](crate::Ability) takes, for the same reason.
+        #[serde(default)]
+        counters: Vec<(CounterKind, u32)>,
+        /// Whether the permanent is **exiled instead of going anywhere else** when it
+        /// would leave the battlefield — `if that creature would leave the battlefield,
+        /// exile it instead of putting it anywhere else`.
+        ///
+        /// A replacement effect (CR 614.1a) keyed to the permanent this effect just made,
+        /// which nothing else could name: it did not exist when the ability was aimed. It
+        /// lasts as long as the permanent does, and outlives the source that created it —
+        /// the printed sentence sets no duration, so a creature reanimated this way is
+        /// still exiled after the reanimator itself has died.
+        #[serde(default)]
+        exile_on_leaving: bool,
     },
     /// Return the **card in a graveyard** this effect targets to its owner's **hand**
     /// (`Return target creature card from your graveyard to your hand.`) — the

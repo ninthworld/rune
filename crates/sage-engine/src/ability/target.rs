@@ -417,6 +417,35 @@ pub enum TargetSpec {
         /// any.
         #[serde(default)]
         max_mana_value: Option<u32>,
+        /// The **exact** mana value a matching card must have. Absent means any.
+        ///
+        /// Separate from [`max_mana_value`](Self::CardInGraveyard::max_mana_value)
+        /// because the printed cards differ: a cap admits everything cheaper, and a card
+        /// that says `with mana value X` means that value and no other. Collapsing them
+        /// into one bound would need a second field saying which comparison it meant,
+        /// which is the field this is.
+        ///
+        /// It is the one part of a spec that no card **authors**: it arrives from an X
+        /// its controller paid mid-resolution, substituted into the reflexive ability
+        /// that reads it ([`OptionalCost::ManaX`](crate::OptionalCost)). Authoring it
+        /// directly is legal and means what it says.
+        #[serde(default)]
+        exact_mana_value: Option<u32>,
+        /// Whether the exact mana value is **the X this ability's controller paid** —
+        /// the `with mana value X` of a sentence that follows a `you may pay {X}`.
+        ///
+        /// This is what a card authors, and it is a marker rather than a number because
+        /// at authoring time there is no number: X does not exist until a player names
+        /// it. The moment they do, the value is substituted in — this becomes `false` and
+        /// [`exact_mana_value`](Self::CardInGraveyard::exact_mana_value) becomes
+        /// `Some(x)` — so every later reader sees an ordinary, concrete spec and nothing
+        /// downstream has to know an X was ever involved.
+        ///
+        /// A spec still carrying it has not been substituted into, which can only mean it
+        /// was authored somewhere no X is paid; it names nothing, because "the X that was
+        /// paid" is not a number when nothing was paid.
+        #[serde(default)]
+        mana_value_is_x: bool,
     },
 }
 

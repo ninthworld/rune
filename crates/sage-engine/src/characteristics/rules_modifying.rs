@@ -48,7 +48,8 @@ pub fn assigns_combat_damage_by(
             RuleModification::AssignsCombatDamageBy { characteristic } => Some(characteristic),
             RuleModification::AttacksAsThoughNoDefender
             | RuleModification::DoesNotUntap
-            | RuleModification::CannotHaveCountersPut => None,
+            | RuleModification::CannotHaveCountersPut
+            | RuleModification::ExiledInsteadOfLeavingBattlefield => None,
         })
         .next_back()
         .unwrap_or_default()
@@ -108,6 +109,36 @@ pub fn cannot_have_counters_put_on(
     db: &CardDatabase,
 ) -> bool {
     rule_modifications(state, permanent, db).contains(&RuleModification::CannotHaveCountersPut)
+}
+
+/// Whether the permanent identified by `permanent` is **exiled instead of being put
+/// anywhere else** when it would leave the battlefield (CR 614.1a, as stated by
+/// [`RuleModification::ExiledInsteadOfLeavingBattlefield`]).
+///
+/// Read by every zone seam that takes a permanent off the battlefield, which is what makes
+/// "would leave the battlefield" one fact rather than one per road out. The exile seam
+/// does not ask: a permanent already headed for exile is going where this would send it.
+///
+/// It redirects the destination and nothing else. The permanent still *leaves*, so a dies
+/// trigger, an Aura falling off, and every other watcher of a departure see what they
+/// always saw.
+///
+/// Read straight off [`GameState::static_effects`](crate::GameState) rather than through
+/// [`rule_modifications`], for [`player_cannot_get_counters`]'s reason turned the other
+/// way round: this is asked from inside the zone seams, three of which take no card
+/// database at all, and it never needs one. The effect is only ever *created* by the
+/// resolution that reanimated the permanent, keyed to it by id — no printed static ability
+/// grants it, and none could, because it is about one specific object that did not exist
+/// when any card was written.
+#[must_use]
+pub fn exiled_instead_of_leaving(state: &GameState, permanent: PermanentId) -> bool {
+    state.static_effects.iter().any(|effect| {
+        effect.affects == crate::state::EffectAffects::SpecificPermanent(permanent)
+            && effect.modification
+                == crate::state::Modification::ModifyRule(
+                    RuleModification::ExiledInsteadOfLeavingBattlefield,
+                )
+    })
 }
 
 /// The player-side twin: whether the player in `seat` **can't get counters**

@@ -52,7 +52,7 @@ pub(crate) use layer_six::{current_abilities, stored_abilities};
 pub use layer_two::{controller_of, controller_of_id};
 pub use rules_modifying::{
     assigns_combat_damage_by, attacks_as_though_no_defender, cannot_have_counters_put_on,
-    does_not_untap, player_cannot_get_counters,
+    does_not_untap, exiled_instead_of_leaving, player_cannot_get_counters,
 };
 
 use crate::ability::{Ability, StaticAffects, StaticCondition};

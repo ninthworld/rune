@@ -590,11 +590,31 @@ pub(crate) fn apply_targeted_effect(
             types,
             subtypes,
             colors,
+            counters,
+            exile_on_leaving,
             ..
         } => {
             if let Target::Card(instance) = target {
                 if let Some(card) = take_from_a_graveyard(state, instance) {
-                    let made = state.put_card_onto_battlefield(card, controller, *tapped, None, db);
+                    let made = state.put_card_onto_battlefield_with_counters(
+                        card, controller, *tapped, None, counters, db,
+                    );
+                    // `If that creature would leave the battlefield, exile it instead`: a
+                    // replacement (CR 614.1a) keyed to the permanent this just made, which
+                    // is the only thing that could name it. It sets no duration of its own,
+                    // so it lasts as long as the permanent does and outlives the source —
+                    // a creature reanimated this way is still exiled after the reanimator
+                    // has died.
+                    if let Some(made) = made.filter(|_| *exile_on_leaving) {
+                        state.static_effects.push(crate::state::StaticEffect {
+                            source: made.0,
+                            affects: crate::state::EffectAffects::SpecificPermanent(made),
+                            modification: crate::state::Modification::ModifyRule(
+                                crate::card::RuleModification::ExiledInsteadOfLeavingBattlefield,
+                            ),
+                            duration: crate::state::Duration::WhileOnBattlefield,
+                        });
+                    }
                     // `That creature is a black Zombie in addition to its other colors and
                     // types`: a continuous effect on the permanent this just made, keyed
                     // to that permanent so it lasts exactly as long as it does. Nothing

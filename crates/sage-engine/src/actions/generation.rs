@@ -85,6 +85,12 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 // answer is the permutation the submitted action carries. It is posed
                 // only over two cards or more, so it is always answerable.
                 ChoiceQuestion::Order(_) => vec![Action::AnswerOrder { order: Vec::new() }],
+                // An amount is advertised as the bare question too; the value rides in
+                // the submitted action and is judged against the bounds
+                // ([`crate::number_bounds`]) recomputed against the pool as it stands —
+                // which may have grown, since a player owed this may still activate mana
+                // abilities (CR 605.3a).
+                ChoiceQuestion::Number(_) => vec![Action::AnswerNumber { value: 0 }],
                 // A sacrifice is advertised as the bare question too; the chosen
                 // permanents ride in the submitted action, exactly as a discard's
                 // chosen cards do.

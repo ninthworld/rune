@@ -286,6 +286,21 @@ pub enum Action {
         /// legal whenever the minimum is zero — declining to scry, or failing to find.
         chosen: Vec<CardInstanceId>,
     },
+    /// Answer the pending **amount** question with `value` — the X of a `you may pay
+    /// {X}` asked in the middle of a resolution
+    /// ([`ChoiceQuestion::Number`](crate::ChoiceQuestion)).
+    ///
+    /// Routed exactly as the other mid-resolution answers are, and with the same
+    /// exclusivity: while it is owed, its chooser is offered this and their mana
+    /// abilities, and every other seat is offered nothing. That mana-ability exception is
+    /// the reason the bounds are recomputed at the gate rather than trusted from the
+    /// question — a player owed this may still tap for more (CR 605.3a), and the answer
+    /// is judged against the pool as it stands when they give it.
+    AnswerNumber {
+        /// The amount chosen, judged against [`crate::number_bounds`]. Zero is always a
+        /// legal answer.
+        value: u32,
+    },
     /// Answer the **mid-resolution color choice** the game is currently waiting on: one
     /// point of `Add two mana in any combination of colors` (see
     /// [`crate::Effect::AddManaAnyColor`]).
@@ -635,6 +650,7 @@ impl Action {
             | Action::AnswerChoice { .. }
             | Action::AnswerConfirm { .. }
             | Action::AnswerColor { .. }
+            | Action::AnswerNumber { .. }
             | Action::AnswerReplacement { .. }
             | Action::AnswerCardName { .. }
             | Action::AnswerOrder { .. }
@@ -720,6 +736,10 @@ impl Action {
             Action::AnswerColor { .. } => Action::AnswerColor {
                 color: crate::mana::Color::White,
             },
+            // And an amount the same way: the bare question, whose answer is the value
+            // the submitted action carries. Zero is the requirement form's stand-in and
+            // also — uniquely among these — a legal answer.
+            Action::AnswerNumber { .. } => Action::AnswerNumber { value: 0 },
             // And a replacement-ordering answer the same way: one bare question, whose
             // answer names a position in the submitted action. Zero is the requirement
             // form's stand-in, never a default anyone is held to.

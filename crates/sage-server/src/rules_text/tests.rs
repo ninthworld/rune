@@ -2141,3 +2141,16 @@ fn issue_706_a_modal_trigger_prints_its_bullets_under_the_trigger() {
          long as Suncleanser remains on the battlefield."
     );
 }
+
+#[test]
+fn issue_706_an_x_paid_mid_resolution_prints_as_the_letter() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "isareth_the_awakener"),
+        "Deathtouch\n\
+         Whenever Isareth the Awakener attacks, you may pay {X}. When you do, put target \
+         creature card with mana value X in your graveyard onto the battlefield under \
+         your control with a corpse counter on it. If that creature would leave the \
+         battlefield, exile it instead of putting it anywhere else."
+    );
+}

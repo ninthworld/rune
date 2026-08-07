@@ -284,6 +284,7 @@ fn valid_action_view(
         Action::AnswerChoice { .. }
         | Action::AnswerConfirm { .. }
         | Action::AnswerColor { .. }
+        | Action::AnswerNumber { .. }
         | Action::AnswerReplacement { .. }
         | Action::AnswerCardName { .. }
         | Action::AnswerOrder { .. }

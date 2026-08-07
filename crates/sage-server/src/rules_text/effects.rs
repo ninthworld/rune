@@ -593,12 +593,48 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             types,
             subtypes,
             colors,
+            counters,
+            exile_on_leaving,
         } => {
+            // The counters ride the same sentence the card prints them in: "…onto the
+            // battlefield with a corpse counter on it".
+            let with_counters = match counters.as_slice() {
+                [] => String::new(),
+                entries => format!(
+                    " with {}",
+                    entries
+                        .iter()
+                        // "a corpse counter", not "1 corpse counter" — a card writes the
+                        // article for one and the number for more.
+                        .map(|(kind, count)| format!(
+                            "{} {} counter{}",
+                            if *count == 1 {
+                                "a".to_string()
+                            } else {
+                                number(*count)
+                            },
+                            counter_symbol(*kind),
+                            if *count == 1 { "" } else { "s" }
+                        ))
+                        .collect::<Vec<_>>()
+                        .join(" and ")
+                ),
+            };
+            let on_it = if counters.is_empty() { "" } else { " on it" };
             let return_it = format!(
-                "put {} onto the battlefield under your control{}",
+                "put {} onto the battlefield under your control{}{with_counters}{on_it}",
                 target_phrase(*target, *targets),
                 if *tapped { " tapped" } else { "" }
             );
+            // The replacement is its own sentence, where the card prints it.
+            let return_it = if *exile_on_leaving {
+                format!(
+                    "{return_it}. If that creature would leave the battlefield, exile it \
+                     instead of putting it anywhere else"
+                )
+            } else {
+                return_it
+            };
             // The card prints the continuous half as its own sentence about "that
             // creature", because by then the permanent exists and can be spoken of.
             let mut what: Vec<String> = colors.iter().map(|c| c.word().to_string()).collect();

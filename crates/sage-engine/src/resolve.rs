@@ -424,6 +424,8 @@ pub(crate) fn target_is_legal(
                 scope,
                 class,
                 max_mana_value,
+                exact_mana_value,
+                mana_value_is_x,
             },
             Target::Card(instance),
         ) => {
@@ -436,7 +438,11 @@ pub(crate) fn target_is_legal(
                 .find(|card| card.id == instance)
                 .and_then(|card| db.card(card.card))
                 .is_some_and(|data| {
-                    class.matches(data) && max_mana_value.is_none_or(|cap| data.mana_value() <= cap)
+                    class.matches(data)
+                        && max_mana_value.is_none_or(|cap| data.mana_value() <= cap)
+                        && exact_mana_value.is_none_or(|exact| data.mana_value() == exact)
+                        // An unsubstituted `X` names nothing: there is no number.
+                        && !mana_value_is_x
                 })
         }
         // "Any target" (CR 115.4): legal against a player still in the game, a creature

@@ -175,7 +175,65 @@ pub(crate) fn apply_answer_color(
     }
 }
 
-/// Answer the pending **CR 614.12 card-naming choice** with `named`: record it on the
+/// Answer the pending **amount** question with `value`: charge it as generic mana, and
+/// create the reflexive ability the payment bought — with the value substituted into its
+/// effects (CR 603.11).
+///
+/// The substitution is the point. `Return target creature card with mana value X` is a
+/// sentence about a number nobody had until this moment, and the ability that says it is
+/// aimed *after* this, when it goes on the stack. Writing the value into the effects here
+/// means every later reader — the candidate enumeration, the legality gate, the CR 608.2b
+/// re-check — sees an ordinary spec naming a concrete mana value, and none of them has to
+/// know an X was ever involved.
+///
+/// Legality — that an amount is owed at all, and that `value` is within the bounds
+/// recomputed against the current pool — has already been established by
+/// [`crate::apply_action`]'s gate. An answer with no amount pending is a no-op.
+pub(crate) fn apply_answer_number(state: &mut GameState, value: u32, db: &CardDatabase) {
+    let Some(ChoiceQuestion::Number(_)) = pending_player_choice(state).map(|p| &p.question) else {
+        return;
+    };
+    let answered = state.pending_choices.remove(0);
+    let ChoiceQuestion::Number(request) = &answered.question else {
+        return;
+    };
+    // Charged through the one pool seam every other payment uses. The gate established it
+    // is payable, so this cannot fail — and if the pool somehow could not cover it, the
+    // ability the payment bought is simply not created.
+    let cost = crate::mana::ManaCost {
+        generic: u8::try_from(value).unwrap_or(u8::MAX),
+        ..Default::default()
+    };
+    let charged = state
+        .players
+        .get(answered.chooser.0)
+        .and_then(|player| player.mana_pool.pay(&cost));
+    let paid = match (charged, state.players.get_mut(answered.chooser.0)) {
+        (Some(pool), Some(player)) => {
+            player.mana_pool = pool;
+            true
+        }
+        _ => false,
+    };
+    if paid && !request.effects.is_empty() {
+        if let Some(source) = request.source {
+            let source_power = crate::characteristics::characteristics(state, source, db).power;
+            state
+                .reflexive_triggers
+                .push(crate::reflexive::PendingReflexive {
+                    controller: answered.chooser,
+                    source,
+                    source_power,
+                    effects: crate::choice::with_paid_x(&request.effects, value),
+                });
+        }
+    }
+    if let Some(resume) = answered.resume {
+        resume_after_choice(state, resume, db);
+    }
+}
+
+/// Answer the pending **CR 614.12 card-naming choice** with `named`: record it on the/// Answer the pending **CR 614.12 card-naming choice** with `named`: record it on the
 /// entry that was waiting and let the permanent arrive.
 ///
 /// The same three steps [`apply_answer_choice`] takes, and — like the colour answer's
@@ -332,8 +390,16 @@ pub(crate) fn apply_answer_confirm(state: &mut GameState, accept: bool, db: &Car
     // CR 603.11: an accepted `you may pay … when you do` does not splice its effects into
     // this resolution. It creates an ability, which goes on the stack through the ordinary
     // trigger seam and is aimed there — after the payment, which is the whole point.
+    // …unless the payment itself is still owed. `You may pay {X}` has an *amount* left to
+    // name, and the ability the payment buys is a sentence about that amount — so the
+    // reflexive is created by the answer to the number instead, with X written into it.
+    // Creating it here would be creating an ability that says X and means nothing.
+    let payment_owes_an_amount = taken
+        .as_ref()
+        .and_then(|taken| taken.payment.as_ref())
+        .is_some_and(|(_, question)| matches!(question, ChoiceQuestion::Number(_)));
     if let Some(taken) = &taken {
-        if request.reflexive && !taken.effects.is_empty() {
+        if request.reflexive && !payment_owes_an_amount && !taken.effects.is_empty() {
             let source_power = request
                 .source
                 .and_then(|id| crate::characteristics::characteristics(state, id, db).power);
@@ -349,7 +415,11 @@ pub(crate) fn apply_answer_confirm(state: &mut GameState, accept: bool, db: &Car
             }
         }
     }
-    if let Some(mut taken) = taken.filter(|_| !request.reflexive) {
+    // A reflexive offer normally has nothing left to splice or to ask. The exception is
+    // the one above: its payment is a question, and it has to be posed.
+    if payment_owes_an_amount {
+        owed = taken.and_then(|taken| taken.payment);
+    } else if let Some(mut taken) = taken.filter(|_| !request.reflexive) {
         let mut effects = taken.effects;
         effects.append(&mut resume.effects);
         resume.effects = effects;
