@@ -41,8 +41,10 @@ import {
 import { manaSymbols, spokenSymbol } from './../../mana'
 import type { ActionCost, ValidAction } from './../../protocol'
 import type { ManaPip } from './../../table'
+import type { Settle } from './../../settle'
 import { fit, tooWide } from './../fit'
 import { Pip } from './../card/Pips'
+import { SettleBand } from './SettleBand'
 import { Symbols } from './../card/Symbols'
 
 /** One cost, as the pips it is printed in. */
@@ -103,6 +105,7 @@ export function ActionBar({
   cost,
   pool,
   labelFor,
+  settle,
   update,
   confirm,
   cancel,
@@ -125,6 +128,8 @@ export function ActionBar({
   drawn: ReadonlySet<string>
   /** The ids another surface is drawing **with their position in an ordering** (`dock.ts`). */
   badged: ReadonlySet<string>
+  /** What the settle did before this view, when the server said it acted for this seat. */
+  settle?: Settle
   /** The actions no object owns: pass, and whatever else the server offered globally. */
   buttons: readonly ValidAction[]
   /**
@@ -193,6 +198,12 @@ export function ActionBar({
 
   return (
     <div className={`action-bar action-${tone}`} role="region" aria-label="Actions">
+      {/* What the settle did, drawn *over* the board's bottom edge rather than in a row of its
+          own (§6.9). Height is the scarce axis here — every seat, both field rows, the hand and
+          the chrome are on screen at once at every supported size (§3) — so a band that took a
+          grid row would take it from the board, and one that appeared and vanished would resize
+          the field under the player's pointer. It costs no layout at all. */}
+      <SettleBand {...(settle ? { settle } : {})} />
       <div className="action-text">
         <span className="action-prompt">
           <Symbols text={asking ? action.label : paying ? `Pay for ${paying.name}` : prompt} />

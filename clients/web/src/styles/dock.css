@@ -506,3 +506,56 @@
   display: flex;
   min-width: 0;
 }
+
+/* ---- the settle, said once (§6.9) ----------------------------------------
+   Drawn over the board's bottom edge rather than in a row of its own: height is
+   the scarce axis (§3), so a band that took a grid row would take it from the
+   field, and one that appeared and vanished would resize the board under the
+   player's pointer. `bottom: 100%` of the bar it belongs to costs no layout.
+
+   One line, fitted rather than truncated: the events are short by construction
+   (at most three, and the log holds the rest), and the row is allowed to become
+   a second line before anything is cut. It takes no pointer — it is a statement
+   about what happened, not a control. */
+.settle-band {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  pointer-events: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 10px;
+  padding: 5px 12px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #a8acb4;
+  background: linear-gradient(to top, rgba(9, 12, 17, 0.94), rgba(9, 12, 17, 0));
+}
+
+/* where the game went — the one phrase a player reads first */
+.settle-path {
+  font-weight: 600;
+  color: #cfe0f4;
+}
+
+/* a turn boundary is the one jump worth its own colour */
+.settle-crossed .settle-path {
+  color: #e8d7a8;
+}
+
+/* each event separated by the same dot the room facts use, so the row reads as
+   one sentence rather than as a list of chips */
+.settle-event + .settle-event::before,
+.settle-path + .settle-event::before,
+.settle-event + .settle-more::before {
+  content: '·';
+  margin-right: 10px;
+  color: #4a4e57;
+}
+
+.settle-more {
+  color: #6b6f78;
+}

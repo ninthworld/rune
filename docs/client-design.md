@@ -1247,6 +1247,44 @@ exactly what it is at a table.
 
 ---
 
+## 6.9 The settle, said once
+
+**A settle is the server acting for a seat that has nothing to answer**, and it is the product
+hypothesis this client exists to test. It is also the moment a player is most easily lost: the
+board is suddenly different, a creature is gone, and nothing on screen says why. What a settle did
+used to be a run of log lines, and reading a log is not the same as watching a game.
+
+**A band above the action bar says what happened, in one line.** Where the game went — *Passed 3
+steps, now at Upkeep* — and then what a player would have watched happen, in the log's own words,
+most recent last. It is drawn **over** the board's bottom edge rather than in a row of its own:
+height is the scarce axis (§3), so a band taking a grid row would take it from the field, and one
+that appeared and vanished would resize the board under the pointer. It costs no layout and takes
+no pointer.
+
+**It is a reading of one `GameView`, and deliberately not a queue.** This is the part worth
+defending. A presentation queue is client state that survives a message, which the hard rules
+forbid — and every hazard a queue then has to be defended against is a consequence of holding it:
+a reconnect replaying stale presentation, a settle interrupted mid-play, a report outliving the
+game it describes. The server already states what this receiver missed (`auto_passed_from` marks
+where a settle began *for this seat*, `auto_passed_steps` is the path it took), so the answer to
+*what did I miss* is in the view in front of you, and the next view replaces it wholesale. A
+reconnect shows nothing — not because anything was cancelled, but because there is nothing to
+cancel.
+
+**It is words, so reduced motion changes nothing about it.** Motion plays the last quarter
+second of objects reaching where the view already puts them; this is the account of what happened,
+and a player who has turned motion off reads exactly the same one in exactly the same place. The
+two halves are independent by construction rather than by a flag.
+
+**Bounded, and honest about it.** A settle can cross a whole turn and the log window is finite, so
+the band draws at most three events and says how many more there were. The log is the complete
+record and is one tab away; a band that tried to be the record would be a region that grows.
+
+Step changes are left to the path rather than repeated as events — the path already says where the
+game went, and saying it twice spends a band whose whole budget is three lines.
+
+---
+
 ## 7. Type
 
 **There are two scales, and they are measured in different units.** That is the correction this
@@ -1625,9 +1663,10 @@ because they are undecided in principle — and each names what would settle it.
 3. **A game with three or more seats, played.** The prototype tiles up to eight and focus works, but
    nobody has played a four-player game on it. Whether a seat at one quarter of the table is enough
    to play from is a judgment only playing can make.
-4. **The settle, made legible.** The brief names this as the actual product hypothesis, and neither
-   this document nor the prototype has designed it. What a settle did is currently a run of log
-   lines; what it should be is unanswered.
+4. ~~**The settle, made legible.**~~ Answered by §6.9 (issue #709): a band above the action bar,
+   read from one `GameView` and never queued. What is still open is whether it is *enough* — the
+   band says what happened, and whether a player who missed a five-event settle feels caught up is
+   a judgment only playing can make.
 5. **Spectating** — a count in the room and nowhere else. A connection the server puts on the
    spectator contract still lands on a screen that says only that it is not built.
 6. **Chat, and who is in the lobby.** The client draws both panels and says they carry nothing,
