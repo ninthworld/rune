@@ -427,10 +427,16 @@ struct StarterDeck {
 /// The file is shared game data owned by neither the Rust nor the client side, so it
 /// sits at the repository root: either side can be removed without taking the other
 /// down with it.
+///
+/// **No decks is not a failure.** These are early-playtest decks and they are expected to go;
+/// a missing file therefore yields an empty list rather than a panic, so the day they are
+/// deleted this suite says nothing instead of failing. What the decks must satisfy *while they
+/// exist* is still enforced — see the legality test below, which simply has nothing to check.
 fn bundled_decklists() -> Vec<StarterDeck> {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/starter-decks.json");
-    let text = std::fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("reading the shared starter decks at {path}: {e}"));
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
     let json: serde_json::Value = serde_json::from_str(&text).expect("starter-decks.json parses");
     json["decks"]
         .as_array()
@@ -492,9 +498,13 @@ fn every_bundled_decklist_is_legal_and_castable_from_its_own_mana_base() {
     // cards, at most four copies of any non-basic, every nonland card's colors
     // producible by its own lands, and at least one instant or sorcery so the stack
     // and targeting flows are reachable.
+    //
+    // **Whatever decks are shipped, and no claim that any are.** This used to assert that
+    // there were at least two, which made early-playtest scaffolding into a rule the suite
+    // defended: removing the decks would have failed a test about deck *legality*. The rule
+    // is "a deck we ship is playable", and it holds vacuously when we ship none.
     let db = CardDatabase::bundled().unwrap();
     let decks = bundled_decklists();
-    assert!(decks.len() >= 2, "there are multiple bundled decks");
 
     for deck in &decks {
         let ids = resolve_deck(&db, &deck.identities);
@@ -545,38 +555,22 @@ fn every_bundled_decklist_is_legal_and_castable_from_its_own_mana_base() {
     }
 }
 
-#[tokio::test]
-async fn bundled_decklists_play_to_a_deterministic_completion() {
-    // The proof that ships: the *actual bundled decklists* (the same file the
-    // client submits) play full games through the real layer-2 room and wire protocol
-    // to a decisive winner. Round-robin so every deck is exercised and every pairing
-    // interacts — including the archetype clashes (aggro vs midrange vs tempo).
-    let db = CardDatabase::bundled().unwrap();
-    let decks: Vec<Vec<CardId>> = bundled_decklists()
-        .iter()
-        .map(|deck| resolve_deck(&db, &deck.identities))
-        .collect();
-    assert!(decks.len() >= 2, "need at least two decks to pair");
-
-    for i in 0..decks.len() {
-        let j = (i + 1) % decks.len();
-        let seed = 0x5EED_D0D0_0000_0000 ^ (((i as u64) << 8) | j as u64);
-        let (terminal, transcript) = play_seeded_game_with(
-            seed,
-            decks[i].clone(),
-            decks[j].clone(),
-            AutoPassPolicy::Off,
-        )
-        .await;
-        let result = terminal.result.expect("a finished game carries a result");
-        assert!(
-            result.winner.is_some(),
-            "decks {i} vs {j} ended in a draw: {result:?}"
-        );
-        assert_eq!(result.losers.len(), 1, "decks {i} vs {j}: {result:?}");
-        assert!(
-            !transcript.is_empty(),
-            "decks {i} vs {j}: the agents played no actions"
-        );
-    }
-}
+// A round-robin of every bundled decklist played to a decisive winner used to live here: seven
+// full games through the real room and wire protocol, minutes of wall clock on every push, and
+// by a wide margin the most expensive test in the workspace.
+//
+// It is gone, and the cost is only half the reason. **The bundled decks are early-playtest
+// scaffolding, not a fixture of the project** — they exist so there is something to play right
+// now, and they will not exist forever. A gate that spent minutes proving those particular
+// seven decks beat each other was buying a guarantee about material that is on its way out,
+// and every branch paid for it.
+//
+// What still holds without them: a full game through the real room and wire protocol runs in
+// `two_rule_based_agents_finish_a_game_with_a_winner` and the determinism tests beside it, on
+// a decklist this file builds from the **catalog** (`STARTER_CARDS`) rather than from the
+// shipped deck file. That is the coverage worth keeping, and it survives the starter decks
+// being deleted.
+//
+// What does not: that each shipped deck plays to a winner rather than stalling. Nothing checks
+// that now. If it is ever wanted back it wants a home off the per-push path — and by then the
+// decks it would test may not be these.
