@@ -1993,3 +1993,37 @@ fn issue_706_a_counter_placed_as_it_enters_and_the_state_that_undoes_it() {
          phylactery counters on them, sacrifice it."
     );
 }
+
+#[test]
+fn issue_706_a_permission_and_a_block_read_as_the_cards_print_them() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "vivien_s_jaguar"),
+        "Reach\n{2}{G}: Return Vivien's Jaguar from your graveyard to your hand. \
+         Activate only if you control a Vivien planeswalker."
+    );
+    assert_eq!(
+        text_of(&db, "dwindle"),
+        "Whenever enchanted creature blocks, destroy it.\nEnchant creature.\n\
+         Enchanted creature gets -6/+0."
+    );
+}
+
+#[test]
+fn issue_706_a_class_named_as_one_choice_and_a_spell_that_stands() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "tezzeret_s_gatebreaker"),
+        "When Tezzeret's Gatebreaker enters the battlefield, look at the top five cards \
+         of your library, you may put up to one blue or artifact card from among them \
+         into your hand, then put the rest on the bottom of your library in a random \
+         order.\n{5}{U}, {T}, Sacrifice this permanent: Creatures you control can't be \
+         blocked this turn."
+    );
+    assert_eq!(
+        text_of(&db, "lightning_mare"),
+        "Lightning Mare can't be blocked by blue creatures.\n\
+         Lightning Mare can't be countered.\n\
+         {1}{R}: Lightning Mare gets +1/+0 until end of turn."
+    );
+}

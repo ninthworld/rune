@@ -1736,6 +1736,17 @@ pub enum Effect {
     /// battlefield at all — an Aura whose host left has no enchanted creature, and the
     /// sentence has nothing to be about.
     TapAttached,
+    /// **Destroy the permanent this ability's source is attached to** (CR 701.7) —
+    /// Dwindle's `when enchanted creature blocks, destroy it`.
+    ///
+    /// [`Self::TapAttached`]'s neighbour in every respect, including the one that matters:
+    /// it targets nothing. The Aura chose what it enchants when it was cast (CR 601.2c),
+    /// and the word "it" points back at that choice rather than at a new one.
+    ///
+    /// Destruction, not sacrifice — so an indestructible host survives it, and a
+    /// regeneration shield would too if one existed. A source attached to nothing, or one
+    /// that has left the battlefield, destroys nothing.
+    DestroyAttached,
     /// The referenced player **wins the game** (CR 104.2b) — the payoff of a card that
     /// ends the game on its own terms rather than by reducing anyone to zero.
     ///

@@ -652,6 +652,7 @@ pub(crate) fn apply_targeted_effect(
         | Effect::MayPayForTrigger { .. }
         // Self-referential: applied by [`apply_effect`], never aimed.
         | Effect::TapAttached
+        | Effect::DestroyAttached
         | Effect::SacrificeSelf
         | Effect::AnimateSelf { .. }
         | Effect::TakeExtraTurn { .. }

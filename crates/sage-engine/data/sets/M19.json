@@ -250,6 +250,11 @@
     "rarity": "rare"
   },
   {
+    "functional_id": "dwindle",
+    "collector_number": "53",
+    "rarity": "common"
+  },
+  {
     "functional_id": "essence_scatter",
     "collector_number": "54",
     "rarity": "common"
@@ -728,6 +733,11 @@
     "functional_id": "lava_axe",
     "collector_number": "150",
     "rarity": "common"
+  },
+  {
+    "functional_id": "lightning_mare",
+    "collector_number": "151",
+    "rarity": "uncommon"
   },
   {
     "functional_id": "lightning_strike",
@@ -1370,6 +1380,11 @@
     "rarity": "rare"
   },
   {
+    "functional_id": "tezzeret_s_gatebreaker",
+    "collector_number": "289",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "sarkhan_s_whelp",
     "collector_number": "299",
     "rarity": "uncommon"
@@ -1378,6 +1393,11 @@
     "functional_id": "ursine_champion",
     "collector_number": "304",
     "rarity": "common"
+  },
+  {
+    "functional_id": "vivien_s_jaguar",
+    "collector_number": "305",
+    "rarity": "uncommon"
   },
   {
     "functional_id": "waterknot",

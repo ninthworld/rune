@@ -56,6 +56,10 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             )
         }
         Effect::Destroy { target } => format!("destroy {}", target_noun(*target)),
+        // "It", because the sentence before it named the host: an Aura's ability is about
+        // the creature it is already on, and the card prints a pronoun rather than a
+        // second choice.
+        Effect::DestroyAttached => "destroy it".to_string(),
         Effect::DestroyAll { affects } => format!("destroy all {}", destroy_class(*affects)),
         // The derived-amount damage verb, in the two shapes English gives it. An
         // announced X reads the way a printed card writes it: the letter itself, in
@@ -1320,6 +1324,7 @@ pub(super) fn filter_noun(filter: &CardFilter, plural: bool) -> String {
             }
         }
         CardFilter::CreatureOrLand => format!("creature or land {card}"),
+        CardFilter::ColorOrArtifact { color } => format!("{} or artifact {card}", color.word()),
         CardFilter::Permanent => format!("permanent {card}"),
         CardFilter::Subtype { subtype } => format!("{subtype} {card}"),
         CardFilter::NoncreatureNonland => format!("noncreature, nonland {card}"),

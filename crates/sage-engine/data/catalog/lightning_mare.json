@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "functional_id": "lightning_mare",
+  "name": "Lightning Mare",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elemental",
+    "Horse"
+  ],
+  "mana_cost": "{R}{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 3,
+  "toughness": 1,
+  "spell_traits": [
+    {
+      "kind": "cant_be_countered"
+    }
+  ],
+  "restrictions": [
+    {
+      "cant_be_blocked_by": "blue"
+    }
+  ],
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{1}{R}"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "pump_self",
+          "power": 1,
+          "toughness": 0
+        }
+      ]
+    }
+  ]
+}

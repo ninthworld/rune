@@ -82,6 +82,23 @@ pub enum TriggerCondition {
     /// was not before — so it fires once per declaration, from the one place
     /// attackers are declared, and never from a creature that merely became tapped.
     SelfAttacks,
+    /// The source permanent — or the one it is **attached to** — was declared as a
+    /// **blocker** this transition (CR 509.1, the "blocks" event of CR 603.6d): Dwindle's
+    /// `when enchanted creature blocks, destroy it`.
+    ///
+    /// [`Self::SelfAttacks`]' mirror, observed the same way and from the same one place: a
+    /// permanent's [`crate::state::Permanent::blocking`] is non-empty after the
+    /// declaration and was empty before. It fires **once per declaration** rather than
+    /// once per attacker blocked, which is what CR 509.1 counts — a creature that blocks
+    /// two attackers at once made one declaration.
+    ///
+    /// The `by_attached` half is why this carries a selector where its attacking sibling
+    /// does not: the one card in the set that watches for a block is an Aura watching its
+    /// host, exactly as an Equipment's damage trigger watches its own.
+    SelfBlocks(
+        /// Whose block satisfies this condition.
+        ObservedBlock,
+    ),
     /// The source **became the target** of a spell or ability this transition
     /// (CR 603.6e) — Thorn Lieutenant's `whenever this creature becomes the target of a
     /// spell or ability an opponent controls`.
@@ -241,6 +258,18 @@ pub enum TriggerCondition {
         /// What has to become true.
         condition: crate::ability::Condition,
     },
+}
+
+/// Whose block satisfies [`TriggerCondition::SelfBlocks`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservedBlock {
+    /// Watch the permanent the source is **attached to** rather than the source itself —
+    /// the `enchanted creature` of an Aura whose ability is about its host (CR 303.4).
+    /// `false` watches the source, which is what a creature's own `whenever this creature
+    /// blocks` means.
+    #[serde(default)]
+    pub by_attached: bool,
 }
 
 /// Which damage satisfies [`TriggerCondition::DealsDamage`].

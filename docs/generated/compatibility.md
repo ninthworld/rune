@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (284)
+## Supported cards (288)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -84,6 +84,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `dryad_greenseeker` | Dryad Greenseeker | functional definition |
 | `duress` | Duress | functional definition |
 | `dwarven_priest` | Dwarven Priest | functional definition |
+| `dwindle` | Dwindle | functional definition |
 | `electrify` | Electrify | functional definition |
 | `elvish_clancaller` | Elvish Clancaller | functional definition |
 | `elvish_rejuvenator` | Elvish Rejuvenator | functional definition |
@@ -150,6 +151,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `leonin_vanguard` | Leonin Vanguard | functional definition |
 | `leonin_warleader` | Leonin Warleader | functional definition |
 | `lich_s_caress` | Lich's Caress | functional definition |
+| `lightning_mare` | Lightning Mare | functional definition |
 | `lightning_strike` | Lightning Strike | functional definition |
 | `liliana_s_contract` | Liliana's Contract | functional definition |
 | `liliana_s_spoils` | Liliana's Spoils | functional definition |
@@ -265,6 +267,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `tattered_mummy` | Tattered Mummy | functional definition |
 | `tectonic_rift` | Tectonic Rift | functional definition |
 | `tezzeret_artifice_master` | Tezzeret, Artifice Master | functional definition |
+| `tezzeret_s_gatebreaker` | Tezzeret's Gatebreaker | functional definition |
 | `tezzeret_s_strider` | Tezzeret's Strider | functional definition |
 | `thorn_lieutenant` | Thorn Lieutenant | functional definition |
 | `thornhide_wolves` | Thornhide Wolves | functional definition |
@@ -289,6 +292,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `vine_mare` | Vine Mare | functional definition |
 | `vivien_reid` | Vivien Reid | functional definition |
 | `vivien_s_invocation` | Vivien's Invocation | functional definition |
+| `vivien_s_jaguar` | Vivien's Jaguar | functional definition |
 | `volcanic_dragon` | Volcanic Dragon | functional definition |
 | `volley_veteran` | Volley Veteran | functional definition |
 | `walking_corpse` | Walking Corpse | functional definition |
