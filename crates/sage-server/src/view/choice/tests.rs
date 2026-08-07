@@ -848,3 +848,80 @@ fn issue_721_an_open_sacrifice_is_posed_with_a_minimum_of_none() {
             .collect::<Vec<_>>()
     );
 }
+
+/// Issue #773: a look shows the chooser **every card it looks at**, not only the ones the
+/// card lets them take — and shows them to nobody else.
+///
+/// Liliana's Spoils is *"target opponent discards a card. Look at the top five cards of your
+/// library. You may put a black card from among them into your hand."* Two different sets:
+/// five looked at, some subset takeable. Projecting the candidates showed a player only the
+/// black cards and called that a look at five, which is the shape the bug was reported in.
+#[test]
+fn issue_773_a_look_reveals_every_card_it_looks_at_and_only_to_its_chooser() {
+    let db = CardDatabase::bundled().unwrap();
+    let mut state = main_phase();
+    // The opponent holds one card, so the discard half has exactly one answer.
+    let held = state.new_instance(fixture("shock"));
+    state.players[1].hand.push(held);
+    // Seat 0's top five: two black cards among five, and a sixth out of reach.
+    let library: Vec<_> = [
+        "onakke_ogre",
+        "forest",
+        "child_of_night",
+        "mountain",
+        "shock",
+        "walking_corpse",
+    ]
+    .iter()
+    .map(|slug| state.new_instance(fixture(slug)))
+    .collect();
+    state.players[0].library = library;
+
+    // Resolve, then answer the opponent's discard so the look becomes the pending question.
+    let state = cast_and_resolve(
+        &state,
+        &db,
+        "liliana_s_spoils",
+        vec![Target::Player(PlayerId(1))],
+    );
+    let state = sage_engine::apply_action(
+        &state,
+        &Action::AnswerChoice {
+            chosen: vec![held.id],
+        },
+        &db,
+    );
+
+    let looker = personalized_view(&state, &db, PlayerId(0));
+    // All five looked at are shown…
+    let shown: Vec<&str> = looker
+        .revealed
+        .iter()
+        .map(|card| card.name.as_str())
+        .collect();
+    assert_eq!(
+        shown,
+        vec![
+            "Walking Corpse",
+            "Shock",
+            "Mountain",
+            "Child of Night",
+            "Forest"
+        ],
+        "the look must show the five cards it looks at, top first"
+    );
+
+    // …while only the black ones may be taken. Seeing and answering are different sets.
+    let action = choice_action(&looker).expect("the looker is asked");
+    let Prompt::SelectFromZone { candidates, .. } = &action.prompts[0] else {
+        panic!("the look is a select_from_zone");
+    };
+    assert_eq!(candidates.len(), 2, "only the black cards are takeable");
+
+    // The opponent learns nothing: a look is private to its chooser (CR 701.16).
+    let other = personalized_view(&state, &db, PlayerId(1));
+    assert!(
+        other.revealed.is_empty(),
+        "the other seat must not see the looked-at cards"
+    );
+}
