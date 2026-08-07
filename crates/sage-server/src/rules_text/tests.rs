@@ -1907,3 +1907,15 @@ fn issue_706_an_extra_turn_reads_as_the_card_prints_it() {
          charge counters from this permanent: Take an extra turn after this one."
     );
 }
+
+#[test]
+fn issue_706_reanimation_reads_as_two_sentences() {
+    let db = bundled();
+    // The card prints the continuous half as its own sentence about "that creature",
+    // because by then the permanent exists and can be spoken of.
+    assert_eq!(
+        text_of(&db, "rise_from_the_grave"),
+        "Put target creature card in a graveyard onto the battlefield under your control. \
+         That creature is a black Zombie in addition to its other colors and types."
+    );
+}

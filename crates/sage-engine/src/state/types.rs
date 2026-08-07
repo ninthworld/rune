@@ -866,6 +866,14 @@ pub enum Modification {
         types: Vec<crate::card_type::CardType>,
         /// Subtypes gained.
         subtypes: Vec<String>,
+        /// Colours gained at CR 613 **layer 5** — `is a **black** Zombie in addition to
+        /// its other colors and types`.
+        ///
+        /// Carried here rather than in a variant of its own because no printed card in
+        /// this catalog changes one without the other: the layers are numbered apart and
+        /// the sentence is one. They are still applied at their own layers, which is what
+        /// the fold does with them.
+        colors: Vec<crate::mana::Color>,
     },
     /// **CR 613 layer 7b**: the permanent's base power and toughness *become* these
     /// numbers — `with base power and toughness 5/5`.

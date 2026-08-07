@@ -176,17 +176,24 @@ pub(super) fn added_types(
     state: &GameState,
     perm: &Permanent,
     db: &CardDatabase,
-) -> (Vec<crate::card_type::CardType>, Vec<String>) {
+) -> (
+    Vec<crate::card_type::CardType>,
+    Vec<String>,
+    Vec<crate::mana::Color>,
+) {
     let mut types = Vec::new();
     let mut subtypes = Vec::new();
+    let mut colors = Vec::new();
     let mut take = |modification: &Modification| {
         if let Modification::AddTypes {
             types: added,
             subtypes: added_subtypes,
+            colors: added_colors,
         } = modification
         {
             types.extend(added.iter().copied());
             subtypes.extend(added_subtypes.iter().cloned());
+            colors.extend(added_colors.iter().copied());
         }
     };
     for effect in &state.static_effects {
@@ -209,10 +216,13 @@ pub(super) fn added_types(
             take(&Modification::AddTypes {
                 types: grant.types.clone(),
                 subtypes: grant.subtypes.clone(),
+                // No attachment in this catalog changes a colour; the field exists on the
+                // modification rather than on the grant for that reason.
+                colors: Vec::new(),
             });
         }
     }
-    (types, subtypes)
+    (types, subtypes, colors)
 }
 
 /// Whether a **stored** effect applies to `perm`, for the two layers that are folded

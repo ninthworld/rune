@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "functional_id": "rise_from_the_grave",
+  "name": "Rise from the Grave",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{4}{B}",
+  "colors": [
+    "black"
+  ],
+  "spell_effects": [
+    {
+      "kind": "return_card_to_battlefield",
+      "target": {
+        "card_in_graveyard": {
+          "scope": "any",
+          "class": "creature"
+        }
+      },
+      "subtypes": [
+        "Zombie"
+      ],
+      "colors": [
+        "black"
+      ]
+    }
+  ]
+}

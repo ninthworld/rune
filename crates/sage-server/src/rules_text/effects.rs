@@ -471,11 +471,33 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 format!("{head}. Otherwise, {}", clauses(source, otherwise))
             }
         }
-        Effect::ReturnCardToBattlefield { target, tapped } => format!(
-            "return {} to the battlefield{}",
-            target_noun(*target),
-            if *tapped { " tapped" } else { "" }
-        ),
+        Effect::ReturnCardToBattlefield {
+            target,
+            tapped,
+            types,
+            subtypes,
+            colors,
+        } => {
+            let return_it = format!(
+                "put {} onto the battlefield under your control{}",
+                target_noun(*target),
+                if *tapped { " tapped" } else { "" }
+            );
+            // The card prints the continuous half as its own sentence about "that
+            // creature", because by then the permanent exists and can be spoken of.
+            let mut what: Vec<String> = colors.iter().map(|c| c.word().to_string()).collect();
+            what.extend(subtypes.iter().cloned());
+            what.extend(types.iter().map(|kind| card_type_word(*kind).to_string()));
+            if what.is_empty() {
+                return return_it;
+            }
+            let named = what.join(" ");
+            format!(
+                "{return_it}. That creature is {} {named} in addition to its other colors \
+                 and types",
+                super::indefinite_article(&named)
+            )
+        }
         Effect::ReturnCardToHand { target, targets } => format!(
             "return {} to its owner's hand",
             target_phrase(*target, *targets)
@@ -772,11 +794,15 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             target,
             types,
             subtypes,
+            colors,
             power,
             toughness,
             until_end_of_turn,
         } => {
-            let mut what: Vec<String> = subtypes.clone();
+            // Colour first, then subtype, then type — the order a card prints them in:
+            // "a black Zombie", "an artifact creature".
+            let mut what: Vec<String> = colors.iter().map(|c| c.word().to_string()).collect();
+            what.extend(subtypes.iter().cloned());
             what.extend(types.iter().map(|kind| card_type_word(*kind).to_string()));
             let becomes = if what.is_empty() {
                 String::new()
