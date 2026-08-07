@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "functional_id": "skyrider_patrol",
+  "name": "Skyrider Patrol",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elf",
+    "Scout"
+  ],
+  "mana_cost": "{2}{G}{U}",
+  "colors": [
+    "blue",
+    "green"
+  ],
+  "power": 2,
+  "toughness": 3,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "beginning_of_step": {
+          "step": "begin_combat",
+          "whose_turn": "yours"
+        }
+      },
+      "effects": [
+        {
+          "kind": "may_pay_for_trigger",
+          "cost": {
+            "kind": "mana",
+            "mana": "{G}{U}"
+          },
+          "effects": [
+            {
+              "kind": "put_counters",
+              "target": "another_creature_you_control",
+              "counter": "plus_one_plus_one",
+              "count": 1
+            },
+            {
+              "kind": "grant_keyword",
+              "target": "another_creature_you_control",
+              "keyword": "flying"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

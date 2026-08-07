@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (262)
+## Supported cards (264)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -224,11 +224,13 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `skalla_wolf` | Skalla Wolf | functional definition |
 | `skeleton_archer` | Skeleton Archer | functional definition |
 | `skymarch_bloodletter` | Skymarch Bloodletter | functional definition |
+| `skyrider_patrol` | Skyrider Patrol | functional definition |
 | `skyscanner` | Skyscanner | functional definition |
 | `sleep` | Sleep | functional definition |
 | `smelt` | Smelt | functional definition |
 | `snapping_drake` | Snapping Drake | functional definition |
 | `sovereign_s_bite` | Sovereign's Bite | functional definition |
+| `sparktongue_dragon` | Sparktongue Dragon | functional definition |
 | `spit_flame` | Spit Flame | functional definition |
 | `star_crowned_stag` | Star-Crowned Stag | functional definition |
 | `stitcher_s_supplier` | Stitcher's Supplier | functional definition |

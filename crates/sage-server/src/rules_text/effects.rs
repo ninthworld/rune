@@ -732,6 +732,13 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 clauses("that spell", &trigger.effects),
             )
         }
+        // CR 603.11 with a payment as its condition, printed as the two sentences every
+        // card that has it prints: the offer, then what buying it does.
+        Effect::MayPayForTrigger { cost, effects } => format!(
+            "you may {}. When you do, {}",
+            optional_cost_phrase(cost),
+            clauses(source, effects)
+        ),
         // CR 603.11: the `when …, …` a resolution says about what it just did. The
         // subject of the effects it creates is the permanent that arrived, so they are
         // composed against "it" — the pronoun the printed card uses, and the only name

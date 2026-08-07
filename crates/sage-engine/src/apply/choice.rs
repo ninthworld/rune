@@ -329,7 +329,27 @@ pub(crate) fn apply_answer_confirm(state: &mut GameState, accept: bool, db: &Car
         return;
     };
     let mut owed = None;
-    if let Some(mut taken) = taken {
+    // CR 603.11: an accepted `you may pay … when you do` does not splice its effects into
+    // this resolution. It creates an ability, which goes on the stack through the ordinary
+    // trigger seam and is aimed there — after the payment, which is the whole point.
+    if let Some(taken) = &taken {
+        if request.reflexive && !taken.effects.is_empty() {
+            let source_power = request
+                .source
+                .and_then(|id| crate::characteristics::characteristics(state, id, db).power);
+            if let Some(source) = request.source {
+                state
+                    .reflexive_triggers
+                    .push(crate::reflexive::PendingReflexive {
+                        controller: answered.chooser,
+                        source,
+                        source_power,
+                        effects: taken.effects.clone(),
+                    });
+            }
+        }
+    }
+    if let Some(mut taken) = taken.filter(|_| !request.reflexive) {
         let mut effects = taken.effects;
         effects.append(&mut resume.effects);
         resume.effects = effects;

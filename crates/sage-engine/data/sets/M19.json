@@ -720,6 +720,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "sparktongue_dragon",
+    "collector_number": "159",
+    "rarity": "common"
+  },
+  {
     "functional_id": "spit_flame",
     "collector_number": "160",
     "rarity": "rare"
@@ -1022,6 +1027,11 @@
   {
     "functional_id": "satyr_enchanter",
     "collector_number": "223",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "skyrider_patrol",
+    "collector_number": "224",
     "rarity": "uncommon"
   },
   {

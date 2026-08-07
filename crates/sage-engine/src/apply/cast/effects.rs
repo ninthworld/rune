@@ -561,6 +561,9 @@ pub(crate) fn apply_effect(
         | Effect::MayCastExiledThisWay { .. }
         | Effect::SearchLibrary { .. }
         | Effect::May { .. }
+        // Both are questions, posed by the resolution path before either apply path is
+        // reached.
+        | Effect::MayPayForTrigger { .. }
         // A conditional is likewise intercepted by the resolve loop, which evaluates it
         // and splices the chosen branch into what remains; reaching here would mean the
         // branch was never taken.

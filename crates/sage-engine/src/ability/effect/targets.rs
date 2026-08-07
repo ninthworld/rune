@@ -182,6 +182,10 @@ impl Effect {
             // A reflexive ability names nothing here: the ability it creates declares its
             // own slot, and that slot is filled when it goes on the stack (CR 603.3d).
             | Effect::CreateReflexiveTrigger { .. }
+            // Nor does the offer that creates one by being paid for. Its effects' targets
+            // are chosen when the ability goes on the stack, which is after the payment —
+            // the whole reason this is not an ordinary `may`.
+            | Effect::MayPayForTrigger { .. }
             // An Aura's host was chosen when the Aura was cast; tapping it aims at
             // nothing (CR 303.4a).
             | Effect::TapAttached

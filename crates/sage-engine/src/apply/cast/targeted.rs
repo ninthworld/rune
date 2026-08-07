@@ -551,6 +551,7 @@ pub(crate) fn apply_targeted_effect(
         // A reflexive ability names an event inside its own resolution, never a chosen
         // object; the ability it creates is what aims at one.
         | Effect::CreateReflexiveTrigger { .. }
+        | Effect::MayPayForTrigger { .. }
         // Self-referential: applied by [`apply_effect`], never aimed.
         | Effect::TapAttached
         | Effect::SacrificeSelf => {}
