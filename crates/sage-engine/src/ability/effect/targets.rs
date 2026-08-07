@@ -87,7 +87,13 @@ impl Effect {
             Effect::Fight {
                 dealer, dealt_to, ..
             } => vec![TargetGroup::single(*dealer), TargetGroup::single(*dealt_to)],
+            // The second effect whose two slots are each their own class, and for the same
+            // reason: an exchange is the pair, and half of it is nothing (CR 701.10c).
+            Effect::ExchangeControl { first, second } => {
+                vec![TargetGroup::single(*first), TargetGroup::single(*second)]
+            }
             Effect::Animate { target, .. }
+            | Effect::ExileUntilSourceLeaves { target }
             | Effect::Tap { target }
             // A creature dealing its own power names only what it is dealt to: the dealer
             // is the ability's source, never a slot (CR 609.7).

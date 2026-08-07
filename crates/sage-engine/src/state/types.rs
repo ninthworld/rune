@@ -1021,3 +1021,22 @@ pub struct CommanderDamage {
     /// Cumulative combat damage this commander has dealt this player this game.
     pub amount: u32,
 }
+
+/// A card exiled **until the permanent that exiled it leaves the battlefield**
+/// (CR 610.3), and the link between the two.
+///
+/// The pair is the whole content of the rule: the exiled card returns when *that* source
+/// goes, and nothing about the exile zone could say which source a card is waiting on.
+/// Kept as raw stored state for that reason, and keyed by [`PermanentId`](crate::PermanentId),
+/// which is never reused — so a Cage that dies and is recast is a different object with no
+/// claim on what the first one took.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExiledUntil {
+    /// The permanent whose departure returns the card.
+    pub source: PermanentId,
+    /// The card waiting in exile.
+    pub card: CardInstanceId,
+    /// The player it returns under the control of — its **owner** (CR 610.3b), which is
+    /// not necessarily the seat that exiled it.
+    pub owner: PlayerId,
+}

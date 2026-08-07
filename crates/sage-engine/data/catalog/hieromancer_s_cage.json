@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "functional_id": "hieromancer_s_cage",
+  "name": "Hieromancer's Cage",
+  "types": [
+    "enchantment"
+  ],
+  "mana_cost": "{3}{W}",
+  "colors": [
+    "white"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "exile_until_source_leaves",
+          "target": "any_nonland_permanent_an_opponent_controls"
+        }
+      ]
+    }
+  ]
+}

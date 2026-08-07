@@ -25,8 +25,8 @@ mod zone;
 
 pub use types::{
     CommanderDamage, CounterKind, DamageTarget, Duration, EffectAffects, Emblem, ExilePlaying,
-    GameEvent, GameLogEntry, GameResult, GraveyardCasting, IgnoringHexproof, LoggedIdentity,
-    LoggedPermanent, Modification, Permanent, StaticEffect,
+    ExiledUntil, GameEvent, GameLogEntry, GameResult, GraveyardCasting, IgnoringHexproof,
+    LoggedIdentity, LoggedPermanent, Modification, Permanent, StaticEffect,
 };
 
 use crate::id::PlayerId;
@@ -190,6 +190,14 @@ pub struct GameState {
     /// ability of it), and this one is per **ability**, so a card with two limited
     /// abilities spends them independently. Cleared when the next turn begins.
     pub limited_activations: Vec<(crate::id::PermanentId, usize)>,
+    /// Cards exiled **until the permanent that exiled them leaves the battlefield**
+    /// (CR 610.3) — see [`ExiledUntil`](crate::ExiledUntil).
+    ///
+    /// **Raw stored state, and the first linked pair the engine keeps** (ADR 0005 §1):
+    /// which exile a return belongs to is not recoverable from the zone. Two Cages that
+    /// each exiled a creature are two links, and one of them dying returns exactly one
+    /// creature.
+    pub exiled_until: Vec<crate::state::ExiledUntil>,
     /// The attacked players who have already declared blockers this combat, in the
     /// order they declared (issue #344). When attackers are split across several
     /// defenders each attacked player gets their own declare-blockers decision,

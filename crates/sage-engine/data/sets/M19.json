@@ -60,6 +60,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "hieromancer_s_cage",
+    "collector_number": "14",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "inspired_charge",
     "collector_number": "15",
     "rarity": "common"
@@ -362,6 +367,11 @@
   {
     "functional_id": "surge_mare",
     "collector_number": "77",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "switcheroo",
+    "collector_number": "78",
     "rarity": "uncommon"
   },
   {

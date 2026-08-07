@@ -84,10 +84,6 @@
     "blocker": "an observed activation is filtered by who activated it and by the source's card type and printed subtype — `an ability of a Sarkhan planeswalker` — but nothing asks whether the ability activated was a *loyalty* ability rather than any other (CR 606.1), so a walker's mana ability would satisfy the same watcher"
   },
   {
-    "name": "Effects that exile a permanent until the source that exiled it leaves the battlefield",
-    "blocker": "an exile moves the permanent an effect targeted one way and records nothing about what moved it; there is no linked-object reference (CR 610.3) and no effect watching for a source's departure, so nothing an exile removes ever comes back"
-  },
-  {
     "name": "Effects that **replace** a permanent's types or colours, or animate a class",
     "blocker": "a continuous effect may add card types, subtypes and colours to one permanent — one it targeted, or the one it just put onto the battlefield — and set that permanent's base power and toughness (CR 613 layers 4, 5 and 7b), for the turn or for as long as its source remains; nothing *removes* a type or a colour, no effect names a class of permanents to animate, and no layer 7d switches power with toughness; and a colour a layer-5 effect added is read by the rules that ask about one object at a time — an evasion restriction, a colourless target — but not by a *counted class*, which is evaluated from inside a static ability's own condition and would recurse through the characteristics it is computing"
   },
@@ -108,8 +104,8 @@
     "blocker": "an attachment grants power/toughness, keywords, combat restrictions, card types and subtypes, and written-out abilities at CR 613 layers 4, 6 and 7c — one block for both kinds, so an Equipment grants exactly as an Aura does; but a continuous ability may ask only whether its own source has *something* attached, never whether that something is an Aura, an Equipment, or one of several"
   },
   {
-    "name": "Gaining control of a permanent for longer than a turn, and exchanging control",
-    "blocker": "a control change is a targeted layer-2 effect the cleanup step ends; no duration outlives the turn and nothing swaps two permanents' controllers"
+    "name": "Gaining control of a permanent for longer than a turn",
+    "blocker": "a control change either lasts until end of turn — the theft that unteaps and grants haste — or is an **exchange**, which swaps two permanents indefinitely (CR 701.10) and is all or nothing; nothing takes one permanent for good, and no duration sits between the two"
   },
   {
     "name": "Losing abilities on a targeted permanent",

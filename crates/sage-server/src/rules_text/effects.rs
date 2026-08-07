@@ -851,6 +851,20 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 super::indefinite_article(&named)
             )
         }
+        // CR 701.10, as the card prints it: one sentence about the pair.
+        Effect::ExchangeControl { first, .. } => {
+            // The card says "two **target** creatures": the word belongs in the sentence,
+            // and the plural is of the class rather than of the phrase.
+            format!(
+                "exchange control of two target {}",
+                plural(&object_noun(*first))
+            )
+        }
+        // CR 610.3: the return is a sentence about *this* card, so the source names itself.
+        Effect::ExileUntilSourceLeaves { target } => format!(
+            "exile {} until {source} leaves the battlefield",
+            target_noun(*target)
+        ),
         // CR 701.17: the source names itself, and a card that has just told you what it
         // is says "it" rather than repeating its own name.
         Effect::SacrificeSelf => "sacrifice it".to_string(),

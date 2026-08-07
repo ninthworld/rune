@@ -424,6 +424,30 @@ pub(crate) fn apply_targeted_effect(
                 }
             }
         }
+        // CR 610.3: exiled, and **linked** to the permanent that did it. The pair is
+        // recorded because the return is a sentence about *this* source, and nothing about
+        // the exile zone could say which exile a card is waiting on.
+        //
+        // A source that is not on the battlefield exiles nothing: the sentence is "until
+        // this leaves", and a card that has already left would take the exiled permanent
+        // with it in the same breath.
+        Effect::ExileUntilSourceLeaves { .. } => {
+            let (Target::Permanent(id), Some(source)) = (target, source) else {
+                return;
+            };
+            if !state.battlefield.iter().any(|perm| perm.id == source) {
+                return;
+            }
+            if let Some(gone) = state.move_permanent_to_exile(id) {
+                state.exiled_until.push(crate::state::ExiledUntil {
+                    source,
+                    card: gone.instance,
+                    // CR 610.3b: it comes back under its **owner's** control, which is the
+                    // seat whose exile it is sitting in — not the seat that exiled it.
+                    owner: gone.controller,
+                });
+            }
+        }
         // "It deals damage equal to its power" (CR 609.7): the dealer is the ability's own
         // source, and its power is read *now* (CR 608.2) — or, for a source that is no
         // longer on the battlefield, from what was last known of it (CR 608.2h), which is
@@ -630,7 +654,10 @@ pub(crate) fn apply_targeted_effect(
         | Effect::TapAttached
         | Effect::SacrificeSelf
         | Effect::AnimateSelf { .. }
-        | Effect::TakeExtraTurn { .. } => {}
+        | Effect::TakeExtraTurn { .. }
+        // An exchange needs both of its slots at once, so it is applied by
+        // [`apply_multi_target_effect`] rather than once per target.
+        | Effect::ExchangeControl { .. } => {}
         // "Target player's graveyard": the targeting form of the same verb, routed here
         // for the reason a targeted mill is — the reference chose a seat, and this is
         // where a chosen seat arrives.
@@ -787,9 +814,44 @@ pub(crate) fn apply_multi_target_effect(
     targets: &[Target],
     db: &CardDatabase,
 ) {
+    // CR 701.10: an exchange of control gives each permanent to the other's controller,
+    // and it is all or nothing — CR 701.10c says no control changes at all if either is an
+    // illegal target or the two are already controlled by the same player.
+    if let Effect::ExchangeControl { .. } = effect {
+        let [Target::Permanent(first), Target::Permanent(second)] = targets else {
+            return;
+        };
+        let (first, second) = (*first, *second);
+        let Some(first_controller) = crate::characteristics::controller_of_id(state, first) else {
+            return;
+        };
+        let Some(second_controller) = crate::characteristics::controller_of_id(state, second)
+        else {
+            return;
+        };
+        if first_controller == second_controller {
+            return;
+        }
+        // Two layer-2 effects, each keyed to one permanent and each lasting as long as
+        // that permanent does: an exchange has no duration, unlike the until-end-of-turn
+        // theft beside it.
+        for (permanent, gains) in [(first, second_controller), (second, first_controller)] {
+            state.static_effects.push(StaticEffect {
+                // Keyed to the permanent it is about rather than to a fresh id: a
+                // `WhileOnBattlefield` effect ends when *its source* leaves, and the
+                // source of "this creature is yours now" is the creature. A minted id
+                // would name nothing on the battlefield and be ended immediately.
+                source: permanent.0,
+                affects: EffectAffects::SpecificPermanent(permanent),
+                modification: Modification::GainControl(gains),
+                duration: Duration::WhileOnBattlefield,
+            });
+        }
+        return;
+    }
     // CR 701.12: the first creature deals damage equal to its power to the second, and —
     // when the card printed the word *fights* — the second deals damage equal to its
-    // power back. One arm today; a second multi-slot effect joins it here.
+    // power back.
     let Effect::Fight { mutual, .. } = effect else {
         return;
     };
