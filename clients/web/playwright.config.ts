@@ -10,6 +10,9 @@
  * - **`views`** replays committed fixtures over an intercepted WebSocket. No server, no engine,
  *   no game — just "given exactly this view, the browser renders this". Fast, deterministic,
  *   and where breadth lives, so breadth never gates a merge on browser flake.
+ * - **`scenario`** drives the contributor tool `sage-scenario` (issue #777): a hand-authored
+ *   position, served on a loopback socket, opened with `?server=`. Non-blocking, like `views`,
+ *   and separate from it because it has a real engine behind it and needs a Rust toolchain.
  *
  * Both run against `vite preview` over a real build, never the dev server, so the artifact
  * under test is the one that ships.
@@ -24,6 +27,9 @@ import { defineConfig, devices } from '@playwright/test'
 const HOST = '127.0.0.1'
 const PREVIEW_PORT = 4173
 const SERVER_PORT = 9000
+// The scenario runner's own default, deliberately not 9000 so a scenario can run beside a
+// real server. `e2e/scenario.spec.ts` names the same address.
+const SCENARIO_PORT = 9010
 export const BASE_URL = `http://${HOST}:${PREVIEW_PORT}`
 
 /**
@@ -62,6 +68,7 @@ export default defineConfig({
     // thousand lines (`docs/coding-standards.md`). The suffix is the whole membership rule.
     { name: 'views', testMatch: /views\.spec\.ts$/ },
     { name: 'smoke', testMatch: /smoke\.spec\.ts/ },
+    { name: 'scenario', testMatch: /scenario\.spec\.ts/ },
   ],
   webServer: [
     {
@@ -82,6 +89,22 @@ export default defineConfig({
             command: 'cargo run -q -p sage-server',
             cwd: '../..',
             port: SERVER_PORT,
+            reuseExistingServer: !process.env.CI,
+            timeout: 180_000,
+          },
+        ]
+      : []),
+    // Only the `scenario` tier needs the scenario runner, and it starts it the same way: on
+    // the TCP port, since this too is a WebSocket that answers no plain GET. `--no-client`
+    // because the preview server above is already serving the built client this points at.
+    ...(process.env.SAGE_E2E_SCENARIO === '1'
+      ? [
+          {
+            command:
+              'cargo run -q -p sage-scenario -- scenarios/murder-the-dreadmaw.toml ' +
+              `--no-client --addr ${HOST}:${SCENARIO_PORT}`,
+            cwd: '../..',
+            port: SCENARIO_PORT,
             reuseExistingServer: !process.env.CI,
             timeout: 180_000,
           },

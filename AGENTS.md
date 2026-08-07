@@ -72,10 +72,14 @@ for it.
 - `crates/sage-server/` — WebSocket lobby and game rooms.
 - `crates/sage-cli/` — terminal and deterministic-agent client. It proves the protocol is
   independent of the web UI and is the playtest surface whenever the browser is unavailable.
+- `crates/sage-scenario/` — **development-only** contributor tool: builds an exact game
+  position from a checked-in file and opens the real client on it, for playtesting one
+  mechanic without playing to it. Nothing ships from it and no shipped crate depends on it.
+  Format and vocabulary: [`docs/scenarios.md`](docs/scenarios.md); examples in `scenarios/`.
 - `clients/web/` — the browser client, and the playable one; has its own `AGENTS.md`.
 - `clients/prototype/` — a throwaway sandbox for trying screens before building them for real.
   Nothing ships from it and `docs/client-design.md` does not govern it.
-- `docs/` — brief, protocol, card schema, coding standards, and ADRs. Everything in `docs/` is
+- `docs/` — brief, protocol, card schema, scenarios, coding standards, and ADRs. Everything in `docs/` is
   current and binding; there is no superseded material to sift. The one precedence question —
   prototype vs. `client-design.md` vs. `clients/web` — is answered above and in the brief.
 - `docs/generated/` — generated artifacts. Never hand-edit one; regenerate it (`make compat`).
@@ -87,6 +91,9 @@ for it.
 - `make client-check` — everything the `Client` CI job runs.
 - `make e2e-smoke` — the blocking browser gate, against a real server.
 - `make e2e-views` — the broad, non-blocking browser tier. Needs no server and no Rust.
+- `make e2e-scenario` — the non-blocking scenario tier, against the contributor runner.
+- `make scenario SCENARIO=<file>` — open the real client on an exact position and print the
+  URL (`docs/scenarios.md`). Development only, disposable, loopback only.
 - `make engine-test` — `cargo test --workspace`
 - `make engine-lint` — `cargo fmt --check` + `cargo clippy -- -D warnings`
 - `make compat` — regenerate the card-compatibility report (fails `make check` on drift).

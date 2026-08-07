@@ -1,4 +1,4 @@
-.PHONY: verify check client-check client-install e2e e2e-browser e2e-smoke e2e-views engine-test engine-lint engine-fmt compat deny setup
+.PHONY: verify check client-check client-install e2e e2e-browser e2e-smoke e2e-views e2e-scenario scenario engine-test engine-lint engine-fmt compat deny setup
 
 # The complete local pre-merge gate: everything required before a PR merges into
 # `main`. Composes the existing targets 1:1 with the required GitHub checks, so
@@ -73,7 +73,21 @@ e2e-smoke: e2e-browser
 e2e-views: e2e-browser
 	cd clients/web && npm run build && npm run e2e:views
 
-e2e: e2e-views e2e-smoke ## Both browser tiers
+# The scenario tier (issue #777): the contributor tool driven through the real
+# client. Non-blocking like `e2e-views`, and separate from it because it has a real
+# engine behind it and so needs a Rust toolchain. It builds the client because it
+# serves the built bundle, exactly as the other two tiers do.
+e2e-scenario: e2e-browser
+	cd clients/web && npm run build && npm run e2e:scenario
+
+e2e: e2e-views e2e-smoke ## Both blocking-and-broad browser tiers
+
+# Open the shipping client on a scenario and print the URL (issue #777). Development
+# only, disposable, and loopback only. `SCENARIO=` picks the file.
+SCENARIO ?= scenarios/murder-the-dreadmaw.toml
+scenario: ## Play an exact position in the real client: make scenario SCENARIO=path/to.toml
+	cd clients/web && npm run build
+	cargo run -q -p sage-scenario -- $(SCENARIO)
 
 # Supply-chain gate (the `cargo-deny` CI job). Same subcommand + checks the
 # deny.yml workflow runs, kept here so the command lives in exactly one place.
