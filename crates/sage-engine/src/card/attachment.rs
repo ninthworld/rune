@@ -330,6 +330,7 @@ mod tests {
                     restriction: None,
                 }],
                 timing: crate::ability::ActivationTiming::AnyTime,
+                condition: None,
             }]
         );
         assert!(

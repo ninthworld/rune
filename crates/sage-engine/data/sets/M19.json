@@ -250,6 +250,11 @@
     "rarity": "rare"
   },
   {
+    "functional_id": "dwindle",
+    "collector_number": "53",
+    "rarity": "common"
+  },
+  {
     "functional_id": "essence_scatter",
     "collector_number": "54",
     "rarity": "common"
@@ -728,6 +733,11 @@
     "functional_id": "lava_axe",
     "collector_number": "150",
     "rarity": "common"
+  },
+  {
+    "functional_id": "lightning_mare",
+    "collector_number": "151",
+    "rarity": "uncommon"
   },
   {
     "functional_id": "lightning_strike",
@@ -1365,9 +1375,24 @@
     "rarity": "common"
   },
   {
+    "functional_id": "ajani_wise_counselor",
+    "collector_number": "281",
+    "rarity": "mythic"
+  },
+  {
     "functional_id": "riddlemaster_sphinx",
     "collector_number": "287",
     "rarity": "rare"
+  },
+  {
+    "functional_id": "tezzeret_s_gatebreaker",
+    "collector_number": "289",
+    "rarity": "rare"
+  },
+  {
+    "functional_id": "sarkhan_dragonsoul",
+    "collector_number": "296",
+    "rarity": "mythic"
   },
   {
     "functional_id": "sarkhan_s_whelp",
@@ -1375,9 +1400,19 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "vivien_of_the_arkbow",
+    "collector_number": "301",
+    "rarity": "mythic"
+  },
+  {
     "functional_id": "ursine_champion",
     "collector_number": "304",
     "rarity": "common"
+  },
+  {
+    "functional_id": "vivien_s_jaguar",
+    "collector_number": "305",
+    "rarity": "uncommon"
   },
   {
     "functional_id": "waterknot",

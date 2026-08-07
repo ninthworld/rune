@@ -107,6 +107,14 @@ Nothing visual is worth bending one of those.
 `crates/sage-cli` is the terminal client. It proves the protocol is independent of the web UI,
 and it is the playtest surface whenever the web client is unavailable.
 
+`crates/sage-scenario` is a **development-only** contributor tool, not a client and not a
+product surface. It builds an exact game position from a checked-in file, serves it on a
+loopback socket, and opens the shipping web client on it — so a mechanic or an interaction can
+be played by hand without playing five turns to reach it. Everything past the first state is a
+real game: the engine offers the actions, the server projects the views and drives the AI seat,
+and the client is the built bundle pointed at a socket. It adds no protocol command, and nothing
+ships from it. Format and vocabulary: [`scenarios.md`](scenarios.md).
+
 ## Card model
 
 One functional definition per card under `crates/sage-engine/data/catalog/<functional_id>.json`,

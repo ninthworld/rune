@@ -5,6 +5,7 @@ members = [
     "crates/sage-protocol",
     "crates/sage-server",
     "crates/sage-cli",
+    "crates/sage-scenario",
 ]
 
 [workspace.package]

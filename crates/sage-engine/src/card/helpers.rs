@@ -84,6 +84,9 @@ pub fn equip_ability(data: &super::CardData) -> Option<Ability> {
         // CR 702.6b's sorcery timing is derived from the ability *being* an equip
         // ability, not authored — so the printed-text field stays at its default here.
         timing: crate::ability::ActivationTiming::AnyTime,
+        // And equip prints no `Activate only if …` on any card, for the same reason: what
+        // a derived ability says is what CR 702.6a says, and that is all of it.
+        condition: None,
     })
 }
 
@@ -521,6 +524,7 @@ mod tests {
             vec![Ability::Triggered {
                 event: TriggerCondition::SelfEntersBattlefield,
                 effects: vec![Effect::PutCounters {
+                    count_amount: None,
                     targets: crate::ability::TargetCount::Exactly(1),
                     target: TargetSpec::AnyCreature,
                     counter: CounterKind::PlusOnePlusOne,
@@ -538,6 +542,7 @@ mod tests {
         assert_eq!(
             crate::card::tests::card_named(&inline, "test_wither").spell_effects,
             vec![Effect::PutCounters {
+                count_amount: None,
                 targets: crate::ability::TargetCount::Exactly(1),
                 target: TargetSpec::AnyCreature,
                 counter: CounterKind::MinusOneMinusOne,
@@ -607,6 +612,7 @@ mod tests {
                     amount: 1,
                 }],
                 timing: crate::ability::ActivationTiming::AnyTime,
+                condition: None,
             }]
         );
         assert!(crate::ability::is_mana_ability(&elves.abilities[0]));
@@ -627,6 +633,7 @@ mod tests {
                 cost: vec![Cost::Tap],
                 effects: vec![Effect::AddColorlessMana { amount: 1 }],
                 timing: crate::ability::ActivationTiming::AnyTime,
+                condition: None,
             }]
         );
         assert!(crate::ability::is_mana_ability(&lodestone.abilities[0]));

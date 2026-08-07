@@ -18,6 +18,7 @@ fn activated_mana_ability_round_trips() {
                 amount: 1
             }],
             timing: crate::ability::ActivationTiming::AnyTime,
+            condition: None,
         }
     );
     assert!(is_mana_ability(&ability));
@@ -36,6 +37,7 @@ fn issue_256_activated_colorless_mana_ability_round_trips() {
             cost: vec![Cost::Tap],
             effects: vec![Effect::AddColorlessMana { amount: 1 }],
             timing: crate::ability::ActivationTiming::AnyTime,
+            condition: None,
         }
     );
     assert!(is_mana_ability(&ability));
@@ -244,6 +246,7 @@ fn issue_738_an_entry_card_name_and_the_selector_that_reads_it_round_trip() {
             restriction: None,
         }],
         timing: crate::ability::ActivationTiming::AnyTime,
+        condition: None,
     };
     assert_eq!(
         ability,
@@ -290,6 +293,7 @@ fn activated_non_mana_ability_is_not_a_mana_ability() {
         cost: vec![Cost::Tap],
         effects: vec![Effect::DrawCard { count: 1 }],
         timing: crate::ability::ActivationTiming::AnyTime,
+        condition: None,
     };
     assert!(!is_mana_ability(&ability));
 }
@@ -368,6 +372,7 @@ fn a_tap_effect_is_not_a_mana_ability() {
             target: TargetSpec::AnyCreature,
         }],
         timing: crate::ability::ActivationTiming::AnyTime,
+        condition: None,
     };
     assert!(!is_mana_ability(&ability));
 }
@@ -455,6 +460,7 @@ fn issue_149_put_counters_round_trips_with_both_kinds() {
     assert_eq!(
         serde_json::from_str::<Effect>(plus).unwrap(),
         Effect::PutCounters {
+            count_amount: None,
             targets: crate::ability::TargetCount::Exactly(1),
             target: TargetSpec::AnyCreature,
             counter: CounterKind::PlusOnePlusOne,
@@ -465,6 +471,7 @@ fn issue_149_put_counters_round_trips_with_both_kinds() {
     assert_eq!(
         serde_json::from_str::<Effect>(minus).unwrap(),
         Effect::PutCounters {
+            count_amount: None,
             targets: crate::ability::TargetCount::Exactly(1),
             target: TargetSpec::AnyCreature,
             counter: CounterKind::MinusOneMinusOne,
@@ -573,6 +580,7 @@ fn a_mana_activation_cost_round_trips_as_the_string_it_was_written_in() {
             ],
             effects: vec![Effect::DrawCard { count: 1 }],
             timing: crate::ability::ActivationTiming::AnyTime,
+            condition: None,
         }
     );
     // CR 605.1a is about the *effects*, not the cost: a mana cost does not stop an
@@ -858,6 +866,7 @@ fn issue_604_the_choice_effects_round_trip_with_their_defaults() {
     assert_eq!(
         serde_json::from_str::<Effect>(search).unwrap(),
         Effect::SearchLibrary {
+            any_number: false,
             take_amount: None,
             take: 1,
             filter: CardFilter::SameNameAsSource,
@@ -934,6 +943,7 @@ fn issue_723_a_graveyard_ability_is_derived_from_the_effect_that_moves_its_own_c
                 destination: FoundDestination::BattlefieldTapped,
             }],
             timing: crate::ability::ActivationTiming::AnyTime,
+            condition: None,
         }
     );
     assert!(is_graveyard_ability(&ability));
@@ -1026,6 +1036,7 @@ fn issue_740_two_mana_of_any_one_color_is_one_choice_rather_than_two() {
         cost: vec![Cost::Tap],
         effects: vec![effect],
         timing: crate::ability::ActivationTiming::AnyTime,
+        condition: None,
     }));
 }
 

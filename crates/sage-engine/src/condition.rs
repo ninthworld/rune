@@ -297,6 +297,12 @@ pub(crate) fn derived_amount(
         // nothing rather than guess at one.
         DerivedAmount::AnnouncedX => resolution.announced_x.unwrap_or(0),
         DerivedAmount::LifeGainedThisTurn => life_gained_this_turn(state, controller),
+        // The total itself, read now (CR 608.2). Clamped at zero: a player below it has
+        // already lost, and no printed card means a negative quantity by this phrase.
+        DerivedAmount::YourLifeTotal => state
+            .players
+            .get(controller.0)
+            .map_or(0, |player| u32::try_from(player.life).unwrap_or(0)),
         // Every card this resolution milled, whoever's library it came from — see
         // [`DerivedAmount::MilledThisWay`] for why the seat is not a field. A resolution
         // that milled nothing counts nothing, which is the zero a card that draws "for

@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (284)
+## Supported cards (291)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -25,6 +25,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `ajani_s_influence` | Ajani's Influence | functional definition |
 | `ajani_s_pridemate` | Ajani's Pridemate | functional definition |
 | `ajani_s_welcome` | Ajani's Welcome | functional definition |
+| `ajani_wise_counselor` | Ajani, Wise Counselor | functional definition |
 | `alpine_moon` | Alpine Moon | functional definition |
 | `angel_of_the_dawn` | Angel of the Dawn | functional definition |
 | `anticipate` | Anticipate | functional definition |
@@ -84,6 +85,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `dryad_greenseeker` | Dryad Greenseeker | functional definition |
 | `duress` | Duress | functional definition |
 | `dwarven_priest` | Dwarven Priest | functional definition |
+| `dwindle` | Dwindle | functional definition |
 | `electrify` | Electrify | functional definition |
 | `elvish_clancaller` | Elvish Clancaller | functional definition |
 | `elvish_rejuvenator` | Elvish Rejuvenator | functional definition |
@@ -150,6 +152,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `leonin_vanguard` | Leonin Vanguard | functional definition |
 | `leonin_warleader` | Leonin Warleader | functional definition |
 | `lich_s_caress` | Lich's Caress | functional definition |
+| `lightning_mare` | Lightning Mare | functional definition |
 | `lightning_strike` | Lightning Strike | functional definition |
 | `liliana_s_contract` | Liliana's Contract | functional definition |
 | `liliana_s_spoils` | Liliana's Spoils | functional definition |
@@ -221,6 +224,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `rustwing_falcon` | Rustwing Falcon | functional definition |
 | `sai_master_thopterist` | Sai, Master Thopterist | functional definition |
 | `salvager_of_secrets` | Salvager of Secrets | functional definition |
+| `sarkhan_dragonsoul` | Sarkhan, Dragonsoul | functional definition |
 | `sarkhan_fireblood` | Sarkhan, Fireblood | functional definition |
 | `sarkhan_s_dragonfire` | Sarkhan's Dragonfire | functional definition |
 | `sarkhan_s_unsealing` | Sarkhan's Unsealing | functional definition |
@@ -265,6 +269,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `tattered_mummy` | Tattered Mummy | functional definition |
 | `tectonic_rift` | Tectonic Rift | functional definition |
 | `tezzeret_artifice_master` | Tezzeret, Artifice Master | functional definition |
+| `tezzeret_s_gatebreaker` | Tezzeret's Gatebreaker | functional definition |
 | `tezzeret_s_strider` | Tezzeret's Strider | functional definition |
 | `thorn_lieutenant` | Thorn Lieutenant | functional definition |
 | `thornhide_wolves` | Thornhide Wolves | functional definition |
@@ -287,8 +292,10 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `viashino_pyromancer` | Viashino Pyromancer | functional definition |
 | `vigilant_baloth` | Vigilant Baloth | functional definition |
 | `vine_mare` | Vine Mare | functional definition |
+| `vivien_of_the_arkbow` | Vivien of the Arkbow | functional definition |
 | `vivien_reid` | Vivien Reid | functional definition |
 | `vivien_s_invocation` | Vivien's Invocation | functional definition |
+| `vivien_s_jaguar` | Vivien's Jaguar | functional definition |
 | `volcanic_dragon` | Volcanic Dragon | functional definition |
 | `volley_veteran` | Volley Veteran | functional definition |
 | `walking_corpse` | Walking Corpse | functional definition |
@@ -326,7 +333,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Effects that let a player choose the order of the cards a scry keeps on top | a look bottoms its rest in an order the looker picks or at random, as the card says, but the cards a scry leaves on top stay in their printed order |
 | Effects that return a card from a graveyard to a zone other than a hand or the battlefield | a targeted card returns from a graveyard to a hand or to the battlefield, and a whole graveyard can be exiled; nothing else moves a card out of one |
 | Effects that untap a permanent it did not just take | untapping rides on the control change that steals a creature, because one effect names one target; nothing else brings an untap forward |
-| Effects whose amount is derived from a source outside the ones the IR names | an amount may be a count of permanents (feeding power/toughness, life, damage, a token count, and an attachment's static grant), the life gained this turn, a count of what this resolution milled, the greatest mana value among a class of permanents, the X its controller announced, how many permanents this resolution has sacrificed, the power the creature a cost sacrificed had, or half a named player's life total, hand, or creature count rounded up — the last seven feeding power/toughness, a draw, damage, a search's size, a life loss, a discard, and a sacrifice, which may instead name no amount at all and take any number the sacrificing player picks; a count of cards in a graveyard feeds a characteristic-defining power and nothing else, and a chosen permanent's power feeds only the life gained by the exile that removes it — nothing else may: not a whole life total, hand, or graveyard feeding an effect, not one named object's mana value, not another surviving object's power (an ability's own source's power is read by an effect whose sentence is about it, never by an amount), not a chosen permanent's toughness or mana value, not half of anything rounded down, and not the permanent an effect just put onto the battlefield |
+| Effects whose amount is derived from a source outside the ones the IR names | an amount may be a count of permanents (feeding power/toughness, life, damage, a token count, and an attachment's static grant), the life gained this turn, the controller's life total, a count of what this resolution milled, the greatest mana value among a class of permanents, the X its controller announced, how many permanents this resolution has sacrificed, the power the creature a cost sacrificed had, or half a named player's life total, hand, or creature count rounded up |
 | Emblems with an activated ability | an emblem carries static and triggered abilities only; nothing offers a way to activate one |
 | Gaining control of a permanent for longer than a turn | a control change either lasts until end of turn — the theft that unteaps and grants haste — or is an **exchange**, which swaps two permanents indefinitely (CR 701.10) and is all or nothing; nothing takes one permanent for good, and no duration sits between the two |
 | Kicker and other optional additional costs | no optional cost declared on announcement |

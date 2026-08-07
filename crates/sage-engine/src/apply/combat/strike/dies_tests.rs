@@ -94,6 +94,7 @@ fn issue_151_dies_trigger_fires_from_a_minus_one_counter_toughness_drop() {
         &mut state,
         lurker,
         vec![Effect::PutCounters {
+            count_amount: None,
             targets: crate::ability::TargetCount::Exactly(1),
             target: TargetSpec::AnyCreature,
             counter: CounterKind::MinusOneMinusOne,

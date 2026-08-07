@@ -263,6 +263,7 @@ mod tests {
                     amount: 1,
                 }],
                 timing: crate::ability::ActivationTiming::AnyTime,
+                condition: None,
             }],
         );
     }
