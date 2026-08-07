@@ -578,6 +578,17 @@ pub enum CardFilter {
     InstantOrSorcery,
     /// An **artifact** card.
     Artifact,
+    /// A card that is either a printed **colour** or an **artifact** — Tezzeret's
+    /// Gatebreaker's `a blue or artifact card`.
+    ///
+    /// A named disjunction rather than a general "any of these filters", for
+    /// [`Self::CreatureOrLand`]'s reason: the card offers it as **one** choice, not as two
+    /// questions, and the vocabulary grows by naming the classes cards actually print. The
+    /// colour half is matched exactly as [`Self::Color`] matches it.
+    ColorOrArtifact {
+        /// The colour half of the class.
+        color: Color,
+    },
 }
 
 /// The class of permanents a **mass, non-targeting** effect ([`Effect::PumpAll`],

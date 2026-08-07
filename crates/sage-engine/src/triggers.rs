@@ -922,6 +922,29 @@ fn fire_count(
             };
             on_battlefield(before, perm) && attacking_in(after) && !attacking_in(before)
         })),
+        // CR 509.1, the mirror of the attack declaration and read the same way: the
+        // subject is blocking after and was not before. Once per declaration, so a
+        // creature that blocked two attackers in one go fires it once.
+        TriggerCondition::SelfBlocks(observes) => {
+            let subject = watcher.permanent().and_then(|perm| {
+                if observes.by_attached {
+                    perm.attached_to
+                } else {
+                    Some(perm.id)
+                }
+            });
+            usize::from(subject.is_some_and(|subject| {
+                let blocking_in = |state: &GameState| {
+                    state
+                        .battlefield
+                        .iter()
+                        .any(|p| p.id == subject && !p.blocking.is_empty())
+                };
+                // The Aura must still be there to notice — a permanent that has left is
+                // not watching the board it is no longer on.
+                watcher.still_present(after) && blocking_in(after) && !blocking_in(before)
+            }))
+        }
         // The watching conditions count rather than answer. Each first asks whether its
         // source is still there to watch — a permanent must still be on the battlefield,
         // and an emblem always is (CR 114.5: nothing removes one), which

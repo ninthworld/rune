@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "functional_id": "dwindle",
+  "name": "Dwindle",
+  "types": [
+    "enchantment"
+  ],
+  "subtypes": [
+    "Aura"
+  ],
+  "mana_cost": "{2}{U}",
+  "colors": [
+    "blue"
+  ],
+  "attachment": {
+    "kind": "aura",
+    "attach_to": "any_creature",
+    "power": -6,
+    "toughness": 0
+  },
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "self_blocks": {
+          "by_attached": true
+        }
+      },
+      "effects": [
+        {
+          "kind": "destroy_attached"
+        }
+      ]
+    }
+  ]
+}

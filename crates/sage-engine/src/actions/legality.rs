@@ -185,6 +185,12 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         if !sorcery_speed_activation_is_legal(state, db, *permanent, *index) {
             return false;
         }
+        // CR 602.5c: `Activate only if …`, re-derived from the live board for the reason
+        // every gate above it is — the offer withheld it, and a stale action id must not
+        // spend a permission that has since gone away.
+        if !activation_condition_is_satisfied(state, db, *permanent, *index) {
+            return false;
+        }
     }
 
     // 1e-ter. Hardening (CR 113.6, issue #723): an activation naming a card in a
@@ -444,11 +450,36 @@ fn graveyard_activation_is_legal(
     index: usize,
 ) -> bool {
     let seat = state.priority;
-    let Some(Ability::Activated { cost, .. }) = graveyard_ability(state, db, seat, card, index)
-    else {
+    let Some(ability) = graveyard_ability(state, db, seat, card, index) else {
         return false;
     };
-    graveyard_cost_payable(state, db, seat, card.id, &cost)
+    let Ability::Activated { cost, .. } = &ability else {
+        return false;
+    };
+    graveyard_cost_payable(state, db, seat, card.id, cost)
+        && crate::ability::activation_condition_holds(state, &ability, seat, db)
+}
+
+/// Whether ability `index` of `permanent` satisfies the **board condition** its printed
+/// text declares (CR 602.5c) — `true` for an ability that declares none, which is the
+/// exact shape [`sorcery_speed_activation_is_legal`] beside it takes.
+///
+/// `false` for a permanent that is not on the battlefield: a stale id names no source, and
+/// no board makes an ability of nothing activatable.
+fn activation_condition_is_satisfied(
+    state: &GameState,
+    db: &CardDatabase,
+    permanent: PermanentId,
+    index: usize,
+) -> bool {
+    let Some(perm) = state.battlefield.iter().find(|p| p.id == permanent) else {
+        return false;
+    };
+    abilities_of_permanent(state, db, perm)
+        .get(index)
+        .is_some_and(|ability| {
+            crate::ability::activation_condition_holds(state, ability, perm.controller, db)
+        })
 }
 
 /// Whether a declared attacker selection is legal (CR 508.1a): every named

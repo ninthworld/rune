@@ -1012,5 +1012,10 @@ pub(crate) fn card_matches_filter(
             data.has_type(CardType::Instant) || data.has_type(CardType::Sorcery)
         }
         CardFilter::Artifact => data.has_type(CardType::Artifact),
+        // One class, asked as one question — the same printed-colour reading the colour
+        // filter alone makes, plus the type.
+        CardFilter::ColorOrArtifact { color } => {
+            data.colors.contains(color) || data.has_type(CardType::Artifact)
+        }
     }
 }

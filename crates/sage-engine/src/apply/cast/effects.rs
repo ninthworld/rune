@@ -277,6 +277,17 @@ pub(crate) fn apply_effect(
                 }
             }
         }
+        // The same host, destroyed rather than tapped — and through the one destruction
+        // seam, so it is a real death: an indestructible host stays, and a creature that
+        // goes fires its dies triggers like any other (CR 701.7, CR 700.4).
+        Effect::DestroyAttached => {
+            let host = permanent_source
+                .and_then(|id| state.battlefield.iter().find(|perm| perm.id == id))
+                .and_then(|perm| perm.attached_to);
+            if let Some(host) = host {
+                state.destroy_permanent(host, db);
+            }
+        }
         Effect::DrawCard { count } => draw_cards(state, controller, u32::from(*count)),
         // The same draw, with the number taken off the game instead of off the card
         // (CR 608.2) — once, here, so a mill this same resolution performed is what the
