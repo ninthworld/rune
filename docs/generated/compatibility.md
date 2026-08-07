@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (294)
+## Supported cards (295)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -23,6 +23,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `air_elemental` | Air Elemental | functional definition |
 | `ajani_adversary_of_tyrants` | Ajani, Adversary of Tyrants | functional definition |
 | `ajani_s_influence` | Ajani's Influence | functional definition |
+| `ajani_s_last_stand` | Ajani's Last Stand | functional definition |
 | `ajani_s_pridemate` | Ajani's Pridemate | functional definition |
 | `ajani_s_welcome` | Ajani's Welcome | functional definition |
 | `ajani_wise_counselor` | Ajani, Wise Counselor | functional definition |
@@ -315,7 +316,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Excluded | Blocker |
 | --- | --- |
 | Abilities that trigger on a **loyalty** ability specifically | an observed activation is filtered by who activated it and by the source's card type and printed subtype — `an ability of a Sarkhan planeswalker` — but nothing asks whether the ability activated was a *loyalty* ability rather than any other (CR 606.1), so a walker's mana ability would satisfy the same watcher |
-| Abilities that trigger on a card entering or leaving a hand, a library, or exile | cards leaving a graveyard are noticed by diffing it — every road out at once, counted as the one-or-more a card prints — and a permanent entering the battlefield or leaving it for a graveyard is read the same way; no condition names a hand, a library, or exile, so nothing watches a card moving into or out of one |
+| Abilities that trigger on a card entering or leaving a hand, a library, or exile, other than its own discard | cards leaving a graveyard are noticed by diffing it — every road out at once, counted as the one-or-more a card prints — a permanent entering the battlefield or leaving it for a graveyard is read the same way, and a card in a **hand** may watch for its own discard, narrowed by who caused it; no condition names a library or exile, nothing watches a card *arriving* in a hand, and no card watches another card being discarded |
 | Abilities that trigger on a mana ability being activated | the activation condition watches the objects a transition put on the stack, which a mana ability never reaches (CR 605.3a) |
 | Abilities that trigger on someone else drawing a card | the draw trigger condition observes only its own controller's draws |
 | Attack requirements | a block requirement is maximised over the whole declaration (CR 509.1c), but nothing can force a creature into the attacker declaration (CR 508.1d) — and the one requirement modeled is that every creature able to block an attacker does so, never that one particular creature blocks |
@@ -344,7 +345,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Mana filtering | mana is produced and spent, never converted; nothing changes the colour of mana already in a pool |
 | Modal double-faced cards, and melding | a card has an ordered list of faces and a permanent turns over between them (CR 712), but the second face is only ever reached by transforming: it carries no mana cost, the catalog validator refuses one, and no announcement offers a card as anything but its front face — so a card whose two faces are two things you may cast is unwritable, and nothing combines two cards into one |
 | Modes beyond one chosen from a spell's printed list | a spell chooses exactly one of between two and four printed modes as it is announced, and the chosen mode alone decides which effects resolve and which targets are asked for; no ability is modal, nothing chooses two modes or repeats one, and a mode carries no cost of its own |
-| Optional costs paid by spending the asking permanent itself | an optional effect's cost is mana, a permanent the chooser picks, or a discard; a cost that names the source — tapping it, sacrificing it, moving its loyalty, removing counters from it — is unwritable, because the question is answered from a queue that carries no source |
+| Optional costs paid by spending the asking permanent other than by sacrificing it | an optional effect's cost is mana, a permanent the chooser picks, a discard, or the asking permanent sacrificing itself — the one the queue can pay without a further question, because the source rides the request; a cost that taps the source, moves its loyalty, or removes counters from it is still unwritable |
 | Playing a card from a zone other than the hand, the command zone, or a permitted graveyard | a graveyard is reached three ways — a one-turn permission to cast from it, a continuous permission to play lands from it, and an activated or triggered ability that returns its own card out of it — exile is reached by a one-turn permission naming the very cards an effect exiled, which may permit playing them or only casting the spells among them, a continuous permission lets a player cast from their hand without paying a mana cost, and a resolution may hand its controller a card to play on the spot (CR 608.2f), off their own library or out of the exile it just dug from another player's; no permission to cast for free outlives the resolution that granted it except from the hand, and no alternative-cost or zone-specific casting mechanism (flashback, escape, adventure) exists |
 | Prohibiting counters from being put on a permanent or a player | counters reach a permanent from an effect, from its own entry, and from a planeswalker's loyalty, and each of those writes them with nothing to consult first; no continuous effect refuses a counter, and a player bears no counters at all |
 | Protection | there is no protection layer: nothing stops a spell, a block, an aura, or damage by a quality the way CR 702.16 does |

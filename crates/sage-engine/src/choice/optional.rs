@@ -202,7 +202,9 @@ fn optional_payment_question(
     request: &ConfirmRequest,
 ) -> Option<(PlayerId, ChoiceQuestion)> {
     match request.cost.as_ref()? {
-        OptionalCost::Mana { .. } => None,
+        // Neither of these poses a further question: mana is charged from the pool as the
+        // answer is given, and the source a `sacrifice this` names is not picked.
+        OptionalCost::Mana { .. } | OptionalCost::SacrificeThis => None,
         // CR 701.17b: a player sacrifices only what they control, so the subject is the
         // chooser and there is nothing to author about whose it is.
         OptionalCost::Sacrifice {
@@ -224,6 +226,9 @@ fn optional_payment_question(
         OptionalCost::Discard { count } => Some((
             chooser,
             ChoiceQuestion::Cards(ChoiceRequest {
+                // A cost is paid by the player who is casting or activating, so the cause
+                // is that player themselves — never an opponent.
+                caused_by: Some(chooser),
                 subject: chooser,
                 zone: ChoiceZone::Hand,
                 filter: CardFilter::Any,
@@ -251,6 +256,14 @@ fn payment_is_available(
     request: &ConfirmRequest,
     db: &CardDatabase,
 ) -> bool {
+    // The one cost with no question and nothing to look up in a pool: it is payable while
+    // the permanent that would pay it is still there, and a source destroyed in response
+    // takes the offer with it.
+    if matches!(request.cost, Some(OptionalCost::SacrificeThis)) {
+        return request
+            .source
+            .is_some_and(|id| state.battlefield.iter().any(|perm| perm.id == id));
+    }
     match optional_payment_question(chooser, request) {
         Some((_, ChoiceQuestion::Permanents(payment))) => {
             permanent_choice_bounds(state, &payment, db).1 >= payment.min
@@ -305,6 +318,15 @@ pub(crate) fn take_confirmed_effects(
     let payment = optional_payment_question(chooser, request);
     let paid = match (&request.cost, &payment) {
         (None, _) => true,
+        // Paid here and now, through the same death seam every other sacrifice goes
+        // through (CR 701.17b), so the permanent's dies triggers fire like any other's. A
+        // source that has already left cannot pay, which declines the offer.
+        (Some(OptionalCost::SacrificeThis), _) => request.source.is_some_and(|id| {
+            state.battlefield.iter().any(|perm| perm.id == id) && {
+                state.destroy_permanent(id, db);
+                true
+            }
+        }),
         // A picked payment is not made here; it is owed. It counts as payable exactly
         // when there is something to pick, which is the check the offer was gated on.
         (Some(_), Some(_)) => payment_is_available(state, chooser, request, db),

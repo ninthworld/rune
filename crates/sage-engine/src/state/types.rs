@@ -250,6 +250,16 @@ pub enum GameEvent {
         player: PlayerId,
         /// Number of cards that actually moved to the graveyard.
         count: u32,
+        /// Who **caused** it — the controller of the spell or ability whose resolution
+        /// made them discard, or `None` for a discard nobody's object caused (the
+        /// cleanup step's hand-size discard).
+        ///
+        /// **Engine-internal**, like the dealer on a damage event and for the same
+        /// reason: `when a spell or ability an opponent controls causes you to discard
+        /// this card` has nowhere else to read it from, and a hand that is one card
+        /// lighter says nothing about why. The wire's `cards_discarded` still carries who
+        /// discarded and how many, and the projection drops this.
+        caused_by: Option<PlayerId>,
     },
     /// A player searched their library and shuffled it (CR 701.19). Neither what they
     /// looked at nor what they found is recorded: a library is hidden from every other

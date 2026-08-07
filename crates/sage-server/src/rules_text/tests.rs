@@ -2089,3 +2089,16 @@ fn issue_706_a_toll_on_being_targeted_and_a_class_of_tokens() {
          Creature tokens get -1/+0."
     );
 }
+
+#[test]
+fn issue_706_a_card_that_pays_with_itself_and_triggers_from_a_hand() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "ajani_s_last_stand"),
+        "Whenever a creature or planeswalker you control dies, you may sacrifice this \
+         permanent. If you do, you create a 4/4 white Avatar creature token with \
+         flying.\nWhen a spell or ability an opponent controls causes you to discard \
+         Ajani's Last Stand, if you control a Plains land, you create a 4/4 white Avatar \
+         creature token with flying."
+    );
+}

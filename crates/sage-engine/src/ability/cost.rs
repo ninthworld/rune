@@ -296,6 +296,19 @@ pub enum OptionalCost {
         #[serde(default)]
         another: bool,
     },
+    /// **Sacrifice the asking ability's own source** (CR 701.17) — the `you may sacrifice
+    /// this enchantment` of a card that trades itself for what it makes.
+    ///
+    /// The one optional cost that asks **nothing further**: the permanent is named by the
+    /// sentence rather than picked, so accepting pays it outright where its siblings pose
+    /// a second question. It is the `sacrifice_this` activation cost's counterpart, and
+    /// differs from it exactly as [`Self::Sacrifice`] differs from its own: a cost is paid
+    /// as an ability is activated, and this happens while one resolves.
+    ///
+    /// A source that has already left the battlefield cannot pay it — which is a decline
+    /// rather than a free effect, so a card whose enchantment was destroyed in response
+    /// makes no token.
+    SacrificeThis,
     /// **Discard `count` cards** from the chooser's hand (CR 701.8) — the hand
     /// counterpart of [`Self::Sacrifice`], paid the same way through a
     /// [`ChoiceQuestion::Cards`](crate::ChoiceQuestion) posed on acceptance.
@@ -331,6 +344,7 @@ impl OptionalCost {
                 count: SacrificeCount::Exactly(1),
             },
             OptionalCost::Discard { count } => Cost::Discard { count: *count },
+            OptionalCost::SacrificeThis => Cost::SacrificeThis,
         }
     }
 
@@ -343,7 +357,9 @@ impl OptionalCost {
     pub fn mana(&self) -> Option<&str> {
         match self {
             OptionalCost::Mana { mana } => Some(mana),
-            OptionalCost::Sacrifice { .. } | OptionalCost::Discard { .. } => None,
+            OptionalCost::Sacrifice { .. }
+            | OptionalCost::SacrificeThis
+            | OptionalCost::Discard { .. } => None,
         }
     }
 }

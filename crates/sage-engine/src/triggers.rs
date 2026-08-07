@@ -86,6 +86,9 @@ enum Origin<'a> {
     Emblem(u64),
     /// A card in its owner's graveyard whose ability functions from there (CR 113.6).
     GraveyardCard(crate::id::CardInstance),
+    /// A card in its owner's **hand** whose ability functions from there (CR 113.6) — the
+    /// one ability that has to be watching from a zone nobody else can see.
+    HandCard(crate::id::CardInstance),
 }
 
 impl<'a> Watcher<'a> {
@@ -110,7 +113,7 @@ impl<'a> Watcher<'a> {
     fn permanent(self) -> Option<&'a Permanent> {
         match self.origin {
             Origin::Permanent(perm) | Origin::DeadPermanent(perm) => Some(perm),
-            Origin::Emblem(_) | Origin::GraveyardCard(_) => None,
+            Origin::Emblem(_) | Origin::GraveyardCard(_) | Origin::HandCard(_) => None,
         }
     }
 
@@ -132,6 +135,10 @@ impl<'a> Watcher<'a> {
                 .players
                 .get(self.controller.0)
                 .is_some_and(|player| player.graveyard.iter().any(|c| c.id == card.id)),
+            // A hand watcher is the one origin whose condition is about *leaving* the
+            // zone it watched from, so requiring it to still be there would be requiring
+            // the event not to have happened. Its own condition does the checking.
+            Origin::HandCard(_) => true,
         }
     }
 
@@ -156,7 +163,12 @@ impl<'a> Watcher<'a> {
                 None => AbilitySource::Permanent(perm.id),
             },
             Origin::Emblem(id) => AbilitySource::Emblem(id),
-            Origin::GraveyardCard(card) => AbilitySource::GraveyardCard(card),
+            Origin::GraveyardCard(card) | Origin::HandCard(card) => {
+                // Both are a card in a zone, and by the time this ability resolves the
+                // discarded one is in the graveyard the discard put it in — which is the
+                // same object this names.
+                AbilitySource::GraveyardCard(card)
+            }
         }
     }
 
@@ -165,6 +177,12 @@ impl<'a> Watcher<'a> {
     /// every other ability does not.
     fn is_graveyard_card(self) -> bool {
         matches!(self.origin, Origin::GraveyardCard(_))
+    }
+
+    /// Whether this watcher is a card in a hand — [`Self::is_graveyard_card`]'s sibling,
+    /// one zone over and for the same reason.
+    fn is_hand_card(self) -> bool {
+        matches!(self.origin, Origin::HandCard(_))
     }
 }
 
@@ -279,6 +297,24 @@ pub fn collect_triggers(before: &GameState, after: &GameState, db: &CardDatabase
             );
         }
     }
+    // And the hands, read from `before` for the graveyard pass's reason and one of its
+    // own: the one ability that functions here is about the card *leaving*, so the hand
+    // it was in is the only place it could still be found.
+    for (seat, player) in before.players.iter().enumerate() {
+        for &card in &player.hand {
+            collect_from(
+                Watcher {
+                    origin: Origin::HandCard(card),
+                    controller: PlayerId(seat),
+                },
+                crate::card::abilities_of(db, card.card),
+                before,
+                after,
+                db,
+                &mut triggers,
+            );
+        }
+    }
     triggers
 }
 
@@ -359,6 +395,12 @@ fn collect_from(
 ) {
     for ability in abilities {
         if crate::ability::is_graveyard_ability(&ability) != watcher.is_graveyard_card() {
+            continue;
+        }
+        // The same comparison one zone over: an ability that functions in a **hand** fires
+        // only from the hand pass, and every other ability fires only from the others. A
+        // card sitting in a hand is otherwise watching nothing at all.
+        if crate::ability::is_hand_ability(&ability) != watcher.is_hand_card() {
             continue;
         }
         if let Ability::Triggered { event, effects } = ability {
@@ -522,7 +564,7 @@ fn named_subjects(
     match event {
         TriggerCondition::PlayerDiscards(observes) => events_in(before, after)
             .filter_map(|event| match event {
-                GameEvent::CardsDiscarded { player, count } => Some((*player, *count)),
+                GameEvent::CardsDiscarded { player, count, .. } => Some((*player, *count)),
                 _ => None,
             })
             .filter(|(player, _)| !observes.opponents_only || *player != watcher.controller)
@@ -794,7 +836,12 @@ fn observed_matches(
     let Some(face) = candidate.printed.face(db) else {
         return false;
     };
-    if !face.has_type(CardType::Creature) {
+    // The class the selector names: creatures, and — for a card that says "or
+    // planeswalker" — those too. The two types are disjoint on every card the schema can
+    // express, so this is a union rather than a second reading of one permanent.
+    let in_class = face.has_type(CardType::Creature)
+        || (observes.also_planeswalkers() && face.has_type(CardType::Planeswalker));
+    if !in_class {
         return false;
     }
     if let Some(subtype) = observes.subtype() {
@@ -931,7 +978,7 @@ fn fire_count(
         // fire count, exactly as a draw watcher's is.
         TriggerCondition::PlayerDiscards(observes) => events_in(before, after)
             .filter_map(|event| match event {
-                GameEvent::CardsDiscarded { player, count } => Some((*player, *count)),
+                GameEvent::CardsDiscarded { player, count, .. } => Some((*player, *count)),
                 _ => None,
             })
             .filter(|(player, _)| !observes.opponents_only || *player != watcher.controller)
@@ -946,6 +993,35 @@ fn fire_count(
             };
             on_battlefield(before, perm) && attacking_in(after) && !attacking_in(before)
         })),
+        // CR 701.8, read by diffing the hand this card was in: it was there before the
+        // transition and is not now. Why it left is the recorded event's business — a
+        // hand one card lighter says nothing about who emptied it.
+        TriggerCondition::SelfDiscarded { by_opponent } => {
+            let Origin::HandCard(card) = watcher.origin else {
+                return 0;
+            };
+            let was_in_hand = before
+                .players
+                .get(watcher.controller.0)
+                .is_some_and(|player| player.hand.iter().any(|held| held.id == card.id));
+            let still_in_hand = after
+                .players
+                .get(watcher.controller.0)
+                .is_some_and(|player| player.hand.iter().any(|held| held.id == card.id));
+            if !was_in_hand || still_in_hand {
+                return 0;
+            }
+            usize::from(events_in(before, after).any(|event| {
+                matches!(event, GameEvent::CardsDiscarded { player, caused_by, .. }
+                if *player == watcher.controller
+                    && match caused_by {
+                        Some(cause) => !*by_opponent || *cause != watcher.controller,
+                        // Nobody's object caused it — the cleanup step did — so a
+                        // condition that names an opponent's is not satisfied.
+                        None => !*by_opponent,
+                    })
+            }))
+        }
         // CR 509.1, the mirror of the attack declaration and read the same way: the
         // subject is blocking after and was not before. Once per declaration, so a
         // creature that blocked two attackers in one go fires it once.

@@ -494,6 +494,23 @@ pub fn activation_condition_holds(
     )
 }
 
+/// Whether an ability functions in its owner's **hand** (CR 113.6) — whether it is the
+/// triggered ability that watches for its own card being discarded.
+///
+/// [`is_graveyard_ability`]'s sibling, and derived the same way: from what the ability
+/// *is* rather than from a flag an author could forget. A card in a hand is watching
+/// nothing else, so this is the whole of which pass reads it.
+#[must_use]
+pub fn is_hand_ability(ability: &Ability) -> bool {
+    matches!(
+        ability,
+        Ability::Triggered {
+            event: TriggerCondition::SelfDiscarded { .. },
+            ..
+        }
+    )
+}
+
 /// Whether an ability is a **loyalty ability** (CR 606.1): an activated ability whose
 /// cost includes a loyalty symbol ([`Cost::Loyalty`]).
 ///

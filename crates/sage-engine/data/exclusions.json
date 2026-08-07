@@ -8,8 +8,8 @@
     "blocker": "the draw trigger condition observes only its own controller's draws"
   },
   {
-    "name": "Abilities that trigger on a card entering or leaving a hand, a library, or exile",
-    "blocker": "cards leaving a graveyard are noticed by diffing it — every road out at once, counted as the one-or-more a card prints — and a permanent entering the battlefield or leaving it for a graveyard is read the same way; no condition names a hand, a library, or exile, so nothing watches a card moving into or out of one"
+    "name": "Abilities that trigger on a card entering or leaving a hand, a library, or exile, other than its own discard",
+    "blocker": "cards leaving a graveyard are noticed by diffing it — every road out at once, counted as the one-or-more a card prints — a permanent entering the battlefield or leaving it for a graveyard is read the same way, and a card in a **hand** may watch for its own discard, narrowed by who caused it; no condition names a library or exile, nothing watches a card *arriving* in a hand, and no card watches another card being discarded"
   },
   {
     "name": "Attack requirements",
@@ -120,8 +120,8 @@
     "blocker": "a resolution may create a reflexive triggered ability (CR 603.11) for the one event it can watch — a creature it put onto the battlefield — and that ability goes on the stack unaimed and is aimed by its controller like any other trigger; an optional effect declares the target group of the one effect that aims, on whichever of its two branches names it, so a conditional's branches, a wrapper over two targeting effects, and a “when you do” that watches a cost being paid still have no group one announcement could fill and no event this vocabulary names"
   },
   {
-    "name": "Optional costs paid by spending the asking permanent itself",
-    "blocker": "an optional effect's cost is mana, a permanent the chooser picks, or a discard; a cost that names the source — tapping it, sacrificing it, moving its loyalty, removing counters from it — is unwritable, because the question is answered from a queue that carries no source"
+    "name": "Optional costs paid by spending the asking permanent other than by sacrificing it",
+    "blocker": "an optional effect's cost is mana, a permanent the chooser picks, a discard, or the asking permanent sacrificing itself — the one the queue can pay without a further question, because the source rides the request; a cost that taps the source, moves its loyalty, or removes counters from it is still unwritable"
   },
   {
     "name": "Prohibiting counters from being put on a permanent or a player",

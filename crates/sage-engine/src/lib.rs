@@ -50,7 +50,7 @@ mod zone;
 
 pub use ability::{
     activation_condition_holds, activation_taps, group_target_counts, is_emblem_ability,
-    is_equip_ability, is_graveyard_ability, is_loyalty_ability, is_mana_ability,
+    is_equip_ability, is_graveyard_ability, is_hand_ability, is_loyalty_ability, is_mana_ability,
     is_sorcery_speed_ability, maximum_targets, minimum_targets, target_counts, Ability,
     ActivationTiming, ActivatorScope, BottomOrder, CardFilter, Chooser, Condition, Cost,
     CostModification, CountScope, DamageSubject, DerivedAmount, DestroyAffects, Effect,

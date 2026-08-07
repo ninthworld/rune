@@ -282,6 +282,16 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                     format!("When {source} enters the battlefield")
                 }
                 TriggerCondition::SelfDies => format!("When {source} dies"),
+                // The one trigger written from the card's point of view in a zone nobody
+                // can see, so the sentence names the card and says who caused it.
+                TriggerCondition::SelfDiscarded { by_opponent } => {
+                    let who = if *by_opponent {
+                        "a spell or ability an opponent controls"
+                    } else {
+                        "a spell or ability"
+                    };
+                    format!("When {who} causes you to discard {source}")
+                }
                 TriggerCondition::SelfAttacks => format!("Whenever {source} attacks"),
                 // The blocking mirror, and the one whose subject may be somebody else: an
                 // Aura says "enchanted creature" where a creature says its own name.
@@ -544,11 +554,18 @@ fn observed_subject(observes: &ObservedPermanent) -> String {
     };
     // "nontoken" is an adjective on the noun, exactly where a card prints it:
     // "another nontoken Dragon you control".
+    // And "or planeswalker" widens the noun where a card prints it: "a creature or
+    // planeswalker you control". A card that names a subtype never also says it.
+    let creature = if observes.also_planeswalkers() {
+        "creature or planeswalker"
+    } else {
+        "creature"
+    };
     let noun = match (observes.nontoken_only(), observes.subtype()) {
         (false, Some(subtype)) => subtype.to_string(),
-        (false, None) => "creature".to_string(),
+        (false, None) => creature.to_string(),
         (true, Some(subtype)) => format!("nontoken {subtype}"),
-        (true, None) => "nontoken creature".to_string(),
+        (true, None) => format!("nontoken {creature}"),
     };
     let class = match observes {
         ObservedPermanent::CreaturesYouControl { .. } => {
