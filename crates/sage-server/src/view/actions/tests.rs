@@ -479,6 +479,7 @@ fn issue_723_a_graveyard_activation_is_offered_on_the_card_it_belongs_to() {
             card: skeleton,
             index: 0,
             targets: Vec::new(),
+            payment: Vec::new(),
         })
     );
 }

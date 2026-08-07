@@ -316,6 +316,7 @@ pub(crate) fn apply_activate_ability_from_graveyard(
     card: CardInstance,
     index: usize,
     targets: &[Target],
+    payment: &[crate::CostPayment],
     db: &CardDatabase,
 ) {
     let controller = state.priority;
@@ -326,8 +327,7 @@ pub(crate) fn apply_activate_ability_from_graveyard(
     };
 
     // CR 601.2h / 602.2b: the cost is paid all at once, and a payment that cannot be made
-    // leaves the state untouched. Mana is the whole of it here, so "all at once" is one
-    // settlement against the pool.
+    // leaves the state untouched. The mana half is one settlement against the pool.
     for due in cost.iter().filter_map(|c| match c {
         Cost::Mana { mana } => Some(parse_mana_cost(mana)),
         Cost::Tap
@@ -346,6 +346,19 @@ pub(crate) fn apply_activate_ability_from_graveyard(
         };
         player.mana_pool = paid;
     }
+
+    // And the components the *player* chose (CR 601.2b) — which cards leave this graveyard,
+    // which leave the hand — charged from what the action carried, down the same movers a
+    // cast and a battlefield activation use. `action_is_legal` has already established that
+    // the payment is exactly what this cost demands, including that the source is not among
+    // the cards being exiled to pay for returning it (issue #723), so this moves rather than
+    // re-deciding.
+    //
+    // **After the mana and before the ability reaches the stack.** A card exiled here is
+    // gone from the graveyard the ability is about to leave, which is what stops the source
+    // paying for itself even if some future path forgets the *other* rule.
+    crate::apply::exile_to_cost(state, controller, &crate::actions::exiles_of(payment));
+    crate::choice::discard_to_cost(state, controller, &crate::actions::discards_of(payment));
 
     let id = state.mint_id();
     state.stack.push(StackObject {

@@ -22,7 +22,10 @@ use super::*;
 
 mod activation;
 
-pub(crate) use activation::{activation_payment_prompts, bind_activation_payment};
+pub(crate) use activation::{
+    activation_payment_prompts, bind_activation_payment, bind_graveyard_activation_payment,
+    graveyard_activation_payment_prompts,
+};
 
 /// The slot id for the `n`th pip of a cast's remaining cost. Recomputed (never parsed)
 /// on resolution, like every other slot id.

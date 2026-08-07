@@ -500,6 +500,7 @@ fn issue_731_the_replacement_ordering_projects_as_an_option_whose_id_is_the_posi
             card: wraith_card,
             index: 1,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         &db,
     );

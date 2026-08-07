@@ -60,11 +60,12 @@ pub use ability::{
 };
 pub use actions::{
     activation_discard_cost, activation_exile_cost, activation_sacrifice_cost,
-    auto_activation_payment, auto_payment, discard_cost, is_plain_mana_source, mana_ability_pips,
-    mode_options, payment_pips, payment_sources, remaining_cost_pips, sacrifice_cost,
-    target_requirements, total_cast_cost, valid_actions, x_options, Action, Attack, Block,
-    CostPayment, DamageOrder, DiscardCost, ExileCost, ManaSource, ModeOption, PaymentPip,
-    SacrificeCost, TargetRequirement, XOption,
+    auto_activation_payment, auto_graveyard_activation_payment, auto_payment, discard_cost,
+    graveyard_activation_exile_cost, is_plain_mana_source, mana_ability_pips, mode_options,
+    payment_pips, payment_sources, remaining_cost_pips, sacrifice_cost, target_requirements,
+    total_cast_cost, valid_actions, x_options, Action, Attack, Block, CostPayment, DamageOrder,
+    DiscardCost, ExileCost, ManaSource, ModeOption, PaymentPip, SacrificeCost, TargetRequirement,
+    XOption,
 };
 pub use apply::apply_action;
 pub use automation::{forced_declaration_without_choice, priority_has_no_meaningful_action};

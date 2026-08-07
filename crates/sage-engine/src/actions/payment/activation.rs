@@ -100,13 +100,22 @@ pub(crate) fn exile_candidates_for(
     db: &CardDatabase,
     seat: PlayerId,
     component: &Cost,
+    source: Option<CardInstanceId>,
 ) -> Vec<CardInstanceId> {
     let Some(player) = state.players.get(seat.0) else {
         return Vec::new();
     };
+    // *Other* cards (issue #723). Only an ability whose own source is in this graveyard can
+    // print the word, and only that source is excluded: a card paying to return itself must
+    // not pay with itself, or it exiles the card it was about to bring back.
+    let excluded = match component {
+        Cost::ExileFromGraveyard { another: true, .. } => source,
+        _ => None,
+    };
     player
         .graveyard
         .iter()
+        .filter(|card| Some(card.id) != excluded)
         .filter(|card| {
             db.card(card.card)
                 .is_some_and(|data| component.accepts_exile(data))
@@ -134,7 +143,7 @@ pub(crate) fn chosen_costs_are_payable(
         }
         Cost::Discard { count } => hand_of(state, seat).len() >= usize::from(*count),
         Cost::ExileFromGraveyard { count, .. } => {
-            exile_candidates_for(state, db, seat, component).len() >= usize::from(*count)
+            exile_candidates_for(state, db, seat, component, None).len() >= usize::from(*count)
         }
         Cost::Tap
         | Cost::Mana { .. }
@@ -228,7 +237,7 @@ pub fn activation_exile_cost(
         .find(|c| matches!(c, Cost::ExileFromGraveyard { .. }))?;
     (count > 0).then(|| ExileCost {
         count,
-        candidates: exile_candidates_for(state, db, seat, component),
+        candidates: exile_candidates_for(state, db, seat, component, None),
     })
 }
 
@@ -261,7 +270,135 @@ pub(crate) fn payment_covers_activation(
     }
     discards_pay(state, seat, &cost, &discards_of(payment))
         && sacrifices_pay(state, db, permanent, seat, &cost, &sacrifices_of(payment))
-        && exiles_pay(state, db, seat, &cost, &exiles_of(payment))
+        && exiles_pay(state, db, seat, None, &cost, &exiles_of(payment))
+}
+
+/// The graveyard cards a **graveyard** ability's exile cost demands, and the ones that could
+/// pay it — the graveyard twin of [`activation_exile_cost`].
+///
+/// The one difference is the one that matters: the source is *in* this graveyard, so it is
+/// excluded from its own candidates when the cost says **other** (issue #723). A client
+/// offering this list can therefore never offer the card the ability is about to return.
+#[must_use]
+pub fn graveyard_activation_exile_cost(
+    state: &GameState,
+    db: &CardDatabase,
+    card: crate::id::CardInstance,
+    index: usize,
+) -> Option<ExileCost> {
+    let seat = state.priority;
+    let Ability::Activated { cost, .. } =
+        crate::actions::graveyard_ability(state, db, seat, card, index)?
+    else {
+        return None;
+    };
+    let count: u8 = cost
+        .iter()
+        .map(Cost::exile_count)
+        .fold(0u8, u8::saturating_add);
+    let component = cost
+        .iter()
+        .find(|c| matches!(c, Cost::ExileFromGraveyard { .. }))?;
+    (count > 0).then(|| ExileCost {
+        count,
+        candidates: exile_candidates_for(state, db, seat, component, Some(card.id)),
+    })
+}
+
+/// The payment the **server** assembles for a graveyard activation whose chosen components a
+/// client left unanswered (ADR 0010) — the graveyard twin of [`auto_activation_payment`].
+///
+/// Takes the cards off the front of the candidate list, which already excludes the source, so
+/// a card can never be auto-paid into exiling itself.
+#[must_use]
+pub fn auto_graveyard_activation_payment(
+    state: &GameState,
+    db: &CardDatabase,
+    card: crate::id::CardInstance,
+    index: usize,
+) -> Option<Vec<CostPayment>> {
+    let seat = state.priority;
+    let Ability::Activated { cost, .. } =
+        crate::actions::graveyard_ability(state, db, seat, card, index)?
+    else {
+        return None;
+    };
+    let mut payment = Vec::new();
+    for component in &cost {
+        match component {
+            Cost::ExileFromGraveyard { count, .. } => {
+                let mut taken = 0usize;
+                for id in exile_candidates_for(state, db, seat, component, Some(card.id)) {
+                    if taken == usize::from(*count) {
+                        break;
+                    }
+                    if payment.contains(&CostPayment::Exile(id)) {
+                        continue;
+                    }
+                    payment.push(CostPayment::Exile(id));
+                    taken += 1;
+                }
+                if taken < usize::from(*count) {
+                    return None;
+                }
+            }
+            Cost::Discard { count } => {
+                let mut taken = 0usize;
+                for id in hand_of(state, seat) {
+                    if taken == usize::from(*count) {
+                        break;
+                    }
+                    if payment.contains(&CostPayment::Discard(id)) {
+                        continue;
+                    }
+                    payment.push(CostPayment::Discard(id));
+                    taken += 1;
+                }
+                if taken < usize::from(*count) {
+                    return None;
+                }
+            }
+            // Mana is paid from the pool and never named here; nothing else is payable
+            // from a graveyard at all.
+            Cost::Mana { .. } => {}
+            Cost::Tap
+            | Cost::Loyalty { .. }
+            | Cost::SacrificeThis
+            | Cost::RemoveCounters { .. }
+            | Cost::Sacrifice { .. } => return None,
+        }
+    }
+    Some(payment)
+}
+
+/// Whether `payment` is **exactly** what activating the graveyard card `card`'s ability
+/// `index` demands (CR 601.2b) — the graveyard twin of [`payment_covers_activation`].
+///
+/// Two differences, and both come from where the source is. There is no permanent, so a
+/// sacrifice is not payable and a payment naming one is refused; and the source is *in* the
+/// graveyard the exile cost draws from, so it is excluded from the candidates when the cost
+/// says **other** (issue #723) — a card must not pay for its own return with itself.
+#[must_use]
+pub(crate) fn payment_covers_graveyard_activation(
+    state: &GameState,
+    db: &CardDatabase,
+    card: crate::id::CardInstance,
+    index: usize,
+    payment: &[CostPayment],
+) -> bool {
+    let seat = state.priority;
+    let Some(Ability::Activated { cost, .. }) =
+        crate::actions::graveyard_ability(state, db, seat, card, index)
+    else {
+        return false;
+    };
+    // Mana is paid from the pool and never named on the action, exactly as on the
+    // battlefield side; a sacrifice has no permanent to name at all.
+    if !mana_of(payment).is_empty() || !sacrifices_of(payment).is_empty() {
+        return false;
+    }
+    discards_pay(state, seat, &cost, &discards_of(payment))
+        && exiles_pay(state, db, seat, Some(card.id), &cost, &exiles_of(payment))
 }
 
 /// Whether `exiles` is exactly the cards `cost` demands, each a distinct card still in
@@ -275,6 +412,7 @@ fn exiles_pay(
     state: &GameState,
     db: &CardDatabase,
     seat: PlayerId,
+    source: Option<CardInstanceId>,
     cost: &[Cost],
     exiles: &[CardInstanceId],
 ) -> bool {
@@ -291,7 +429,7 @@ fn exiles_pay(
     else {
         return exiles.is_empty();
     };
-    let candidates = exile_candidates_for(state, db, seat, component);
+    let candidates = exile_candidates_for(state, db, seat, component, source);
     exiles
         .iter()
         .enumerate()
@@ -392,7 +530,7 @@ pub fn auto_activation_payment(
             }
             Cost::ExileFromGraveyard { count, .. } => {
                 let mut taken = 0usize;
-                for card in exile_candidates_for(state, db, seat, component) {
+                for card in exile_candidates_for(state, db, seat, component, None) {
                     if taken == usize::from(*count) {
                         break;
                     }

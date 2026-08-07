@@ -173,6 +173,7 @@ fn reanimate(
             card,
             index,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         db,
     );

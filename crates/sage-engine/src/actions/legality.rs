@@ -192,8 +192,20 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
     //     `valid_actions`, which offers this only to the seat currently holding priority
     //     and only outside every window that suspends priority (a mulligan, a pending
     //     choice, a trigger owed targets, the cleanup step, a combat declaration).
-    if let Action::ActivateAbilityFromGraveyard { card, index, .. } = action {
-        if !graveyard_activation_is_legal(state, db, *card, *index) {
+    if let Action::ActivateAbilityFromGraveyard {
+        card,
+        index,
+        payment,
+        ..
+    } = action
+    {
+        // Two independent questions, and both must hold: the cost is payable at all
+        // (the offer's own gate), and the payment the player assembled is exactly it.
+        if !graveyard_activation_is_legal(state, db, *card, *index)
+            || !super::payment::payment_covers_graveyard_activation(
+                state, db, *card, *index, payment,
+            )
+        {
             return false;
         }
     }
@@ -402,7 +414,7 @@ fn graveyard_activation_is_legal(
     else {
         return false;
     };
-    graveyard_cost_payable(state, seat, &cost)
+    graveyard_cost_payable(state, db, seat, card.id, &cost)
 }
 
 /// Whether a declared attacker selection is legal (CR 508.1a): every named

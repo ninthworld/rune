@@ -105,6 +105,7 @@ fn reanimate_skeleton(
             card,
             index,
             targets: Vec::new(),
+            payment: Vec::new(),
         },
         db,
     );

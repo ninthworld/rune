@@ -60,9 +60,12 @@ mod sources;
 
 pub use activation::{
     activation_discard_cost, activation_exile_cost, activation_sacrifice_cost,
-    auto_activation_payment,
+    auto_activation_payment, auto_graveyard_activation_payment, graveyard_activation_exile_cost,
 };
-pub(crate) use activation::{chosen_costs_are_payable, payment_covers_activation};
+pub(crate) use activation::{
+    chosen_costs_are_payable, exile_candidates_for, payment_covers_activation,
+    payment_covers_graveyard_activation,
+};
 pub(crate) use apply::{apply_payment, payment_covers_cast};
 pub use pips::{
     discard_cost, payment_pips, remaining_cost_pips, sacrifice_cost, DiscardCost, ExileCost,

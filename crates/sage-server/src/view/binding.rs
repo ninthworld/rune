@@ -249,6 +249,11 @@ pub(crate) fn bind_ability_targets(
                 card: *card,
                 index: *index,
                 targets: chosen,
+                // The cost components the player picked — which cards leave this graveyard
+                // (issue #723) — or, for a client that answered no slot, the ones the
+                // server picks on their behalf (ADR 0010), exactly as a battlefield
+                // activation does.
+                payment: bind_graveyard_activation_payment(state, db, *card, *index, targets),
             })
         }
         // The payment the player assembled, or — for the pips they left unanswered —
