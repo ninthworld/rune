@@ -304,6 +304,12 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                     plural(&filter_noun(&observes.filter, true)),
                     if observes.yours_only { "your" } else { "a" }
                 ),
+                // CR 603.8: a state trigger reads as the state it watches for, and takes
+                // "when" rather than "whenever" because the condition becoming true is a
+                // single moment rather than a thing that recurs.
+                TriggerCondition::StateTriggered { condition } => {
+                    format!("When {}", condition_clause(condition))
+                }
                 TriggerCondition::PlayerDiscards(observes) => format!(
                     "Whenever {} discards a card",
                     if observes.opponents_only {
@@ -379,6 +385,17 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
         // its referent.
         Ability::EntersChoosingColor => {
             format!("As {source} enters the battlefield, choose a color.")
+        }
+        // The same "as", and for the same reason — this happens as the permanent enters,
+        // not once it is there. What differs is where the answer lands: on a permanent the
+        // card names a class of, so the sentence says which counter and on what.
+        Ability::EntersPuttingCounter { counter, card_type } => {
+            let noun = permanent_noun(*card_type);
+            format!(
+                "As {source} enters the battlefield, put a {} counter on {} {noun} you control.",
+                counter_symbol(*counter),
+                indefinite_article(noun)
+            )
         }
         // The card-naming counterpart, worded the same way and for the same reason: the
         // abilities that read the answer call it "the chosen name", and this sentence is
@@ -770,6 +787,28 @@ fn static_condition_clause(condition: &StaticCondition) -> String {
 /// same selector: one composer, so the static and the resolution-time readings of one
 /// `controls_at_least` cannot be worded differently.
 pub(super) fn counted_permanents(permanents: &PermanentCount, count: u32) -> String {
+    let noun = permanent_class_noun(permanents);
+    let phrase = match count {
+        1 => format!("{} {noun}", indefinite_article(&noun)),
+        n => format!("{} or more {}", number(n), plural(&noun)),
+    };
+    qualified(permanents, &phrase, count > 1)
+}
+
+/// The same class as a **plural** with no number in front of it — the "permanents with
+/// phylactery counters on them" of `you control no …`.
+///
+/// The counted phrase's sibling, sharing both halves it is made of, because a card that
+/// says "no artifacts" and one that says "three or more artifacts" are naming one class
+/// and must word it one way.
+pub(super) fn counted_permanents_plural(permanents: &PermanentCount) -> String {
+    let phrase = plural(&permanent_class_noun(permanents));
+    qualified(permanents, &phrase, true)
+}
+
+/// The bare noun a permanent class reads as: "artifact", "blue creature", "Demon",
+/// "Ajani planeswalker".
+fn permanent_class_noun(permanents: &PermanentCount) -> String {
     let mut noun = String::new();
     if let Some(color) = permanents.color {
         noun.push_str(color.word());
@@ -787,20 +826,30 @@ pub(super) fn counted_permanents(permanents: &PermanentCount, count: u32) -> Str
     } else {
         noun.push_str(permanent_noun(permanents.card_type));
     }
-    let phrase = match count {
-        1 => format!("{} {noun}", indefinite_article(&noun)),
-        n => format!("{} or more {}", number(n), plural(&noun)),
-    };
+    noun
+}
+
+/// The clauses a class trails, in the order a card prints them: the power bound, the
+/// counters it must carry, and the different-names rider.
+///
+/// `many` says whether the phrase is plural, which only the last one cares about: one
+/// permanent cannot have different names and does not claim to.
+fn qualified(permanents: &PermanentCount, phrase: &str, many: bool) -> String {
     // A power bound trails the noun, where a card prints it: "a creature with power 4
     // or greater".
     let phrase = match permanents.min_power {
-        None => phrase,
+        None => phrase.to_string(),
         Some(min) => format!("{phrase} with power {min} or greater"),
     };
+    // A counter clause trails it in the same place and for the same reason: "permanents
+    // with phylactery counters on them" is how the card writes the class.
+    let phrase = match permanents.with_counter {
+        None => phrase,
+        Some(counter) => format!("{phrase} with {} counters on them", counter_symbol(counter)),
+    };
     // And the names clause trails that, where a card prints it: "four or more Demons
-    // with different names". A count of one cannot have different names and does not
-    // claim to.
-    if permanents.distinct_names && count > 1 {
+    // with different names".
+    if permanents.distinct_names && many {
         format!("{phrase} with different names")
     } else {
         phrase

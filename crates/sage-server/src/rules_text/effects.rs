@@ -1165,7 +1165,7 @@ pub(crate) fn restriction_phrase(restriction: &ManaRestriction) -> String {
 }
 
 /// An intervening-if condition as the clause following the word "if".
-fn condition_clause(condition: &Condition) -> String {
+pub(super) fn condition_clause(condition: &Condition) -> String {
     match condition {
         // The same composer the static `as long as …` clause uses. It was worth sharing
         // rather than duplicating: the local phrasing read "you control 1 or more
@@ -1173,6 +1173,11 @@ fn condition_clause(condition: &Condition) -> String {
         // control" and this clause said it again.
         Condition::ControlsAtLeast { permanents, count } => {
             format!("you control {}", counted_permanents(permanents, *count))
+        }
+        // The negative form says "no", where the counted one says a number — and it is
+        // the plural class rather than one of them, which is what "no permanents" means.
+        Condition::ControlsNone { permanents } => {
+            format!("you control no {}", counted_permanents_plural(permanents))
         }
         // The one condition about the resolving object rather than about the board.
         Condition::CastFromHand => "this spell was cast from your hand".to_string(),

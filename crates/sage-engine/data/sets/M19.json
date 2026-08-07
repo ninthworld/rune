@@ -540,6 +540,11 @@
     "rarity": "rare"
   },
   {
+    "functional_id": "phylactery_lich",
+    "collector_number": "113",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "plague_mare",
     "collector_number": "114",
     "rarity": "uncommon"

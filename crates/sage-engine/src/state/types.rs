@@ -373,6 +373,13 @@ pub enum CounterKind {
     /// A **corpse** counter: a marker on a creature returned from a graveyard, whose
     /// only reader is the ability that put it there.
     Corpse,
+    /// A **phylactery** counter: the marker Phylactery Lich puts on an artifact as it
+    /// enters, and the thing its own state-triggered ability then watches for.
+    ///
+    /// The first counter whose reader is a *different permanent* from the one it sits
+    /// on — which changes nothing here, because a counter has never been more than a
+    /// name and a count, and who reads it is the reader's business.
+    Phylactery,
 }
 
 /// An **emblem** (CR 114): a marker a player owns, whose only characteristics are its

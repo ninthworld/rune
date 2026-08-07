@@ -202,6 +202,29 @@ pub(crate) fn copies_on_entry(
         })
 }
 
+/// What a card declares about **putting a counter on something else as it enters**
+/// (CR 614.12) — its [`Ability::EntersPuttingCounter`], or `None` for every card that
+/// places none.
+///
+/// [`copies_on_entry`]'s sibling, read at the same seam and for the same reason: at the
+/// moment the question is asked there is no permanent to read the ability off.
+#[must_use]
+pub(crate) fn puts_counter_on_entry(
+    db: &CardDatabase,
+    card: CardId,
+    face: Face,
+) -> Option<(
+    crate::state::CounterKind,
+    Option<crate::card_type::CardType>,
+)> {
+    abilities_of_face(db, card, face)
+        .into_iter()
+        .find_map(|ability| match ability {
+            Ability::EntersPuttingCounter { counter, card_type } => Some((counter, card_type)),
+            _ => None,
+        })
+}
+
 /// The three facts [`copies_on_entry`] answers with — the printed declaration, unpacked
 /// so the entry seam does not have to match an [`Ability`] it has no other business with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

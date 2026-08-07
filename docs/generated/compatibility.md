@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (283)
+## Supported cards (284)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -192,6 +192,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `pegasus_courser` | Pegasus Courser | functional definition |
 | `pelakka_wurm` | Pelakka Wurm | functional definition |
 | `pendulum_of_patterns` | Pendulum of Patterns | functional definition |
+| `phylactery_lich` | Phylactery Lich | functional definition |
 | `plague_mare` | Plague Mare | functional definition |
 | `plains` | Plains | functional definition |
 | `plummet` | Plummet | functional definition |
@@ -313,7 +314,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Cards that ask which kind of attachment they carry | an attachment grants power/toughness, keywords, combat restrictions, card types and subtypes, and written-out abilities at CR 613 layers 4, 6 and 7c — one block for both kinds, so an Equipment grants exactly as an Aura does; but a continuous ability may ask only whether its own source has *something* attached, never whether that something is an Aura, an Equipment, or one of several |
 | Changing what a permanent is a copy of while it stays on the battlefield | CR 707.4 needs a copy effect created after the entry seam; copiable values are only ever recorded as a permanent enters (CR 614.12) |
 | Combat damage assigned by anything but the assigning creature's own power or toughness | an attacker or blocker assigns its current power, or its current toughness while a continuous effect names that one instead, read at the single place the combat-damage step asks how much a creature assigns; no other characteristic can be named, nothing assigns a fixed amount or a count, and nothing reads another object's characteristic |
-| Conditional branches that choose a target, and a "when you do" after a cost | a resolution may create a reflexive triggered ability (CR 603.11) for the one event it can watch — a creature it put onto the battlefield — and that ability goes on the stack unaimed and is aimed by its controller like any other trigger; but an optional effect still declares the target group of the one effect it wraps, so a conditional's branches, a wrapper over two targeting effects, and a "when you do" that watches a cost being paid have no group one announcement could fill and no event this vocabulary names |
+| Conditional branches that choose a target, and a "when you do" after a cost | a resolution may create a reflexive triggered ability (CR 603.11) for the one event it can watch — a creature it put onto the battlefield — and that ability goes on the stack unaimed and is aimed by its controller like any other trigger; an optional effect declares the target group of the one effect that aims, on whichever of its two branches names it, so a conditional's branches, a wrapper over two targeting effects, and a “when you do” that watches a cost being paid still have no group one announcement could fill and no event this vocabulary names |
 | Conditions other than a permanent count, a mill, a discard, life gained this turn, or what one permanent has attacked, blocked, or damaged | a condition asks one of six questions — how many permanents a class holds, or how many distinct names are among them; what this resolution milled or discarded; whether the resolving spell was cast from its controller's hand; how much life that controller gained this turn; and whether the ability's own source attacked or blocked — and no other: not the size or contents of a hand, a library, or a graveyard, not a spell's mana value, and never an upper bound |
 | Copying a permanent spell, an ability, or a card in a zone | CR 707 is modelled for a creature named as a permanent enters and for an instant or sorcery on the stack; a copy of a permanent spell would have to become a token (CR 707.10f), and copying an activated or triggered ability or a card outside the stack has no seam |
 | Cost modification of another player's spells, or of an ability's activation cost | a permanent continuously takes generic mana off, or puts it on, the cost of a class of spell its own controller casts (CR 601.2f), read wherever a cast's cost is read; nothing reaches a spell another player casts, no modification applies to an activated ability's cost, and a coloured or colourless requirement is never changed |

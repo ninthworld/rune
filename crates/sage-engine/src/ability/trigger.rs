@@ -223,6 +223,24 @@ pub enum TriggerCondition {
         /// Whose turn that step has to belong to.
         whose_turn: TurnScope,
     },
+    /// A **state-triggered ability** (CR 603.8): `when you control no permanents with
+    /// phylactery counters on them, sacrifice this creature`.
+    ///
+    /// The one condition here that watches the *game state* rather than an event. It
+    /// fires when the condition **becomes** true across a transition — the same diff every
+    /// other condition is read from, which is what keeps it from firing again on every
+    /// action while it stays true (CR 603.8's "not already on the stack", reached by a
+    /// different road).
+    ///
+    /// The one addition is the arrival case: a state trigger whose condition is *already*
+    /// true when its source enters the battlefield triggers immediately (CR 603.8), and a
+    /// pure before/after diff would miss it — before the transition the source was not
+    /// there to be watching. A Phylactery Lich whose controller has no artifact is
+    /// therefore sacrificed the moment it lands, which is the card.
+    StateTriggered {
+        /// What has to become true.
+        condition: crate::ability::Condition,
+    },
 }
 
 /// Which damage satisfies [`TriggerCondition::DealsDamage`].

@@ -67,12 +67,27 @@ pub struct PermanentRequest {
 /// [`ChoiceOutcome`]'s reason: the aftermath belongs to the *request*, and a future
 /// "choose a creature and tap it" would be the same question with a different ending
 /// rather than a second queue.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PermanentOutcome {
     /// They are **sacrificed** (CR 701.17): each goes to its owner's graveyard as a real
     /// death, so a creature among them fires the dies triggers and a token among them
     /// ceases to exist (CR 111.7).
     Sacrifice,
+    /// A counter goes on the one picked, and the **entry that asked** then finishes
+    /// (CR 614.12) — Phylactery Lich's `as this creature enters, put a phylactery counter
+    /// on an artifact you control`.
+    ///
+    /// The first question whose subject is a permanent other than the one entering, and
+    /// the reason this enum is no longer `Copy`: the event waits here, exactly as it waits
+    /// on a colour or a named card, so nothing can read a board where the Lich has arrived
+    /// and the counter has not been placed. Its own state-triggered ability is what would
+    /// read it, and it would sacrifice the Lich.
+    CounterOnEntry {
+        /// The counter placed on the permanent picked.
+        counter: crate::state::CounterKind,
+        /// The arrival waiting on the answer.
+        entry: Box<crate::replacement::PendingEntry>,
+    },
 }
 
 /// The permanents `request` currently offers, in battlefield order.
@@ -175,11 +190,24 @@ pub(crate) fn apply_permanent_choice(
     chosen: &[PermanentId],
     db: &CardDatabase,
 ) {
-    match request.outcome {
+    match &request.outcome {
         PermanentOutcome::Sacrifice => {
             for &id in chosen {
                 state.destroy_permanent(id, db);
             }
+        }
+        // The counter is placed and the arrival is handed straight back to the entry
+        // seam, which asks whatever is still unanswered and then lets the permanent in —
+        // the same two lines every other deferred entry answer is (CR 614.12).
+        PermanentOutcome::CounterOnEntry { counter, entry } => {
+            for &id in chosen {
+                if let Some(perm) = state.battlefield.iter_mut().find(|perm| perm.id == id) {
+                    *perm.counters.entry(*counter).or_insert(0) += 1;
+                }
+            }
+            let mut entry = entry.clone();
+            entry.counter_placed = true;
+            state.begin_battlefield_entry(*entry, db);
         }
     }
 }

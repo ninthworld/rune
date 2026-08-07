@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "functional_id": "phylactery_lich",
+  "name": "Phylactery Lich",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Zombie"
+  ],
+  "mana_cost": "{B}{B}{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 5,
+  "toughness": 5,
+  "keywords": [
+    "indestructible"
+  ],
+  "abilities": [
+    {
+      "type": "enters_putting_counter",
+      "counter": "phylactery",
+      "card_type": "artifact"
+    },
+    {
+      "type": "triggered",
+      "event": {
+        "state_triggered": {
+          "condition": {
+            "kind": "controls_none",
+            "permanents": {
+              "with_counter": "phylactery"
+            }
+          }
+        }
+      },
+      "effects": [
+        {
+          "kind": "sacrifice_self"
+        }
+      ]
+    }
+  ]
+}

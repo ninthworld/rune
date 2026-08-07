@@ -121,7 +121,7 @@
   },
   {
     "name": "Conditional branches that choose a target, and a \"when you do\" after a cost",
-    "blocker": "a resolution may create a reflexive triggered ability (CR 603.11) for the one event it can watch — a creature it put onto the battlefield — and that ability goes on the stack unaimed and is aimed by its controller like any other trigger; but an optional effect still declares the target group of the one effect it wraps, so a conditional's branches, a wrapper over two targeting effects, and a \"when you do\" that watches a cost being paid have no group one announcement could fill and no event this vocabulary names"
+    "blocker": "a resolution may create a reflexive triggered ability (CR 603.11) for the one event it can watch — a creature it put onto the battlefield — and that ability goes on the stack unaimed and is aimed by its controller like any other trigger; an optional effect declares the target group of the one effect that aims, on whichever of its two branches names it, so a conditional's branches, a wrapper over two targeting effects, and a “when you do” that watches a cost being paid still have no group one announcement could fill and no event this vocabulary names"
   },
   {
     "name": "Optional costs paid by spending the asking permanent itself",

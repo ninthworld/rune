@@ -1982,3 +1982,14 @@ fn issue_706_an_unless_somebody_else_answers() {
          deals 5 damage to target opponent unless that player sacrifices a creature."
     );
 }
+
+#[test]
+fn issue_706_a_counter_placed_as_it_enters_and_the_state_that_undoes_it() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "phylactery_lich"),
+        "Indestructible\nAs Phylactery Lich enters the battlefield, put a phylactery \
+         counter on an artifact you control.\nWhen you control no permanents with \
+         phylactery counters on them, sacrifice it."
+    );
+}

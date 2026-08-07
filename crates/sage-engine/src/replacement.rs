@@ -249,6 +249,22 @@ pub struct PendingEntry {
     ///
     /// [`Self::chosen_color`]'s sibling in every other respect, including why it is here.
     pub copied: Option<Option<crate::copy::CopiedValues>>,
+    /// Whether the `as this enters, put a counter on …` question has been settled, for a
+    /// card that asks one (Phylactery Lich).
+    ///
+    /// A **bool** where its siblings carry an answer, because the answer does not travel:
+    /// the counter goes on a permanent that is already on the battlefield, so it is placed
+    /// where the question is answered and nothing about the arrival needs to remember
+    /// which permanent it went on. What the event still needs is the thing every one of
+    /// these slots provides — a record that the question is behind it, so re-entering the
+    /// seam does not ask again.
+    ///
+    /// `false` on every arrival, and simply never consulted for the ones nobody asks: a
+    /// card with no such ability is never looked at, and a controller with nothing to put
+    /// a counter on is not asked either — a question with no legal answer is not posed
+    /// (ADR 0013 §5), and the Lich enters with no counter anywhere, which is exactly the
+    /// board its own ability is watching for.
+    pub counter_placed: bool,
 }
 
 /// One replacement effect that could apply to an event, named by where it comes from.

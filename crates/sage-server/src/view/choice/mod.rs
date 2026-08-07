@@ -173,11 +173,17 @@ fn permanent_choice_question(request: &PermanentRequest, max: u32) -> String {
     if request.min == 0 && request.max > 0 {
         return format!("Sacrifice any number of {noun}");
     }
-    match (request.outcome, request.except) {
+    match (&request.outcome, request.except) {
         // A question that excludes the asking permanent is the `another` of a cost, and
         // reads as the card writes it rather than as a count of one.
         (PermanentOutcome::Sacrifice, Some(_)) if max == 1 => format!("Sacrifice another {noun}"),
         (PermanentOutcome::Sacrifice, _) => format!("Sacrifice {max} {noun}"),
+        // The as-enters question names what goes where, in the card's own words, and is
+        // always for exactly one permanent.
+        (PermanentOutcome::CounterOnEntry { counter, .. }, _) => format!(
+            "Put a {} counter on {noun}",
+            crate::rules_text::counter_symbol(*counter)
+        ),
     }
 }
 

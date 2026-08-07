@@ -43,6 +43,7 @@ pub(crate) fn counter_kind_str(kind: CounterKind) -> &'static str {
         CounterKind::Gold => "gold",
         CounterKind::Wish => "wish",
         CounterKind::Corpse => "corpse",
+        CounterKind::Phylactery => "phylactery",
     }
 }
 

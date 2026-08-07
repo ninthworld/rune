@@ -125,6 +125,28 @@ pub enum Ability {
         #[serde(default)]
         from_announced_x: bool,
     },
+    /// A counter put on **something else** as this permanent enters (CR 614.12) —
+    /// Phylactery Lich's `as this creature enters, put a phylactery counter on an artifact
+    /// you control`.
+    ///
+    /// [`Self::EntersChoosingColor`]'s sibling in shape and in why it is here: it is part
+    /// of the arrival rather than a trigger that follows one, and the card waits *off* the
+    /// battlefield while its controller answers. The difference is only where the answer
+    /// goes — onto another permanent rather than onto the entering one — which is why the
+    /// entry records that the question was settled and nothing else.
+    ///
+    /// A controller with nothing of the named class is not asked; the permanent simply
+    /// enters with no counter placed anywhere, which is a board the Lich's own ability has
+    /// something to say about.
+    EntersPuttingCounter {
+        /// The counter placed. Named `counter` on the wire for
+        /// [`Self::EntersWithCounters`]' reason.
+        counter: CounterKind,
+        /// The printed card type a permanent must have to be named — the `artifact` of
+        /// `an artifact you control`. Absent lets any permanent they control be picked.
+        #[serde(default)]
+        card_type: Option<crate::card_type::CardType>,
+    },
     /// A choice made **as this permanent enters** (CR 614.12): its controller names one
     /// of the five colors, and the answer is kept on the permanent for as long as it is
     /// on the battlefield — the "chosen color" every later ability of the card reads.

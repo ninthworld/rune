@@ -271,6 +271,7 @@ impl GameState {
                 chosen_color: None,
                 named_card: None,
                 copied: None,
+                counter_placed: false,
             },
             db,
         )
@@ -309,6 +310,7 @@ impl GameState {
                 chosen_color: None,
                 named_card: None,
                 copied: None,
+                counter_placed: false,
             },
             db,
         )
@@ -458,6 +460,38 @@ impl GameState {
             // board holds something to name — an `enters as a copy` with no legal choice
             // copies nothing and enters as itself, rather than posing a question with no
             // answer.
+            // The fourth CR 614.12 question, and the only one whose answer lands on a
+            // permanent other than the one arriving: `as this creature enters, put a
+            // phylactery counter on an artifact you control`. Asked only when the board
+            // holds something to name — a controller with no artifact is not asked, and
+            // the Lich enters with no counter anywhere, which is the board its own
+            // state-triggered ability is watching for.
+            if !entry.counter_placed {
+                if let Some((counter, card_type)) =
+                    crate::card::puts_counter_on_entry(db, card.card, entry.face)
+                {
+                    let request = crate::choice::PermanentRequest {
+                        subject: entry.controller,
+                        card_type,
+                        subtype: None,
+                        except: None,
+                        min: 1,
+                        max: 1,
+                        outcome: crate::choice::PermanentOutcome::CounterOnEntry {
+                            counter,
+                            entry: Box::new(entry.clone()),
+                        },
+                    };
+                    if !crate::choice::permanent_choice_candidates(self, &request, db).is_empty() {
+                        self.pending_choices.push(crate::choice::PendingChoice {
+                            chooser: entry.controller,
+                            question: crate::choice::ChoiceQuestion::Permanents(request),
+                            resume: None,
+                        });
+                        return None;
+                    }
+                }
+            }
             if entry.copied.is_none() {
                 if let Some(copying) = crate::card::copies_on_entry(db, card.card, entry.face) {
                     let candidates =
@@ -602,6 +636,7 @@ impl GameState {
                 chosen_color: None,
                 named_card: None,
                 copied: None,
+                counter_placed: false,
             },
             db,
         )

@@ -1008,6 +1008,36 @@ fn fire_count(
                 })
                 .sum()
         }
+        // CR 603.8: a state trigger fires when its condition **becomes** true, which the
+        // same before/after diff every other condition uses answers — and that is also
+        // what stops it firing again on every action while it stays true.
+        //
+        // The arrival case is the one thing the diff cannot see on its own: a source that
+        // was not on the battlefield before was not watching, so a condition already true
+        // when it lands has not "become" anything. CR 603.8 says it triggers, so an entry
+        // counts as the transition.
+        TriggerCondition::StateTriggered { condition } => {
+            if !watcher.still_present(after) {
+                return 0;
+            }
+            let holds = |state: &GameState| {
+                crate::condition::condition_holds(
+                    state,
+                    condition,
+                    watcher.controller,
+                    watcher.permanent().map(|perm| perm.id),
+                    // A state trigger is not inside a resolution: there is no "this way"
+                    // for it to read, and the conditions that would ask are about events
+                    // this one never sees.
+                    crate::resolve::Resolution::default(),
+                    db,
+                )
+            };
+            let just_arrived = watcher
+                .permanent()
+                .is_some_and(|perm| !before.battlefield.iter().any(|was| was.id == perm.id));
+            usize::from(holds(after) && (just_arrived || !holds(before)))
+        }
         // CR 602.2: a player activated an ability. Observed on the stack rather than in
         // the event log, because the push is where the activation is recorded — and
         // because a mana ability never reaches the stack at all (CR 605.3a), which is
