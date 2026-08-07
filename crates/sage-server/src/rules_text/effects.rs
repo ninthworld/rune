@@ -718,6 +718,25 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 clauses("that spell", &trigger.effects),
             )
         }
+        // CR 603.11: the `when …, …` a resolution says about what it just did. The
+        // subject of the effects it creates is the permanent that arrived, so they are
+        // composed against "it" — the pronoun the printed card uses, and the only name
+        // available for a card nobody has chosen yet.
+        Effect::CreateReflexiveTrigger { trigger } => {
+            let sage_engine::ReflexiveCondition::CreaturePutOntoBattlefieldThisWay = trigger.event;
+            format!(
+                "when a creature is put onto the battlefield this way, {}",
+                clauses("it", &trigger.effects),
+            )
+        }
+        // CR 609.7: the dealer is the ability's own source, so the sentence says "it" and
+        // the amount is not a number the card prints.
+        Effect::SelfDealsDamage { target } => {
+            format!(
+                "{source} deals damage equal to its power to {}",
+                target_noun(*target)
+            )
+        }
         // CR 707.10. The copy's targets are the second sentence a card prints, not a
         // clause of the first, because they are a separate permission.
         Effect::CopySpell { new_targets, .. } => {

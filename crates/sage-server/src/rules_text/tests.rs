@@ -1786,3 +1786,18 @@ fn issue_727_a_count_of_names_and_the_shortest_payoff_a_card_can_print() {
         "Kargan Dragonrider has flying as long as you control a Dragon."
     );
 }
+
+#[test]
+fn issue_722_a_reflexive_trigger_reads_as_the_sentence_it_is() {
+    let db = bundled();
+    // CR 603.11: the last sentence is an ability this resolution creates, and it is
+    // composed against "it" — the pronoun the printed card uses for a card nobody has
+    // chosen yet.
+    assert_eq!(
+        text_of(&db, "vivien_s_invocation"),
+        "Look at the top seven cards of your library, you may put up to one creature card \
+         from among them onto the battlefield, then put the rest on the bottom of your \
+         library in a random order.\nWhen a creature is put onto the battlefield this way, \
+         it deals damage equal to its power to target creature an opponent controls."
+    );
+}

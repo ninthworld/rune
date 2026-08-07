@@ -171,6 +171,43 @@ pub(crate) fn apply_effect(
                     turn,
                 });
         }
+        // CR 603.11: an ability created by this resolution about something this
+        // resolution just did. Whether it fires is decided here and now — the resolution
+        // is the only thing that knows what it did — and the ability then goes on the
+        // stack through the ordinary trigger seam, unaimed, for its controller to aim.
+        //
+        // Its source is the permanent the sentence is about ("**it** deals damage equal to
+        // **its** power"), and that permanent's power rides along as last known
+        // information: killing the creature in response is the obvious answer to this
+        // trigger, and CR 608.2h says it does not stop the damage.
+        Effect::CreateReflexiveTrigger { trigger } => {
+            let crate::reflexive::ReflexiveCondition::CreaturePutOntoBattlefieldThisWay =
+                trigger.event;
+            let Some(entered) = resolution.entered else {
+                return;
+            };
+            let is_creature = state
+                .battlefield
+                .iter()
+                .find(|perm| perm.id == entered)
+                .and_then(|perm| perm.printed.face(db))
+                .is_some_and(|face| face.has_type(crate::CardType::Creature));
+            if !is_creature {
+                return;
+            }
+            let source_power = crate::characteristics::characteristics(state, entered, db).power;
+            state
+                .reflexive_triggers
+                .push(crate::reflexive::PendingReflexive {
+                    controller,
+                    source: entered,
+                    source_power,
+                    effects: trigger.effects.clone(),
+                });
+        }
+        // Aimed at a chosen permanent, so it is applied through [`apply_targeted_effect`]
+        // and this arm is never the one that runs it.
+        Effect::SelfDealsDamage { .. } => {}
         Effect::DrawCard { count } => draw_cards(state, controller, u32::from(*count)),
         // The same draw, with the number taken off the game instead of off the card
         // (CR 608.2) — once, here, so a mill this same resolution performed is what the

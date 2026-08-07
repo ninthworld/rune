@@ -35,7 +35,9 @@ pub(crate) fn pose_choices(
             ChoiceQuestion::Cards(request) => {
                 let (_, max) = choice_bounds(state, request, db);
                 if max == 0 {
-                    match apply_choice_outcome(state, request, &[], db) {
+                    // Nothing was taken, so nothing was put anywhere: the aftermath's
+                    // only interesting half here is whether it asks again.
+                    match apply_choice_outcome(state, request, &[], db).next {
                         Some(follow_up) => follow_up,
                         None => continue,
                     }

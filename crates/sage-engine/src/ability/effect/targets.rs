@@ -88,6 +88,9 @@ impl Effect {
                 dealer, dealt_to, ..
             } => vec![TargetGroup::single(*dealer), TargetGroup::single(*dealt_to)],
             Effect::Tap { target }
+            // A creature dealing its own power names only what it is dealt to: the dealer
+            // is the ability's source, never a slot (CR 609.7).
+            | Effect::SelfDealsDamage { target }
             | Effect::CounterSpell { target }
             | Effect::Destroy { target }
             | Effect::Exile { target, .. }
@@ -176,6 +179,9 @@ impl Effect {
             // A delayed triggered ability names an event too, and the object it acts on
             // is whatever that event produced (CR 603.7c) rather than anything aimed here.
             | Effect::CreateDelayedTrigger { .. }
+            // A reflexive ability names nothing here: the ability it creates declares its
+            // own slot, and that slot is filled when it goes on the stack (CR 603.3d).
+            | Effect::CreateReflexiveTrigger { .. }
             | Effect::PreventDamage { .. }
             // A choice over the controller's own library names no target: the library
             // is theirs by definition (CR 115.1).

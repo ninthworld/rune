@@ -9,6 +9,7 @@
 //! established it already — so each function writes rather than re-deciding.
 
 use super::*;
+use crate::id::PermanentId;
 
 /// Carry out `request` for the chosen cards (and, where the outcome says so, for the
 /// ones passed over).
@@ -16,33 +17,48 @@ use super::*;
 /// The caller has already established that `chosen` is a legal answer; this moves cards
 /// and records the log event, and decides nothing.
 ///
-/// Returns the **follow-up question** the outcome leaves owed, if it leaves one: a look
-/// whose remainder its controller orders (CR 701.17-adjacent "in any order") answers one
-/// question and immediately owes a second. `None` for every other outcome, and for that
-/// one whenever the remainder is too short to be a decision.
+/// Returns what the answer left behind for its caller to carry: a **follow-up question**
+/// where the outcome owes one — a look whose remainder its controller orders
+/// (CR 701.17-adjacent "in any order") answers one question and immediately owes a second
+/// — and the **permanent it put onto the battlefield**, where it put one there.
 pub(crate) fn apply_choice_outcome(
     state: &mut GameState,
     request: &ChoiceRequest,
     chosen: &[CardInstanceId],
     db: &CardDatabase,
-) -> Option<ChoiceQuestion> {
+) -> ChoiceAftermath {
     match request.outcome {
         ChoiceOutcome::Discard => {
             discard_chosen(state, request.subject, chosen);
-            None
+            ChoiceAftermath::default()
         }
         ChoiceOutcome::BottomChosen => {
             bottom_chosen(state, request.subject, chosen);
-            None
+            ChoiceAftermath::default()
         }
         ChoiceOutcome::TakeAndBottomRest { destination, order } => {
             take_and_bottom_rest(state, request, chosen, destination, order, db)
         }
-        ChoiceOutcome::TakeAndShuffle(destination) => {
-            take_and_shuffle(state, request, chosen, destination, db);
-            None
-        }
+        ChoiceOutcome::TakeAndShuffle(destination) => ChoiceAftermath {
+            next: None,
+            entered: take_and_shuffle(state, request, chosen, destination, db),
+        },
     }
+}
+
+/// What answering a card choice left behind — the two things its caller has to carry on
+/// with, and nothing else.
+///
+/// A struct rather than a tuple because the two are unrelated: one is a question still
+/// owed, the other a fact about what already happened. Both are `None` for every outcome
+/// that neither asks again nor puts anything onto the battlefield, which is most of them.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct ChoiceAftermath {
+    /// A second question this answer created, to be queued behind it.
+    pub next: Option<ChoiceQuestion>,
+    /// The permanent this answer put onto the battlefield (CR 614's entry seam), which is
+    /// what a reflexive trigger asking about *this way* names.
+    pub entered: Option<crate::id::PermanentId>,
 }
 
 /// Discard cards to pay an additional cast cost (CR 601.2b).
@@ -139,9 +155,9 @@ fn take_and_bottom_rest(
     destination: FoundDestination,
     order: BottomOrder,
     db: &CardDatabase,
-) -> Option<ChoiceQuestion> {
+) -> ChoiceAftermath {
     let ChoiceZone::LibraryTop(count) = request.zone else {
-        return None;
+        return ChoiceAftermath::default();
     };
     let looked_at: Vec<CardInstance> = state
         .players
@@ -169,8 +185,9 @@ fn take_and_bottom_rest(
             .library
             .retain(|card| !taken.iter().any(|seen| seen.id == card.id));
     }
+    let mut entered = None;
     for card in taken {
-        place_card(state, request.subject, card, destination, db);
+        entered = place_card(state, request.subject, card, destination, db).or(entered);
     }
     match order {
         BottomOrder::Random => {
@@ -189,26 +206,32 @@ fn take_and_bottom_rest(
             rng.shuffle(&mut rest);
             state.rng_seed = rng.state();
             put_on_bottom(state, request.subject, rest);
-            None
+            ChoiceAftermath {
+                next: None,
+                entered,
+            }
         }
         // "in any order" — the looker decides, and a remainder of nothing or of one card
         // is not a decision (ADR 0013 §5). The one-card case still has to *move*, so it
         // is bottomed here rather than asked about.
-        BottomOrder::Chosen => match u8::try_from(remainder).unwrap_or(u8::MAX) {
-            0 => None,
-            1 => {
-                let single = state
-                    .players
-                    .get_mut(request.subject.0)
-                    .and_then(|player| player.library.pop());
-                put_on_bottom(state, request.subject, single.into_iter().collect());
-                None
-            }
-            count => Some(ChoiceQuestion::Order(OrderRequest {
-                subject: request.subject,
-                count,
-            })),
-        },
+        BottomOrder::Chosen => {
+            let next = match u8::try_from(remainder).unwrap_or(u8::MAX) {
+                0 => None,
+                1 => {
+                    let single = state
+                        .players
+                        .get_mut(request.subject.0)
+                        .and_then(|player| player.library.pop());
+                    put_on_bottom(state, request.subject, single.into_iter().collect());
+                    None
+                }
+                count => Some(ChoiceQuestion::Order(OrderRequest {
+                    subject: request.subject,
+                    count,
+                })),
+            };
+            ChoiceAftermath { next, entered }
+        }
     }
 }
 
@@ -221,7 +244,8 @@ fn take_and_shuffle(
     chosen: &[CardInstanceId],
     destination: FoundDestination,
     db: &CardDatabase,
-) {
+) -> Option<PermanentId> {
+    let mut entered = None;
     for id in chosen {
         let Some(player) = state.players.get_mut(request.subject.0) else {
             break;
@@ -230,7 +254,7 @@ fn take_and_shuffle(
             continue;
         };
         let card = player.library.remove(pos);
-        place_card(state, request.subject, card, destination, db);
+        entered = place_card(state, request.subject, card, destination, db).or(entered);
     }
     let mut library = state
         .players
@@ -246,6 +270,7 @@ fn take_and_shuffle(
     state.record_event(GameEvent::LibrarySearched {
         player: request.subject,
     });
+    entered
 }
 
 /// Put one card that has already been removed from its zone into `destination`.
@@ -255,27 +280,31 @@ fn take_and_shuffle(
 /// [`PermanentId`](crate::PermanentId), applies its own CR 614 enters-the-battlefield
 /// replacements, and is picked up by the trigger diff exactly as a resolving permanent
 /// spell is.
+///
+/// Returns the permanent it made, for the reflexive trigger that asks what was put onto
+/// the battlefield *this way*. A card headed for a hand made none, and so does a found
+/// card whose entry the seam **deferred** onto the choice queue — one that names a colour
+/// or a card as it enters (CR 614.12) is not on the battlefield yet, and there is no id
+/// to hand back until it is.
 fn place_card(
     state: &mut GameState,
     subject: PlayerId,
     card: CardInstance,
     destination: FoundDestination,
     db: &CardDatabase,
-) {
+) -> Option<PermanentId> {
     match destination {
         FoundDestination::Hand => {
             if let Some(player) = state.players.get_mut(subject.0) {
                 player.hand.push(card);
             }
+            None
         }
-        // Both battlefield arms discard the seam's answer: a found card that names a
-        // colour or a card as it enters has its entry deferred onto the choice queue,
-        // and nothing here needs the id of a permanent that does not exist yet.
         FoundDestination::Battlefield => {
-            state.put_card_onto_battlefield(card, subject, false, None, db);
+            state.put_card_onto_battlefield(card, subject, false, None, db)
         }
         FoundDestination::BattlefieldTapped => {
-            state.put_card_onto_battlefield(card, subject, true, None, db);
+            state.put_card_onto_battlefield(card, subject, true, None, db)
         }
     }
 }

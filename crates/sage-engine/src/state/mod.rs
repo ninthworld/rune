@@ -119,6 +119,15 @@ pub struct GameState {
     /// delayed ability belongs to nothing anyone can point at, and CR 603.7e says it
     /// fires whether or not what created it is still around.
     pub delayed_triggers: Vec<crate::delayed::PendingDelayedTrigger>,
+    /// **Reflexive triggered abilities** that have fired and are waiting to be put on the
+    /// stack (CR 603.11) — see [`PendingReflexive`](crate::PendingReflexive).
+    ///
+    /// Unlike [`Self::delayed_triggers`] this never spans a transition: an effect writes
+    /// it mid-resolution and the trigger seam drains it later in the same
+    /// [`apply_action`](crate::apply_action), which is why nothing clears it at the turn
+    /// boundary — there is never anything left to clear. The same within-transition
+    /// hand-off [`Self::deathtouch_struck`] makes.
+    pub reflexive_triggers: Vec<crate::reflexive::PendingReflexive>,
     /// The stack of spells and abilities, bottom first (the last element is the
     /// top and resolves first). Mana abilities never appear here.
     pub stack: Vec<StackObject>,

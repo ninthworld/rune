@@ -1461,6 +1461,45 @@ pub enum Effect {
         #[serde(default)]
         new_targets: bool,
     },
+    /// Create a **reflexive triggered ability** (CR 603.11) — the `When a creature is put
+    /// onto the battlefield this way, …` a resolution says about something it has just
+    /// done.
+    ///
+    /// The sibling of [`Self::CreateDelayedTrigger`], and the differences are the whole
+    /// reason it is not that: a reflexive ability watches an event **inside the
+    /// resolution that created it**, fires (or does not) before that transition ends, and
+    /// then no longer exists — there is nothing to spend and nothing to clear at a turn
+    /// boundary. See [`crate::reflexive`].
+    ///
+    /// Written **after** the effect it watches, in the same effect list, because it asks
+    /// what that effect did: an authoring order that put it first would ask about a
+    /// resolution that had not done anything yet, and get the honest answer.
+    ///
+    /// It names no target of its own. The ability it creates may, and that target is
+    /// chosen when the ability goes on the stack (CR 603.3d) like any other trigger's —
+    /// which is exactly the thing a `when you do` needs and an announcement could not
+    /// have provided.
+    CreateReflexiveTrigger {
+        /// What it fires on, and what it does.
+        trigger: crate::reflexive::ReflexiveTrigger,
+    },
+    /// The ability's **own source deals damage equal to its power** to the one permanent
+    /// this effect targets — the `it deals damage equal to its power to target creature an
+    /// opponent controls` of a reflexive trigger about a creature that just arrived.
+    ///
+    /// A self-referential effect, like [`Self::PumpSelf`]: the dealer is not chosen and is
+    /// never named, because the sentence's subject is the object the ability is on. That
+    /// is also what makes the damage's *source* a permanent (CR 609.7) rather than a
+    /// spell.
+    ///
+    /// The power is read on **resolution** (CR 608.2), so a creature pumped in response
+    /// deals the larger number. A source that is no longer on the battlefield deals its
+    /// **last known** power instead (CR 608.2h) — killing the creature in response is the
+    /// obvious answer to this trigger, and it does not stop the damage.
+    SelfDealsDamage {
+        /// What may be dealt to. One slot, chosen when the ability goes on the stack.
+        target: TargetSpec,
+    },
     /// The referenced player **wins the game** (CR 104.2b) — the payoff of a card that
     /// ends the game on its own terms rather than by reducing anyone to zero.
     ///
