@@ -430,6 +430,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         // the condition is written on every card that has one, and running it together
         // with "and" would read as though both halves happened.
         Effect::May {
+            chooser,
             cost,
             effects,
             otherwise,
@@ -438,12 +439,22 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             // With a consequence attached, the card prints it the other way round —
             // "sacrifice it unless you pay {1}" — because the consequence is what
             // happens and the payment is what avoids it. Cards that print the pair
-            // this way never also print a "if you do" half, and none of them targets.
+            // this way never also print a "if you do" half.
             if !otherwise.is_empty() {
                 let cost = cost
                     .as_ref()
-                    .map_or_else(|| "you do".to_string(), optional_cost_phrase);
-                return format!("{} unless you {cost}", clauses(source, otherwise));
+                    .map_or_else(|| "does".to_string(), optional_cost_phrase);
+                // Who is paying decides the subject and the agreement: "unless you pay
+                // {1}", "unless that player sacrifices a creature". The verb is the first
+                // word of the cost phrase, and every one of them is regular.
+                let clause = match chooser {
+                    PlayerRef::Controller => format!("you {cost}"),
+                    other => match cost.split_once(' ') {
+                        Some((verb, rest)) => format!("{} {rest}", conjugate(*other, verb)),
+                        None => conjugate(*other, &cost),
+                    },
+                };
+                return format!("{} unless {clause}", clauses(source, otherwise));
             }
             match cost {
                 Some(cost) => format!("you may {}. If you do, {what}", optional_cost_phrase(cost)),

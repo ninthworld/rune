@@ -805,6 +805,20 @@ pub enum Effect {
     /// ordinary CR 608.2b path: an object whose every target is illegal never resolves
     /// and the question is never asked at all.
     May {
+        /// **Who is asked** — the controller for every `you may`, and the player the
+        /// sentence names for an `unless *that player* …`.
+        ///
+        /// Demanding Dragon is why this is a field: `deals 5 damage to target opponent
+        /// unless that player sacrifices a creature` is a decision, and it is not the
+        /// Dragon's controller's. Everything else about the offer is unchanged — the same
+        /// question, the same payment, the same queue — because who answers a question was
+        /// already a property of the queue rather than of the effect.
+        ///
+        /// A [`PlayerRef`] that names a target reads the offer's own chosen target, so
+        /// "that player" and "target opponent" are the same seat here and the card may
+        /// write whichever it prints.
+        #[serde(default = "PlayerRef::controller")]
+        chooser: PlayerRef,
         /// What accepting charges, or absent for a plain `you may …` that asks only for
         /// a yes.
         ///
@@ -835,8 +849,13 @@ pub enum Effect {
         /// happen, so the branch is taken rather than the effect skipped. A player who
         /// cannot pay is not asked; they are told.
         ///
-        /// It may not target. The offer's targets belong to the accepted branch
-        /// (CR 601.2c chose them for that effect), and a declined offer drops them.
+        /// It may target — but only when the accepted branch does not, and then the
+        /// targets are its own. One announcement chooses one set of targets (CR 601.2c),
+        /// and the branch that declared the slot is the branch they were chosen for: an
+        /// accepted offer's targets go to what it wraps, a declined `unless` branch's go
+        /// to the consequence, and neither branch ever sees the other's. A card that
+        /// aimed on both sides would be two announcements nobody made, which is what the
+        /// catalog validator still rejects.
         #[serde(default)]
         otherwise: Vec<Effect>,
     },

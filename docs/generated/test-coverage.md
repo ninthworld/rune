@@ -8,6 +8,6 @@ What it does catch is the failure that motivated it: a card composed entirely of
 
 Scanned: `crates/sage-engine/tests`, `crates/sage-engine/src`.
 
-## Named by some test (282 of 282)
+## Named by some test (283 of 283)
 
 Every definition in the catalog is named somewhere.

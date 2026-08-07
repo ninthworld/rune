@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (282)
+## Supported cards (283)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -63,6 +63,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `daybreak_chaplain` | Daybreak Chaplain | functional definition |
 | `death_baron` | Death Baron | functional definition |
 | `declare_dominance` | Declare Dominance | functional definition |
+| `demanding_dragon` | Demanding Dragon | functional definition |
 | `demon_of_catastrophes` | Demon of Catastrophes | functional definition |
 | `departed_deckhand` | Departed Deckhand | functional definition |
 | `desecrated_tomb` | Desecrated Tomb | functional definition |
@@ -296,7 +297,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `windreader_sphinx` | Windreader Sphinx | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (47)
+## Excluded (46)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
@@ -320,7 +321,6 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Damage prevention beyond a blanket shield for the turn | a shield prevents all damage — or all combat damage — for the rest of the turn, consulted at the one seam damage is dealt, and a spell may declare its own damage unpreventable to defeat it; nothing prevents a fixed amount, names a recipient or a source, redirects damage, or lasts anything but the turn |
 | Delayed triggers that wait for anything but the next spell cast | a resolution may leave one delayed trigger behind, the single condition it can wait for is the next spell of a named class its controller casts, firing spends it (CR 603.7b), and the turn boundary clears it; nothing waits for a step, a zone change, or an attack declaration, and no delayed trigger outlives the turn that created it |
 | Effects that **replace** a permanent's types or colours, or animate a class | a continuous effect may add card types, subtypes and colours to one permanent — one it targeted, or the one it just put onto the battlefield — and set that permanent's base power and toughness (CR 613 layers 4, 5 and 7b), for the turn or for as long as its source remains; nothing *removes* a type or a colour, no effect names a class of permanents to animate, and no layer 7d switches power with toughness; and a colour a layer-5 effect added is read by the rules that ask about one object at a time — an evasion restriction, a colourless target — but not by a *counted class*, which is evaluated from inside a static ability's own condition and would recurse through the characteristics it is computing |
-| Effects that act on a player unless that player pays | the one cost an effect asks for mid-resolution belongs to an optional effect and is posed to the asking ability's own controller, never to a player the effect merely names; declining may now splice a consequence of its own onto the remainder — `sacrifice it unless you pay {1}` — but only the controller is ever the one asked, so an effect that acts on an *opponent* unless that opponent pays is unwritable |
 | Effects that ask a player to name a type | a permanent records the colour and the card its controller named as it entered — the card as a functional identity chosen from the catalog, never a string — but a card or creature type has no recorded identity, only a nonbasic land may be named, and nothing on a spell records a choice at all |
 | Effects that let a player choose the order of the cards a scry keeps on top | a look bottoms its rest in an order the looker picks or at random, as the card says, but the cards a scry leaves on top stay in their printed order |
 | Effects that return a card from a graveyard to a zone other than a hand or the battlefield | a targeted card returns from a graveyard to a hand or to the battlefield, and a whole graveyard can be exiled; nothing else moves a card out of one |

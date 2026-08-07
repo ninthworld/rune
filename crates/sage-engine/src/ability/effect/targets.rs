@@ -77,10 +77,22 @@ impl Effect {
             // wrapped effect once it is spliced in, which is what keeps the flat stored
             // target list pairing back exactly. The catalog validator holds a `may` to
             // one such effect, so this is a lookup and never a choice between two.
-            Effect::May { effects, .. } => effects
-                .iter()
-                .flat_map(Effect::target_groups)
-                .collect(),
+            // The `unless` branch declares the slot when the accepted branch has none:
+            // "deals 5 damage to target opponent unless that player sacrifices" aims from
+            // the consequence, because accepting is the branch that does nothing. Still
+            // one group either way — the validator holds a `may` to one targeting effect
+            // across both branches.
+            Effect::May {
+                effects, otherwise, ..
+            } => {
+                let accepted: Vec<TargetGroup> =
+                    effects.iter().flat_map(Effect::target_groups).collect();
+                if accepted.is_empty() {
+                    otherwise.iter().flat_map(Effect::target_groups).collect()
+                } else {
+                    accepted
+                }
+            }
             // The one effect whose slots do **not** share a spec (CR 701.12): each of the
             // two creatures is chosen from its own class, in the order the printed
             // sentence names them, and both slots are required.

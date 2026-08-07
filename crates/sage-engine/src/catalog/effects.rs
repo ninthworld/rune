@@ -645,12 +645,16 @@ const TARGET_SPEC_FIELDS: [&str; 3] = ["target", "dealer", "dealt_to"];
 /// — [`conditional_wraps_a_target`] is what rejects a branch that tries.
 fn declared_target_groups(effect: &serde_json::Value) -> usize {
     if is_optional(effect) {
-        return effect
-            .get("effects")
-            .and_then(serde_json::Value::as_array)
-            .map(Vec::as_slice)
-            .unwrap_or_default()
-            .iter()
+        // Both branches, because the offer forwards whichever one aims: the accepted
+        // branch for `you may destroy target artifact`, and the `unless` branch for a
+        // card whose consequence is the sentence with a target in it. Summed across the
+        // pair rather than per branch, so a card that aimed on both sides is still the
+        // two-slots-from-one-forwarding this rule exists to reject.
+        return ["effects", "otherwise"]
+            .into_iter()
+            .filter_map(|key| effect.get(key))
+            .filter_map(serde_json::Value::as_array)
+            .flatten()
             .map(declared_target_groups)
             .sum();
     }

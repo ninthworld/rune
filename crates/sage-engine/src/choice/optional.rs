@@ -74,6 +74,15 @@ pub struct ConfirmRequest {
     /// the remainder would hand a declined offer's target to whatever effect came
     /// next.
     pub targets: Vec<Target>,
+    /// Which branch [`Self::targets`] were chosen for: `false` for the accepted one,
+    /// which is nearly every offer, and `true` for the `unless` branch of a card whose
+    /// **consequence** is what aims (Demanding Dragon's damage).
+    ///
+    /// One announcement chose one set of targets, and this says which sentence they were
+    /// chosen for. The branch not taken drops them, whichever branch that is — so a
+    /// declined `you may destroy target artifact` still loses its target, and an accepted
+    /// `unless that player sacrifices` still loses the damage's.
+    pub targets_are_the_consequence: bool,
 }
 
 /// Whether the pending yes-or-no can currently be answered **yes**: it is a
@@ -159,6 +168,7 @@ pub(crate) fn optional_cost_could_be_paid(
             reflexive: false,
             otherwise: Vec::new(),
             targets: Vec::new(),
+            targets_are_the_consequence: false,
         },
         db,
     )
@@ -307,23 +317,34 @@ pub(crate) fn take_confirmed_effects(
     state.record_event(GameEvent::OptionalApplied { player: chooser });
     Some(Accepted {
         effects: request.effects.clone(),
-        targets: request.targets.clone(),
+        // The accepted branch takes the targets only if they were chosen for it.
+        targets: if request.targets_are_the_consequence {
+            Vec::new()
+        } else {
+            request.targets.clone()
+        },
         payment,
     })
 }
 
 /// What a **declined** offer leaves behind: its `unless` branch, or nothing at all.
 ///
-/// The branch carries no targets. The offer's targets were chosen for the effect it
-/// wraps (CR 601.2c) and go with it, so a declined offer drops them — an `unless` branch
-/// that could aim would be a second announcement nobody made.
+/// The branch takes the offer's targets when they were chosen for *it* — a card whose
+/// consequence is the sentence that aims — and none otherwise. Either way the branch not
+/// taken drops them: one announcement chose one set of targets, for one of these two
+/// sentences (CR 601.2c), and giving them to the other would be a second announcement
+/// nobody made.
 fn declined(request: &ConfirmRequest) -> Option<Accepted> {
     if request.otherwise.is_empty() {
         return None;
     }
     Some(Accepted {
         effects: request.otherwise.clone(),
-        targets: Vec::new(),
+        targets: if request.targets_are_the_consequence {
+            request.targets.clone()
+        } else {
+            Vec::new()
+        },
         payment: None,
     })
 }

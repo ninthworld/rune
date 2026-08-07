@@ -286,6 +286,15 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                     } else {
                         ""
                     };
+                    // The received form is the same sentence in the passive voice, and it
+                    // has nobody to narrow: who dealt the damage is not asked, so the
+                    // recipient clause has nothing to say either.
+                    if observes.received {
+                        return finish(&format!(
+                            "Whenever {who} is dealt {kind}, {}",
+                            clauses(source, effects)
+                        ));
+                    }
                     format!("Whenever {who} deals {kind}{whom}")
                 }
                 // "One or more" is the card's own words for a condition that fires once

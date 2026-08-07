@@ -52,10 +52,6 @@
     "blocker": "a resolution may leave one delayed trigger behind, the single condition it can wait for is the next spell of a named class its controller casts, firing spends it (CR 603.7b), and the turn boundary clears it; nothing waits for a step, a zone change, or an attack declaration, and no delayed trigger outlives the turn that created it"
   },
   {
-    "name": "Effects that act on a player unless that player pays",
-    "blocker": "the one cost an effect asks for mid-resolution belongs to an optional effect and is posed to the asking ability's own controller, never to a player the effect merely names; declining may now splice a consequence of its own onto the remainder — `sacrifice it unless you pay {1}` — but only the controller is ever the one asked, so an effect that acts on an *opponent* unless that opponent pays is unwritable"
-  },
-  {
     "name": "Effects that ask a player to name a type",
     "blocker": "a permanent records the colour and the card its controller named as it entered — the card as a functional identity chosen from the catalog, never a string — but a card or creature type has no recorded identity, only a nonbasic land may be named, and nothing on a spell records a choice at all"
   },

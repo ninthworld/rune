@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "functional_id": "demanding_dragon",
+  "name": "Demanding Dragon",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Dragon"
+  ],
+  "mana_cost": "{3}{R}{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 5,
+  "toughness": 5,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "may",
+          "chooser": "that_player",
+          "cost": {
+            "kind": "sacrifice",
+            "card_type": "creature"
+          },
+          "effects": [],
+          "otherwise": [
+            {
+              "kind": "deal_damage",
+              "player_ref": "target_opponent",
+              "amount": 5
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

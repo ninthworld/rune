@@ -645,6 +645,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "demanding_dragon",
+    "collector_number": "135",
+    "rarity": "rare"
+  },
+  {
     "functional_id": "dismissive_pyromancer",
     "collector_number": "136",
     "rarity": "uncommon"
