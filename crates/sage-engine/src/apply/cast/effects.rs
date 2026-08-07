@@ -664,6 +664,8 @@ pub(crate) fn apply_effect(
         // A fight arrives with *two* chosen targets, so it is applied via
         // [`apply_multi_target_effect`] and is doubly a no-op here.
         | Effect::Fight { .. }
+        // And one slot per seat arrives with all of them, so it is a no-op here too.
+        | Effect::SacrificeChosenPerPlayer { .. }
         | Effect::Restrict { .. } => {}
         // X is taken **once, on resolution** (CR 608.2), from the board as it stands
         // then — a creature that dies afterwards does not take the life back. The count

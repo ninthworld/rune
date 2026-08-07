@@ -1696,6 +1696,36 @@ pub enum Effect {
         /// What each card becomes while it is face down.
         values: TokenData,
     },
+    /// **For each player, one chosen permanent that player controls is sacrificed** —
+    /// and each player who lost one reveals the top card of their library and puts it
+    /// onto the battlefield if it is a permanent card. Vaevictis Asmadi, the Dire's
+    /// attack trigger.
+    ///
+    /// The only effect whose **number of target slots comes from the table** rather than
+    /// from the card: it declares one required slot per seat, each naming that seat's
+    /// permanents ([`TargetSpec::PermanentThatPlayerControls`]), which is why
+    /// [`Self::target_groups`] is given a seat count at all. Nothing about it is written
+    /// for two players — a three-seat game declares three slots and sacrifices three
+    /// permanents, and the code that does it is the same loop.
+    ///
+    /// Everything the printed card conditions on the *sacrifice actually happening* is
+    /// conditioned on it here too. A slot whose target became illegal between
+    /// announcement and resolution (CR 608.2b) sacrifices nothing, and that player does
+    /// not reveal — "each player who sacrificed a permanent **this way**". A player whose
+    /// revealed card is not a permanent card has simply revealed it; it stays on top,
+    /// because the card says *puts it onto the battlefield if it's a permanent card* and
+    /// says nothing about anywhere else for it to go.
+    SacrificeChosenPerPlayer {
+        /// Whether each player who sacrificed then reveals the top card of their library
+        /// and puts it onto the battlefield if it is a permanent card.
+        ///
+        /// A field rather than an assumption because the sacrifice and the replacement
+        /// are two sentences on the printed card, and only one card prints both. An
+        /// effect that wants the symmetrical sacrifice alone authors `false` and inherits
+        /// the whole per-seat targeting pipeline.
+        #[serde(default)]
+        reveal_top: bool,
+    },
     /// **Exchange control** of the two permanents this effect names (CR 701.10) —
     /// Switcheroo's `Exchange control of two target creatures.`
     ///

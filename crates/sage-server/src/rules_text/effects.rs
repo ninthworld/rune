@@ -127,6 +127,24 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 )
             }
         }
+        // The one clause whose *number* of target nouns comes from the table, so it names
+        // none of them individually: "for each player" is the whole of who is being asked,
+        // and repeating the noun once per seat would make the card's text depend on how
+        // many people are playing.
+        Effect::SacrificeChosenPerPlayer { reveal_top } => {
+            let sacrifice = "for each player, choose target permanent that player controls. \
+                 Those players sacrifice those permanents"
+                .to_string();
+            if *reveal_top {
+                format!(
+                    "{sacrifice}. Each player who sacrificed a permanent this way reveals \
+                     the top card of their library, then puts it onto the battlefield if \
+                     it's a permanent card"
+                )
+            } else {
+                sacrifice
+            }
+        }
         Effect::GainLife { player_ref, amount } => {
             format!("{} {amount} life", conjugate(*player_ref, "gain"))
         }

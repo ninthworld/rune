@@ -255,6 +255,15 @@ pub(crate) fn target_is_legal(
         }
         // A permanent target is legal while that exact battlefield object exists.
         (TargetSpec::AnyPermanent, Target::Permanent(id)) => permanent_matches(state, id, |_| true),
+        // The seat is read from the spec, not from the chooser: these slots are all
+        // filled by one player and each names a different seat. A permanent that changed
+        // controllers since the announcement is no longer legal for the slot it was
+        // announced for, which is what CR 608.2b is for.
+        (TargetSpec::PermanentThatPlayerControls { seat }, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| {
+                crate::characteristics::controller_of(state, p) == PlayerId(seat)
+            })
+        }
         (TargetSpec::AnyNonlandPermanent, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| !has_type(p, CardType::Land, db))
         }
@@ -506,14 +515,17 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
     // a target at cast though it produces no `Effect` — so a fizzled Aura target is
     // re-checked on the same path as any other (CR 608.2b).
     let groups: Vec<TargetGroup> = match &object.kind {
-        StackObjectKind::Ability { .. } => effects.iter().flat_map(Effect::target_groups).collect(),
+        StackObjectKind::Ability { .. } => effects
+            .iter()
+            .flat_map(|effect| effect.target_groups(state.players.len()))
+            .collect(),
         StackObjectKind::Spell { card, .. } => db
             .card(card.card)
-            .map(|data| data.cast_target_groups(announced_mode))
+            .map(|data| data.cast_target_groups(announced_mode, state.players.len()))
             .unwrap_or_default(),
         StackObjectKind::SpellCopy { card, .. } => db
             .card(*card)
-            .map(|data| data.cast_target_groups(announced_mode))
+            .map(|data| data.cast_target_groups(announced_mode, state.players.len()))
             .unwrap_or_default(),
     };
     // The spec each stored target was chosen for, flattened out of the groups in the
@@ -761,6 +773,11 @@ pub(crate) fn apply_effects_with_targets(
     // three.
     let mut queue: std::collections::VecDeque<Effect> = effects.iter().cloned().collect();
     let mut targets: std::collections::VecDeque<Target> = stored.iter().copied().collect();
+    // Read once, before a single effect runs. The slots an object declares have to be the
+    // same shape here as they were at announcement, and an effect earlier in this same
+    // resolution could in principle put a seat out of the game — so the pairing below
+    // uses the table the targets were chosen against, not the one they are landing on.
+    let seats = state.players.len();
     while let Some(effect) = queue.pop_front() {
         // CR 608.2: an intervening condition is judged as the effect is reached, so it
         // sees everything the effects before it did — including a mill or a discard this
@@ -792,7 +809,7 @@ pub(crate) fn apply_effects_with_targets(
         // An effect's groups take as many stored targets as the announcement gave them
         // (CR 601.2c) — no group for a class-subject effect, one for nearly every
         // targeting one, and two for an effect whose slots do not share a spec.
-        let groups = effect.target_groups();
+        let groups = effect.target_groups(seats);
         let taken: Vec<Target> = {
             // Which of the remaining targets were announced for *this* effect's groups —
             // the same pairing the announcement and the fizzle check use, over the
@@ -803,7 +820,7 @@ pub(crate) fn apply_effects_with_targets(
             let all: Vec<crate::ability::TargetGroup> = groups
                 .iter()
                 .copied()
-                .chain(queue.iter().flat_map(Effect::target_groups))
+                .chain(queue.iter().flat_map(|effect| effect.target_groups(seats)))
                 .collect();
             let take: usize = crate::ability::group_target_counts(&all, &remaining)
                 .into_iter()
@@ -869,7 +886,7 @@ pub(crate) fn apply_effects_with_targets(
                 // with the offer when it is the other.
                 if accepted
                     .iter()
-                    .flat_map(Effect::target_groups)
+                    .flat_map(|effect| effect.target_groups(seats))
                     .next()
                     .is_none()
                 {
@@ -939,15 +956,27 @@ pub(crate) fn apply_effects_with_targets(
                     }
                 }
             }
-            // An effect whose slots have **different** specs acts on all of them or on
-            // none: its slots are not interchangeable, so half of a fight is not a
-            // smaller fight but a different effect the card never printed. CR 701.12c
-            // says so outright — if either creature is an illegal target, neither deals
-            // nor is dealt damage — and it is the conservative reading of CR 608.2c for
-            // whatever multi-slot effect comes next.
+            // An effect whose slots have **different** specs is judged slot by slot, and
+            // then one question decides what to do with the verdicts: are its slots the
+            // effect, or is each of them its own?
+            //
+            // A fight's are the effect. Half of one is not a smaller fight but something
+            // the card never printed, and CR 701.12c says so outright — if either
+            // creature is an illegal target, neither deals nor is dealt damage. An
+            // exchange of control is the same shape (CR 701.10c).
+            //
+            // A per-seat sacrifice's are not. `For each player, choose target permanent
+            // that player controls` is one sentence about several people, and one of them
+            // having lost their permanent in response says nothing about the others —
+            // CR 608.2b's ordinary rule applies, and the ability does as much as it still
+            // can. The two readings are a property of the effect
+            // ([`Effect::slots_are_indivisible`]) rather than of the shape of its slots,
+            // because the shape is identical.
             slots => {
-                let filled = taken.len() == slots.len()
-                    && slots.iter().zip(&taken).all(|(group, &target)| {
+                let legal: Vec<Target> = slots
+                    .iter()
+                    .zip(&taken)
+                    .filter(|(group, &target)| {
                         target_is_legal(
                             group.spec,
                             target,
@@ -956,9 +985,16 @@ pub(crate) fn apply_effects_with_targets(
                             source.and_then(AbilitySource::permanent),
                             db,
                         )
-                    });
-                if filled {
-                    apply_multi_target_effect(state, &effect, &taken, db);
+                    })
+                    .map(|(_, &target)| target)
+                    .collect();
+                let complete = taken.len() == slots.len() && legal.len() == slots.len();
+                if effect.slots_are_indivisible() {
+                    if complete {
+                        apply_multi_target_effect(state, &effect, &taken, db);
+                    }
+                } else if !legal.is_empty() {
+                    apply_multi_target_effect(state, &effect, &legal, db);
                 }
             }
         }

@@ -517,7 +517,7 @@ pub(crate) fn choices_for_effect(
                     // accepted branch names no target of its own.
                     targets_are_the_consequence: effects
                         .iter()
-                        .flat_map(Effect::target_groups)
+                        .flat_map(|effect| effect.target_groups(state.players.len()))
                         .next()
                         .is_none(),
                 }),

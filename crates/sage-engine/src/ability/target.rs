@@ -215,6 +215,30 @@ pub enum TargetSpec {
     /// true since the day this variant existed and is now reachable rather than
     /// theoretical.
     AnyPermanent,
+    /// Any permanent controlled by the player in **seat `seat`** — "target permanent
+    /// that player controls", once "that player" has been fixed to one seat.
+    ///
+    /// The one spec that names an **absolute** seat rather than a class relative to the
+    /// object's controller, and the only one no card authors directly: a card that says
+    /// `for each player, choose target permanent that player controls` declares one group
+    /// per seat, and each group carries the seat it belongs to.
+    /// [`Effect::target_groups`](crate::Effect::target_groups) builds them from the seat
+    /// count, which is why it is given one.
+    ///
+    /// It is absolute because it has to be. Every other spec answers "whose?" with *you*
+    /// or *an opponent*, and both are relative to whoever is choosing — but these groups
+    /// are all chosen by one player and each names a different seat, so the seat cannot
+    /// come from the chooser. Storing it on the spec is also what makes the CR 608.2b
+    /// re-check right: a permanent that changed controllers between announcement and
+    /// resolution is no longer a legal target for the group it was announced for, which
+    /// is exactly what the printed card means.
+    ///
+    /// **Includes a planeswalker**, for [`Self::AnyPermanent`]'s reason.
+    PermanentThatPlayerControls {
+        /// The seat whose permanents this slot may name — an index into
+        /// [`GameState::players`](crate::GameState).
+        seat: usize,
+    },
     /// Any permanent that is not a land — "target nonland permanent". **Includes a
     /// planeswalker**, which is a permanent and is not a land.
     AnyNonlandPermanent,
@@ -539,6 +563,7 @@ impl TargetSpec {
             Self::SpellOnStack | Self::CreatureSpellOnStack => kind == TargetKind::Spell,
             // Everything else names a permanent.
             Self::AnyPermanent
+            | Self::PermanentThatPlayerControls { .. }
             | Self::AnyNonlandPermanent
             | Self::AnyNonlandPermanentAnOpponentControls
             | Self::AnyPermanentWithManaValue { .. }
@@ -583,10 +608,10 @@ impl TargetSpec {
 /// Equal to [`maximum_targets`] for every object but one that declares an "up to N"
 /// group, which is the whole reason the two are separate functions.
 #[must_use]
-pub fn minimum_targets(effects: &[Effect]) -> usize {
+pub fn minimum_targets(effects: &[Effect], seats: usize) -> usize {
     effects
         .iter()
-        .flat_map(Effect::target_groups)
+        .flat_map(|effect| effect.target_groups(seats))
         .map(|group| usize::from(group.min))
         .sum()
 }
@@ -594,10 +619,10 @@ pub fn minimum_targets(effects: &[Effect]) -> usize {
 /// The **most** targets a legal announcement of `effects` may choose (CR 601.2c) — the
 /// sum of every declared group's maximum.
 #[must_use]
-pub fn maximum_targets(effects: &[Effect]) -> usize {
+pub fn maximum_targets(effects: &[Effect], seats: usize) -> usize {
     effects
         .iter()
-        .flat_map(Effect::target_groups)
+        .flat_map(|effect| effect.target_groups(seats))
         .map(|group| usize::from(group.max))
         .sum()
 }
@@ -626,8 +651,11 @@ pub fn maximum_targets(effects: &[Effect]) -> usize {
 /// target that has become illegal must still pair with the group it was announced for, or
 /// the CR 608.2b re-check would be asking about the wrong slot.
 #[must_use]
-pub fn target_counts(effects: &[Effect], chosen: &[Target]) -> Vec<usize> {
-    let groups: Vec<TargetGroup> = effects.iter().flat_map(Effect::target_groups).collect();
+pub fn target_counts(effects: &[Effect], chosen: &[Target], seats: usize) -> Vec<usize> {
+    let groups: Vec<TargetGroup> = effects
+        .iter()
+        .flat_map(|effect| effect.target_groups(seats))
+        .collect();
     group_target_counts(&groups, chosen)
 }
 

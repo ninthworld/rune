@@ -2,7 +2,6 @@
 
 use crate::ability::{
     is_equip_ability, is_loyalty_ability, is_mana_ability, is_sorcery_speed_ability, Ability,
-    Effect,
 };
 use crate::choice::ChoiceQuestion;
 use crate::phase::Step;
@@ -531,13 +530,19 @@ fn cast_is_announceable(
     actor: crate::id::PlayerId,
 ) -> bool {
     if !data.is_modal() {
-        return groups_are_fillable(&data.cast_target_groups(None), state, actor, None, db);
+        return groups_are_fillable(
+            &data.cast_target_groups(None, state.players.len()),
+            state,
+            actor,
+            None,
+            db,
+        );
     }
     (0..data.modes.len())
         .filter_map(|index| u8::try_from(index).ok())
         .any(|index| {
             groups_are_fillable(
-                &data.cast_target_groups(Some(index)),
+                &data.cast_target_groups(Some(index), state.players.len()),
                 state,
                 actor,
                 None,
@@ -730,9 +735,10 @@ fn offer_activations(
                 // loyalty and its one activation for the turn — and then fizzle for want
                 // of anything to aim at.
                 let groups: Vec<crate::ability::TargetGroup> = match ability {
-                    Ability::Activated { effects, .. } => {
-                        effects.iter().flat_map(Effect::target_groups).collect()
-                    }
+                    Ability::Activated { effects, .. } => effects
+                        .iter()
+                        .flat_map(|effect| effect.target_groups(state.players.len()))
+                        .collect(),
                     _ => Vec::new(),
                 };
                 if cost_payable(state, db, cost, perm)
@@ -781,8 +787,10 @@ fn offer_graveyard_activations(
             let Ability::Activated { cost, effects, .. } = &ability else {
                 continue;
             };
-            let groups: Vec<crate::ability::TargetGroup> =
-                effects.iter().flat_map(Effect::target_groups).collect();
+            let groups: Vec<crate::ability::TargetGroup> = effects
+                .iter()
+                .flat_map(|effect| effect.target_groups(state.players.len()))
+                .collect();
             // A card in a graveyard is not a permanent, so nothing here is relative to
             // one (CR 113.6).
             if graveyard_cost_payable(state, db, seat, card.id, cost)

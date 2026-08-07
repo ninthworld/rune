@@ -1,6 +1,6 @@
 //! Action targeting — enumeration of legal targets per action and target slot.
 
-use crate::ability::{Ability, Effect, GraveyardScope, Target, TargetGroup, TargetSpec};
+use crate::ability::{Ability, GraveyardScope, Target, TargetGroup, TargetSpec};
 use crate::id::PermanentId;
 use crate::id::PlayerId;
 use crate::resolve::target_is_legal;
@@ -86,7 +86,10 @@ pub(crate) fn action_target_groups(
             let Some(Ability::Activated { effects, .. }) = abilities.get(*index) else {
                 return Vec::new();
             };
-            effects.iter().flat_map(Effect::target_groups).collect()
+            effects
+                .iter()
+                .flat_map(|effect| effect.target_groups(state.players.len()))
+                .collect()
         }
         // The graveyard counterpart, read off the card rather than off a permanent that
         // does not exist (CR 113.6). The same `graveyard_ability` lookup the offer and
@@ -94,9 +97,10 @@ pub(crate) fn action_target_groups(
         // declares no slots rather than slots nothing can fill.
         Action::ActivateAbilityFromGraveyard { card, index, .. } => {
             match super::utilities::graveyard_ability(state, db, state.priority, *card, *index) {
-                Some(Ability::Activated { effects, .. }) => {
-                    effects.iter().flat_map(Effect::target_groups).collect()
-                }
+                Some(Ability::Activated { effects, .. }) => effects
+                    .iter()
+                    .flat_map(|effect| effect.target_groups(state.players.len()))
+                    .collect(),
                 _ => Vec::new(),
             }
         }
@@ -106,7 +110,7 @@ pub(crate) fn action_target_groups(
         // answer until the question "which of its two things does it do" has one.
         Action::CastSpell { card, mode, .. } => db
             .card(card.card)
-            .map(|data| data.cast_target_groups(*mode))
+            .map(|data| data.cast_target_groups(*mode, state.players.len()))
             .unwrap_or_default(),
         // A trigger's slots are the target groups of the effects it carries on the
         // stack — read from the object itself, since a triggered ability's effects
@@ -116,9 +120,10 @@ pub(crate) fn action_target_groups(
             .iter()
             .find(|o| o.id == *ability)
             .map(|o| match &o.kind {
-                crate::stack::StackObjectKind::Ability { effects, .. } => {
-                    effects.iter().flat_map(Effect::target_groups).collect()
-                }
+                crate::stack::StackObjectKind::Ability { effects, .. } => effects
+                    .iter()
+                    .flat_map(|effect| effect.target_groups(state.players.len()))
+                    .collect(),
                 // A **copy of a spell** whose controller may choose new targets
                 // (CR 707.10c) is aimed by the same action, so it declares the same slots
                 // the copied spell would have chosen at cast (CR 707.2 — a copy has the
@@ -127,7 +132,7 @@ pub(crate) fn action_target_groups(
                     .card(*card)
                     // The mode the original announced travels with the copy (CR 707.10),
                     // so its slots are the ones that mode declares.
-                    .map(|data| data.cast_target_groups(*mode))
+                    .map(|data| data.cast_target_groups(*mode, state.players.len()))
                     .unwrap_or_default(),
                 crate::stack::StackObjectKind::Spell { .. } => Vec::new(),
             })
@@ -209,6 +214,10 @@ pub(crate) fn legal_targets_for_spec(
         // still in the game and permanents that are planeswalkers.
         TargetSpec::AnyPlayerOrPlaneswalker => players.into_iter().chain(permanents).collect(),
         TargetSpec::AnyPermanent
+        // The seat this slot belongs to narrows the battlefield rather than naming a
+        // different zone, exactly as a mana value does — the `target_is_legal` filter
+        // below is what reads the seat.
+        | TargetSpec::PermanentThatPlayerControls { .. }
         | TargetSpec::AnyNonlandPermanent
         | TargetSpec::AnyNonlandPermanentAnOpponentControls
         // A mana-value filter narrows the battlefield rather than naming a different

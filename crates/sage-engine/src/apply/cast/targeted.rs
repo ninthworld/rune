@@ -737,6 +737,10 @@ pub(crate) fn apply_targeted_effect(
         // [`apply_multi_target_effect`] with both of its targets at once; one target on
         // its own says nothing about which slot it filled, so this arm stays empty.
         Effect::Fight { .. } => {}
+        // One slot per seat, and every one of them is read together: a player who lost a
+        // permanent is the one who reveals, and that is a fact about the whole set. Routed
+        // to [`apply_multi_target_effect`] for the same reason a fight is.
+        Effect::SacrificeChosenPerPlayer { .. } => {}
         // Put the targeted permanent on top of its owner's library (CR 400.7). A token
         // put anywhere but the battlefield ceases to exist (CR 111.7), so it never
         // arrives — which the one leaves-battlefield seam below already knows.
@@ -872,6 +876,61 @@ pub(crate) fn apply_multi_target_effect(
                 modification: Modification::GainControl(gains),
                 duration: Duration::WhileOnBattlefield,
             });
+        }
+        return;
+    }
+    // CR 701.17: each chosen permanent is sacrificed by the player who controls it, and —
+    // when the card says so — each player who lost one then reveals the top card of their
+    // library and puts it onto the battlefield if it is a permanent card.
+    if let Effect::SacrificeChosenPerPlayer { reveal_top } = effect {
+        // Whose each permanent is, read **before** any of them is sacrificed: a permanent
+        // in a graveyard has no controller, so asking afterwards would find nobody to
+        // reveal. This is also what makes the effect right for any number of seats — the
+        // list of players who lost something is derived from the targets, never assumed.
+        let losing: Vec<PlayerId> = targets
+            .iter()
+            .filter_map(|target| match target {
+                Target::Permanent(id) => crate::characteristics::controller_of_id(state, *id),
+                _ => None,
+            })
+            .collect();
+        // CR 701.17a: all of them at once, so no sacrifice can change whether another one
+        // happens. The chosen permanents were fixed at announcement and re-checked on the
+        // way in, so this is the whole of "those players sacrifice those permanents".
+        for target in targets {
+            if let Target::Permanent(id) = target {
+                state.move_permanent_to_graveyard(*id, db);
+            }
+        }
+        if !*reveal_top {
+            return;
+        }
+        // "Each player who sacrificed a permanent this way" — one reveal per sacrifice,
+        // in seat order, and nobody who kept their permanent reveals at all. A player who
+        // lost two (which no printed card can currently arrange, since each seat gets one
+        // slot) would reveal twice, which is what the sentence says.
+        let mut order: Vec<PlayerId> = losing;
+        order.sort_by_key(|seat| seat.0);
+        for seat in order {
+            // The top of a library is the **end** of the Vec.
+            let Some(card) = state
+                .players
+                .get_mut(seat.0)
+                .and_then(|player| player.library.pop())
+            else {
+                continue;
+            };
+            let is_permanent = db
+                .card(card.card)
+                .is_some_and(crate::CardData::is_permanent);
+            if is_permanent {
+                state.put_card_onto_battlefield(card, seat, false, None, db);
+            } else if let Some(player) = state.players.get_mut(seat.0) {
+                // It was revealed and nothing else: the card says what happens to a
+                // permanent card and says nothing about any other, so it goes back where
+                // it was.
+                player.library.push(card);
+            }
         }
         return;
     }
@@ -1038,7 +1097,7 @@ fn copy_spell_onto_stack(
         return;
     }
     let inherited = original.targets.clone();
-    let groups = data.cast_target_groups(mode);
+    let groups = data.cast_target_groups(mode, state.players.len());
     let re_aim = new_targets
         && groups.iter().any(|group| group.min >= 1)
         && groups.iter().all(|group| {

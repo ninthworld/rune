@@ -414,7 +414,7 @@ fn mighty_leap_pumps_and_grants_to_one_creature_not_two() {
     let groups = db
         .card(fixture("mighty_leap"))
         .unwrap()
-        .cast_target_groups(None);
+        .cast_target_groups(None, 2);
     assert_eq!(groups.len(), 1, "one effect, one target group");
 
     // Two different creatures is not a legal announcement.

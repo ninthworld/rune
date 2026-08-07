@@ -260,7 +260,7 @@ fn issue_611_the_targeted_damage_form_is_unchanged() {
             subject: DamageSubject::Target(TargetSpec::AnyTarget),
             amount: 2,
         }
-        .target_spec(),
+        .target_spec(2),
         Some(TargetSpec::AnyTarget),
     );
     for subject in [
@@ -269,7 +269,7 @@ fn issue_611_the_targeted_damage_form_is_unchanged() {
         DamageSubject::Permanents(MassAffects::EachCreature),
     ] {
         assert_eq!(
-            Effect::DealDamage { subject, amount: 2 }.target_spec(),
+            Effect::DealDamage { subject, amount: 2 }.target_spec(2),
             None,
             "a class fills no target slot (CR 115.1)",
         );

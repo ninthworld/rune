@@ -250,6 +250,12 @@ pub(super) fn target_noun(spec: TargetSpec) -> String {
         TargetSpec::AnyNonlandPermanentAnOpponentControls => {
             "target nonland permanent an opponent controls".to_string()
         }
+        // The seat this slot belongs to is not spelled out here: the sentence that
+        // declares these slots already said "for each player", so each one is "that
+        // player" and the seat is which slot it is.
+        TargetSpec::PermanentThatPlayerControls { .. } => {
+            "target permanent that player controls".to_string()
+        }
         // CR 202.3, as the card prints it: the value itself, not a bound around it.
         TargetSpec::AnyPermanentWithManaValue { mana_value } => {
             format!("target permanent with mana value {mana_value}")
@@ -352,6 +358,9 @@ pub(super) fn object_noun(spec: TargetSpec) -> String {
         TargetSpec::AnyNonlandPermanentAnOpponentControls => {
             "nonland permanent an opponent controls".to_string()
         }
+        TargetSpec::PermanentThatPlayerControls { .. } => {
+            "permanent that player controls".to_string()
+        }
         TargetSpec::AnyPermanentWithManaValue { mana_value } => {
             format!("permanent with mana value {mana_value}")
         }
@@ -412,7 +421,9 @@ pub(super) fn granted_subject(spec: TargetSpec) -> &'static str {
         TargetSpec::AnyLand => "this land",
         TargetSpec::AnyArtifact | TargetSpec::AnyArtifactYouControl => "this artifact",
         TargetSpec::AnyEnchantment => "this enchantment",
-        TargetSpec::AnyCreatureOrPlaneswalker => "this permanent",
+        TargetSpec::AnyCreatureOrPlaneswalker | TargetSpec::PermanentThatPlayerControls { .. } => {
+            "this permanent"
+        }
         TargetSpec::AnyPermanent
         | TargetSpec::AnyPermanentWithManaValue { .. }
         | TargetSpec::AnyNonlandPermanent

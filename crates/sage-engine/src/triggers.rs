@@ -342,7 +342,7 @@ pub fn pending_trigger_target_choice(state: &GameState) -> Option<StackId> {
             // group — which is satisfied by nothing at all — from leaving a trigger
             // permanently unaimed and the game frozen on a question with no answer.
             StackObjectKind::Ability { effects, .. } => {
-                crate::ability::minimum_targets(effects) > object.targets.len()
+                crate::ability::minimum_targets(effects, state.players.len()) > object.targets.len()
             }
             // A **copy of a spell** whose controller may choose new targets (CR 707.10c)
             // is in exactly the same position as an unaimed trigger: it is on the stack,
