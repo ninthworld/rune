@@ -11,6 +11,16 @@
       'hand';
   }
 
+  /* watching, at phone density: the same four bands minus the hand */
+  .layout-watch {
+    grid-template-rows: 32px auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'topbar'
+      'phasetop'
+      'battlefield'
+      'actionbar';
+  }
+
   .phase-bar.phase-top {
     display: flex;
     grid-area: phasetop;

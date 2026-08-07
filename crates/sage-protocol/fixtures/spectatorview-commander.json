@@ -1,0 +1,234 @@
+{
+  "players": [
+    {
+      "player_id": "p0",
+      "hand_size": 0,
+      "life": 0,
+      "library_size": 44,
+      "graveyard_size": 6,
+      "eliminated": true
+    },
+    {
+      "player_id": "p1",
+      "hand_size": 4,
+      "life": 27,
+      "library_size": 61,
+      "graveyard_size": 2
+    },
+    {
+      "player_id": "p2",
+      "hand_size": 7,
+      "life": 12,
+      "library_size": 70,
+      "graveyard_size": 1,
+      "ai": true
+    },
+    {
+      "player_id": "p3",
+      "hand_size": 2,
+      "life": 0,
+      "library_size": 55,
+      "graveyard_size": 9,
+      "eliminated": true,
+      "connected": false
+    }
+  ],
+  "battlefield": [
+    {
+      "id": "perm_lathliss",
+      "physical_card": "card_lathliss",
+      "controller": "p1",
+      "owner": "p1",
+      "card": {
+        "id": "card_lathliss",
+        "name": "Lathliss, Dragon Queen",
+        "type_line": "Legendary Creature — Dragon",
+        "card_types": ["creature"],
+        "mana_cost": "{4}{R}{R}",
+        "power": "6",
+        "toughness": "6",
+        "functional_id": "lathliss_dragon_queen"
+      },
+      "is_commander": true
+    },
+    {
+      "id": "perm_mountain",
+      "physical_card": "card_mountain_1",
+      "controller": "p1",
+      "owner": "p1",
+      "card": {
+        "id": "card_mountain_1",
+        "name": "Mountain",
+        "type_line": "Basic Land — Mountain",
+        "card_types": ["land"],
+        "functional_id": "mountain"
+      },
+      "tapped": true
+    },
+    {
+      "id": "perm_bear",
+      "physical_card": "card_bear",
+      "controller": "p2",
+      "owner": "p2",
+      "card": {
+        "id": "card_bear",
+        "name": "Grizzly Bears",
+        "type_line": "Creature — Bear",
+        "card_types": ["creature"],
+        "mana_cost": "{1}{G}",
+        "power": "2",
+        "toughness": "2",
+        "functional_id": "grizzly_bears"
+      }
+    }
+  ],
+  "emblems": [
+    {
+      "id": "emblem_9",
+      "controller": "p1",
+      "abilities": ["Creatures you control get +1/+1."]
+    }
+  ],
+  "graveyards": [
+    {
+      "player_id": "p2",
+      "cards": [
+        {
+          "id": "g_shock",
+          "name": "Shock",
+          "type_line": "Instant",
+          "card_types": ["instant"],
+          "mana_cost": "{R}",
+          "functional_id": "shock"
+        }
+      ]
+    }
+  ],
+  "exile": [
+    {
+      "player_id": "p0",
+      "cards": [
+        {
+          "id": "x_karn",
+          "name": "Karn, Silver Golem",
+          "type_line": "Legendary Artifact Creature — Golem",
+          "card_types": ["artifact", "creature"],
+          "mana_cost": "{4}",
+          "power": "4",
+          "toughness": "4",
+          "functional_id": "karn_silver_golem"
+        }
+      ]
+    }
+  ],
+  "command": [
+    {
+      "player_id": "p2",
+      "cards": [
+        {
+          "id": "c_thraximundar",
+          "name": "Thraximundar",
+          "type_line": "Legendary Creature — Zombie Assassin",
+          "card_types": ["creature"],
+          "mana_cost": "{5}{U}{B}{R}",
+          "power": "6",
+          "toughness": "6",
+          "functional_id": "thraximundar"
+        }
+      ]
+    }
+  ],
+  "phase": "postcombat_main",
+  "turn": 14,
+  "active_player": "p1",
+  "seat_order": ["p0", "p1", "p2", "p3"],
+  "result": {
+    "winner": "p1",
+    "losers": ["p0", "p3"],
+    "reason": "commander_damage"
+  },
+  "log": [
+    {
+      "sequence": 118,
+      "event": {
+        "type": "damage_dealt",
+        "target": { "kind": "player", "player": "p3" },
+        "amount": 6
+      }
+    },
+    {
+      "sequence": 119,
+      "event": {
+        "type": "player_eliminated",
+        "player": "p3",
+        "reason": "commander_damage"
+      }
+    },
+    {
+      "sequence": 120,
+      "event": {
+        "type": "game_over",
+        "result": {
+          "winner": "p1",
+          "losers": ["p0", "p3"],
+          "reason": "commander_damage"
+        }
+      }
+    }
+  ],
+  "player_names": {
+    "p0": "Alice",
+    "p1": "Bob",
+    "p2": "Random",
+    "p3": "Dana"
+  },
+  "commander_damage": [
+    {
+      "commander": "p1",
+      "damaged": "p3",
+      "amount": 21
+    },
+    {
+      "commander": "p1",
+      "damaged": "p2",
+      "amount": 9
+    }
+  ],
+  "commander_tax": [
+    {
+      "commander": "p1",
+      "casts": 1,
+      "tax": 2
+    },
+    {
+      "commander": "p2",
+      "casts": 3,
+      "tax": 6
+    }
+  ],
+  "format": {
+    "id": "commander",
+    "commander": true
+  },
+  "commander_identity": [
+    {
+      "commander": "p0",
+      "name": "Karn, Silver Golem"
+    },
+    {
+      "commander": "p1",
+      "name": "Lathliss, Dragon Queen",
+      "color_identity": ["R"]
+    },
+    {
+      "commander": "p2",
+      "name": "Thraximundar",
+      "color_identity": ["U", "B", "R"]
+    },
+    {
+      "commander": "p3",
+      "name": "Sidisi, Brood Tyrant",
+      "color_identity": ["B", "G", "U"]
+    }
+  ]
+}

@@ -65,6 +65,30 @@ for (const size of SIZES) {
       // overflow is the side column's own lists, which are not the board.
       expect(overflow.filter((name) => !/panel-body|log|zone-body/.test(name))).toEqual([])
     })
+
+    // Watching is the same board with one fewer row (§6.10), so the rules that hold for a
+    // seated one hold for it — and the four seats of the Commander fixture are where a band
+    // that tiles badly shows up first.
+    test('draws a watched board without the page scrolling', async ({ page }) => {
+      await serveFrames(page, [fixture('spectatorview-commander.json')])
+      await page.goto('/')
+      await expect(page.getByRole('region', { name: 'Watching' })).toBeVisible()
+      await page.getByRole('button', { name: 'Look at the board' }).click()
+
+      await expect(page.getByRole('list', { name: 'Turn steps' }).first()).toBeVisible()
+      await expect(page.getByRole('region', { name: 'Bob: battlefield' })).toBeVisible()
+      await expect(page.getByRole('region', { name: 'Alice: battlefield' })).toBeVisible()
+
+      const overflow = await page.evaluate(() => {
+        const board = document.querySelector('.layout')
+        if (!board) return []
+        return [...board.querySelectorAll<HTMLElement>('*')]
+          .filter((el) => el.scrollHeight > el.clientHeight + 1)
+          .map((el) => el.className)
+      })
+      expect(overflow.filter((name) => !/panel-body|log|zone-body/.test(name))).toEqual([])
+      expect(await pageFits(page)).toEqual({ x: true, y: true })
+    })
   })
 }
 
