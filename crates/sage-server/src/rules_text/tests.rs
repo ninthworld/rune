@@ -2027,3 +2027,30 @@ fn issue_706_a_class_named_as_one_choice_and_a_spell_that_stands() {
          {1}{R}: Lightning Mare gets +1/+0 until end of turn."
     );
 }
+
+#[test]
+fn issue_706_three_planeswalkers_state_their_three_amounts() {
+    let db = bundled();
+    assert_eq!(
+        text_of(&db, "ajani_wise_counselor"),
+        "+2: You gain 1 life for each creature you control.\n\
+         −3: Creatures you control get +2/+2 until end of turn.\n\
+         −9: Put X +1/+1 counters on target creature, where X is your life total."
+    );
+    assert_eq!(
+        text_of(&db, "sarkhan_dragonsoul"),
+        "+2: Sarkhan, Dragonsoul deals 1 damage to each opponent and Sarkhan, Dragonsoul \
+         deals 1 damage to each creature your opponents control.\n\
+         −3: Sarkhan, Dragonsoul deals 4 damage to target player or planeswalker.\n\
+         −9: Search your library for any number of Dragon creature cards, put them \
+         onto the battlefield, then shuffle."
+    );
+    assert_eq!(
+        text_of(&db, "vivien_of_the_arkbow"),
+        "+2: Put two +1/+1 counters on up to one target creature.\n\
+         −3: Target creature you control deals damage equal to its power to target \
+         creature an opponent controls.\n\
+         −9: Creatures you control get +4/+4 until end of turn and creatures you control \
+         gain trample until end of turn."
+    );
+}

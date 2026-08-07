@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "functional_id": "sarkhan_dragonsoul",
+  "name": "Sarkhan, Dragonsoul",
+  "supertypes": [
+    "legendary"
+  ],
+  "types": [
+    "planeswalker"
+  ],
+  "subtypes": [
+    "Sarkhan"
+  ],
+  "mana_cost": "{4}{R}{R}",
+  "colors": [
+    "red"
+  ],
+  "loyalty": 5,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": 2
+        }
+      ],
+      "effects": [
+        {
+          "kind": "deal_damage",
+          "player_ref": "each_opponent",
+          "amount": 1
+        },
+        {
+          "kind": "deal_damage",
+          "affects": {
+            "scope": "creatures_your_opponents_control"
+          },
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": -3
+        }
+      ],
+      "effects": [
+        {
+          "kind": "deal_damage",
+          "target": "any_player_or_planeswalker",
+          "amount": 4
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "loyalty",
+          "amount": -9
+        }
+      ],
+      "effects": [
+        {
+          "kind": "search_library",
+          "any_number": true,
+          "take": 0,
+          "filter": {
+            "kind": "creature",
+            "subtype": "Dragon"
+          },
+          "destination": "battlefield"
+        }
+      ]
+    }
+  ]
+}

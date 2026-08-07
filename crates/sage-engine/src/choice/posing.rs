@@ -379,6 +379,7 @@ pub(crate) fn choices_for_effect(
             take_amount,
             filter,
             destination,
+            any_number,
         } => Some(vec![(
             controller,
             ChoiceQuestion::Cards(ChoiceRequest {
@@ -391,11 +392,14 @@ pub(crate) fn choices_for_effect(
                 // The printed number, or the one the card takes off the game — read once,
                 // here, because it is the size of the question rather than something the
                 // answer could still change (CR 608.2).
-                max: match take_amount {
-                    Some(amount) => crate::condition::derived_amount(
+                max: match (any_number, take_amount) {
+                    // The open form: every matching card is a legal find, and the bounds
+                    // clamp that to what the library holds.
+                    (true, _) => u32::MAX,
+                    (false, Some(amount)) => crate::condition::derived_amount(
                         state, amount, controller, controller, resolution, db,
                     ),
-                    None => u32::from(*take),
+                    (false, None) => u32::from(*take),
                 },
                 outcome: ChoiceOutcome::TakeAndShuffle(*destination),
             }),
