@@ -403,6 +403,29 @@ fn died<'a>(before: &'a GameState, after: &GameState) -> Vec<&'a Permanent> {
         .collect()
 }
 
+/// The objects **put on the stack this transition** that name `permanent` as a target.
+///
+/// The stack diff a cast watcher already makes ([`crate::delayed`]), asked about targets
+/// rather than about casts, and it is the whole of what "becomes the target" observes: a
+/// [`StackId`](crate::StackId) is minted once and never reused, so presence in `after` and
+/// absence from `before` is exactly "was put there now".
+fn targeted_by<'a>(
+    before: &GameState,
+    after: &'a GameState,
+    permanent: PermanentId,
+) -> impl Iterator<Item = &'a crate::stack::StackObject> {
+    let already: Vec<crate::stack::StackId> = before.stack.iter().map(|object| object.id).collect();
+    after
+        .stack
+        .iter()
+        .filter(move |object| !already.contains(&object.id))
+        .filter(move |object| {
+            object
+                .targets
+                .contains(&crate::ability::Target::Permanent(permanent))
+        })
+}
+
 /// The permanents **declared as attackers** across the diff: attacking in `after` and
 /// not attacking in `before`.
 ///
@@ -651,6 +674,26 @@ fn fire_count(
         // apart — an object that was not there before has no previous `attacking`
         // either way — so the rule is stated as the extra condition it is: the
         // permanent has to have been on the battlefield to be declared from it.
+        // CR 603.6e: an object naming this permanent as a target was put on the stack
+        // this transition. Observed by diffing the stack, exactly as a cast watcher is —
+        // targets are chosen as an object goes on the stack (CR 601.2c) and never change
+        // afterwards, so an object that was already there has just targeted nothing.
+        //
+        // Counted per **object**, not per target word: one announcement is one becoming.
+        TriggerCondition::SelfBecomesTarget(observes) => watcher
+            .permanent()
+            .filter(|perm| on_battlefield(after, perm))
+            .map_or(0, |perm| {
+                targeted_by(before, after, perm.id)
+                    .filter(|object| {
+                        !observes.spells_only
+                            || matches!(object.kind, StackObjectKind::Spell { .. })
+                    })
+                    .filter(|object| {
+                        !observes.opponents_only || object.controller != watcher.controller
+                    })
+                    .count()
+            }),
         TriggerCondition::SelfAttacks => usize::from(watcher.permanent().is_some_and(|perm| {
             let attacking_in = |state: &GameState| {
                 state

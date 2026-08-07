@@ -224,6 +224,7 @@ pub(crate) fn legal_targets_for_spec(
         // Both source-relative specs draw from the battlefield like every other permanent
         // spec; what makes them relative is the filter, which `target_is_legal` applies.
         | TargetSpec::AnotherAttackingCreature
+        | TargetSpec::AnotherCreatureYouControl
         | TargetSpec::AnyCreatureDefendingPlayerControls
         | TargetSpec::AnyArtifactCreatureYouControl
         | TargetSpec::AnyArtifact

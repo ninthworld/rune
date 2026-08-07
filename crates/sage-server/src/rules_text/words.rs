@@ -238,6 +238,7 @@ pub(super) fn target_noun(spec: TargetSpec) -> String {
         }
         // "Another" sits *before* the word target, where the card prints it.
         TargetSpec::AnotherAttackingCreature => "another target attacking creature".to_string(),
+        TargetSpec::AnotherCreatureYouControl => "another target creature you control".to_string(),
         TargetSpec::AnyCreatureDefendingPlayerControls => {
             "target creature defending player controls".to_string()
         }
@@ -336,6 +337,7 @@ pub(super) fn object_noun(spec: TargetSpec) -> String {
             format!("permanent with mana value {mana_value}")
         }
         TargetSpec::AnotherAttackingCreature => "another attacking creature".to_string(),
+        TargetSpec::AnotherCreatureYouControl => "another creature you control".to_string(),
         TargetSpec::AnyCreatureDefendingPlayerControls => {
             "creature defending player controls".to_string()
         }
@@ -384,6 +386,7 @@ pub(super) fn granted_subject(spec: TargetSpec) -> &'static str {
         | TargetSpec::AnyTappedCreature
         | TargetSpec::AnyArtifactCreatureYouControl
         | TargetSpec::AnotherAttackingCreature
+        | TargetSpec::AnotherCreatureYouControl
         | TargetSpec::AnyCreatureDefendingPlayerControls
         | TargetSpec::CreatureSpellOnStack => "this creature",
         TargetSpec::AnyLand => "this land",

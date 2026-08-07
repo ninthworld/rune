@@ -261,6 +261,21 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                 }
                 TriggerCondition::SelfDies => format!("When {source} dies"),
                 TriggerCondition::SelfAttacks => format!("Whenever {source} attacks"),
+                // CR 603.6e. Both narrowings are printed where the card prints them:
+                // the class of object first, then whose it has to be.
+                TriggerCondition::SelfBecomesTarget(observes) => {
+                    let what = if observes.spells_only {
+                        "a spell"
+                    } else {
+                        "a spell or ability"
+                    };
+                    let whose = if observes.opponents_only {
+                        " an opponent controls"
+                    } else {
+                        ""
+                    };
+                    format!("Whenever {source} becomes the target of {what}{whose}")
+                }
                 // A watching condition's subject is the class it observes, not the
                 // source — "whenever another creature dies", not "whenever this does".
                 TriggerCondition::PermanentEnters(observes) => {

@@ -327,6 +327,15 @@ pub(crate) fn target_is_legal(
                     p.attacking.is_some() && has_type(p, CardType::Creature, db)
                 })
         }
+        // "Another target creature you control": yours, a creature, and not the source.
+        // With no source there is no "another" — see the arm above.
+        (TargetSpec::AnotherCreatureYouControl, Target::Permanent(id)) => {
+            source.is_some_and(|own| own != id)
+                && permanent_matches(state, id, |p| {
+                    has_type(p, CardType::Creature, db)
+                        && crate::characteristics::controller_of(state, p) == controller
+                })
+        }
         // "Target creature defending player controls" (CR 508.1a): the player this
         // source is attacking is read off its own declaration, and a source that is not
         // attacking names nobody.

@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "functional_id": "shield_mare",
+  "name": "Shield Mare",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Horse"
+  ],
+  "mana_cost": "{1}{W}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 2,
+  "toughness": 3,
+  "restrictions": [
+    {
+      "cant_be_blocked_by": "red"
+    }
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "gain_life",
+          "player_ref": "controller",
+          "amount": 3
+        }
+      ]
+    },
+    {
+      "type": "triggered",
+      "event": {
+        "self_becomes_target": {
+          "opponents_only": true
+        }
+      },
+      "effects": [
+        {
+          "kind": "gain_life",
+          "player_ref": "controller",
+          "amount": 3
+        }
+      ]
+    }
+  ]
+}

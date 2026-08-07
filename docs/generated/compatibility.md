@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (259)
+## Supported cards (262)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -63,6 +63,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `death_baron` | Death Baron | functional definition |
 | `declare_dominance` | Declare Dominance | functional definition |
 | `demon_of_catastrophes` | Demon of Catastrophes | functional definition |
+| `departed_deckhand` | Departed Deckhand | functional definition |
 | `detection_tower` | Detection Tower | functional definition |
 | `diamond_mare` | Diamond Mare | functional definition |
 | `diregraf_ghoul` | Diregraf Ghoul | functional definition |
@@ -214,6 +215,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `scapeshift` | Scapeshift | functional definition |
 | `scholar_of_stars` | Scholar of Stars | functional definition |
 | `serra_s_guardian` | Serra's Guardian | functional definition |
+| `shield_mare` | Shield Mare | functional definition |
 | `shivan_dragon` | Shivan Dragon | functional definition |
 | `shock` | Shock | functional definition |
 | `siegebreaker_giant` | Siegebreaker Giant | functional definition |
@@ -244,6 +246,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `tectonic_rift` | Tectonic Rift | functional definition |
 | `tezzeret_artifice_master` | Tezzeret, Artifice Master | functional definition |
 | `tezzeret_s_strider` | Tezzeret's Strider | functional definition |
+| `thorn_lieutenant` | Thorn Lieutenant | functional definition |
 | `thornhide_wolves` | Thornhide Wolves | functional definition |
 | `thud` | Thud | functional definition |
 | `timber_gorge` | Timber Gorge | functional definition |
@@ -279,10 +282,10 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 
 | Excluded | Blocker |
 | --- | --- |
+| Abilities that trigger on a **player** becoming the target of a spell or ability | a permanent notices an object put on the stack naming it as a target (CR 603.6e), narrowed to spells alone and to an opponent's objects; a *player* is never the subject — nothing watches for "whenever you become the target" — and no trigger reads the targets of an object that was already on the stack |
 | Abilities that trigger on a card leaving a graveyard | the zone changes a trigger observes are a permanent entering the battlefield and a permanent leaving it for a graveyard, both read by diffing the battlefield; no condition names a zone, so a card moving out of a graveyard — or into or out of a hand, a library, or exile — is watched by nothing |
 | Abilities that trigger on a loyalty ability being activated | an observed activation is filtered by who activated it and by the source's card type, so "whenever a player activates a loyalty ability" cannot be told from any other activation that used the stack (CR 606.1) |
 | Abilities that trigger on a mana ability being activated | the activation condition watches the objects a transition put on the stack, which a mana ability never reaches (CR 605.3a) |
-| Abilities that trigger on a permanent becoming the target of a spell or ability | a trigger condition is a pure predicate over the states one action produced, and what it can find there is a zone change, an attack declaration, a draw, a life gain, a cast, an activation that used the stack, or a step boundary; a target is chosen at announcement and stored on the stack object, and no condition reads that list |
 | Abilities that trigger on damage being dealt | damage is dealt at one seam, and the only thing that reads it afterwards is the flag a permanent carries for whether it has dealt any yet — a question a continuous ability may ask about its own source and nothing else; no trigger condition reads that flag or the damage beside it, so nothing fires on a creature dealing damage or on a player being dealt it |
 | Abilities that trigger on someone else drawing a card | the draw trigger condition observes only its own controller's draws |
 | Attack requirements | a block requirement is maximised over the whole declaration (CR 509.1c), but nothing can force a creature into the attacker declaration (CR 508.1d) — and the one requirement modeled is that every creature able to block an attacker does so, never that one particular creature blocks |

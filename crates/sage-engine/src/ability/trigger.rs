@@ -82,6 +82,27 @@ pub enum TriggerCondition {
     /// was not before — so it fires once per declaration, from the one place
     /// attackers are declared, and never from a creature that merely became tapped.
     SelfAttacks,
+    /// The source **became the target** of a spell or ability this transition
+    /// (CR 603.6e) — Thorn Lieutenant's `whenever this creature becomes the target of a
+    /// spell or ability an opponent controls`.
+    ///
+    /// Observed by diffing the **stack**, the way a cast watcher is: an object that is
+    /// there after and was not there before, whose stored targets name this permanent.
+    /// That is exactly what "becomes the target" means — targets are chosen as an object
+    /// is put on the stack (CR 601.2c) and never change afterwards, so an object already
+    /// on the stack has not just targeted anything.
+    ///
+    /// It fires **once per object**, not once per target word: a spell that somehow named
+    /// this permanent twice announced once, and CR 603.6e counts the becoming rather than
+    /// the mentions.
+    ///
+    /// The source must still be on the battlefield after the transition — announcing a
+    /// spell does not remove it, so this only excludes a permanent that left for some
+    /// other reason in the same action.
+    SelfBecomesTarget(
+        /// Which targeting objects satisfy this condition.
+        ObservedTargeting,
+    ),
     /// A permanent matching `observes` was **declared as an attacker** this transition
     /// (CR 508.1), e.g. `Whenever a creature with flying attacks, …` — the counterpart
     /// of [`Self::SelfAttacks`] for an ability watching the rest of the board, and the
@@ -156,6 +177,27 @@ pub enum TriggerCondition {
         /// Whose turn that step has to belong to.
         whose_turn: TurnScope,
     },
+}
+
+/// Which objects targeting the source satisfy [`TriggerCondition::SelfBecomesTarget`].
+///
+/// Two independent narrowings, because the printed cards use both and not always
+/// together: Thorn Lieutenant and Shield Mare say `a spell or ability **an opponent
+/// controls**`, and Departed Deckhand says `a spell` — anyone's, including its own
+/// controller's, which is the whole cost of that card.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservedTargeting {
+    /// Notice only objects controlled by an **opponent** of the watching ability's
+    /// controller. `false` notices anyone's, which is what a card that does not say
+    /// "an opponent controls" means.
+    #[serde(default)]
+    pub opponents_only: bool,
+    /// Notice only **spells**, never activated or triggered abilities — the `becomes the
+    /// target of a spell` of a card that is not afraid of abilities. `false` notices
+    /// both, which is what "a spell or ability" means.
+    #[serde(default)]
+    pub spells_only: bool,
 }
 
 /// Which step a [`TriggerCondition::BeginningOfStep`] watches the beginning of.

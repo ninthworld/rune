@@ -179,6 +179,9 @@ pub(crate) fn target_spec_prompt(spec: TargetSpec) -> String {
         TargetSpec::AnotherAttackingCreature => {
             "Choose another target attacking creature".to_string()
         }
+        TargetSpec::AnotherCreatureYouControl => {
+            "Choose another target creature you control".to_string()
+        }
         TargetSpec::AnyCreatureDefendingPlayerControls => {
             "Choose target creature defending player controls".to_string()
         }
