@@ -446,6 +446,8 @@ fn attachment_legality(
             Target::Permanent(host),
             state,
             crate::characteristics::controller_of(state, perm),
+            // The attachment itself, for a restriction relative to its own source.
+            Some(perm.id),
             db,
         ),
     };

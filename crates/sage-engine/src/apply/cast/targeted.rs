@@ -871,7 +871,10 @@ fn copy_spell_onto_stack(
     let re_aim = new_targets
         && groups.iter().any(|group| group.min >= 1)
         && groups.iter().all(|group| {
-            !crate::actions::legal_targets_for_spec(group.spec, state, controller, db).is_empty()
+            // A copy is a spell: it has no permanent for a source-relative spec to be
+            // relative to, exactly as the original had none.
+            !crate::actions::legal_targets_for_spec(group.spec, state, controller, None, db)
+                .is_empty()
         });
     let stack_id = crate::stack::StackId(state.mint_id());
     state.stack.push(crate::stack::StackObject {

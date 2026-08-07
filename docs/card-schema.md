@@ -557,7 +557,18 @@ resolution (CR 608.2b). The classes are `any_player`, `any_player_or_planeswalke
 `any_artifact`, `any_enchantment`,
 `any_artifact_or_enchantment`, `any_artifact_enchantment_or_creature_with_flying`,
 `any_land`, `spell_on_stack`, `creature_spell_on_stack`, `any_target`,
-`any_permanent_with_mana_value`, and `card_in_graveyard`.
+`any_permanent_with_mana_value`, `another_attacking_creature`,
+`any_creature_defending_player_controls`, and `card_in_graveyard`.
+
+Two of those are **relative to the ability's own source** rather than to its controller,
+and they are the only ones that are: `another_attacking_creature` is another attacker than
+the permanent the ability is on, and `any_creature_defending_player_controls` names the
+creatures of the player *that permanent* is attacking (CR 508.1a — for an attack aimed at
+a planeswalker, its controller). Both are empty when there is no source permanent, which
+is every spell: a spell has no permanent on the battlefield, so a sentence about "another"
+or about "the defending player" has nothing to be about. An attack trigger is where they
+are printed, and an ability whose source has stopped attacking names nobody rather than
+falling back to a wider class.
 
 `any_player_or_planeswalker` is the burn class that names both halves and no creature —
 `Lava Axe deals 5 damage to target player or planeswalker`. It is neither `any_player`

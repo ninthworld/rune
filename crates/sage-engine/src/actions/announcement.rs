@@ -87,6 +87,8 @@ pub fn mode_options(state: &GameState, db: &CardDatabase, action: &Action) -> Ve
                 &data.cast_target_groups(Some(*index)),
                 state,
                 state.priority,
+                // A mode belongs to a spell, and a spell is not a permanent.
+                None,
                 db,
             )
         })

@@ -176,8 +176,8 @@
     "blocker": "a printed static ability's class may be filtered by keyword, and the keyword is read off the **printed** face: the selector is evaluated from inside the CR 613 layer-6 fold that is computing the affected permanent's keyword set, so it cannot ask for the answer being produced — a creature *granted* defender falls outside a class that names defender, exactly as the printed-subtype read beside it already does"
   },
   {
-    "name": "Target specs scoped to the combat in progress",
-    "blocker": "a target spec names a card type, a controller, a keyword, a mana value, or a graveyard, each answered without reference to combat; no slot narrows to a creature that is attacking or blocking, and none resolves the player or planeswalker a source is attacking"
+    "name": "Target specs that name a blocker, or the planeswalker a source is attacking",
+    "blocker": "a target spec may narrow to a creature that is **attacking** and, relative to the ability's own source, to the creatures of the player that source is attacking (CR 508.1a); nothing narrows to a creature that is *blocking*, nothing names the attacker a blocker is blocking or the blocker of an attacker, and the planeswalker a source is attacking is resolved to its controller rather than named as a target"
   },
   {
     "name": "Taking an extra turn",

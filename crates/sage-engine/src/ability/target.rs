@@ -262,6 +262,27 @@ pub enum TargetSpec {
     /// planeswalker: a planeswalker can be tapped in principle, but this spec is a
     /// creature spec first and the tapped-ness is a filter on it.
     AnyTappedCreature,
+    /// An **attacking** creature other than the ability's own source — the "another
+    /// target attacking creature" of a card that helps the rest of the team through.
+    ///
+    /// The first spec relative to the *source* rather than to its controller, and both
+    /// halves of it are: "attacking" is read off the declaration
+    /// ([`Permanent::attacking`](crate::Permanent)), and "another" is the source itself
+    /// excluded by [`PermanentId`](crate::PermanentId) — so two copies of one card each
+    /// name the other, and a permanent never names itself.
+    ///
+    /// It names nothing at all when there is no source: a spell that said this would be
+    /// asking about a permanent it does not have.
+    AnotherAttackingCreature,
+    /// A creature controlled by the player the ability's source is **attacking** — the
+    /// "target creature defending player controls" of an attack trigger.
+    ///
+    /// The defending player is read off the source's own attack (CR 508.1a, and
+    /// [`AttackTarget::defending_player`](crate::combat::AttackTarget) for an attack
+    /// aimed at a planeswalker, whose controller is the defending player). A source that
+    /// is not attacking names nobody, which is the honest answer between combats: the
+    /// phrase has no meaning outside one.
+    AnyCreatureDefendingPlayerControls,
     /// Any artifact on the battlefield. Never a planeswalker — no printing in the
     /// bundled catalog is both, and a card that wants either says so with its own spec.
     AnyArtifact,

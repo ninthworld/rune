@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "functional_id": "star_crowned_stag",
+  "name": "Star-Crowned Stag",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elk"
+  ],
+  "mana_cost": "{3}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 3,
+  "toughness": 3,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_attacks",
+      "effects": [
+        {
+          "kind": "tap",
+          "target": "any_creature_defending_player_controls"
+        }
+      ]
+    }
+  ]
+}
