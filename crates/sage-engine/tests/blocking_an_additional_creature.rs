@@ -307,11 +307,11 @@ fn ghastbark_twins_records_its_blocks_in_the_order_it_declared_them() {
 
 #[test]
 fn a_blocker_spreads_one_pool_of_power_across_the_attackers_it_blocks() {
-    // CR 510.1c/e from the blocker's side: the Twins' 5 power is *one* pool, assigned
+    // CR 510.1c/e from the blocker's side: the Twins' 7 power is *one* pool, assigned
     // just-lethal to the first attacker in its order and the remainder to the last —
-    // not 5 to each, which is what an attacker-driven loop would deal.
+    // not 7 to each, which is what an attacker-driven loop would deal.
     //
-    // A 3/3 first and a 6/6 second: 3 is lethal to the courser, and the 2 left over
+    // A 3/3 first and a 6/6 second: 3 is lethal to the courser, and the 4 left over
     // reaches the dreadmaw and stays marked on it.
     let db = db();
     let mut state = main_phase();
@@ -345,21 +345,22 @@ fn a_blocker_spreads_one_pool_of_power_across_the_attackers_it_blocks() {
     );
     assert_eq!(
         damage(&after, dreadmaw),
-        Some(2),
-        "and the remaining 2 reached the second, which survived it"
+        Some(4),
+        "and the remaining 4 reached the second, which survived it"
     );
     assert_eq!(
         damage(&after, twins),
         None,
-        "both attackers struck the one blocker back, which is 9 on a 5/5"
+        "both attackers struck the one blocker back, which is 9 on a 7/7"
     );
 }
 
 #[test]
 fn the_blockers_order_decides_which_attacker_the_damage_reaches() {
     // The mirror of the test above with the declaration order reversed. The 6/6 is now
-    // first and soaks all 5 — nothing is left for the 3/3, which walks away untouched.
-    // Nothing but the order changed, which is what makes the order load-bearing.
+    // first, so 6 of the Twins' 7 is lethal to *it* and the single point left over is all
+    // the 3/3 behind it takes. Nothing but the order changed, and it moved the death from
+    // one attacker to the other, which is what makes the order load-bearing.
     let db = db();
     let mut state = main_phase();
     let courser = place(&mut state, &db, "centaur_courser", PlayerId(0));
@@ -387,13 +388,13 @@ fn the_blockers_order_decides_which_attacker_the_damage_reaches() {
 
     assert_eq!(
         damage(&after, dreadmaw),
-        Some(5),
-        "the first in the order takes everything it can absorb"
+        None,
+        "the first in the order took lethal damage and died (CR 704.5g)"
     );
     assert_eq!(
         damage(&after, courser),
-        Some(0),
-        "and the second, behind a creature that never took lethal, takes nothing"
+        Some(1),
+        "and the second took only what the first could not absorb"
     );
 }
 
@@ -404,16 +405,18 @@ fn one_blocked_attacker_still_takes_the_whole_of_its_blockers_power() {
     // there is something to spread across.
     let db = db();
     let mut state = main_phase();
-    let dreadmaw = place(&mut state, &db, "colossal_dreadmaw", PlayerId(0));
+    // An 8/8 rather than the 6/6 the spread tests use: the whole pool is only *visible*
+    // on an attacker that survives it, and 7 kills a 6/6.
+    let mammoth = place(&mut state, &db, "aggressive_mammoth", PlayerId(0));
     let twins = place(&mut state, &db, "ghastbark_twins", PlayerId(1));
 
-    let state = attack_with(&state, &db, &[dreadmaw]);
+    let state = attack_with(&state, &db, &[mammoth]);
     let state = apply_action(
         &state,
         &Action::DeclareBlockers {
             blocks: vec![Block {
                 blocker: twins,
-                attacker: dreadmaw,
+                attacker: mammoth,
             }],
         },
         &db,
@@ -421,9 +424,9 @@ fn one_blocked_attacker_still_takes_the_whole_of_its_blockers_power() {
     let after = settle_until(&state, &db, |s| s.step == Step::EndCombat);
 
     assert_eq!(
-        damage(&after, dreadmaw),
-        Some(5),
-        "all 5 power on the one attacker it blocked"
+        damage(&after, mammoth),
+        Some(7),
+        "all 7 power on the one attacker it blocked"
     );
 }
 
@@ -435,11 +438,13 @@ fn blocking_two_attackers_leaves_neither_of_them_unblocked() {
     let db = db();
     let mut state = main_phase();
     let courser = place(&mut state, &db, "centaur_courser", PlayerId(0));
-    let dreadmaw = place(&mut state, &db, "colossal_dreadmaw", PlayerId(0));
+    // An 8/8 trampler, because 7 of anything less is swallowed whole by a 7/7 blocker and
+    // there would be no overflow left to be the point of this test.
+    let mammoth = place(&mut state, &db, "aggressive_mammoth", PlayerId(0));
     let twins = place(&mut state, &db, "ghastbark_twins", PlayerId(1));
     let before = state.players[1].life;
 
-    let state = attack_with(&state, &db, &[courser, dreadmaw]);
+    let state = attack_with(&state, &db, &[courser, mammoth]);
     let state = apply_action(
         &state,
         &Action::DeclareBlockers {
@@ -450,7 +455,7 @@ fn blocking_two_attackers_leaves_neither_of_them_unblocked() {
                 },
                 Block {
                     blocker: twins,
-                    attacker: dreadmaw,
+                    attacker: mammoth,
                 },
             ],
         },
@@ -458,7 +463,9 @@ fn blocking_two_attackers_leaves_neither_of_them_unblocked() {
     );
     let after = settle_until(&state, &db, |s| s.step == Step::EndCombat);
 
-    // The courser is blocked and has no trample, so it reaches nobody; the dreadmaw
-    // assigns 5 to the 5/5 blocker and tramples the 1 that is left (CR 702.19e).
+    // The courser has 3 power against a 7-toughness blocker, so it reaches nobody — the
+    // trample the Mammoth grants it changes nothing, because there is no lethal-and-then-
+    // some to spill. The Mammoth itself assigns 7 to the blocker and tramples the 1 that
+    // is left (CR 702.19e), and that single point is the whole of the life lost.
     assert_eq!(after.players[1].life, before - 1);
 }

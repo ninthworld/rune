@@ -23,7 +23,7 @@
       "cost": [
         {
           "kind": "mana",
-          "mana": "{B}"
+          "mana": "{1}"
         },
         {
           "kind": "sacrifice",
@@ -36,11 +36,6 @@
           "kind": "put_counters_on_self",
           "counter": "plus_one_plus_one",
           "count": 1
-        },
-        {
-          "kind": "gain_life",
-          "player_ref": "controller",
-          "amount": 1
         }
       ]
     }

@@ -166,7 +166,7 @@ fn offered_indices(state: &GameState, db: &CardDatabase, permanent: PermanentId)
 // ----- an Aura on a land ----------------------------------------------------
 
 #[test]
-fn issue_740_gift_of_paradise_enchants_a_land_and_gains_two_life() {
+fn issue_740_gift_of_paradise_enchants_a_land_and_gains_three_life() {
     // CR 303.4a: an Aura's enchant restriction is whatever class its card names, and a
     // land is one of them. The whole cast goes through the ordinary path — one required
     // target slot, chosen at announcement — and the entry trigger resolves behind it.
@@ -191,8 +191,8 @@ fn issue_740_gift_of_paradise_enchants_a_land_and_gains_two_life() {
     assert_eq!(attached_to(&state, aura), Some(land));
     assert_eq!(
         state.players[0].life,
-        life + 2,
-        "the enters-the-battlefield trigger gained two life"
+        life + 3,
+        "the enters-the-battlefield trigger gained three life"
     );
 }
 

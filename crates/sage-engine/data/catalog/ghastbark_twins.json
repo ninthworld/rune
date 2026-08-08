@@ -8,12 +8,12 @@
   "subtypes": [
     "Treefolk"
   ],
-  "mana_cost": "{4}{G}",
+  "mana_cost": "{5}{G}{G}",
   "colors": [
     "green"
   ],
-  "power": 5,
-  "toughness": 5,
+  "power": 7,
+  "toughness": 7,
   "keywords": [
     "trample"
   ],

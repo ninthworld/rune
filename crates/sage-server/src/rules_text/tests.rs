@@ -489,7 +489,7 @@ fn issue_728_an_equipment_states_its_grant_and_its_equip_ability() {
     let db = bundled();
     assert_eq!(
         text_of(&db, "marauder_s_axe"),
-        "Equipped creature gets +2/+1.\n\
+        "Equipped creature gets +2/+0.\n\
          {2}: Attach Marauder's Axe to target creature you control."
     );
 
@@ -1247,8 +1247,8 @@ fn a_life_gained_condition_states_its_threshold_only_when_there_is_one() {
     let db = bundled();
     assert_eq!(
         text_of(&db, "regal_bloodlord"),
-        "Flying\nAt the beginning of your end step, if you gained life this turn, \
-         you create a 2/2 black Bat creature token with flying."
+        "Flying\nAt the beginning of each end step, if you gained life this turn, \
+         you create a 1/1 black Bat creature token with flying."
     );
     assert_eq!(
         text_of(&db, "resplendent_angel"),
@@ -1497,20 +1497,19 @@ fn issue_721_an_activation_cost_states_what_the_player_must_spend() {
     let db = bundled();
     assert_eq!(
         text_of(&db, "ravenous_harpy"),
-        "Flying\n{B}, Sacrifice another creature: Put a +1/+1 counter on Ravenous Harpy \
-         and you gain 1 life."
+        "Flying\n{1}, Sacrifice another creature: Put a +1/+1 counter on Ravenous Harpy."
     );
     // A subtype names the class on its own: a Goblin is a Goblin whatever else it is, and
     // the Trashmaster is one, so with no *another* it is a legal payment for its own cost.
     assert_eq!(
         text_of(&db, "goblin_trashmaster"),
         "Other Goblins you control get +1/+1.\n\
-         {1}{R}, Sacrifice a Goblin: Destroy target artifact."
+         Sacrifice a Goblin: Destroy target artifact."
     );
     assert_eq!(
         text_of(&db, "dismissive_pyromancer"),
-        "{T}, Discard a card: Draw a card.\n\
-         {2}{R}, Sacrifice this permanent: Dismissive Pyromancer deals 4 damage to \
+        "{R}, {T}, Discard a card: Draw a card.\n\
+         {2}{R}, {T}, Sacrifice this permanent: Dismissive Pyromancer deals 4 damage to \
          target creature."
     );
 }
@@ -1545,15 +1544,13 @@ fn issue_721_a_costs_size_and_the_amount_that_reads_it_are_both_stated() {
 }
 
 /// A created replacement reads as the sentence a card prints it in: the event, the turn
-/// it lasts, the qualifier on the event, and what happens instead (CR 614.1b). The
-/// keyword line above it is the flash the card is held up with (CR 702.8).
+/// it lasts, the qualifier on the event, and what happens instead (CR 614.1b).
 #[test]
 fn issue_731_a_created_replacement_reads_as_the_next_time_this_turn() {
     let db = bundled();
     assert_eq!(
         text_of(&db, "mistcaller"),
-        "Flash\n\
-         Sacrifice this permanent: The next time a nontoken creature would enter the \
+        "Sacrifice this permanent: The next time a nontoken creature would enter the \
          battlefield this turn without being cast, exile it instead."
     );
 }
@@ -1664,7 +1661,7 @@ fn issue_740_a_granted_ability_is_quoted_on_the_card_that_grants_it() {
     let db = bundled();
     assert_eq!(
         text_of(&db, "gift_of_paradise"),
-        "When Gift of Paradise enters the battlefield, you gain 2 life.\n\
+        "When Gift of Paradise enters the battlefield, you gain 3 life.\n\
          Enchant land.\n\
          Enchanted land has \"{T}: Add two mana of any one color.\""
     );
@@ -1893,7 +1890,7 @@ fn issue_706_animating_reads_as_what_it_becomes_and_for_how_long() {
         text_of(&db, "sigiled_sword_of_valeron"),
         "Equipped creature gets +2/+0.\nEquipped creature has vigilance.\nEquipped \
          creature is a Knight in addition to its other types.\nEquipped creature has \
-         \"Whenever this creature attacks, you create a tapped 2/2 white Knight creature \
+         \"Whenever this creature attacks, you create a 2/2 white Knight creature \
          token with vigilance that's attacking.\"\n{3}: Attach Sigiled Sword of Valeron \
          to target creature you control."
     );
