@@ -28,6 +28,7 @@ mod copy;
 mod cost_modification;
 pub mod coverage;
 mod delayed;
+mod filter;
 #[cfg(test)]
 mod fixtures;
 mod id;
@@ -52,13 +53,13 @@ pub use ability::{
     activation_condition_holds, activation_taps, group_target_counts, is_emblem_ability,
     is_equip_ability, is_graveyard_ability, is_hand_ability, is_loyalty_ability, is_mana_ability,
     is_sorcery_speed_ability, maximum_targets, minimum_targets, target_counts, Ability,
-    ActivationTiming, ActivatorScope, BottomOrder, CardFilter, Chooser, Condition, Cost,
-    CostModification, CountScope, DamageSubject, DerivedAmount, DestroyAffects, Effect,
+    ActivationTiming, ActivatorScope, BottomOrder, CardFilter, Chooser, Condition, ControllerScope,
+    Cost, CostModification, CountScope, DamageSubject, DerivedAmount, Effect, FilterContext,
     FoundDestination, GraveyardCardClass, GraveyardCount, GraveyardScope, HalvedTotal,
-    ManaRestriction, MassAffects, ObservedActivation, ObservedPermanent, ObservedSpell,
-    OptionalCost, PermanentAmount, PermanentCount, PlayerModification, PlayerRef, SacrificeCount,
-    StaticAffects, StaticCondition, StaticModification, Target, TargetCount, TargetGroup,
-    TargetSpec, TriggerCondition, TriggerStep, TurnScope,
+    ManaRestriction, ObservedActivation, ObservedPermanent, ObservedSpell, OptionalCost,
+    PermanentAmount, PermanentCount, PermanentFilter, PlayerModification, PlayerRef, Reading,
+    SacrificeCount, StaticAffects, StaticCondition, StaticModification, Target, TargetCount,
+    TargetGroup, TargetSpec, TriggerCondition, TriggerStep, TurnScope,
 };
 pub use actions::{
     activation_discard_cost, activation_exile_cost, activation_sacrifice_cost,

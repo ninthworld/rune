@@ -90,7 +90,7 @@ pub struct Resolution {
     /// The player this resolution's most recent **targeted** effect named — a player it
     /// aimed at, or the controller of a permanent it aimed at — read by
     /// [`PlayerRef::ThatPlayer`](crate::PlayerRef) and
-    /// [`MassAffects::CreaturesThatPlayerControls`](crate::MassAffects).
+    /// [`ControllerScope::ThatPlayer`](crate::ControllerScope).
     ///
     /// The `its controller` of `Destroy target creature. **Its controller** creates a 2/4
     /// white Ox`, and the `that player` of `deals 3 damage to target player and 1 damage

@@ -417,13 +417,17 @@ fn issue_611_deal_damage_round_trips_with_a_class_of_players_or_permanents() {
         }
     );
     let permanents: Effect = serde_json::from_str(
-        r#"{"kind":"deal_damage","affects":{"scope":"each_creature"},"amount":1}"#,
+        r#"{"kind":"deal_damage","affects":{"scope":"any","card_type":"creature"},"amount":1}"#,
     )
     .unwrap();
     assert_eq!(
         permanents,
         Effect::DealDamage {
-            subject: DamageSubject::Permanents(MassAffects::EachCreature),
+            subject: DamageSubject::Permanents(PermanentFilter {
+                scope: ControllerScope::Any,
+                card_type: vec![CardType::Creature],
+                ..Default::default()
+            }),
             amount: 1,
         }
     );
@@ -437,9 +441,15 @@ fn issue_611_deal_damage_round_trips_with_a_class_of_players_or_permanents() {
         Some(TargetSpec::AnyOpponent)
     );
     assert_eq!(
-        serde_json::from_str::<MassAffects>(r#"{"scope":"creatures_your_opponents_control"}"#)
-            .unwrap(),
-        MassAffects::CreaturesYourOpponentsControl
+        serde_json::from_str::<PermanentFilter>(
+            r#"{"scope":"opponents_control","card_type":"creature"}"#
+        )
+        .unwrap(),
+        PermanentFilter {
+            scope: ControllerScope::OpponentsControl,
+            card_type: vec![CardType::Creature],
+            ..Default::default()
+        }
     );
 }
 
@@ -655,15 +665,14 @@ fn the_new_effect_verbs_round_trip_with_their_target_or_class() {
     );
 
     // A mass modification names a class, which is not a target (CR 115.1).
-    let pump = r#"{"kind":"pump_all","affects":{"scope":"creatures_you_control"},"power":2,"toughness":1}"#;
+    let pump = r#"{"kind":"pump_all","affects":{"card_type":"creature"},"power":2,"toughness":1}"#;
     let pump: Effect = serde_json::from_str(pump).unwrap();
     assert_eq!(
         pump,
         Effect::PumpAll {
-            affects: MassAffects::CreaturesYouControl {
-                subtype: None,
-                min_power: None,
-                below_source_power: false,
+            affects: PermanentFilter {
+                card_type: vec![CardType::Creature],
+                ..Default::default()
             },
             power: 2,
             toughness: 1,
@@ -671,16 +680,15 @@ fn the_new_effect_verbs_round_trip_with_their_target_or_class() {
     );
     assert_eq!(pump.target_spec(2), None);
 
-    let grant = r#"{"kind":"grant_keyword_all","affects":{"scope":"creatures_you_control"},
+    let grant = r#"{"kind":"grant_keyword_all","affects":{"card_type":"creature"},
                      "keyword":"trample"}"#;
     let grant: Effect = serde_json::from_str(grant).unwrap();
     assert_eq!(
         grant,
         Effect::GrantKeywordAll {
-            affects: MassAffects::CreaturesYouControl {
-                subtype: None,
-                min_power: None,
-                below_source_power: false,
+            affects: PermanentFilter {
+                card_type: vec![CardType::Creature],
+                ..Default::default()
             },
             keyword: Keyword::Trample,
         }
@@ -1158,23 +1166,35 @@ fn issue_735_cost_modification_round_trips_with_its_selectors() {
         ObservedSpell::InstantOrSorcery
     );
 
-    // The mass class's bound is optional and defaults to absent, so every card authored
-    // before it existed parses unchanged.
+    // Every field of the shared filter is optional and defaults to absent, so the empty
+    // object is "every permanent you control" and each field narrows from there.
     assert_eq!(
-        serde_json::from_str::<MassAffects>(r#"{"scope":"creatures_you_control","min_power":4}"#)
+        serde_json::from_str::<PermanentFilter>(r#"{"card_type":"creature","min_power":4}"#)
             .unwrap(),
-        MassAffects::CreaturesYouControl {
-            subtype: None,
+        PermanentFilter {
+            card_type: vec![CardType::Creature],
             min_power: Some(4),
-            below_source_power: false,
+            ..Default::default()
         }
     );
     assert_eq!(
-        serde_json::from_str::<MassAffects>(r#"{"scope":"creatures_you_control"}"#).unwrap(),
-        MassAffects::CreaturesYouControl {
-            subtype: None,
-            min_power: None,
-            below_source_power: false,
+        serde_json::from_str::<PermanentFilter>(r#"{"card_type":"creature"}"#).unwrap(),
+        PermanentFilter {
+            card_type: vec![CardType::Creature],
+            ..Default::default()
+        }
+    );
+    // One key, both spellings: a card names one class whether it prints one type or a
+    // disjunction of two.
+    assert_eq!(
+        serde_json::from_str::<PermanentFilter>(
+            r#"{"scope":"any","card_type":["artifact","enchantment"]}"#
+        )
+        .unwrap(),
+        PermanentFilter {
+            scope: ControllerScope::Any,
+            card_type: vec![CardType::Artifact, CardType::Enchantment],
+            ..Default::default()
         }
     );
 }

@@ -440,7 +440,12 @@ pub(crate) fn apply_effect(
         // trigger sees every one of them. Collected before any of it happens, because
         // destroying the first member moves the battlefield out from under the scan.
         Effect::DestroyAll { affects } => {
-            for id in permanents_to_destroy(state, *affects, db) {
+            for id in crate::filter::permanents_matching(
+                state,
+                db,
+                affects,
+                mass_context(controller, permanent_source, resolution),
+            ) {
                 state.destroy_permanent(id, db);
             }
         }
@@ -457,9 +462,7 @@ pub(crate) fn apply_effect(
             apply_mass_modification(
                 state,
                 affects,
-                controller,
-                resolution.paid.source_power,
-                resolution.chosen_player,
+                mass_context(controller, permanent_source, resolution),
                 Modification::PowerToughness {
                     power: *power,
                     toughness: *toughness,
@@ -471,9 +474,7 @@ pub(crate) fn apply_effect(
             apply_mass_modification(
                 state,
                 affects,
-                controller,
-                resolution.paid.source_power,
-                resolution.chosen_player,
+                mass_context(controller, permanent_source, resolution),
                 Modification::GrantKeyword(*keyword),
                 db,
             );
@@ -485,9 +486,7 @@ pub(crate) fn apply_effect(
             apply_mass_modification(
                 state,
                 affects,
-                controller,
-                resolution.paid.source_power,
-                resolution.chosen_player,
+                mass_context(controller, permanent_source, resolution),
                 Modification::GrantRestriction(restriction.clone()),
                 db,
             );
@@ -829,6 +828,26 @@ pub(super) fn win_the_game(state: &mut GameState, winner: PlayerId) {
     }
 }
 
+/// What a resolution knows about the object naming a class: who controls it, which
+/// permanent it is, the power it had before its cost was paid, and the seat an earlier
+/// sentence named. Built in one place so the four facts cannot be passed in a different
+/// order at one call site than at another.
+fn mass_context(
+    controller: PlayerId,
+    source: Option<PermanentId>,
+    resolution: crate::resolve::Resolution,
+) -> crate::ability::FilterContext {
+    crate::ability::FilterContext {
+        controller,
+        source,
+        source_power: resolution.paid.source_power,
+        chosen_player: resolution.chosen_player,
+        // A resolution is outside the CR 613 layer system, so every question is answered
+        // from the permanent's current characteristics.
+        reading: crate::ability::Reading::Computed,
+    }
+}
+
 /// Add `modification` to every permanent in `affects` until end of turn, on behalf of
 /// `controller` (CR 611.2c).
 ///
@@ -840,14 +859,12 @@ pub(super) fn win_the_game(state: &mut GameState, winner: PlayerId) {
 /// duration or timestamp ordering is special-cased for the mass case.
 fn apply_mass_modification(
     state: &mut GameState,
-    affects: &MassAffects,
-    controller: PlayerId,
-    source_power: Option<i32>,
-    chosen_player: Option<PlayerId>,
+    affects: &PermanentFilter,
+    ctx: crate::ability::FilterContext,
     modification: Modification,
     db: &CardDatabase,
 ) {
-    for id in permanents_in(state, affects, controller, source_power, chosen_player, db) {
+    for id in crate::filter::permanents_matching(state, db, affects, ctx) {
         let source = state.mint_id();
         state.static_effects.push(StaticEffect {
             source,
@@ -962,125 +979,6 @@ pub(super) fn tokens_created(
     }
 }
 
-/// The permanents a [`MassAffects`] class names, in battlefield order, for an object
-/// controlled by `controller`.
-///
-/// The permanent-side counterpart of [`non_targeting_subjects`], and the one place a class is
-/// turned into a concrete set: a mass modification and a mass damage effect must agree
-/// on what "each creature" means, and the set is enumerated **at the moment of
-/// resolution** (CR 611.2c) so a permanent that arrived after announcement is included
-/// and one that has left is not. Every class is read relative to `controller`, which is
-/// what lets one authored card mean "you" from either seat.
-fn permanents_in(
-    state: &GameState,
-    affects: &MassAffects,
-    controller: PlayerId,
-    source_power: Option<i32>,
-    chosen_player: Option<PlayerId>,
-    db: &CardDatabase,
-) -> Vec<PermanentId> {
-    // CR 613 layer 4 has already run by the time a resolution asks: an artifact animated
-    // into a creature is in every class of creatures, which is what makes it die to a
-    // sweeper. Safe to read the computed types here, outside the layer system.
-    let is_creature = |perm: &Permanent| {
-        crate::characteristics::characteristics(state, perm.id, db)
-            .types
-            .contains(&crate::card_type::CardType::Creature)
-    };
-    // Every class but one is a class of creatures, so the type test is applied once here
-    // rather than restated in each arm. The exception names planeswalkers outright and
-    // says so by answering the question itself.
-    let type_ok = |perm: &Permanent| match affects {
-        MassAffects::CreaturesAndPlaneswalkersYourOpponentsControl => {
-            is_creature(perm)
-                || perm
-                    .printed
-                    .face(db)
-                    .is_some_and(|face| face.has_type(crate::card_type::CardType::Planeswalker))
-        }
-        _ => is_creature(perm),
-    };
-    state
-        .battlefield
-        .iter()
-        .filter(|p| {
-            type_ok(p)
-                && match affects {
-                    // A subtype narrows the class to a lord's tribe ("Dragons you
-                    // control"), read off the printed face — the same place every other
-                    // subtype question is answered.
-                    MassAffects::CreaturesYouControl {
-                        subtype,
-                        min_power,
-                        below_source_power,
-                    } => {
-                        crate::characteristics::controller_of(state, p) == controller
-                            && subtype.as_deref().is_none_or(|wanted| {
-                                p.printed
-                                    .face(db)
-                                    .is_some_and(|face| face.has_subtype(wanted))
-                            })
-                            // A power bound is the one field here read through the
-                            // **computed** characteristics (CR 613.1f): "each creature
-                            // you control with power 4 or greater" means the power the
-                            // creature has now, so one pumped up to 4 is in the class
-                            // and one shrunk below it is out. Safe from inside a
-                            // resolution, which is outside the layer system.
-                            && min_power.is_none_or(|min| {
-                                crate::characteristics::characteristics(state, p.id, db)
-                                    .power
-                                    .is_some_and(|power| power >= min)
-                            })
-                            // And the same reading against the *source's* power rather
-                            // than a printed number. A source that is gone has no power to
-                            // compare against, and the honest answer to "less than its
-                            // power" is then nobody — never everybody.
-                            && (!below_source_power
-                                || source_power.is_some_and(|source| {
-                                    crate::characteristics::characteristics(state, p.id, db)
-                                        .power
-                                        .is_some_and(|power| power < source)
-                                }))
-                    }
-                    MassAffects::EachCreature => true,
-                    // Exactly the set declare-attackers produced (CR 508.1a); empty
-                    // outside combat, which is what a combat pump cast in a main phase
-                    // means.
-                    MassAffects::AttackingCreatures => p.attacking.is_some(),
-                    // A seat that has lost is no longer an opponent (CR 102.1); its
-                    // permanents are on their way off the battlefield in the same SBA
-                    // loop, and this is the same exclusion `non_targeting_subjects` makes.
-                    // The class counterpart of `PlayerRef::ThatPlayer`, reading the same
-                    // fact: whose creatures were named by the sentence before this one.
-                    MassAffects::CreaturesThatPlayerControls => chosen_player.is_some_and(|seat| {
-                        crate::characteristics::controller_of(state, p) == seat
-                    }),
-                    MassAffects::CreaturesYourOpponentsControl
-                    | MassAffects::CreaturesAndPlaneswalkersYourOpponentsControl => {
-                        let seat = crate::characteristics::controller_of(state, p);
-                        seat != controller
-                            && state
-                                .players
-                                .get(seat.0)
-                                .is_some_and(|player| !player.has_lost)
-                    }
-                    // Flying is read through the computed keywords (CR 613.1f), so a
-                    // creature that was *granted* flying is outside the class exactly
-                    // as a printed flyer is.
-                    MassAffects::CreaturesWithoutFlying => {
-                        !crate::characteristics::permanent_has_keyword(
-                            state,
-                            p.id,
-                            crate::card::Keyword::Flying,
-                            db,
-                        )
-                    }
-                }
-        })
-        .map(|p| p.id)
-        .collect()
-}
-
 /// The seats a **non-targeting** [`PlayerRef`] names, in seat order, for an object
 /// controlled by `controller` (CR 115.1 — no target is chosen, so this list is
 /// derived fresh at resolution and never fizzles).
@@ -1156,13 +1054,11 @@ fn apply_class_damage(
             }
         }
         DamageSubject::Permanents(affects) => {
-            for id in permanents_in(
+            for id in crate::filter::permanents_matching(
                 state,
-                affects,
-                controller,
-                resolution.paid.source_power,
-                resolution.chosen_player,
                 db,
+                affects,
+                mass_context(controller, source, resolution),
             ) {
                 dealt |= state.deal_damage(
                     resolution.damage(PendingDamage::to_permanent(id, amount).from(source)),
@@ -1178,32 +1074,4 @@ fn apply_class_damage(
             state.note_damage_dealt_by(source);
         }
     }
-}
-
-/// The permanents a [`DestroyAffects`] class names, in battlefield order.
-///
-/// The mass-destruction counterpart of [`permanents_in`], and separate from it for the
-/// reason [`DestroyAffects`] is separate from [`MassAffects`]: nothing here is
-/// controller-relative and nothing here is limited to creatures, so sharing the scan
-/// would mean a filter with two halves that never both apply.
-fn permanents_to_destroy(
-    state: &GameState,
-    affects: crate::ability::DestroyAffects,
-    db: &CardDatabase,
-) -> Vec<PermanentId> {
-    use crate::ability::DestroyAffects;
-    use crate::card_type::CardType;
-    state
-        .battlefield
-        .iter()
-        .filter(|p| {
-            p.printed.face(db).is_some_and(|face| match affects {
-                DestroyAffects::EachCreature => face.has_type(CardType::Creature),
-                DestroyAffects::EachArtifactOrEnchantment => {
-                    face.has_type(CardType::Artifact) || face.has_type(CardType::Enchantment)
-                }
-            })
-        })
-        .map(|p| p.id)
-        .collect()
 }

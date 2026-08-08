@@ -46,7 +46,11 @@
         {
           "kind": "deal_damage",
           "affects": {
-            "scope": "creatures_and_planeswalkers_your_opponents_control"
+            "scope": "opponents_control",
+            "card_type": [
+              "creature",
+              "planeswalker"
+            ]
           },
           "amount": 4
         }

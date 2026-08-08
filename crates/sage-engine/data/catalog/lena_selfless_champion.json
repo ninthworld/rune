@@ -59,7 +59,7 @@
         {
           "kind": "grant_keyword_all",
           "affects": {
-            "scope": "creatures_you_control",
+            "card_type": "creature",
             "below_source_power": true
           },
           "keyword": "indestructible"

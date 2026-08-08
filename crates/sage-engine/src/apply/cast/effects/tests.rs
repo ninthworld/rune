@@ -3,7 +3,9 @@
 #![allow(clippy::unwrap_used)]
 
 use super::*;
+use crate::ability::ControllerScope;
 use crate::apply::test_support::*;
+use crate::card_type::CardType;
 
 #[test]
 fn issue_card_effects_etb_draw_end_to_end() {
@@ -185,7 +187,11 @@ fn issue_611_class_damage_to_creatures_is_marked_and_drives_the_lethal_sba() {
     let wurm = place_permanent(&mut state, fixture("pelakka_wurm"), PlayerId(0), false, 0);
     push_class_damage(
         &mut state,
-        DamageSubject::Permanents(MassAffects::EachCreature),
+        DamageSubject::Permanents(PermanentFilter {
+            scope: ControllerScope::Any,
+            card_type: vec![CardType::Creature],
+            ..Default::default()
+        }),
         2,
     );
 
@@ -217,7 +223,11 @@ fn issue_611_a_one_sided_sweeper_spares_the_creatures_you_control() {
     let yours = place_permanent(&mut state, fixture("pelakka_wurm"), PlayerId(0), false, 0);
     push_class_damage(
         &mut state,
-        DamageSubject::Permanents(MassAffects::CreaturesYourOpponentsControl),
+        DamageSubject::Permanents(PermanentFilter {
+            scope: ControllerScope::OpponentsControl,
+            card_type: vec![CardType::Creature],
+            ..Default::default()
+        }),
         3,
     );
 
@@ -237,7 +247,11 @@ fn issue_611_the_class_is_enumerated_on_resolution_not_on_announcement() {
     let mut state = main_phase_p0();
     push_class_damage(
         &mut state,
-        DamageSubject::Permanents(MassAffects::EachCreature),
+        DamageSubject::Permanents(PermanentFilter {
+            scope: ControllerScope::Any,
+            card_type: vec![CardType::Creature],
+            ..Default::default()
+        }),
         1,
     );
     let late = place_permanent(&mut state, fixture("pelakka_wurm"), PlayerId(1), false, 0);
@@ -266,7 +280,11 @@ fn issue_611_the_targeted_damage_form_is_unchanged() {
     for subject in [
         DamageSubject::Players(PlayerRef::EachOpponent),
         DamageSubject::Players(PlayerRef::Controller),
-        DamageSubject::Permanents(MassAffects::EachCreature),
+        DamageSubject::Permanents(PermanentFilter {
+            scope: ControllerScope::Any,
+            card_type: vec![CardType::Creature],
+            ..Default::default()
+        }),
     ] {
         assert_eq!(
             Effect::DealDamage { subject, amount: 2 }.target_spec(2),

@@ -15,15 +15,15 @@
 
 use super::*;
 use crate::ability::{
-    is_mana_ability, Ability, Cost, DamageSubject, Effect, MassAffects, PermanentAmount, PlayerRef,
-    Target,
+    is_mana_ability, Ability, Cost, DamageSubject, Effect, PermanentAmount, PermanentFilter,
+    PlayerRef, Target,
 };
 use crate::card::abilities_of_permanent;
 use crate::id::{CardInstance, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
 use crate::replacement::PendingDamage;
 use crate::stack::AbilityOrigin;
-use crate::state::{Duration, EffectAffects, Modification, Permanent, StaticEffect};
+use crate::state::{Duration, EffectAffects, Modification, StaticEffect};
 
 mod announce;
 mod effects;

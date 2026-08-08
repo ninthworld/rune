@@ -34,7 +34,8 @@
         {
           "kind": "deal_damage",
           "affects": {
-            "scope": "creatures_your_opponents_control"
+            "scope": "opponents_control",
+            "card_type": "creature"
           },
           "amount": 1
         }
