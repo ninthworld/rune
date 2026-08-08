@@ -8,11 +8,11 @@
   "subtypes": [
     "Dinosaur"
   ],
-  "mana_cost": "{2}{G}",
+  "mana_cost": "{1}{G}{G}",
   "colors": [
     "green"
   ],
-  "power": 1,
+  "power": 2,
   "toughness": 5,
   "abilities": [
     {

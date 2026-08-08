@@ -96,6 +96,16 @@ fn on_battlefield(state: &GameState, id: PermanentId) -> bool {
     state.battlefield.iter().any(|perm| perm.id == id)
 }
 
+/// The permanent `id`, to stage a board a cost has to refuse — tapped, or freshly
+/// arrived.
+fn perm_mut(state: &mut GameState, id: PermanentId) -> &mut Permanent {
+    state
+        .battlefield
+        .iter_mut()
+        .find(|perm| perm.id == id)
+        .expect("the permanent is on the battlefield")
+}
+
 /// Activate `permanent`'s ability `index` with `payment`, and let the ability resolve.
 fn activate(
     state: &GameState,
@@ -159,6 +169,108 @@ fn a_discard_cost_is_not_offered_from_an_empty_hand() {
     assert!(valid_actions(&state, &db).contains(&offer(pyromancer, 0)));
 }
 
+// ----- the printed cost, exactly ---------------------------------------------
+//
+// Four cards whose authored cost drifted from the printed one and which every gate
+// passed anyway (#819, #820). Each test drives the offer, because an offer is where a
+// wrong cost is visible: a missing symbol makes an ability *cheaper*, and cheap is the
+// direction nothing else complains about.
+
+#[test]
+fn issue_820_the_pyromancers_draw_ability_needs_the_red_in_its_cost() {
+    // `{R}, {T}, Discard a card: Draw a card.` — the mana half was missing, so the
+    // ability was offered off an empty pool. The comparison is the same board with one
+    // red in it, which is what separates "the cost is enforced" from "nothing was ever
+    // offered".
+    let db = db();
+    let mut state = main_phase(&db);
+    to_hand(&mut state, &db, "shock");
+    let pyromancer = place(&mut state, &db, "dismissive_pyromancer", PlayerId(0));
+    state.players[0].mana_pool = sage_engine::ManaPool::default();
+
+    assert!(
+        !valid_actions(&state, &db).contains(&offer(pyromancer, 0)),
+        "an empty pool cannot pay the red pip"
+    );
+
+    state.players[0].mana_pool.add(Color::Red, 1);
+    assert!(
+        valid_actions(&state, &db).contains(&offer(pyromancer, 0)),
+        "and one red is enough"
+    );
+}
+
+#[test]
+fn issue_820_the_pyromancers_damage_ability_taps_as_part_of_its_cost() {
+    // `{2}{R}, {T}, Sacrifice this creature: …` — the `{T}` was missing, which made the
+    // ability usable while tapped and on the turn the creature arrived. Both are the same
+    // omission seen from two sides (CR 302.6).
+    let db = db();
+    let mut state = main_phase(&db);
+    place(&mut state, &db, "diamond_mare", PlayerId(1));
+    let pyromancer = place(&mut state, &db, "dismissive_pyromancer", PlayerId(0));
+    assert!(
+        valid_actions(&state, &db).contains(&offer(pyromancer, 1)),
+        "untapped and settled in, it is on offer"
+    );
+
+    let mut tapped = state.clone();
+    perm_mut(&mut tapped, pyromancer).tapped = true;
+    assert!(
+        !valid_actions(&tapped, &db).contains(&offer(pyromancer, 1)),
+        "a tapped creature has no tap symbol left to pay"
+    );
+
+    let mut sick = state.clone();
+    perm_mut(&mut sick, pyromancer).entered_turn = sick.turn;
+    assert!(
+        !valid_actions(&sick, &db).contains(&offer(pyromancer, 1)),
+        "and one that arrived this turn cannot tap either (CR 302.6)"
+    );
+}
+
+#[test]
+fn issue_820_the_trashmaster_destroys_an_artifact_for_a_goblin_and_nothing_else() {
+    // `Sacrifice a Goblin: Destroy target artifact.` — the whole cost is the sacrifice.
+    // An authored `{1}{R}` beside it made the ability unofferable off an empty pool, which
+    // is a card that simply does less than it prints.
+    let db = db();
+    let mut state = main_phase(&db);
+    let trashmaster = place(&mut state, &db, "goblin_trashmaster", PlayerId(0));
+    place(&mut state, &db, "diamond_mare", PlayerId(1));
+    state.players[0].mana_pool = sage_engine::ManaPool::default();
+
+    assert!(
+        valid_actions(&state, &db).contains(&offer(trashmaster, 1)),
+        "a Goblin to spend is the only thing it asks for"
+    );
+}
+
+#[test]
+fn issue_820_the_harpy_costs_one_generic_and_gains_no_life() {
+    // `{1}, Sacrifice another creature: Put a +1/+1 counter on this creature.` — the cost
+    // was authored `{B}` and the ability carried a life gain the card does not print. One
+    // colorless in the pool proves the first; the life total proves the second.
+    let db = db();
+    let mut state = main_phase(&db);
+    let harpy = place(&mut state, &db, "ravenous_harpy", PlayerId(0));
+    let food = place(&mut state, &db, "centaur_courser", PlayerId(0));
+    state.players[0].mana_pool = sage_engine::ManaPool::default();
+    state.players[0].mana_pool.add_colorless(1);
+    let life = state.players[0].life;
+
+    assert!(
+        valid_actions(&state, &db).contains(&offer(harpy, 0)),
+        "one generic pays it — no black required"
+    );
+
+    let after = activate(&state, &db, harpy, 0, vec![CostPayment::Sacrifice(food)]);
+    assert_eq!(
+        after.players[0].life, life,
+        "and nothing on the card gains life"
+    );
+}
+
 // ----- what the cost accepts ------------------------------------------------
 
 #[test]
@@ -169,7 +281,6 @@ fn the_sacrifice_is_charged_and_the_ability_still_does_what_it_says() {
     let mut state = main_phase(&db);
     let harpy = place(&mut state, &db, "ravenous_harpy", PlayerId(0));
     let food = place(&mut state, &db, "centaur_courser", PlayerId(0));
-    let life = state.players[0].life;
 
     let after = activate(&state, &db, harpy, 0, vec![CostPayment::Sacrifice(food)]);
 
@@ -184,7 +295,6 @@ fn the_sacrifice_is_charged_and_the_ability_still_does_what_it_says() {
         1,
         "the ability resolved"
     );
-    assert_eq!(after.players[0].life, life + 1);
 }
 
 #[test]

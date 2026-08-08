@@ -271,6 +271,45 @@ fn issue_734_a_created_attacker_can_be_blocked() {
     );
 }
 
+/// The other half of the pair: `create a 2/2 white Knight creature token with vigilance
+/// **that's attacking**` — attacking and **untapped**, because that is all the card says
+/// (#819, #820). The Knight was authored tapped, which is a token that arrives already
+/// spent for a card whose whole point is that it does not tap.
+#[test]
+fn issue_820_the_sigiled_swords_knight_arrives_attacking_and_untapped() {
+    let db = db();
+    let mut state = main_phase();
+    let bearer = place(&mut state, &db, "onakke_ogre", PlayerId(0));
+    let sword = place(&mut state, &db, "sigiled_sword_of_valeron", PlayerId(0));
+    if let Some(perm) = state.battlefield.iter_mut().find(|perm| perm.id == sword) {
+        perm.attached_to = Some(bearer);
+    }
+
+    let state = declare_attack(&state, &db, bearer);
+    assert_eq!(
+        state.stack.len(),
+        1,
+        "the granted attack trigger is on the stack"
+    );
+    let state = resolve_stack(&state, &db);
+
+    let knights = tokens(&state);
+    assert_eq!(knights.len(), 1, "one Knight token");
+    let knight = knights[0];
+    assert_eq!(
+        attack_target_of(&state, knight.id),
+        attack_target_of(&state, bearer),
+        "it joins the attack the equipped creature declared"
+    );
+    assert!(
+        !knight.tapped,
+        "and it is untapped — the card says attacking, and nothing else"
+    );
+    let current = characteristics(&state, knight.id, &db);
+    assert_eq!((current.power, current.toughness), (Some(2), Some(2)));
+    assert!(current.keywords.contains(&Keyword::Vigilance));
+}
+
 // ----- what it is *not* -----------------------------------------------------
 
 /// CR 506.3c: a token put onto the battlefield attacking was never **declared** as an

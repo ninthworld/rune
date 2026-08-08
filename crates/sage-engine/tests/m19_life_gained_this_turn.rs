@@ -8,10 +8,11 @@
 //! still answers yes — and the events stop counting at the turn boundary, which only a
 //! walk that crosses one can show.
 //!
-//! Regal Bloodlord asks the plain question at its controller's end step; Resplendent
-//! Angel asks it with a threshold of five at every end step. Sovereign's Bite is how a
-//! seat takes life away from itself: it is printed as "target player loses 3 life and
-//! you gain 3 life", and nothing stops the caster from being the target.
+//! Regal Bloodlord and Resplendent Angel both ask at **every** end step, whoever's turn
+//! it is; the Angel's question carries a threshold of five and the Bloodlord's does not.
+//! Sovereign's Bite is how a seat takes life away from itself: it is printed as "target
+//! player loses 3 life and you gain 3 life", and nothing stops the caster from being the
+//! target.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use sage_engine::{
@@ -175,6 +176,51 @@ fn tokens(state: &GameState, db: &CardDatabase, name: &str) -> usize {
                     .is_some_and(|face| face.name() == name)
         })
         .count()
+}
+
+/// The trigger is `at the beginning of **each** end step` (#819, #820): it was authored
+/// as the controller's own, so an opponent's turn made no Bat however much life the
+/// Bloodlord's controller had gained in it. The Bat is a **1/1**, not the 2/2 it was
+/// authored as — a token's printed size is the only thing on it, so a wrong one is wrong
+/// everywhere it is read.
+#[test]
+fn issue_820_the_bloodlord_asks_at_every_end_step_and_makes_a_one_one_bat() {
+    let db = db();
+    let mut state = fresh_game(&db);
+    place(&mut state, &db, "regal_bloodlord", PlayerId(0));
+
+    // Turn 2 belongs to seat 1. Seat 0 holds the Bloodlord and gains the life on their
+    // opponent's turn, with an instant — which is the only turn this trigger's scope is
+    // observable on, since the life-gain window closes at the turn boundary.
+    let state = walk_until(&state, &db, |s| {
+        s.turn == 2 && s.step == Step::PrecombatMain
+    });
+    let state = cast_and_resolve(&state, &db, "revitalize", Vec::new());
+
+    let state = walk_until(&state, &db, |s| s.turn == 3 && s.step == Step::Upkeep);
+    assert_eq!(
+        tokens(&state, &db, "Bat"),
+        1,
+        "the opponent's end step is an end step, and the Bloodlord watched it"
+    );
+
+    let bat = state
+        .battlefield
+        .iter()
+        .find(|perm| {
+            perm.printed.card().is_none()
+                && perm
+                    .printed
+                    .face(&db)
+                    .is_some_and(|face| face.name() == "Bat")
+        })
+        .expect("the Bat is on the battlefield");
+    let face = bat.printed.face(&db).expect("a printed face");
+    assert_eq!(
+        (face.power(), face.toughness()),
+        (Some(1), Some(1)),
+        "a 1/1 black Bat creature token with flying"
+    );
 }
 
 /// A turn with no life gained in it makes no Bat: the trigger fires either way, and the

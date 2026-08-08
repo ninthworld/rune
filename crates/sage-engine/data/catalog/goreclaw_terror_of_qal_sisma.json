@@ -11,12 +11,12 @@
   "subtypes": [
     "Bear"
   ],
-  "mana_cost": "{4}{G}",
+  "mana_cost": "{3}{G}",
   "colors": [
     "green"
   ],
   "power": 4,
-  "toughness": 4,
+  "toughness": 3,
   "abilities": [
     {
       "type": "cost_modifier",

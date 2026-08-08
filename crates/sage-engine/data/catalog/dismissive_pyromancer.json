@@ -9,16 +9,20 @@
     "Human",
     "Wizard"
   ],
-  "mana_cost": "{2}{R}",
+  "mana_cost": "{1}{R}",
   "colors": [
     "red"
   ],
   "power": 2,
-  "toughness": 1,
+  "toughness": 2,
   "abilities": [
     {
       "type": "activated",
       "cost": [
+        {
+          "kind": "mana",
+          "mana": "{R}"
+        },
         {
           "kind": "tap"
         },
@@ -40,6 +44,9 @@
         {
           "kind": "mana",
           "mana": "{2}{R}"
+        },
+        {
+          "kind": "tap"
         },
         {
           "kind": "sacrifice_this"

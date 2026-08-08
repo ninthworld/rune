@@ -41,7 +41,7 @@
         {
           "kind": "gain_life",
           "player_ref": "controller",
-          "amount": 2
+          "amount": 3
         }
       ]
     }

@@ -7,10 +7,11 @@
   ],
   "subtypes": [
     "Vampire",
-    "Noble"
+    "Soldier"
   ],
-  "mana_cost": "{3}{B}{B}",
+  "mana_cost": "{3}{W}{B}",
   "colors": [
+    "white",
     "black"
   ],
   "power": 2,
@@ -24,7 +25,7 @@
       "event": {
         "beginning_of_step": {
           "step": "end_step",
-          "whose_turn": "yours"
+          "whose_turn": "each"
         }
       },
       "effects": [
@@ -48,8 +49,8 @@
                 "colors": [
                   "black"
                 ],
-                "power": 2,
-                "toughness": 2,
+                "power": 1,
+                "toughness": 1,
                 "keywords": [
                   "flying"
                 ]

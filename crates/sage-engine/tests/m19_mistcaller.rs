@@ -1,13 +1,15 @@
-//! Mistcaller (M19 #62): flash (CR 702.8), and a **one-shot replacement effect**
-//! (CR 614.1b) that exiles the next nontoken creature to enter the battlefield this turn
-//! without being cast.
+//! Mistcaller (M19 #62): a **one-shot replacement effect** (CR 614.1b) that exiles the
+//! next nontoken creature to enter the battlefield this turn without being cast.
+//!
+//! The card prints **no keyword** — it is a `{U}` 1/1 Merfolk Wizard whose whole text is
+//! the sacrifice ability. It is not a flash creature and never was; that is Hired Blade,
+//! whose file owns the keyword's tests.
 //!
 //! Every test drives the **real** [`apply_action`] pipeline over the bundled catalog.
-//! What is under test is not that the definition parses — it is that the card can be held
-//! up like an instant, that sacrificing it arms a replacement, that the replacement
-//! catches a reanimation and misses a cast, and that it is spent by the first entry it
-//! catches. Cards are named by their authored `functional_id`, never by an interned
-//! handle (ADR 0008 §3).
+//! What is under test is not that the definition parses — it is that sacrificing the card
+//! arms a replacement, that the replacement catches a reanimation and misses a cast, and
+//! that it is spent by the first entry it catches. Cards are named by their authored
+//! `functional_id`, never by an interned handle (ADR 0008 §3).
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use sage_engine::{
@@ -113,21 +115,24 @@ fn reanimate_skeleton(
     (apply_action(&state, &Action::PassPriority, db), card)
 }
 
-// ----- flash ----------------------------------------------------------------
+// ----- the printed card -----------------------------------------------------
 
 #[test]
-fn issue_731_mistcaller_is_castable_at_instant_speed_on_an_opponents_turn() {
-    // CR 702.8: flash lifts the sorcery-speed gate and nothing else. The comparison is a
-    // creature without it, in the same hand at the same moment.
+fn mistcaller_has_no_flash_and_is_bound_by_the_sorcery_speed_gate() {
+    // The card carries no keyword at all, so the ordinary CR 302.1 timing rule applies to
+    // it exactly as it does to any other creature spell. The comparison is a creature that
+    // *does* have flash, in the same hand at the same moment — the same shape Hired Blade's
+    // file uses, run the other way round, so "the gate is there" is distinguishable from
+    // "nothing was offered for some other reason".
     let db = db();
     let mut state = main_phase();
     // Player 1's turn, player 0 holding priority: sorcery speed is unavailable to them.
     state.active_player = PlayerId(1);
     state.priority = PlayerId(0);
     let mistcaller = state.new_instance(cid(&db, "mistcaller"));
-    let vanilla = state.new_instance(cid(&db, "tolarian_scholar"));
+    let flashed = state.new_instance(cid(&db, "hired_blade"));
     state.players[0].hand.push(mistcaller);
-    state.players[0].hand.push(vanilla);
+    state.players[0].hand.push(flashed);
 
     let offers = valid_actions(&state, &db);
     let castable = |card: CardInstance| {
@@ -139,10 +144,13 @@ fn issue_731_mistcaller_is_castable_at_instant_speed_on_an_opponents_turn() {
             payment: Vec::new(),
         })
     };
-    assert!(castable(mistcaller), "flash ignores the sorcery-speed gate");
     assert!(
-        !castable(vanilla),
-        "a creature without flash is still bound by it"
+        !castable(mistcaller),
+        "Mistcaller prints no flash, so it waits for its own main phase"
+    );
+    assert!(
+        castable(flashed),
+        "and a creature that does print it is offered at the same moment"
     );
 }
 
