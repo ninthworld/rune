@@ -254,31 +254,6 @@ pub enum DerivedAmount {
         of: HalvedTotal,
     },
 }
-
-/// The class of permanents a **mass destruction** puts into their owners' graveyards
-/// (CR 701.7) — the `all creatures` and the `all artifacts and enchantments` of a
-/// sweeper's two modes.
-///
-/// Its own vocabulary rather than a widening of [`MassAffects`], which every existing
-/// member of is a class of *creatures* feeding a pump or a keyword grant: a
-/// non-creature scope there would make "artifacts you control get +1/+1" an authorable
-/// sentence that means nothing. Closed and named, for [`MassAffects`]'s reason — a
-/// disjunction of two card types is not a product of independent filters and
-/// [`PermanentCount`] could not say it — and it grows by adding variants.
-///
-/// The affected set is enumerated **on resolution** (CR 611.2c), so a permanent that
-/// arrives afterwards survives.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
-#[serde(tag = "scope", rename_all = "snake_case")]
-pub enum DestroyAffects {
-    /// Every creature on the battlefield, whoever controls it.
-    EachCreature,
-    /// Every artifact and every enchantment on the battlefield, whoever controls it. One
-    /// class rather than two, because the printed sentence is one destruction and a
-    /// permanent that is both is destroyed once.
-    EachArtifactOrEnchantment,
-}
-
 /// A total a [`DerivedAmount::HalfRoundedUp`] takes half of, asked about the player the
 /// effect names.
 ///
@@ -346,7 +321,7 @@ pub struct GraveyardCount {
 /// A class of permanents to **count**, relative to an effect's controller.
 ///
 /// Deliberately a small product of three independent filters rather than a closed list
-/// of named classes like [`MassAffects`]: a count is asked about an open-ended variety
+/// of named classes: a count is asked about an open-ended variety
 /// of things ("artifacts you control", "Zombies you control"), and enumerating each as
 /// its own variant would grow the vocabulary once per card. Nothing here selects
 /// permanents to *modify*, so the `except_this` and creature-only assumptions the
@@ -602,105 +577,6 @@ pub enum CardFilter {
         color: Color,
     },
 }
-
-/// The class of permanents a **mass, non-targeting** effect ([`Effect::PumpAll`],
-/// [`Effect::GrantKeywordAll`]) applies to.
-///
-/// Deliberately separate from [`StaticAffects`], which selects for a *continuous*
-/// ability and carries an `except_this` that a one-shot spell has no "this" for — but
-/// authored in the same internally tagged shape, so the two selectors read alike:
-/// `{"kind":"pump_all","affects":{"scope":"creatures_you_control"},"power":2,"toughness":1}`.
-/// It grows by adding variants (attacking creatures, tapped creatures, …) as cards
-/// need them.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
-#[serde(tag = "scope", rename_all = "snake_case")]
-pub enum MassAffects {
-    /// Every creature the effect's controller controls at the moment it resolves.
-    CreaturesYouControl {
-        /// Restrict to creatures whose subtypes include this one — the `Dragons` of
-        /// "Dragons you control get +1/+0 until end of turn". Absent means every
-        /// creature its controller controls.
-        #[serde(default)]
-        subtype: Option<String>,
-        /// Restrict to creatures whose power is at least this — the "each creature you
-        /// control **with power 4 or greater**" of an attack trigger. Absent means
-        /// every power, including a creature that has none.
-        ///
-        /// Read through the **computed** characteristics (CR 613.1f), like the
-        /// identically-named field on [`PermanentCount`] and for the same reason: that
-        /// is the only reading a printed card means, so a creature pumped to 4 is in the
-        /// class and one shrunk out of it is not. Asking for a computed power here is
-        /// safe where it is not in a static ability's condition — a mass effect is
-        /// enumerated **during a resolution** (CR 611.2c), from outside the layer
-        /// system, so there is no computation to recurse into.
-        #[serde(default)]
-        min_power: Option<i32>,
-        /// Restrict to creatures whose power is **strictly less than the source's** — the
-        /// "creatures you control with power less than Lena's power" of a sacrifice that
-        /// protects the small.
-        ///
-        /// A bound relative to another permanent rather than to a printed number, which is
-        /// why it is its own flag beside [`min_power`](Self::CreaturesYouControl::min_power)
-        /// rather than a value: the number it compares against is not knowable when the card
-        /// is authored, and it changes with the source.
-        ///
-        /// Both sides are read through the **computed** characteristics at the moment of
-        /// resolution (CR 613.1f / CR 611.2c), so a source pumped before the ability resolves
-        /// protects more, and a creature pumped past it drops out. Safe for the same reason
-        /// `min_power` is: a mass effect is enumerated from inside a resolution, outside the
-        /// layer system, so there is no computation to recurse into.
-        ///
-        /// A source that has **left** — sacrificed to its own cost, which is exactly what
-        /// Lena does — takes its power with it, and the class is then empty rather than
-        /// everything: "less than Lena's power" with no Lena is not a bound that lets every
-        /// creature in. The caller reads the source's power *before* paying the cost and
-        /// passes it in.
-        #[serde(default)]
-        below_source_power: bool,
-    },
-    /// Every creature on the battlefield at the moment the effect resolves,
-    /// whoever controls it — the symmetric class a sweeper names.
-    EachCreature,
-    /// Every creature controlled by an opponent of the effect's controller, at the
-    /// moment it resolves. The mirror of [`Self::CreaturesYouControl`], and the
-    /// reason both are relative to the controller rather than to a seat: one
-    /// authored card must mean "you" from either side of the table.
-    CreaturesYourOpponentsControl,
-    /// Every **creature and planeswalker** an opponent of the effect's controller
-    /// controls — the wider class a sweeper that also burns walkers names.
-    ///
-    /// A class rather than two, because the card prints it as one breath: `deals 4 damage
-    /// to each opponent and each creature and planeswalker they control`. Damage to a
-    /// planeswalker removes loyalty (CR 120.3c) at the same seam damage to a creature is
-    /// marked, so nothing about the verb has to know which it hit.
-    CreaturesAndPlaneswalkersYourOpponentsControl,
-    /// Every creature controlled by the player this resolution's most recent targeted
-    /// effect named — the `each creature **that player** controls` of a spell that hits a
-    /// player and their board in one sentence.
-    ///
-    /// The class counterpart of [`PlayerRef::ThatPlayer`], reading the same fact for the
-    /// same reason: the choice belongs to the sentence before it.
-    CreaturesThatPlayerControls,
-    /// Every creature on the battlefield that does not currently have flying, whoever
-    /// controls it — the scope of an effect that clears the ground.
-    ///
-    /// Flying is read through the computed keywords (CR 613.1f), so a creature that was
-    /// *granted* flying is outside the class exactly as a printed flyer is. The class is
-    /// still evaluated once, on resolution (CR 611.2c), like every other mass effect: a
-    /// creature that loses flying later in the turn does not retroactively join it.
-    CreaturesWithoutFlying,
-    /// Every creature currently **attacking**, whoever controls it — the class a combat
-    /// pump names (`Attacking creatures get +2/+0 until end of turn.`).
-    ///
-    /// Read off [`Permanent::attacking`](crate::Permanent), so it is exactly the set the
-    /// declare-attackers step produced, and it is locked in on resolution like every
-    /// other mass class (CR 611.2c): a creature removed from combat afterwards keeps the
-    /// pump, and one that was never in it never had one. The class is empty outside
-    /// combat, which makes such a spell a legal but pointless main-phase cast rather
-    /// than an uncastable one.
-    AttackingCreatures,
-}
-
 /// **Who or what** an [`Effect::DealDamage`] deals its damage to (CR 120.3).
 ///
 /// The same design [`PlayerRef`] states for life change: the *subject* declares
@@ -736,7 +612,7 @@ pub enum DamageSubject {
     /// A class of **permanents**, named by the same selector mass pump takes. Never
     /// a target, and so never a fizzle.
     #[serde(rename = "affects")]
-    Permanents(MassAffects),
+    Permanents(PermanentFilter),
 }
 
 impl DamageSubject {

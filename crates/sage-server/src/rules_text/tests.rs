@@ -270,16 +270,16 @@ fn issue_611_damage_dealt_to_a_class_reads_as_a_sentence() {
         r#"[
             {"schema_version":1,"functional_id":"test_pyroclasm","name":"Test Pyroclasm",
              "types":["sorcery"],"mana_cost":"{1}{R}","colors":["red"],
-             "spell_effects":[{"kind":"deal_damage","affects":{"scope":"each_creature"},"amount":2}]},
+             "spell_effects":[{"kind":"deal_damage","affects":{"scope":"any","card_type":"creature"},"amount":2}]},
             {"schema_version":1,"functional_id":"test_slagstorm","name":"Test Slagstorm",
              "types":["sorcery"],"mana_cost":"{2}{R}","colors":["red"],
-             "spell_effects":[{"kind":"deal_damage","affects":{"scope":"creatures_your_opponents_control"},"amount":3}]},
+             "spell_effects":[{"kind":"deal_damage","affects":{"scope":"opponents_control","card_type":"creature"},"amount":3}]},
             {"schema_version":1,"functional_id":"test_recoil","name":"Test Recoil",
              "types":["sorcery"],"mana_cost":"{R}","colors":["red"],
              "spell_effects":[{"kind":"deal_damage","player_ref":"controller","amount":1}]},
             {"schema_version":1,"functional_id":"test_rally","name":"Test Rally",
              "types":["sorcery"],"mana_cost":"{1}{G}","colors":["green"],
-             "spell_effects":[{"kind":"pump_all","affects":{"scope":"each_creature"},"power":1,"toughness":1}]}
+             "spell_effects":[{"kind":"pump_all","affects":{"scope":"any","card_type":"creature"},"power":1,"toughness":1}]}
         ]"#,
     )
     .unwrap();

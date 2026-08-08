@@ -13,7 +13,9 @@
     {
       "kind": "pump_all",
       "affects": {
-        "scope": "attacking_creatures"
+        "scope": "any",
+        "card_type": "creature",
+        "attacking": true
       },
       "power": 2,
       "toughness": 0

@@ -17,7 +17,9 @@
     {
       "kind": "restrict_all",
       "affects": {
-        "scope": "creatures_without_flying"
+        "scope": "any",
+        "card_type": "creature",
+        "without_keyword": "flying"
       },
       "restriction": "cant_block"
     }

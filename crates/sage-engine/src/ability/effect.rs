@@ -90,7 +90,7 @@ pub enum Effect {
     /// The subject is a [`PlayerRef`] exactly as [`Effect::Mill`]'s is, and decides on
     /// its own whether a target is chosen: `target_player` fills a slot and can fizzle,
     /// `each_opponent` fills none and cannot. It is deliberately **not** a
-    /// [`MassAffects`] class: every one of those is read relative to the effect's
+    /// [`PermanentFilter`] class: every one of those is read relative to the effect's
     /// controller and none of them targets, so "creatures *that player* controls" is
     /// unsayable in that vocabulary and sayable in this one without inventing anything.
     ///
@@ -174,7 +174,7 @@ pub enum Effect {
     /// Indestructible and regeneration are unmodeled, so nothing survives this.
     DestroyAll {
         /// The class of permanents destroyed.
-        affects: DestroyAffects,
+        affects: PermanentFilter,
     },
     /// Exile the single permanent this effect targets (CR 406.2 / CR 701.19): it is
     /// moved from the battlefield to its owner's exile zone through the one
@@ -472,7 +472,7 @@ pub enum Effect {
     /// difference between a one-shot pump and an anthem.
     PumpAll {
         /// The class of permanents modified.
-        affects: MassAffects,
+        affects: PermanentFilter,
         /// The signed amount added to each affected permanent's power.
         power: i32,
         /// The signed amount added to each affected permanent's toughness.
@@ -484,7 +484,7 @@ pub enum Effect {
     /// affected set in on resolution exactly as [`Effect::PumpAll`] does.
     GrantKeywordAll {
         /// The class of permanents granted the keyword.
-        affects: MassAffects,
+        affects: PermanentFilter,
         /// The keyword ability granted until end of turn.
         keyword: Keyword,
     },
@@ -532,7 +532,7 @@ pub enum Effect {
     /// on resolution exactly as [`Effect::PumpAll`] does (CR 611.2c).
     RestrictAll {
         /// The class of permanents restricted.
-        affects: MassAffects,
+        affects: PermanentFilter,
         /// The restriction imposed until end of turn.
         restriction: CombatRestriction,
     },

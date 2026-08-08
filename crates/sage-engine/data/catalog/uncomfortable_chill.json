@@ -13,7 +13,8 @@
     {
       "kind": "pump_all",
       "affects": {
-        "scope": "creatures_your_opponents_control"
+        "scope": "opponents_control",
+        "card_type": "creature"
       },
       "power": -2,
       "toughness": 0

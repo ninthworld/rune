@@ -18,7 +18,8 @@
     {
       "kind": "deal_damage",
       "affects": {
-        "scope": "creatures_that_player_controls"
+        "scope": "that_player",
+        "card_type": "creature"
       },
       "amount": 1
     }

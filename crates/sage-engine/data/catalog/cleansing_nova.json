@@ -15,7 +15,8 @@
         {
           "kind": "destroy_all",
           "affects": {
-            "scope": "each_creature"
+            "scope": "any",
+            "card_type": "creature"
           }
         }
       ]
@@ -25,7 +26,11 @@
         {
           "kind": "destroy_all",
           "affects": {
-            "scope": "each_artifact_or_enchantment"
+            "scope": "any",
+            "card_type": [
+              "artifact",
+              "enchantment"
+            ]
           }
         }
       ]

@@ -77,7 +77,7 @@ pub enum StaticAffects {
     ///
     /// Like every other selector it is **re-derived on every read**, which is the entire
     /// distinction between a static ability and the resolution-time
-    /// [`MassAffects`](crate::MassAffects) class a sweeper names: a land that arrives
+    /// [`PermanentFilter`](crate::PermanentFilter) class a sweeper names: a land that arrives
     /// under an opponent after the source did is affected the instant it arrives, one
     /// that changes hands leaves the class at CR 613 layer 2, and everything stops the
     /// instant the source leaves the battlefield.

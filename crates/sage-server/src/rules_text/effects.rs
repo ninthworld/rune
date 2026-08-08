@@ -69,7 +69,9 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         // the creature it is already on, and the card prints a pronoun rather than a
         // second choice.
         Effect::DestroyAttached => "destroy it".to_string(),
-        Effect::DestroyAll { affects } => format!("destroy all {}", destroy_class(*affects)),
+        Effect::DestroyAll { affects } => {
+            format!("destroy all {}", mass_subject(source, affects))
+        }
         // The derived-amount damage verb, in the two shapes English gives it. An
         // announced X reads the way a printed card writes it: the letter itself, in
         // quantity position, not the number it turned out to be — what a *particular*
@@ -1251,14 +1253,6 @@ fn amount_noun(amount: &DerivedAmount, subject: PlayerRef) -> String {
     }
 }
 
-/// The class a mass destruction names, as the plural noun after "destroy all".
-fn destroy_class(affects: DestroyAffects) -> &'static str {
-    match affects {
-        DestroyAffects::EachCreature => "creatures",
-        DestroyAffects::EachArtifactOrEnchantment => "artifacts and enchantments",
-    }
-}
-
 /// The subject of a relative clause hanging off a noun — "the creatures **they**
 /// control". The third of the player-reference renderings beside [`subject_pronoun`] and
 /// [`possessive_pronoun`], and separate for the same reason those two are: English wants
@@ -1544,100 +1538,112 @@ fn possessive_subject(player_ref: PlayerRef) -> &'static str {
     }
 }
 
-/// The class a mass, non-targeting effect names, as the subject of its sentence. A
-/// subtype replaces the noun outright — "Dragons you control", never "Dragon creatures
-/// you control", which is not how a card is written.
-fn mass_subject(source: &str, affects: &MassAffects) -> String {
-    match affects {
-        MassAffects::CreaturesYouControl {
-            subtype,
-            min_power,
-            below_source_power,
-        } => {
-            let noun = match subtype {
-                Some(subtype) => format!("{subtype}s"),
-                None => "creatures".to_string(),
-            };
-            format!(
-                "{noun} you control{}{}",
-                mass_power_clause(*min_power),
-                relative_power_clause(source, *below_source_power)
-            )
-        }
-        MassAffects::EachCreature => "creatures".to_string(),
-        MassAffects::CreaturesYourOpponentsControl => {
-            "creatures your opponents control".to_string()
-        }
-        MassAffects::CreaturesThatPlayerControls => "creatures that player controls".to_string(),
-        MassAffects::CreaturesAndPlaneswalkersYourOpponentsControl => {
-            "creatures and planeswalkers your opponents control".to_string()
-        }
-        MassAffects::CreaturesWithoutFlying => "creatures without flying".to_string(),
-        MassAffects::AttackingCreatures => "attacking creatures".to_string(),
-    }
-}
-
-/// The same class as the **object** of a sentence — what damage is dealt *to*.
+/// The class a [`PermanentFilter`] names, as a noun phrase.
 ///
-/// Separate from [`mass_subject`] because English is: a class is a bare plural when it
-/// acts ("creatures you control get +2/+1") and a distributive "each" when it is acted
-/// on ("deals 2 damage to each creature you control"). One function per position keeps
-/// both exhaustive, so a new [`MassAffects`] variant must be given words for each.
-fn mass_recipient(source: &str, affects: &MassAffects) -> String {
-    match affects {
-        MassAffects::CreaturesYouControl {
-            subtype,
-            min_power,
-            below_source_power,
-        } => {
-            let noun = match subtype {
-                Some(subtype) => subtype.clone(),
-                None => "creature".to_string(),
-            };
-            format!(
-                "each {noun} you control{}{}",
-                mass_power_clause(*min_power),
-                relative_power_clause(source, *below_source_power)
-            )
-        }
-        MassAffects::EachCreature => "each creature".to_string(),
-        MassAffects::CreaturesYourOpponentsControl => {
-            "each creature your opponents control".to_string()
-        }
-        MassAffects::CreaturesThatPlayerControls => {
-            "each creature that player controls".to_string()
-        }
-        // The card prints this one as a single breath about the seat and its board —
-        // "each opponent and each creature and planeswalker they control" — so the
-        // possessive is *they*, not *your opponents*, wherever it follows that seat.
-        MassAffects::CreaturesAndPlaneswalkersYourOpponentsControl => {
-            "each creature and planeswalker they control".to_string()
-        }
-        MassAffects::CreaturesWithoutFlying => "each creature without flying".to_string(),
-        MassAffects::AttackingCreatures => "each attacking creature".to_string(),
+/// One generator for a vocabulary that used to be four enums of named classes (issue
+/// #824), and the reason it is one: a class is a product of axes, and English composes
+/// those axes in a fixed order — `other attacking blue Dragons you control with power 4 or
+/// greater`. A phrase per pairing would have to be written once per card.
+///
+/// `plural` picks the position. A class is a bare plural when it *acts* ("creatures you
+/// control get +2/+1") and a distributive singular when it is *acted on* ("deals 2 damage
+/// to each creature you control"), which is a fact about English rather than about the
+/// class, so both come out of one body.
+///
+/// It does **not** try to reproduce printed wording. A card that prints "each creature and
+/// planeswalker they control" after naming its opponents gets "…your opponents control"
+/// here: the pronoun is a discourse feature of the sentence before it, not a property of
+/// the class, and this formatter states behaviour rather than reproducing Oracle text
+/// (`AGENTS.md`, Legal Considerations).
+fn class_noun(source: &str, filter: &PermanentFilter, plural: bool) -> String {
+    let mut words: Vec<String> = Vec::new();
+    // "Other …" leads, because that is where a card puts it.
+    if filter.except_this {
+        words.push("other".to_string());
     }
+    if filter.attacking {
+        words.push("attacking".to_string());
+    }
+    if let Some(color) = filter.color {
+        words.push(color.word().to_string());
+    }
+    // A subtype **replaces** the type noun — "Dragons you control", never "Dragon
+    // creatures you control", which is not how a card is written.
+    let mut nouns: Vec<String> = match (&filter.subtype, filter.card_type.as_slice()) {
+        (Some(subtype), _) => vec![subtype.clone()],
+        (None, []) => vec!["permanent".to_string()],
+        (None, types) => types
+            .iter()
+            .map(|&kind| card_type_word(kind).to_string())
+            .collect(),
+    };
+    // "Nontoken" is an adjective on the class; "token" is a noun the class qualifies —
+    // "creature tokens" — so the two halves of one field land in different places.
+    match filter.token {
+        Some(false) => words.push("nontoken".to_string()),
+        Some(true) => nouns = vec![format!("{} token", list_words_owned(&nouns))],
+        None => {}
+    }
+    // Every noun in a disjunction agrees with the number, not just the last: "artifacts
+    // and enchantments", never "artifact and enchantments".
+    if plural {
+        for noun in &mut nouns {
+            noun.push('s');
+        }
+    }
+    words.push(list_words_owned(&nouns));
+    let mut phrase = words.join(" ");
+    phrase.push_str(match filter.scope {
+        ControllerScope::YouControl => " you control",
+        ControllerScope::OpponentsControl => " your opponents control",
+        ControllerScope::ThatPlayer => " that player controls",
+        ControllerScope::Any => "",
+    });
+    // The qualifiers a card prints after the class, in the order it prints them.
+    if let Some(keyword) = filter.keyword {
+        phrase.push_str(&format!(" with {}", keyword_word(keyword)));
+    }
+    if let Some(keyword) = filter.without_keyword {
+        phrase.push_str(&format!(" without {}", keyword_word(keyword)));
+    }
+    if let Some(min) = filter.min_power {
+        phrase.push_str(&format!(" with power {min} or greater"));
+    }
+    if let Some(max) = filter.max_toughness {
+        phrase.push_str(&format!(" with toughness {max} or less"));
+    }
+    // The source is named, because a card naming itself in its own text uses its name
+    // (CR 201.4) — and the reader needs to know which creature the comparison is against.
+    if filter.below_source_power {
+        phrase.push_str(&format!(" with power less than {source}'s power"));
+    }
+    if let Some(counter) = filter.with_counter {
+        phrase.push_str(&format!(
+            " with a {} counter on {}",
+            crate::rules_text::counter_symbol(counter),
+            if plural { "them" } else { "it" }
+        ));
+    }
+    if filter.with_the_named_card {
+        phrase.push_str(" with the chosen name");
+    }
+    phrase
 }
 
-/// The " with power less than Lena's power" that trails a mass class when the bound is the
-/// source's own power rather than a printed number. The source is named, because a card
-/// naming itself in its own text uses its name (CR 201.4) — and the reader needs to know
-/// which creature the comparison is against.
-fn relative_power_clause(source: &str, below_source_power: bool) -> String {
-    if below_source_power {
-        format!(" with power less than {source}'s power")
-    } else {
-        String::new()
-    }
+/// [`list_words`] over owned strings — the class nouns are built rather than borrowed.
+fn list_words_owned(words: &[String]) -> String {
+    list_words(&words.iter().map(String::as_str).collect::<Vec<_>>())
 }
 
-/// The " with power 4 or greater" that trails a mass class, where a card prints it, or
-/// nothing when the class names no bound. Written once so the subject and the recipient
-/// phrasings cannot drift.
-fn mass_power_clause(min_power: Option<i32>) -> String {
-    match min_power {
-        None => String::new(),
-        Some(min) => format!(" with power {min} or greater"),
-    }
+/// The class as the **subject** of its sentence — a bare plural.
+fn mass_subject(source: &str, affects: &PermanentFilter) -> String {
+    class_noun(source, affects, true)
+}
+
+/// The same class as the **object** of a sentence — what damage is dealt *to*, or what a
+/// sweeper destroys. Distributive: "each creature you control".
+fn mass_recipient(source: &str, affects: &PermanentFilter) -> String {
+    format!("each {}", class_noun(source, affects, false))
 }
 
 /// Who or what damage is dealt to (CR 120.3), as a noun phrase.
