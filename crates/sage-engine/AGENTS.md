@@ -19,6 +19,13 @@
   a functional definition per card under a stable `functional_id`, no presentation
   assets (the schema rejects them structurally), and code-defined behavior only via the
   declared `scripted` escape hatch.
+- **A definition's printed characteristics are checked against the printed card, not
+  against the tests written over it.** `build.rs` validates *shape*; the accuracy gate is
+  `tests/printed_characteristics.rs`, reading a fixture transcribed from the set by
+  `scripts/printed-characteristics.py`. That script never reads `data/catalog/`, and it
+  must not: a fixture regenerated from the thing it checks is a gate that passes forever
+  and proves nothing. Rules text stays out of it — the project ships none, and a test
+  fixture is not an exception.
 - **Never write a `CardId` down.** `build.rs` assembles `data/catalog/` + `data/sets/`
   at compile time and interns `CardId(0..n)` from the sorted `FunctionalId`s (ADR 0008
   §3), so authoring one card renumbers its neighbours. Name a card by its

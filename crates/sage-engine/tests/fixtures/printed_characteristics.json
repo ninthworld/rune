@@ -1,0 +1,4336 @@
+[
+  {
+    "functional_id": "abnormal_endurance",
+    "name": "Abnormal Endurance",
+    "mana_cost": "{1}{B}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "black"
+    ]
+  },
+  {
+    "functional_id": "act_of_treason",
+    "name": "Act of Treason",
+    "mana_cost": "{2}{R}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "aegis_of_the_heavens",
+    "name": "Aegis of the Heavens",
+    "mana_cost": "{1}{W}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "white"
+    ]
+  },
+  {
+    "functional_id": "aerial_engineer",
+    "name": "Aerial Engineer",
+    "mana_cost": "{2}{W}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white",
+      "blue"
+    ],
+    "subtypes": [
+      "Human",
+      "Artificer"
+    ],
+    "power": "2",
+    "toughness": "4"
+  },
+  {
+    "functional_id": "aether_tunnel",
+    "name": "Aether Tunnel",
+    "mana_cost": "{1}{U}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Aura"
+    ]
+  },
+  {
+    "functional_id": "aethershield_artificer",
+    "name": "Aethershield Artificer",
+    "mana_cost": "{3}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Dwarf",
+      "Artificer"
+    ],
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "aggressive_mammoth",
+    "name": "Aggressive Mammoth",
+    "mana_cost": "{3}{G}{G}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Elephant"
+    ],
+    "power": "8",
+    "toughness": "8"
+  },
+  {
+    "functional_id": "air_elemental",
+    "name": "Air Elemental",
+    "mana_cost": "{3}{U}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Elemental"
+    ],
+    "power": "4",
+    "toughness": "4"
+  },
+  {
+    "functional_id": "ajani_adversary_of_tyrants",
+    "name": "Ajani, Adversary of Tyrants",
+    "mana_cost": "{2}{W}{W}",
+    "types": [
+      "planeswalker"
+    ],
+    "colors": [
+      "white"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Ajani"
+    ],
+    "loyalty": "4"
+  },
+  {
+    "functional_id": "ajani_s_influence",
+    "name": "Ajani's Influence",
+    "mana_cost": "{2}{W}{W}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "white"
+    ]
+  },
+  {
+    "functional_id": "ajani_s_last_stand",
+    "name": "Ajani's Last Stand",
+    "mana_cost": "{2}{W}{W}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "white"
+    ]
+  },
+  {
+    "functional_id": "ajani_s_pridemate",
+    "name": "Ajani's Pridemate",
+    "mana_cost": "{1}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Cat",
+      "Soldier"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "ajani_s_welcome",
+    "name": "Ajani's Welcome",
+    "mana_cost": "{W}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "white"
+    ]
+  },
+  {
+    "functional_id": "ajani_wise_counselor",
+    "name": "Ajani, Wise Counselor",
+    "mana_cost": "{3}{W}{W}",
+    "types": [
+      "planeswalker"
+    ],
+    "colors": [
+      "white"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Ajani"
+    ],
+    "loyalty": "5"
+  },
+  {
+    "functional_id": "alpine_moon",
+    "name": "Alpine Moon",
+    "mana_cost": "{R}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "amulet_of_safekeeping",
+    "name": "Amulet of Safekeeping",
+    "mana_cost": "{2}",
+    "types": [
+      "artifact"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "angel_of_the_dawn",
+    "name": "Angel of the Dawn",
+    "mana_cost": "{4}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Angel"
+    ],
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "anticipate",
+    "name": "Anticipate",
+    "mana_cost": "{1}{U}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "blue"
+    ]
+  },
+  {
+    "functional_id": "apex_of_power",
+    "name": "Apex of Power",
+    "mana_cost": "{7}{R}{R}{R}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "arcades_the_strategist",
+    "name": "Arcades, the Strategist",
+    "mana_cost": "{1}{G}{W}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white",
+      "blue",
+      "green"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Elder",
+      "Dragon"
+    ],
+    "power": "3",
+    "toughness": "5"
+  },
+  {
+    "functional_id": "arcane_encyclopedia",
+    "name": "Arcane Encyclopedia",
+    "mana_cost": "{3}",
+    "types": [
+      "artifact"
+    ],
+    "colors": [],
+    "subtypes": [
+      "Book"
+    ]
+  },
+  {
+    "functional_id": "arisen_gorgon",
+    "name": "Arisen Gorgon",
+    "mana_cost": "{1}{B}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Zombie",
+      "Gorgon"
+    ],
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "aven_wind_mage",
+    "name": "Aven Wind Mage",
+    "mana_cost": "{2}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Bird",
+      "Wizard"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "aviation_pioneer",
+    "name": "Aviation Pioneer",
+    "mana_cost": "{2}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Human",
+      "Artificer"
+    ],
+    "power": "1",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "banefire",
+    "name": "Banefire",
+    "mana_cost": "{X}{R}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "befuddle",
+    "name": "Befuddle",
+    "mana_cost": "{2}{U}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "blue"
+    ]
+  },
+  {
+    "functional_id": "blanchwood_armor",
+    "name": "Blanchwood Armor",
+    "mana_cost": "{2}{G}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Aura"
+    ]
+  },
+  {
+    "functional_id": "blood_divination",
+    "name": "Blood Divination",
+    "mana_cost": "{3}{B}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "black"
+    ]
+  },
+  {
+    "functional_id": "boggart_brute",
+    "name": "Boggart Brute",
+    "mana_cost": "{2}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Goblin",
+      "Warrior"
+    ],
+    "power": "3",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "bogstomper",
+    "name": "Bogstomper",
+    "mana_cost": "{4}{B}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Beast"
+    ],
+    "power": "6",
+    "toughness": "5"
+  },
+  {
+    "functional_id": "bone_dragon",
+    "name": "Bone Dragon",
+    "mana_cost": "{3}{B}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Dragon",
+      "Skeleton"
+    ],
+    "power": "5",
+    "toughness": "4"
+  },
+  {
+    "functional_id": "bone_to_ash",
+    "name": "Bone to Ash",
+    "mana_cost": "{2}{U}{U}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "blue"
+    ]
+  },
+  {
+    "functional_id": "brawl_bash_ogre",
+    "name": "Brawl-Bash Ogre",
+    "mana_cost": "{2}{B}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black",
+      "red"
+    ],
+    "subtypes": [
+      "Ogre",
+      "Warrior"
+    ],
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "bristling_boar",
+    "name": "Bristling Boar",
+    "mana_cost": "{3}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Boar"
+    ],
+    "power": "4",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "cancel",
+    "name": "Cancel",
+    "mana_cost": "{1}{U}{U}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "blue"
+    ]
+  },
+  {
+    "functional_id": "catalyst_elemental",
+    "name": "Catalyst Elemental",
+    "mana_cost": "{2}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Elemental"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "cavalry_drillmaster",
+    "name": "Cavalry Drillmaster",
+    "mana_cost": "{1}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Human",
+      "Knight"
+    ],
+    "power": "2",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "centaur_courser",
+    "name": "Centaur Courser",
+    "mana_cost": "{2}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Centaur",
+      "Warrior"
+    ],
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "chaos_wand",
+    "name": "Chaos Wand",
+    "mana_cost": "{3}",
+    "types": [
+      "artifact"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "child_of_night",
+    "name": "Child of Night",
+    "mana_cost": "{1}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Vampire"
+    ],
+    "power": "2",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "chromium_the_mutable",
+    "name": "Chromium, the Mutable",
+    "mana_cost": "{4}{W}{U}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white",
+      "blue",
+      "black"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Elder",
+      "Dragon"
+    ],
+    "power": "7",
+    "toughness": "7"
+  },
+  {
+    "functional_id": "cinder_barrens",
+    "name": "Cinder Barrens",
+    "mana_cost": "",
+    "types": [
+      "land"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "cleansing_nova",
+    "name": "Cleansing Nova",
+    "mana_cost": "{3}{W}{W}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "white"
+    ]
+  },
+  {
+    "functional_id": "colossal_dreadmaw",
+    "name": "Colossal Dreadmaw",
+    "mana_cost": "{4}{G}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Dinosaur"
+    ],
+    "power": "6",
+    "toughness": "6"
+  },
+  {
+    "functional_id": "colossal_majesty",
+    "name": "Colossal Majesty",
+    "mana_cost": "{2}{G}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "green"
+    ]
+  },
+  {
+    "functional_id": "court_cleric",
+    "name": "Court Cleric",
+    "mana_cost": "{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Human",
+      "Cleric"
+    ],
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "crash_through",
+    "name": "Crash Through",
+    "mana_cost": "{R}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "crucible_of_worlds",
+    "name": "Crucible of Worlds",
+    "mana_cost": "{3}",
+    "types": [
+      "artifact"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "daggerback_basilisk",
+    "name": "Daggerback Basilisk",
+    "mana_cost": "{2}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Basilisk"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "dark_dweller_oracle",
+    "name": "Dark-Dweller Oracle",
+    "mana_cost": "{1}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Goblin",
+      "Shaman"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "daybreak_chaplain",
+    "name": "Daybreak Chaplain",
+    "mana_cost": "{1}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Human",
+      "Cleric"
+    ],
+    "power": "1",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "death_baron",
+    "name": "Death Baron",
+    "mana_cost": "{1}{B}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Zombie",
+      "Wizard"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "declare_dominance",
+    "name": "Declare Dominance",
+    "mana_cost": "{3}{G}{G}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "green"
+    ]
+  },
+  {
+    "functional_id": "demanding_dragon",
+    "name": "Demanding Dragon",
+    "mana_cost": "{3}{R}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Dragon"
+    ],
+    "power": "5",
+    "toughness": "5"
+  },
+  {
+    "functional_id": "demon_of_catastrophes",
+    "name": "Demon of Catastrophes",
+    "mana_cost": "{2}{B}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Demon"
+    ],
+    "power": "6",
+    "toughness": "6"
+  },
+  {
+    "functional_id": "departed_deckhand",
+    "name": "Departed Deckhand",
+    "mana_cost": "{1}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Spirit",
+      "Pirate"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "desecrated_tomb",
+    "name": "Desecrated Tomb",
+    "mana_cost": "{3}",
+    "types": [
+      "artifact"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "detection_tower",
+    "name": "Detection Tower",
+    "mana_cost": "",
+    "types": [
+      "land"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "diamond_mare",
+    "name": "Diamond Mare",
+    "mana_cost": "{2}",
+    "types": [
+      "artifact",
+      "creature"
+    ],
+    "colors": [],
+    "subtypes": [
+      "Horse"
+    ],
+    "power": "1",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "diregraf_ghoul",
+    "name": "Diregraf Ghoul",
+    "mana_cost": "{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Zombie"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "dismissive_pyromancer",
+    "name": "Dismissive Pyromancer",
+    "mana_cost": "{1}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Human",
+      "Wizard"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "disperse",
+    "name": "Disperse",
+    "mana_cost": "{1}{U}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "blue"
+    ]
+  },
+  {
+    "functional_id": "divination",
+    "name": "Divination",
+    "mana_cost": "{2}{U}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "blue"
+    ]
+  },
+  {
+    "functional_id": "djinn_of_wishes",
+    "name": "Djinn of Wishes",
+    "mana_cost": "{3}{U}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Djinn"
+    ],
+    "power": "4",
+    "toughness": "4"
+  },
+  {
+    "functional_id": "doomed_dissenter",
+    "name": "Doomed Dissenter",
+    "mana_cost": "{1}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Human"
+    ],
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "doublecast",
+    "name": "Doublecast",
+    "mana_cost": "{R}{R}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "draconic_disciple",
+    "name": "Draconic Disciple",
+    "mana_cost": "{1}{R}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red",
+      "green"
+    ],
+    "subtypes": [
+      "Human",
+      "Shaman"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "dragon_egg",
+    "name": "Dragon Egg",
+    "mana_cost": "{2}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Dragon",
+      "Egg"
+    ],
+    "power": "0",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "dragon_s_hoard",
+    "name": "Dragon's Hoard",
+    "mana_cost": "{3}",
+    "types": [
+      "artifact"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "druid_of_horns",
+    "name": "Druid of Horns",
+    "mana_cost": "{3}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Human",
+      "Druid"
+    ],
+    "power": "2",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "druid_of_the_cowl",
+    "name": "Druid of the Cowl",
+    "mana_cost": "{1}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Elf",
+      "Druid"
+    ],
+    "power": "1",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "dryad_greenseeker",
+    "name": "Dryad Greenseeker",
+    "mana_cost": "{1}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Dryad"
+    ],
+    "power": "1",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "duress",
+    "name": "Duress",
+    "mana_cost": "{B}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "black"
+    ]
+  },
+  {
+    "functional_id": "dwarven_priest",
+    "name": "Dwarven Priest",
+    "mana_cost": "{3}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Dwarf",
+      "Cleric"
+    ],
+    "power": "2",
+    "toughness": "4"
+  },
+  {
+    "functional_id": "dwindle",
+    "name": "Dwindle",
+    "mana_cost": "{2}{U}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Aura"
+    ]
+  },
+  {
+    "functional_id": "electrify",
+    "name": "Electrify",
+    "mana_cost": "{3}{R}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "elvish_clancaller",
+    "name": "Elvish Clancaller",
+    "mana_cost": "{G}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Elf",
+      "Druid"
+    ],
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "elvish_rejuvenator",
+    "name": "Elvish Rejuvenator",
+    "mana_cost": "{2}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Elf",
+      "Druid"
+    ],
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "enigma_drake",
+    "name": "Enigma Drake",
+    "mana_cost": "{1}{U}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue",
+      "red"
+    ],
+    "subtypes": [
+      "Drake"
+    ],
+    "power": "*",
+    "toughness": "4"
+  },
+  {
+    "functional_id": "epicure_of_blood",
+    "name": "Epicure of Blood",
+    "mana_cost": "{4}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Vampire"
+    ],
+    "power": "4",
+    "toughness": "4"
+  },
+  {
+    "functional_id": "essence_scatter",
+    "name": "Essence Scatter",
+    "mana_cost": "{1}{U}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "blue"
+    ]
+  },
+  {
+    "functional_id": "exclusion_mage",
+    "name": "Exclusion Mage",
+    "mana_cost": "{2}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Human",
+      "Wizard"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "explosive_apparatus",
+    "name": "Explosive Apparatus",
+    "mana_cost": "{1}",
+    "types": [
+      "artifact"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "fell_specter",
+    "name": "Fell Specter",
+    "mana_cost": "{3}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Specter"
+    ],
+    "power": "1",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "field_creeper",
+    "name": "Field Creeper",
+    "mana_cost": "{2}",
+    "types": [
+      "artifact",
+      "creature"
+    ],
+    "colors": [],
+    "subtypes": [
+      "Scarecrow"
+    ],
+    "power": "2",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "fiery_finish",
+    "name": "Fiery Finish",
+    "mana_cost": "{4}{R}{R}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "fire_elemental",
+    "name": "Fire Elemental",
+    "mana_cost": "{3}{R}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Elemental"
+    ],
+    "power": "5",
+    "toughness": "4"
+  },
+  {
+    "functional_id": "forest",
+    "name": "Forest",
+    "mana_cost": "",
+    "types": [
+      "land"
+    ],
+    "colors": [],
+    "supertypes": [
+      "basic"
+    ],
+    "subtypes": [
+      "Forest"
+    ]
+  },
+  {
+    "functional_id": "forsaken_sanctuary",
+    "name": "Forsaken Sanctuary",
+    "mana_cost": "",
+    "types": [
+      "land"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "foul_orchard",
+    "name": "Foul Orchard",
+    "mana_cost": "",
+    "types": [
+      "land"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "fountain_of_renewal",
+    "name": "Fountain of Renewal",
+    "mana_cost": "{1}",
+    "types": [
+      "artifact"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "fraying_omnipotence",
+    "name": "Fraying Omnipotence",
+    "mana_cost": "{3}{B}{B}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "black"
+    ]
+  },
+  {
+    "functional_id": "frilled_sea_serpent",
+    "name": "Frilled Sea Serpent",
+    "mana_cost": "{4}{U}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Serpent"
+    ],
+    "power": "4",
+    "toughness": "6"
+  },
+  {
+    "functional_id": "gallant_cavalry",
+    "name": "Gallant Cavalry",
+    "mana_cost": "{3}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Human",
+      "Knight"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "gargoyle_sentinel",
+    "name": "Gargoyle Sentinel",
+    "mana_cost": "{3}",
+    "types": [
+      "artifact",
+      "creature"
+    ],
+    "colors": [],
+    "subtypes": [
+      "Gargoyle"
+    ],
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "gearsmith_guardian",
+    "name": "Gearsmith Guardian",
+    "mana_cost": "{5}",
+    "types": [
+      "artifact",
+      "creature"
+    ],
+    "colors": [],
+    "subtypes": [
+      "Construct"
+    ],
+    "power": "3",
+    "toughness": "5"
+  },
+  {
+    "functional_id": "gearsmith_prodigy",
+    "name": "Gearsmith Prodigy",
+    "mana_cost": "{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Human",
+      "Artificer"
+    ],
+    "power": "1",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "ghastbark_twins",
+    "name": "Ghastbark Twins",
+    "mana_cost": "{5}{G}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Treefolk"
+    ],
+    "power": "7",
+    "toughness": "7"
+  },
+  {
+    "functional_id": "ghirapur_guide",
+    "name": "Ghirapur Guide",
+    "mana_cost": "{2}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Elf",
+      "Scout"
+    ],
+    "power": "3",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "ghostform",
+    "name": "Ghostform",
+    "mana_cost": "{1}{U}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "blue"
+    ]
+  },
+  {
+    "functional_id": "giant_spider",
+    "name": "Giant Spider",
+    "mana_cost": "{3}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Spider"
+    ],
+    "power": "2",
+    "toughness": "4"
+  },
+  {
+    "functional_id": "gift_of_paradise",
+    "name": "Gift of Paradise",
+    "mana_cost": "{2}{G}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Aura"
+    ]
+  },
+  {
+    "functional_id": "gigantosaurus",
+    "name": "Gigantosaurus",
+    "mana_cost": "{G}{G}{G}{G}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Dinosaur"
+    ],
+    "power": "10",
+    "toughness": "10"
+  },
+  {
+    "functional_id": "goblin_instigator",
+    "name": "Goblin Instigator",
+    "mana_cost": "{1}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Goblin",
+      "Rogue"
+    ],
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "goblin_motivator",
+    "name": "Goblin Motivator",
+    "mana_cost": "{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Goblin",
+      "Warrior"
+    ],
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "goblin_trashmaster",
+    "name": "Goblin Trashmaster",
+    "mana_cost": "{2}{R}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Goblin",
+      "Warrior"
+    ],
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "goreclaw_terror_of_qal_sisma",
+    "name": "Goreclaw, Terror of Qal Sisma",
+    "mana_cost": "{3}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Bear"
+    ],
+    "power": "4",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "grasping_scoundrel",
+    "name": "Grasping Scoundrel",
+    "mana_cost": "{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Human",
+      "Pirate"
+    ],
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "gravedigger",
+    "name": "Gravedigger",
+    "mana_cost": "{3}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Zombie"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "gravewaker",
+    "name": "Gravewaker",
+    "mana_cost": "{4}{B}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Bird",
+      "Spirit"
+    ],
+    "power": "5",
+    "toughness": "5"
+  },
+  {
+    "functional_id": "graveyard_marshal",
+    "name": "Graveyard Marshal",
+    "mana_cost": "{B}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Zombie",
+      "Soldier"
+    ],
+    "power": "3",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "greenwood_sentinel",
+    "name": "Greenwood Sentinel",
+    "mana_cost": "{1}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Elf",
+      "Scout"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "guttersnipe",
+    "name": "Guttersnipe",
+    "mana_cost": "{2}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Goblin",
+      "Shaman"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "havoc_devils",
+    "name": "Havoc Devils",
+    "mana_cost": "{2}{R}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Devil"
+    ],
+    "power": "4",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "herald_of_faith",
+    "name": "Herald of Faith",
+    "mana_cost": "{3}{W}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Angel"
+    ],
+    "power": "4",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "heroic_reinforcements",
+    "name": "Heroic Reinforcements",
+    "mana_cost": "{2}{R}{W}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "white",
+      "red"
+    ]
+  },
+  {
+    "functional_id": "hieromancer_s_cage",
+    "name": "Hieromancer's Cage",
+    "mana_cost": "{3}{W}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "white"
+    ]
+  },
+  {
+    "functional_id": "highland_game",
+    "name": "Highland Game",
+    "mana_cost": "{1}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Elk"
+    ],
+    "power": "2",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "highland_lake",
+    "name": "Highland Lake",
+    "mana_cost": "",
+    "types": [
+      "land"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "hired_blade",
+    "name": "Hired Blade",
+    "mana_cost": "{2}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Human",
+      "Assassin"
+    ],
+    "power": "3",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "horizon_scholar",
+    "name": "Horizon Scholar",
+    "mana_cost": "{5}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Sphinx"
+    ],
+    "power": "4",
+    "toughness": "4"
+  },
+  {
+    "functional_id": "hostile_minotaur",
+    "name": "Hostile Minotaur",
+    "mana_cost": "{3}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Minotaur"
+    ],
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "hungering_hydra",
+    "name": "Hungering Hydra",
+    "mana_cost": "{X}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Hydra"
+    ],
+    "power": "0",
+    "toughness": "0"
+  },
+  {
+    "functional_id": "infectious_horror",
+    "name": "Infectious Horror",
+    "mana_cost": "{3}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Zombie",
+      "Horror"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "infernal_reckoning",
+    "name": "Infernal Reckoning",
+    "mana_cost": "{B}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "black"
+    ]
+  },
+  {
+    "functional_id": "infernal_scarring",
+    "name": "Infernal Scarring",
+    "mana_cost": "{1}{B}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Aura"
+    ]
+  },
+  {
+    "functional_id": "inferno_hellion",
+    "name": "Inferno Hellion",
+    "mana_cost": "{3}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Hellion"
+    ],
+    "power": "7",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "inspired_charge",
+    "name": "Inspired Charge",
+    "mana_cost": "{2}{W}{W}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "white"
+    ]
+  },
+  {
+    "functional_id": "invoke_the_divine",
+    "name": "Invoke the Divine",
+    "mana_cost": "{2}{W}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "white"
+    ]
+  },
+  {
+    "functional_id": "isareth_the_awakener",
+    "name": "Isareth the Awakener",
+    "mana_cost": "{1}{B}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Human",
+      "Wizard"
+    ],
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "island",
+    "name": "Island",
+    "mana_cost": "",
+    "types": [
+      "land"
+    ],
+    "colors": [],
+    "supertypes": [
+      "basic"
+    ],
+    "subtypes": [
+      "Island"
+    ]
+  },
+  {
+    "functional_id": "isolate",
+    "name": "Isolate",
+    "mana_cost": "{W}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "white"
+    ]
+  },
+  {
+    "functional_id": "kargan_dragonrider",
+    "name": "Kargan Dragonrider",
+    "mana_cost": "{1}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Human",
+      "Warrior"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "knight_of_the_tusk",
+    "name": "Knight of the Tusk",
+    "mana_cost": "{4}{W}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Human",
+      "Knight"
+    ],
+    "power": "3",
+    "toughness": "7"
+  },
+  {
+    "functional_id": "knight_s_pledge",
+    "name": "Knight's Pledge",
+    "mana_cost": "{1}{W}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Aura"
+    ]
+  },
+  {
+    "functional_id": "knightly_valor",
+    "name": "Knightly Valor",
+    "mana_cost": "{4}{W}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Aura"
+    ]
+  },
+  {
+    "functional_id": "lathliss_dragon_queen",
+    "name": "Lathliss, Dragon Queen",
+    "mana_cost": "{4}{R}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Dragon"
+    ],
+    "power": "6",
+    "toughness": "6"
+  },
+  {
+    "functional_id": "lava_axe",
+    "name": "Lava Axe",
+    "mana_cost": "{4}{R}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "lena_selfless_champion",
+    "name": "Lena, Selfless Champion",
+    "mana_cost": "{4}{W}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Human",
+      "Knight"
+    ],
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "leonin_vanguard",
+    "name": "Leonin Vanguard",
+    "mana_cost": "{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Cat",
+      "Soldier"
+    ],
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "leonin_warleader",
+    "name": "Leonin Warleader",
+    "mana_cost": "{2}{W}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Cat",
+      "Soldier"
+    ],
+    "power": "4",
+    "toughness": "4"
+  },
+  {
+    "functional_id": "lich_s_caress",
+    "name": "Lich's Caress",
+    "mana_cost": "{3}{B}{B}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "black"
+    ]
+  },
+  {
+    "functional_id": "lightning_mare",
+    "name": "Lightning Mare",
+    "mana_cost": "{R}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Elemental",
+      "Horse"
+    ],
+    "power": "3",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "lightning_strike",
+    "name": "Lightning Strike",
+    "mana_cost": "{1}{R}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "liliana_s_contract",
+    "name": "Liliana's Contract",
+    "mana_cost": "{3}{B}{B}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "black"
+    ]
+  },
+  {
+    "functional_id": "liliana_s_spoils",
+    "name": "Liliana's Spoils",
+    "mana_cost": "{3}{B}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "black"
+    ]
+  },
+  {
+    "functional_id": "liliana_the_necromancer",
+    "name": "Liliana, the Necromancer",
+    "mana_cost": "{3}{B}{B}",
+    "types": [
+      "planeswalker"
+    ],
+    "colors": [
+      "black"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Liliana"
+    ],
+    "loyalty": "4"
+  },
+  {
+    "functional_id": "liliana_untouched_by_death",
+    "name": "Liliana, Untouched by Death",
+    "mana_cost": "{2}{B}{B}",
+    "types": [
+      "planeswalker"
+    ],
+    "colors": [
+      "black"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Liliana"
+    ],
+    "loyalty": "4"
+  },
+  {
+    "functional_id": "llanowar_elves",
+    "name": "Llanowar Elves",
+    "mana_cost": "{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Elf",
+      "Druid"
+    ],
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "loxodon_line_breaker",
+    "name": "Loxodon Line Breaker",
+    "mana_cost": "{2}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Elephant",
+      "Soldier"
+    ],
+    "power": "3",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "luminous_bonds",
+    "name": "Luminous Bonds",
+    "mana_cost": "{2}{W}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Aura"
+    ]
+  },
+  {
+    "functional_id": "macabre_waltz",
+    "name": "Macabre Waltz",
+    "mana_cost": "{1}{B}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "black"
+    ]
+  },
+  {
+    "functional_id": "magistrate_s_scepter",
+    "name": "Magistrate's Scepter",
+    "mana_cost": "{3}",
+    "types": [
+      "artifact"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "make_a_stand",
+    "name": "Make a Stand",
+    "mana_cost": "{2}{W}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "white"
+    ]
+  },
+  {
+    "functional_id": "manalith",
+    "name": "Manalith",
+    "mana_cost": "{3}",
+    "types": [
+      "artifact"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "marauder_s_axe",
+    "name": "Marauder's Axe",
+    "mana_cost": "{2}",
+    "types": [
+      "artifact"
+    ],
+    "colors": [],
+    "subtypes": [
+      "Equipment"
+    ]
+  },
+  {
+    "functional_id": "meandering_river",
+    "name": "Meandering River",
+    "mana_cost": "",
+    "types": [
+      "land"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "mentor_of_the_meek",
+    "name": "Mentor of the Meek",
+    "mana_cost": "{2}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Human",
+      "Soldier"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "metamorphic_alteration",
+    "name": "Metamorphic Alteration",
+    "mana_cost": "{1}{U}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Aura"
+    ]
+  },
+  {
+    "functional_id": "meteor_golem",
+    "name": "Meteor Golem",
+    "mana_cost": "{7}",
+    "types": [
+      "artifact",
+      "creature"
+    ],
+    "colors": [],
+    "subtypes": [
+      "Golem"
+    ],
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "mighty_leap",
+    "name": "Mighty Leap",
+    "mana_cost": "{1}{W}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "white"
+    ]
+  },
+  {
+    "functional_id": "militia_bugler",
+    "name": "Militia Bugler",
+    "mana_cost": "{2}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Human",
+      "Soldier"
+    ],
+    "power": "2",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "millstone",
+    "name": "Millstone",
+    "mana_cost": "{2}",
+    "types": [
+      "artifact"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "mind_rot",
+    "name": "Mind Rot",
+    "mana_cost": "{2}{B}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "black"
+    ]
+  },
+  {
+    "functional_id": "mirror_image",
+    "name": "Mirror Image",
+    "mana_cost": "{2}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Shapeshifter"
+    ],
+    "power": "0",
+    "toughness": "0"
+  },
+  {
+    "functional_id": "mist_cloaked_herald",
+    "name": "Mist-Cloaked Herald",
+    "mana_cost": "{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Merfolk",
+      "Warrior"
+    ],
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "mistcaller",
+    "name": "Mistcaller",
+    "mana_cost": "{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Merfolk",
+      "Wizard"
+    ],
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "mountain",
+    "name": "Mountain",
+    "mana_cost": "",
+    "types": [
+      "land"
+    ],
+    "colors": [],
+    "supertypes": [
+      "basic"
+    ],
+    "subtypes": [
+      "Mountain"
+    ]
+  },
+  {
+    "functional_id": "murder",
+    "name": "Murder",
+    "mana_cost": "{1}{B}{B}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "black"
+    ]
+  },
+  {
+    "functional_id": "mystic_archaeologist",
+    "name": "Mystic Archaeologist",
+    "mana_cost": "{1}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Human",
+      "Wizard"
+    ],
+    "power": "2",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "naturalize",
+    "name": "Naturalize",
+    "mana_cost": "{1}{G}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "green"
+    ]
+  },
+  {
+    "functional_id": "nexus_of_fate",
+    "name": "Nexus of Fate",
+    "mana_cost": "{5}{U}{U}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "blue"
+    ]
+  },
+  {
+    "functional_id": "nicol_bolas_the_ravager",
+    "name": "Nicol Bolas, the Ravager",
+    "mana_cost": "{1}{U}{B}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue",
+      "black",
+      "red"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Elder",
+      "Dragon"
+    ],
+    "power": "4",
+    "toughness": "4",
+    "back_face": {
+      "name": "Nicol Bolas, the Arisen",
+      "mana_cost": "",
+      "types": [
+        "planeswalker"
+      ],
+      "colors": [
+        "blue",
+        "black",
+        "red"
+      ],
+      "supertypes": [
+        "legendary"
+      ],
+      "subtypes": [
+        "Bolas"
+      ],
+      "loyalty": "7"
+    }
+  },
+  {
+    "functional_id": "nightmare_s_thirst",
+    "name": "Nightmare's Thirst",
+    "mana_cost": "{B}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "black"
+    ]
+  },
+  {
+    "functional_id": "novice_knight",
+    "name": "Novice Knight",
+    "mana_cost": "{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Human",
+      "Knight"
+    ],
+    "power": "2",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "oakenform",
+    "name": "Oakenform",
+    "mana_cost": "{2}{G}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Aura"
+    ]
+  },
+  {
+    "functional_id": "omenspeaker",
+    "name": "Omenspeaker",
+    "mana_cost": "{1}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Human",
+      "Wizard"
+    ],
+    "power": "1",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "omniscience",
+    "name": "Omniscience",
+    "mana_cost": "{7}{U}{U}{U}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "blue"
+    ]
+  },
+  {
+    "functional_id": "onakke_ogre",
+    "name": "Onakke Ogre",
+    "mana_cost": "{2}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Ogre",
+      "Warrior"
+    ],
+    "power": "4",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "one_with_the_machine",
+    "name": "One with the Machine",
+    "mana_cost": "{3}{U}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "blue"
+    ]
+  },
+  {
+    "functional_id": "open_the_graves",
+    "name": "Open the Graves",
+    "mana_cost": "{3}{B}{B}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "black"
+    ]
+  },
+  {
+    "functional_id": "oreskos_swiftclaw",
+    "name": "Oreskos Swiftclaw",
+    "mana_cost": "{1}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Cat",
+      "Warrior"
+    ],
+    "power": "3",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "palladia_mors_the_ruiner",
+    "name": "Palladia-Mors, the Ruiner",
+    "mana_cost": "{3}{R}{G}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white",
+      "red",
+      "green"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Elder",
+      "Dragon"
+    ],
+    "power": "6",
+    "toughness": "6"
+  },
+  {
+    "functional_id": "patient_rebuilding",
+    "name": "Patient Rebuilding",
+    "mana_cost": "{3}{U}{U}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "blue"
+    ]
+  },
+  {
+    "functional_id": "pegasus_courser",
+    "name": "Pegasus Courser",
+    "mana_cost": "{2}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Pegasus"
+    ],
+    "power": "1",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "pelakka_wurm",
+    "name": "Pelakka Wurm",
+    "mana_cost": "{4}{G}{G}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Wurm"
+    ],
+    "power": "7",
+    "toughness": "7"
+  },
+  {
+    "functional_id": "pendulum_of_patterns",
+    "name": "Pendulum of Patterns",
+    "mana_cost": "{2}",
+    "types": [
+      "artifact"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "phylactery_lich",
+    "name": "Phylactery Lich",
+    "mana_cost": "{B}{B}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Zombie"
+    ],
+    "power": "5",
+    "toughness": "5"
+  },
+  {
+    "functional_id": "plague_mare",
+    "name": "Plague Mare",
+    "mana_cost": "{1}{B}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Nightmare",
+      "Horse"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "plains",
+    "name": "Plains",
+    "mana_cost": "",
+    "types": [
+      "land"
+    ],
+    "colors": [],
+    "supertypes": [
+      "basic"
+    ],
+    "subtypes": [
+      "Plains"
+    ]
+  },
+  {
+    "functional_id": "plummet",
+    "name": "Plummet",
+    "mana_cost": "{1}{G}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "green"
+    ]
+  },
+  {
+    "functional_id": "poison_tip_archer",
+    "name": "Poison-Tip Archer",
+    "mana_cost": "{2}{B}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black",
+      "green"
+    ],
+    "subtypes": [
+      "Elf",
+      "Archer"
+    ],
+    "power": "2",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "prodigious_growth",
+    "name": "Prodigious Growth",
+    "mana_cost": "{4}{G}{G}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Aura"
+    ]
+  },
+  {
+    "functional_id": "psychic_corrosion",
+    "name": "Psychic Corrosion",
+    "mana_cost": "{2}{U}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "blue"
+    ]
+  },
+  {
+    "functional_id": "psychic_symbiont",
+    "name": "Psychic Symbiont",
+    "mana_cost": "{4}{U}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue",
+      "black"
+    ],
+    "subtypes": [
+      "Nightmare",
+      "Horror"
+    ],
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "rabid_bite",
+    "name": "Rabid Bite",
+    "mana_cost": "{1}{G}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "green"
+    ]
+  },
+  {
+    "functional_id": "radiating_lightning",
+    "name": "Radiating Lightning",
+    "mana_cost": "{3}{R}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "ravenous_harpy",
+    "name": "Ravenous Harpy",
+    "mana_cost": "{2}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Harpy"
+    ],
+    "power": "1",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "reassembling_skeleton",
+    "name": "Reassembling Skeleton",
+    "mana_cost": "{1}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Skeleton",
+      "Warrior"
+    ],
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "reclamation_sage",
+    "name": "Reclamation Sage",
+    "mana_cost": "{2}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Elf",
+      "Shaman"
+    ],
+    "power": "2",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "recollect",
+    "name": "Recollect",
+    "mana_cost": "{2}{G}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "green"
+    ]
+  },
+  {
+    "functional_id": "regal_bloodlord",
+    "name": "Regal Bloodlord",
+    "mana_cost": "{3}{W}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white",
+      "black"
+    ],
+    "subtypes": [
+      "Vampire",
+      "Soldier"
+    ],
+    "power": "2",
+    "toughness": "4"
+  },
+  {
+    "functional_id": "reliquary_tower",
+    "name": "Reliquary Tower",
+    "mana_cost": "",
+    "types": [
+      "land"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "remorseful_cleric",
+    "name": "Remorseful Cleric",
+    "mana_cost": "{1}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Spirit",
+      "Cleric"
+    ],
+    "power": "2",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "resplendent_angel",
+    "name": "Resplendent Angel",
+    "mana_cost": "{1}{W}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Angel"
+    ],
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "revitalize",
+    "name": "Revitalize",
+    "mana_cost": "{1}{W}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "white"
+    ]
+  },
+  {
+    "functional_id": "rhox_oracle",
+    "name": "Rhox Oracle",
+    "mana_cost": "{4}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Rhino",
+      "Monk"
+    ],
+    "power": "4",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "riddlemaster_sphinx",
+    "name": "Riddlemaster Sphinx",
+    "mana_cost": "{4}{U}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Sphinx"
+    ],
+    "power": "5",
+    "toughness": "5"
+  },
+  {
+    "functional_id": "rise_from_the_grave",
+    "name": "Rise from the Grave",
+    "mana_cost": "{4}{B}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "black"
+    ]
+  },
+  {
+    "functional_id": "rogue_s_gloves",
+    "name": "Rogue's Gloves",
+    "mana_cost": "{2}",
+    "types": [
+      "artifact"
+    ],
+    "colors": [],
+    "subtypes": [
+      "Equipment"
+    ]
+  },
+  {
+    "functional_id": "root_snare",
+    "name": "Root Snare",
+    "mana_cost": "{1}{G}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "green"
+    ]
+  },
+  {
+    "functional_id": "runic_armasaur",
+    "name": "Runic Armasaur",
+    "mana_cost": "{1}{G}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Dinosaur"
+    ],
+    "power": "2",
+    "toughness": "5"
+  },
+  {
+    "functional_id": "rupture_spire",
+    "name": "Rupture Spire",
+    "mana_cost": "",
+    "types": [
+      "land"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "rustwing_falcon",
+    "name": "Rustwing Falcon",
+    "mana_cost": "{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Bird"
+    ],
+    "power": "1",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "sai_master_thopterist",
+    "name": "Sai, Master Thopterist",
+    "mana_cost": "{2}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Human",
+      "Artificer"
+    ],
+    "power": "1",
+    "toughness": "4"
+  },
+  {
+    "functional_id": "salvager_of_secrets",
+    "name": "Salvager of Secrets",
+    "mana_cost": "{3}{U}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Merfolk",
+      "Wizard"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "sarkhan_dragonsoul",
+    "name": "Sarkhan, Dragonsoul",
+    "mana_cost": "{4}{R}{R}",
+    "types": [
+      "planeswalker"
+    ],
+    "colors": [
+      "red"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Sarkhan"
+    ],
+    "loyalty": "5"
+  },
+  {
+    "functional_id": "sarkhan_fireblood",
+    "name": "Sarkhan, Fireblood",
+    "mana_cost": "{1}{R}{R}",
+    "types": [
+      "planeswalker"
+    ],
+    "colors": [
+      "red"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Sarkhan"
+    ],
+    "loyalty": "3"
+  },
+  {
+    "functional_id": "sarkhan_s_dragonfire",
+    "name": "Sarkhan's Dragonfire",
+    "mana_cost": "{3}{R}{R}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "sarkhan_s_unsealing",
+    "name": "Sarkhan's Unsealing",
+    "mana_cost": "{3}{R}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "sarkhan_s_whelp",
+    "name": "Sarkhan's Whelp",
+    "mana_cost": "{2}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Dragon"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "satyr_enchanter",
+    "name": "Satyr Enchanter",
+    "mana_cost": "{1}{G}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white",
+      "green"
+    ],
+    "subtypes": [
+      "Satyr",
+      "Druid"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "scapeshift",
+    "name": "Scapeshift",
+    "mana_cost": "{2}{G}{G}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "green"
+    ]
+  },
+  {
+    "functional_id": "scholar_of_stars",
+    "name": "Scholar of Stars",
+    "mana_cost": "{3}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Human",
+      "Artificer"
+    ],
+    "power": "3",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "serra_s_guardian",
+    "name": "Serra's Guardian",
+    "mana_cost": "{4}{W}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Angel"
+    ],
+    "power": "5",
+    "toughness": "5"
+  },
+  {
+    "functional_id": "shield_mare",
+    "name": "Shield Mare",
+    "mana_cost": "{1}{W}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Horse"
+    ],
+    "power": "2",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "shivan_dragon",
+    "name": "Shivan Dragon",
+    "mana_cost": "{4}{R}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Dragon"
+    ],
+    "power": "5",
+    "toughness": "5"
+  },
+  {
+    "functional_id": "shock",
+    "name": "Shock",
+    "mana_cost": "{R}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "siegebreaker_giant",
+    "name": "Siegebreaker Giant",
+    "mana_cost": "{3}{R}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Giant",
+      "Warrior"
+    ],
+    "power": "6",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "sift",
+    "name": "Sift",
+    "mana_cost": "{3}{U}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "blue"
+    ]
+  },
+  {
+    "functional_id": "sigiled_sword_of_valeron",
+    "name": "Sigiled Sword of Valeron",
+    "mana_cost": "{3}",
+    "types": [
+      "artifact"
+    ],
+    "colors": [],
+    "subtypes": [
+      "Equipment"
+    ]
+  },
+  {
+    "functional_id": "silverbeak_griffin",
+    "name": "Silverbeak Griffin",
+    "mana_cost": "{W}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Griffin"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "skalla_wolf",
+    "name": "Skalla Wolf",
+    "mana_cost": "{3}{G}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Wolf",
+      "Spirit"
+    ],
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "skeleton_archer",
+    "name": "Skeleton Archer",
+    "mana_cost": "{3}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Skeleton",
+      "Archer"
+    ],
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "skilled_animator",
+    "name": "Skilled Animator",
+    "mana_cost": "{2}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Human",
+      "Artificer"
+    ],
+    "power": "1",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "skymarch_bloodletter",
+    "name": "Skymarch Bloodletter",
+    "mana_cost": "{2}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Vampire",
+      "Soldier"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "skyrider_patrol",
+    "name": "Skyrider Patrol",
+    "mana_cost": "{2}{G}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue",
+      "green"
+    ],
+    "subtypes": [
+      "Elf",
+      "Scout"
+    ],
+    "power": "2",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "skyscanner",
+    "name": "Skyscanner",
+    "mana_cost": "{3}",
+    "types": [
+      "artifact",
+      "creature"
+    ],
+    "colors": [],
+    "subtypes": [
+      "Thopter"
+    ],
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "sleep",
+    "name": "Sleep",
+    "mana_cost": "{2}{U}{U}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "blue"
+    ]
+  },
+  {
+    "functional_id": "smelt",
+    "name": "Smelt",
+    "mana_cost": "{R}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "snapping_drake",
+    "name": "Snapping Drake",
+    "mana_cost": "{3}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Drake"
+    ],
+    "power": "3",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "sovereign_s_bite",
+    "name": "Sovereign's Bite",
+    "mana_cost": "{1}{B}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "black"
+    ]
+  },
+  {
+    "functional_id": "sparktongue_dragon",
+    "name": "Sparktongue Dragon",
+    "mana_cost": "{3}{R}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Dragon"
+    ],
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "spit_flame",
+    "name": "Spit Flame",
+    "mana_cost": "{2}{R}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "star_crowned_stag",
+    "name": "Star-Crowned Stag",
+    "mana_cost": "{3}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Elk"
+    ],
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "stitcher_s_supplier",
+    "name": "Stitcher's Supplier",
+    "mana_cost": "{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Zombie"
+    ],
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "stone_quarry",
+    "name": "Stone Quarry",
+    "mana_cost": "",
+    "types": [
+      "land"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "strangling_spores",
+    "name": "Strangling Spores",
+    "mana_cost": "{3}{B}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "black"
+    ]
+  },
+  {
+    "functional_id": "submerged_boneyard",
+    "name": "Submerged Boneyard",
+    "mana_cost": "",
+    "types": [
+      "land"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "sun_sentinel",
+    "name": "Sun Sentinel",
+    "mana_cost": "{1}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Human",
+      "Soldier"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "suncleanser",
+    "name": "Suncleanser",
+    "mana_cost": "{1}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Human",
+      "Cleric"
+    ],
+    "power": "1",
+    "toughness": "4"
+  },
+  {
+    "functional_id": "supreme_phantom",
+    "name": "Supreme Phantom",
+    "mana_cost": "{1}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Spirit"
+    ],
+    "power": "1",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "sure_strike",
+    "name": "Sure Strike",
+    "mana_cost": "{1}{R}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "surge_mare",
+    "name": "Surge Mare",
+    "mana_cost": "{U}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Horse",
+      "Fish"
+    ],
+    "power": "0",
+    "toughness": "5"
+  },
+  {
+    "functional_id": "suspicious_bookcase",
+    "name": "Suspicious Bookcase",
+    "mana_cost": "{2}",
+    "types": [
+      "artifact",
+      "creature"
+    ],
+    "colors": [],
+    "subtypes": [
+      "Wall"
+    ],
+    "power": "0",
+    "toughness": "4"
+  },
+  {
+    "functional_id": "swamp",
+    "name": "Swamp",
+    "mana_cost": "",
+    "types": [
+      "land"
+    ],
+    "colors": [],
+    "supertypes": [
+      "basic"
+    ],
+    "subtypes": [
+      "Swamp"
+    ]
+  },
+  {
+    "functional_id": "switcheroo",
+    "name": "Switcheroo",
+    "mana_cost": "{4}{U}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "blue"
+    ]
+  },
+  {
+    "functional_id": "take_vengeance",
+    "name": "Take Vengeance",
+    "mana_cost": "{1}{W}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "white"
+    ]
+  },
+  {
+    "functional_id": "talons_of_wildwood",
+    "name": "Talons of Wildwood",
+    "mana_cost": "{1}{G}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Aura"
+    ]
+  },
+  {
+    "functional_id": "tattered_mummy",
+    "name": "Tattered Mummy",
+    "mana_cost": "{1}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Zombie",
+      "Jackal"
+    ],
+    "power": "1",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "tectonic_rift",
+    "name": "Tectonic Rift",
+    "mana_cost": "{3}{R}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "tezzeret_artifice_master",
+    "name": "Tezzeret, Artifice Master",
+    "mana_cost": "{3}{U}{U}",
+    "types": [
+      "planeswalker"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Tezzeret"
+    ],
+    "loyalty": "5"
+  },
+  {
+    "functional_id": "tezzeret_cruel_machinist",
+    "name": "Tezzeret, Cruel Machinist",
+    "mana_cost": "{4}{U}{U}",
+    "types": [
+      "planeswalker"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Tezzeret"
+    ],
+    "loyalty": "4"
+  },
+  {
+    "functional_id": "tezzeret_s_gatebreaker",
+    "name": "Tezzeret's Gatebreaker",
+    "mana_cost": "{4}",
+    "types": [
+      "artifact"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "tezzeret_s_strider",
+    "name": "Tezzeret's Strider",
+    "mana_cost": "{3}",
+    "types": [
+      "artifact",
+      "creature"
+    ],
+    "colors": [],
+    "subtypes": [
+      "Golem"
+    ],
+    "power": "3",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "thorn_lieutenant",
+    "name": "Thorn Lieutenant",
+    "mana_cost": "{1}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Elf",
+      "Warrior"
+    ],
+    "power": "2",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "thornhide_wolves",
+    "name": "Thornhide Wolves",
+    "mana_cost": "{4}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Wolf"
+    ],
+    "power": "4",
+    "toughness": "5"
+  },
+  {
+    "functional_id": "thud",
+    "name": "Thud",
+    "mana_cost": "{R}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "timber_gorge",
+    "name": "Timber Gorge",
+    "mana_cost": "",
+    "types": [
+      "land"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "titanic_growth",
+    "name": "Titanic Growth",
+    "mana_cost": "{1}{G}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "green"
+    ]
+  },
+  {
+    "functional_id": "tolarian_scholar",
+    "name": "Tolarian Scholar",
+    "mana_cost": "{2}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Human",
+      "Wizard"
+    ],
+    "power": "2",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "tormenting_voice",
+    "name": "Tormenting Voice",
+    "mana_cost": "{1}{R}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "totally_lost",
+    "name": "Totally Lost",
+    "mana_cost": "{4}{U}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "blue"
+    ]
+  },
+  {
+    "functional_id": "tranquil_expanse",
+    "name": "Tranquil Expanse",
+    "mana_cost": "",
+    "types": [
+      "land"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "transmogrifying_wand",
+    "name": "Transmogrifying Wand",
+    "mana_cost": "{3}",
+    "types": [
+      "artifact"
+    ],
+    "colors": []
+  },
+  {
+    "functional_id": "trumpet_blast",
+    "name": "Trumpet Blast",
+    "mana_cost": "{2}{R}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "red"
+    ]
+  },
+  {
+    "functional_id": "trusty_packbeast",
+    "name": "Trusty Packbeast",
+    "mana_cost": "{2}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Beast"
+    ],
+    "power": "2",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "two_headed_zombie",
+    "name": "Two-Headed Zombie",
+    "mana_cost": "{3}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Zombie"
+    ],
+    "power": "4",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "uncomfortable_chill",
+    "name": "Uncomfortable Chill",
+    "mana_cost": "{2}{U}",
+    "types": [
+      "instant"
+    ],
+    "colors": [
+      "blue"
+    ]
+  },
+  {
+    "functional_id": "ursine_champion",
+    "name": "Ursine Champion",
+    "mana_cost": "{1}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Human",
+      "Berserker"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "vaevictis_asmadi_the_dire",
+    "name": "Vaevictis Asmadi, the Dire",
+    "mana_cost": "{3}{B}{R}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black",
+      "red",
+      "green"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Elder",
+      "Dragon"
+    ],
+    "power": "6",
+    "toughness": "6"
+  },
+  {
+    "functional_id": "valiant_knight",
+    "name": "Valiant Knight",
+    "mana_cost": "{3}{W}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "white"
+    ],
+    "subtypes": [
+      "Human",
+      "Knight"
+    ],
+    "power": "3",
+    "toughness": "4"
+  },
+  {
+    "functional_id": "vampire_neonate",
+    "name": "Vampire Neonate",
+    "mana_cost": "{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Vampire"
+    ],
+    "power": "0",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "vampire_sovereign",
+    "name": "Vampire Sovereign",
+    "mana_cost": "{3}{B}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Vampire",
+      "Noble"
+    ],
+    "power": "3",
+    "toughness": "4"
+  },
+  {
+    "functional_id": "viashino_pyromancer",
+    "name": "Viashino Pyromancer",
+    "mana_cost": "{1}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Lizard",
+      "Wizard"
+    ],
+    "power": "2",
+    "toughness": "1"
+  },
+  {
+    "functional_id": "vigilant_baloth",
+    "name": "Vigilant Baloth",
+    "mana_cost": "{3}{G}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Beast"
+    ],
+    "power": "5",
+    "toughness": "5"
+  },
+  {
+    "functional_id": "vine_mare",
+    "name": "Vine Mare",
+    "mana_cost": "{2}{G}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Elemental",
+      "Horse"
+    ],
+    "power": "5",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "vivien_of_the_arkbow",
+    "name": "Vivien of the Arkbow",
+    "mana_cost": "{4}{G}{G}",
+    "types": [
+      "planeswalker"
+    ],
+    "colors": [
+      "green"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Vivien"
+    ],
+    "loyalty": "5"
+  },
+  {
+    "functional_id": "vivien_reid",
+    "name": "Vivien Reid",
+    "mana_cost": "{3}{G}{G}",
+    "types": [
+      "planeswalker"
+    ],
+    "colors": [
+      "green"
+    ],
+    "supertypes": [
+      "legendary"
+    ],
+    "subtypes": [
+      "Vivien"
+    ],
+    "loyalty": "5"
+  },
+  {
+    "functional_id": "vivien_s_invocation",
+    "name": "Vivien's Invocation",
+    "mana_cost": "{5}{G}{G}",
+    "types": [
+      "sorcery"
+    ],
+    "colors": [
+      "green"
+    ]
+  },
+  {
+    "functional_id": "vivien_s_jaguar",
+    "name": "Vivien's Jaguar",
+    "mana_cost": "{2}{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Cat",
+      "Spirit"
+    ],
+    "power": "3",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "volcanic_dragon",
+    "name": "Volcanic Dragon",
+    "mana_cost": "{4}{R}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Dragon"
+    ],
+    "power": "4",
+    "toughness": "4"
+  },
+  {
+    "functional_id": "volley_veteran",
+    "name": "Volley Veteran",
+    "mana_cost": "{3}{R}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "red"
+    ],
+    "subtypes": [
+      "Goblin",
+      "Warrior"
+    ],
+    "power": "4",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "walking_corpse",
+    "name": "Walking Corpse",
+    "mana_cost": "{1}{B}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "black"
+    ],
+    "subtypes": [
+      "Zombie"
+    ],
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "functional_id": "wall_of_mist",
+    "name": "Wall of Mist",
+    "mana_cost": "{1}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Wall"
+    ],
+    "power": "0",
+    "toughness": "5"
+  },
+  {
+    "functional_id": "wall_of_vines",
+    "name": "Wall of Vines",
+    "mana_cost": "{G}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "green"
+    ],
+    "subtypes": [
+      "Plant",
+      "Wall"
+    ],
+    "power": "0",
+    "toughness": "3"
+  },
+  {
+    "functional_id": "waterknot",
+    "name": "Waterknot",
+    "mana_cost": "{1}{U}{U}",
+    "types": [
+      "enchantment"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Aura"
+    ]
+  },
+  {
+    "functional_id": "windreader_sphinx",
+    "name": "Windreader Sphinx",
+    "mana_cost": "{5}{U}{U}",
+    "types": [
+      "creature"
+    ],
+    "colors": [
+      "blue"
+    ],
+    "subtypes": [
+      "Sphinx"
+    ],
+    "power": "3",
+    "toughness": "7"
+  },
+  {
+    "functional_id": "woodland_stream",
+    "name": "Woodland Stream",
+    "mana_cost": "",
+    "types": [
+      "land"
+    ],
+    "colors": []
+  }
+]
