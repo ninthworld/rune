@@ -123,7 +123,35 @@ keywords are read (combat legality, evasion, damage, view projection, generated 
 
   One effect declares one target group, so two effects would advertise two independent
   slots and let a player pump one creature while a different one gained flying. Author
-  the two-effect form only when the card really names two targets.
+  the two-effect form only when the card really names two targets — the engine supports
+  two same-class slots and pairs them positionally, so nothing refuses the shape; it is
+  the *card* that decides, and Skyrider Patrol shipped with two slots for one printed
+  target because nobody checked (issue #821).
+- The same rule, on the two other subjects a sentence can have:
+  - **The source.** `{3}{W}{W}{W}: Until end of turn, this creature gets +2/+2 and gains
+    lifelink` is one `pump_self` carrying `keywords`, never a `pump_self` beside an
+    `alter_abilities_self`:
+
+    ```json
+    {"kind": "pump_self", "power": 2, "toughness": 2, "keywords": ["lifelink"]}
+    ```
+
+    `alter_abilities_self` is the verb for a clause that **subtracts** — *loses defender
+    and gains flying*, and `lose_all`. Reaching for the lose-all-abilities verb to say
+    "gains lifelink" reads as a card doing something it does not do, and the absence of
+    any other way to say it is why Resplendent Angel's third ability was missing from the
+    catalog altogether.
+  - **A counter's target.** `put a +1/+1 counter on another target creature you control,
+    and that creature gains flying until end of turn` is one `put_counters` carrying
+    `keywords`:
+
+    ```json
+    {"kind": "put_counters", "target": "another_creature_you_control",
+     "counter": "plus_one_plus_one", "count": 1, "keywords": ["flying"]}
+    ```
+
+    The counter stays on the permanent and the keyword is gone at cleanup: one printed
+    sentence, two durations, one target.
 
   A `restrictions` list rides beside `keywords` on the same effect, for the same reason
   and with the same until-end-of-turn duration — including the one *requirement* in that

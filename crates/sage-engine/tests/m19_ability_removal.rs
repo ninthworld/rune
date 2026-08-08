@@ -464,3 +464,71 @@ fn cr_613_1f_a_keyword_gained_in_the_same_clause_survives_the_loss_of_everything
         "a granted keyword is not an entry in the ability list"
     );
 }
+
+// ----- Resplendent Angel: layer 6 adding, on the same row -------------------
+
+/// The additive counterpart, and the reason it is not spelled with the verb above.
+///
+/// `{3}{W}{W}{W}: Until end of turn, this creature gets +2/+2 and gains lifelink` was
+/// **missing from the catalog entirely** (#819, #821), and the shape of the vocabulary is
+/// why: the only self-directed keyword *addition* was `alter_abilities_self`'s `gain`,
+/// whose sibling field is `lose_all`. Reaching for the lose-all-abilities verb to say
+/// "gains lifelink" reads as a card doing something it does not do, so a `pump_self`
+/// carries its own keywords now — one printed sentence, one effect, one CR 613.7
+/// timestamp.
+#[test]
+fn issue_821_the_angel_pumps_and_grants_in_one_breath() {
+    let db = db();
+    let mut state = main_phase(&db, "forest");
+    let angel = place(&mut state, &db, "resplendent_angel", PlayerId(0));
+
+    let before = characteristics(&state, angel, &db);
+    assert_eq!((before.power, before.toughness), (Some(3), Some(3)));
+    assert!(before.keywords.contains(&Keyword::Flying), "printed flying");
+    assert!(!before.keywords.contains(&Keyword::Lifelink));
+
+    let state = activate(&state, &db, angel, 1);
+
+    let after = characteristics(&state, angel, &db);
+    assert_eq!(
+        (after.power, after.toughness),
+        (Some(5), Some(5)),
+        "a 3/3 with +2/+2"
+    );
+    assert!(after.keywords.contains(&Keyword::Lifelink), "and lifelink");
+    assert!(
+        after.keywords.contains(&Keyword::Flying),
+        "and the flying it printed — this grants, it does not replace, which is the \
+         whole difference from the removal verb above"
+    );
+}
+
+/// Both halves are `until end of turn` and both are gone at cleanup (CR 514.2), with
+/// nothing written onto the permanent to undo (ADR 0005).
+#[test]
+fn issue_821_the_angels_pump_and_its_lifelink_wear_off_together() {
+    let db = db();
+    let mut state = main_phase(&db, "forest");
+    let angel = place(&mut state, &db, "resplendent_angel", PlayerId(0));
+
+    let state = activate(&state, &db, angel, 1);
+    assert!(characteristics(&state, angel, &db)
+        .keywords
+        .contains(&Keyword::Lifelink));
+
+    let next_turn = settle_until(&state, &db, |s| s.turn == 2 && s.step == Step::Upkeep);
+    let after = characteristics(&next_turn, angel, &db);
+    assert_eq!(
+        (after.power, after.toughness),
+        (Some(3), Some(3)),
+        "the pump is gone"
+    );
+    assert!(
+        !after.keywords.contains(&Keyword::Lifelink),
+        "and so is the keyword it came with"
+    );
+    assert!(
+        after.keywords.contains(&Keyword::Flying),
+        "the printed keyword was never touched"
+    );
+}

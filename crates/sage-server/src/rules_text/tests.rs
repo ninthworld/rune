@@ -1253,7 +1253,40 @@ fn a_life_gained_condition_states_its_threshold_only_when_there_is_one() {
     assert_eq!(
         text_of(&db, "resplendent_angel"),
         "Flying\nAt the beginning of each end step, if you gained five or more life \
-         this turn, you create a 4/4 white Angel creature token with flying and vigilance."
+         this turn, you create a 4/4 white Angel creature token with flying and \
+         vigilance.\n{3}{W}{W}{W}: Resplendent Angel gets +2/+2 and gains lifelink \
+         until end of turn."
+    );
+}
+
+/// One printed sentence about the **source** is one clause with one subject and one
+/// duration — the self row of what a pump-and-grant says for a target (issue #821).
+#[test]
+fn issue_821_a_self_pump_that_also_grants_reads_as_one_sentence() {
+    let db = bundled();
+    let text = text_of(&db, "resplendent_angel");
+    assert_eq!(
+        text.lines().last(),
+        Some("{3}{W}{W}{W}: Resplendent Angel gets +2/+2 and gains lifelink until end of turn."),
+        "the pump and the grant share one subject and one duration"
+    );
+}
+
+/// A counter and the keyword the same sentence grants the same creature: the second
+/// clause points back with a **pronoun**, because writing the class out twice is how a
+/// card with one target comes to advertise two slots (issue #821).
+#[test]
+fn issue_821_a_counter_and_its_grant_name_the_creature_once() {
+    let db = bundled();
+    let text = text_of(&db, "skyrider_patrol");
+    assert_eq!(
+        text.lines().last(),
+        Some(
+            "At the beginning of combat on your turn, you may pay {G}{U}. When you do, \
+             put a +1/+1 counter on another target creature you control, and that \
+             creature gains flying until end of turn."
+        ),
+        "one target named once, and pointed back at"
     );
 }
 

@@ -466,6 +466,7 @@ fn issue_149_put_counters_round_trips_with_both_kinds() {
         serde_json::from_str::<Effect>(plus).unwrap(),
         Effect::PutCounters {
             count_amount: None,
+            keywords: Vec::new(),
             targets: crate::ability::TargetCount::Exactly(1),
             target: TargetSpec::AnyCreature,
             counter: CounterKind::PlusOnePlusOne,
@@ -477,6 +478,7 @@ fn issue_149_put_counters_round_trips_with_both_kinds() {
         serde_json::from_str::<Effect>(minus).unwrap(),
         Effect::PutCounters {
             count_amount: None,
+            keywords: Vec::new(),
             targets: crate::ability::TargetCount::Exactly(1),
             target: TargetSpec::AnyCreature,
             counter: CounterKind::MinusOneMinusOne,

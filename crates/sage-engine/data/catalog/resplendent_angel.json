@@ -58,6 +58,25 @@
           ]
         }
       ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{3}{W}{W}{W}"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "pump_self",
+          "power": 2,
+          "toughness": 2,
+          "keywords": [
+            "lifelink"
+          ]
+        }
+      ]
     }
   ]
 }
