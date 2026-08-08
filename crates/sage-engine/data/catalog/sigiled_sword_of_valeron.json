@@ -30,7 +30,6 @@
           {
             "kind": "create_token",
             "count": 1,
-            "tapped": true,
             "attacking": true,
             "token": {
               "name": "Knight",

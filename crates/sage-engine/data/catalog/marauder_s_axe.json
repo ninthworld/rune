@@ -8,13 +8,13 @@
   "subtypes": [
     "Equipment"
   ],
-  "mana_cost": "{3}",
+  "mana_cost": "{2}",
   "colors": [],
   "attachment": {
     "kind": "equipment",
     "attach_to": "any_creature_you_control",
     "equip": "{2}",
     "power": 2,
-    "toughness": 1
+    "toughness": 0
   }
 }

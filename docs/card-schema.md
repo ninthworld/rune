@@ -17,6 +17,37 @@ The Rust authorities are `CardData` and `Printing` in
 `build.rs` discovers, validates, sorts, and embeds both directories at compile time. The
 running engine performs no filesystem I/O.
 
+### The accuracy fixture
+
+`build.rs` and `src/catalog/` check a definition's **shape** — the file stem matches the
+identity, a creature carries both power and toughness, a planeswalker carries loyalty and
+nothing else does. None of that can know a number is *wrong*, and the behavioural tests
+assert against whatever the definition says, so a mis-transcribed mana cost passes every
+gate and is then cemented by the test written over it. Fifteen cards shipped that way
+(issue #819).
+
+`crates/sage-engine/tests/fixtures/printed_characteristics.json` is the independent copy
+that closes that gap: one record per catalog card, carrying **only** name, mana cost,
+supertypes, types, subtypes, power, toughness, loyalty, and colours — the same functional
+data [ADR 0009](decisions/0009-real-functional-card-data.md) already sources, and nothing
+the licensing rule forbids. `tests/printed_characteristics.rs` compares it to
+`CardDatabase::bundled()` and names the card and the field when they disagree.
+
+Regenerate it when a set is added, from a third-party set file that is **not** committed:
+
+```sh
+scripts/printed-characteristics.py path/to/M19.json [path/to/OTHER.json ...]
+```
+
+The script reads that file and the catalog's *identities*; it never reads a definition's
+characteristics. Regenerating the fixture from `data/catalog/` instead would leave the
+gate green forever while proving nothing, which is the one way this file can fail.
+
+Rules text is deliberately outside the fixture, and the limit is real: of the fifteen wrong
+cards this catches the twelve that differed in a printed characteristic. A missing `{R}` in
+a cost list or a token created tapped is still a human-review problem, held by the
+behavioural tests instead.
+
 ## Functional definition
 
 The bundled catalog's functional definitions are sourced from a real set (Core Set 2019);

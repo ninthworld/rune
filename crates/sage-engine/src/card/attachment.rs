@@ -275,7 +275,7 @@ mod tests {
                 attach_to: TargetSpec::AnyCreatureYouControl,
                 equip: Some("{2}".to_string()),
                 power: 2,
-                toughness: 1,
+                toughness: 0,
                 count_of: None,
                 keywords: vec![],
                 restrictions: vec![],

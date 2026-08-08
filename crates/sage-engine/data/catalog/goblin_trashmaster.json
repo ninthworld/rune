@@ -6,7 +6,8 @@
     "creature"
   ],
   "subtypes": [
-    "Goblin"
+    "Goblin",
+    "Warrior"
   ],
   "mana_cost": "{2}{R}{R}",
   "colors": [
@@ -31,10 +32,6 @@
     {
       "type": "activated",
       "cost": [
-        {
-          "kind": "mana",
-          "mana": "{1}{R}"
-        },
         {
           "kind": "sacrifice",
           "subtype": "Goblin"

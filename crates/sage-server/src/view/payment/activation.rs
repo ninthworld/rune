@@ -415,6 +415,9 @@ mod tests {
             false,
             false,
         );
+        // `{R}, {T}, Discard a card` — the mana half has to be payable for the
+        // activation to be offered at all.
+        state.players[0].mana_pool.add(sage_engine::Color::Red, 1);
 
         let action = activation(&state, &db, pyromancer, "Discard");
         let (prompt, zone, count, candidates) = zone_slot(&action, DISCARD_SLOT);
@@ -469,6 +472,9 @@ mod tests {
             false,
             false,
         );
+        // `{R}, {T}, Discard a card` — the mana half has to be payable for the
+        // activation to be offered at all.
+        state.players[0].mana_pool.add(sage_engine::Color::Red, 1);
 
         let action = activation(&state, &db, pyromancer, "Discard");
         let bound = resolve_action(

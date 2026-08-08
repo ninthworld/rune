@@ -185,8 +185,8 @@ fn issue_728_an_equipment_enters_attached_to_nothing_and_equips_a_creature() {
             power(&state, &db, bear),
             characteristics(&state, bear, &db).toughness
         ),
-        (Some(5), Some(4)),
-        "a 3/3 holding a +2/+1 Axe is a 5/4 (CR 613 layers 7c and 6)"
+        (Some(5), Some(3)),
+        "a 3/3 holding a +2/+0 Axe is a 5/3 (CR 613 layers 7c and 6)"
     );
 }
 

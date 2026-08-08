@@ -6,17 +6,15 @@
     "creature"
   ],
   "subtypes": [
-    "Spirit"
+    "Merfolk",
+    "Wizard"
   ],
-  "mana_cost": "{1}{U}",
+  "mana_cost": "{U}",
   "colors": [
     "blue"
   ],
-  "power": 2,
+  "power": 1,
   "toughness": 1,
-  "keywords": [
-    "flash"
-  ],
   "abilities": [
     {
       "type": "activated",

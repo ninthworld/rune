@@ -159,7 +159,7 @@ fn issue_748_a_creature_without_flash_is_refused_by_apply_action_itself() {
 #[test]
 fn issue_748_flash_changes_only_the_timing() {
     // What the keyword does *not* do is as much of the card as what it does: the
-    // creature that arrives is an ordinary 2/2 with no abilities, entering the way any
+    // creature that arrives is an ordinary 3/2 with no abilities, entering the way any
     // other creature spell's would.
     let db = db();
     let mut state = stocked();
@@ -177,6 +177,6 @@ fn issue_748_flash_changes_only_the_timing() {
         .find(|p| p.instance == blade.id)
         .expect("the creature resolved onto the battlefield");
     let face = perm.printed.face(&db).expect("a printed face");
-    assert_eq!((face.power(), face.toughness()), (Some(2), Some(2)));
+    assert_eq!((face.power(), face.toughness()), (Some(3), Some(2)));
     assert!(state.stack.is_empty(), "and nothing is left over");
 }
