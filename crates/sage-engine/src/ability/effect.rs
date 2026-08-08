@@ -307,6 +307,25 @@ pub enum Effect {
         /// card that names two creatures gives each of them the same X.
         #[serde(default)]
         count_amount: Option<DerivedAmount>,
+        /// Keyword abilities granted to the **same** target(s) until end of turn, applied
+        /// at CR 613 layer 6 exactly as [`Effect::Pump`]'s are. Empty for the ordinary
+        /// counter placement, which is nearly every card.
+        ///
+        /// Here for the reason they are on [`Effect::Pump`], and it is the reason rather
+        /// than an analogy: one effect declares one target group, so a card printed as
+        /// `put a +1/+1 counter on another target creature you control, **and that
+        /// creature** gains flying until end of turn` has to be one effect. Authored as a
+        /// counter beside a standalone [`Effect::GrantKeyword`] it would advertise two
+        /// independent slots and let a player counter one creature while a different one
+        /// gained flying — which is exactly what Skyrider Patrol did before this field
+        /// existed (issue #821). The catalog validator now refuses that shape outright
+        /// ([`Violation::TwoTargetsOfOneClass`](crate::Violation)).
+        ///
+        /// The counter and the grant have different lifetimes and are meant to: a counter
+        /// stays on the permanent, and the keyword is gone at cleanup (CR 514.2). One
+        /// printed sentence, two durations, one target.
+        #[serde(default)]
+        keywords: Vec<Keyword>,
     },
     /// Give the single creature this effect targets `+power`/`+toughness`
     /// **until end of turn** — the pump-spell verb (e.g. `Target creature gets
@@ -525,11 +544,29 @@ pub enum Effect {
     /// not a *target* (CR 115.1), so this chooses nothing, fills no slot, and can
     /// never fizzle. A source that has left the battlefield by the time the ability
     /// resolves is simply not there to modify, and the effect does nothing.
+    ///
+    /// The optional `keywords` are granted to that same source, at CR 613 layer 6 and for
+    /// the same until-end-of-turn duration — the self row of what [`Effect::Pump`] carries
+    /// for a target and [`Effect::GrantKeywordAll`] for a class. `{3}{W}{W}{W}: Until end
+    /// of turn, this creature gets +2/+2 and gains lifelink` is **one** printed sentence
+    /// about one permanent, so it is one effect with one CR 613.7 timestamp.
+    ///
+    /// Deliberately not spelled through [`Effect::AlterAbilitiesSelf`], which is the
+    /// verb for a clause that *subtracts* — `loses defender and gains flying`, and its
+    /// `lose_all`. Reaching for the lose-all-abilities verb to say "gains lifelink" reads
+    /// as a card doing something it does not do, and the absence of any other way to say
+    /// it is why Resplendent Angel's third ability was missing from the catalog
+    /// altogether (issue #821).
     PumpSelf {
         /// The signed amount added to the source's power until end of turn.
         power: i32,
         /// The signed amount added to the source's toughness until end of turn.
         toughness: i32,
+        /// Keyword abilities granted to the source until end of turn. Empty for the
+        /// ordinary self-pump that only changes numbers. Duplicate grants are redundant,
+        /// not additive (CR 613.1f).
+        #[serde(default)]
+        keywords: Vec<Keyword>,
     },
     /// Change what abilities **this ability's own source** has until end of turn at
     /// CR 613 **layer 6** — `loses defender and gains flying until end of turn`, or

@@ -183,6 +183,7 @@ pub(crate) fn apply_targeted_effect(
             counter,
             count,
             count_amount,
+            keywords,
             ..
         } => {
             // The printed number, or the one the game supplies (CR 608.2) — read here
@@ -202,6 +203,20 @@ pub(crate) fn apply_targeted_effect(
             };
             if let Target::Permanent(id) = target {
                 state.put_counters_on_permanent(id, *counter, count, db);
+                // A keyword the same sentence grants the same creature, at CR 613 layer
+                // 6 and until end of turn — the counter stays and the keyword does not,
+                // which is the two durations one printed sentence really has. The
+                // permanent has been re-checked as a legal target by the caller
+                // (CR 608.2b); one that has since left is skipped by the `if let` above.
+                for keyword in keywords {
+                    let stamp = state.mint_id();
+                    state.static_effects.push(StaticEffect {
+                        source: stamp,
+                        affects: EffectAffects::SpecificPermanent(id),
+                        modification: Modification::GrantKeyword(*keyword),
+                        duration: Duration::UntilEndOfTurn,
+                    });
+                }
             }
         }
         // Pump the targeted creature until end of turn (CR 514.2): add a

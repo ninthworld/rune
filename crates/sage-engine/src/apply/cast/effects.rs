@@ -496,7 +496,11 @@ pub(crate) fn apply_effect(
         // not a target (CR 115.1) and so was never chosen. A source that has left the
         // battlefield is not there to modify, and the effect simply does nothing —
         // the same no-op a fizzled target produces, without the fizzle.
-        Effect::PumpSelf { power, toughness } => {
+        Effect::PumpSelf {
+            power,
+            toughness,
+            keywords,
+        } => {
             if let Some(id) = permanent_source {
                 if state.battlefield.iter().any(|p| p.id == id) {
                     let stamp = state.mint_id();
@@ -509,6 +513,17 @@ pub(crate) fn apply_effect(
                         },
                         duration: Duration::UntilEndOfTurn,
                     });
+                    // The same source, in the same breath, at layer 6 instead of 7c —
+                    // the self-referential half of what `Effect::Pump` does for a target.
+                    for keyword in keywords {
+                        let stamp = state.mint_id();
+                        state.static_effects.push(StaticEffect {
+                            source: stamp,
+                            affects: EffectAffects::SpecificPermanent(id),
+                            modification: Modification::GrantKeyword(*keyword),
+                            duration: Duration::UntilEndOfTurn,
+                        });
+                    }
                 }
             }
         }

@@ -213,6 +213,7 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
             counter,
             count,
             count_amount,
+            keywords,
         } => {
             // "X +1/+1 counters, where X is your life total" — the letter in quantity
             // position and the source named after it, which is how a card prints an
@@ -222,13 +223,27 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
                 Some(_) => format!("X {} counters", crate::rules_text::counter_symbol(*counter)),
             };
             let clause = format!("put {what} on {}", target_phrase(*target, *targets));
-            match count_amount {
+            let clause = match count_amount {
                 None => clause,
                 Some(amount) => format!(
                     "{clause}, where X is {}",
                     amount_noun(amount, PlayerRef::Controller)
                 ),
+            };
+            // A keyword the same sentence grants goes to the same creature, and the card
+            // says so with a pronoun rather than by naming the class twice — "and **that
+            // creature** gains flying until end of turn". The pronoun is what the second
+            // clause is for; repeating the noun would read as a second target, which is
+            // precisely the thing the one-effect shape exists to prevent.
+            if keywords.is_empty() {
+                return clause;
             }
+            let words: Vec<&str> = keywords.iter().map(|&kw| keyword_word(kw)).collect();
+            format!(
+                "{clause}, and {} gains {} until end of turn",
+                counter_pronoun(*targets),
+                list_words(&words)
+            )
         }
         // One effect, one target, one sentence: the keywords a pump also grants are
         // granted to the same creature, so they read as a second verb on the same
@@ -306,8 +321,21 @@ pub(super) fn effect_clause(source: &str, effect: &Effect) -> String {
         ),
         // A self-referential effect names the source by name, so the sentence reads
         // the way the card does rather than as an anonymous "this".
-        Effect::PumpSelf { power, toughness } => {
-            format!("{source} gets {power:+}/{toughness:+} until end of turn")
+        // The self row of what `Effect::Pump` says for a target: one subject, one
+        // duration, and the keywords the same sentence grants read as a second verb on
+        // it rather than as a sentence of their own.
+        Effect::PumpSelf {
+            power,
+            toughness,
+            keywords,
+        } => {
+            let mut clauses = vec![format!("gets {power:+}/{toughness:+}")];
+            if !keywords.is_empty() {
+                let words: Vec<&str> = keywords.iter().map(|&kw| keyword_word(kw)).collect();
+                clauses.push(format!("gains {}", list_words(&words)));
+            }
+            let verbs = list_words(&clauses.iter().map(String::as_str).collect::<Vec<_>>());
+            format!("{source} {verbs} until end of turn")
         }
         Effect::RestrictSelf { restriction } => {
             format!("{source} {} this turn", restriction_predicate(restriction))
@@ -1076,6 +1104,21 @@ fn entering_noun(filter: &EnteringFilter) -> String {
 /// A target group as the phrase a card writes it in: `target creature` for the ordinary
 /// single-target effect, `each of up to two target creatures` for the one that may name
 /// fewer than it allows.
+/// The pronoun a counter-and-grant sentence refers back to its own target with — `that
+/// creature` for one, `those creatures` for a group.
+///
+/// The whole point of the pronoun is that it is **not** the noun: a card that says "put a
+/// +1/+1 counter on another target creature you control, and *that creature* gains
+/// flying" names one creature and then points at it. Writing the class out twice would
+/// read as a second target, which is the misauthoring
+/// [`Violation::TwoTargetsOfOneClass`](sage_engine::Violation) exists to refuse.
+fn counter_pronoun(count: TargetCount) -> &'static str {
+    match count {
+        TargetCount::Exactly(1) | TargetCount::UpTo(1) => "that creature",
+        _ => "those creatures",
+    }
+}
+
 fn target_phrase(spec: TargetSpec, count: TargetCount) -> String {
     match count {
         TargetCount::Exactly(1) => target_noun(spec),

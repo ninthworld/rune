@@ -424,6 +424,7 @@ fn issue_149_put_counters_ability_lands_on_its_target_cr_122() {
             origin: AbilityOrigin::Activated,
             effects: vec![Effect::PutCounters {
                 count_amount: None,
+                keywords: Vec::new(),
                 targets: crate::ability::TargetCount::Exactly(1),
                 target: TargetSpec::AnyCreature,
                 counter: CounterKind::PlusOnePlusOne,

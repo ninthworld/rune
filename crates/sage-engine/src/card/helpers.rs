@@ -531,6 +531,7 @@ mod tests {
                 event: TriggerCondition::SelfEntersBattlefield,
                 effects: vec![Effect::PutCounters {
                     count_amount: None,
+                    keywords: Vec::new(),
                     targets: crate::ability::TargetCount::Exactly(1),
                     target: TargetSpec::AnyCreature,
                     counter: CounterKind::PlusOnePlusOne,
@@ -550,6 +551,7 @@ mod tests {
             crate::card::tests::card_named(&inline, "test_wither").spell_effects,
             vec![Effect::PutCounters {
                 count_amount: None,
+                keywords: Vec::new(),
                 targets: crate::ability::TargetCount::Exactly(1),
                 target: TargetSpec::AnyCreature,
                 counter: CounterKind::MinusOneMinusOne,

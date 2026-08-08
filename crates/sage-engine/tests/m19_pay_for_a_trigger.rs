@@ -183,14 +183,24 @@ fn an_unpayable_offer_is_not_posed() {
     assert!(state.stack.is_empty());
 }
 
-/// Skyrider Patrol buys a two-effect ability, and both effects land on the one creature
-/// its single slot named.
+/// Skyrider Patrol buys **one** effect for **one** creature: `put a +1/+1 counter on
+/// another target creature you control, and that creature gains flying until end of
+/// turn` names one creature and then points back at it.
+///
+/// The ability was authored as a counter beside a standalone keyword grant, which is two
+/// effects each declaring the same target class — so it advertised two slots and this
+/// test filled both of them with the same creature, which is how it stayed green while
+/// the card was wrong (issue #821). A second ally is on the board now, and the slot count
+/// is asserted rather than assumed.
 #[test]
-fn skyrider_patrol_buys_a_counter_and_a_keyword_for_one_creature() {
+fn issue_821_skyrider_patrol_buys_a_counter_and_a_keyword_for_one_creature() {
     let db = db();
     let mut state = main_phase(&db);
     let patrol = place(&mut state, &db, "skyrider_patrol", PlayerId(0));
     let ally = place(&mut state, &db, "onakke_ogre", PlayerId(0));
+    // A second creature the ability could have aimed at, so "one slot" is a claim that
+    // can fail rather than a board with only one answer available.
+    let bystander = place(&mut state, &db, "centaur_courser", PlayerId(0));
     // Two lands to pay {G}{U} with. The pool empties between steps, so the mana has to be
     // made *while the offer is owed* (CR 605.3a) — which is the only time it is legal.
     let forest = place(&mut state, &db, "forest", PlayerId(0));
@@ -225,12 +235,29 @@ fn skyrider_patrol_buys_a_counter_and_a_keyword_for_one_creature() {
     let state = apply_action(&state, &Action::AnswerConfirm { accept: true }, &db);
 
     let ability = pending_trigger_target_choice(&state).expect("the ability owes targets");
+
+    // One slot, not two. A second target would be a card asking a question it does not
+    // print, and the answer would let a player counter one creature and fly another.
+    let two_targets = apply_action(
+        &state,
+        &Action::ChooseTriggerTargets {
+            ability,
+            mode: None,
+            targets: vec![Target::Permanent(ally), Target::Permanent(bystander)],
+        },
+        &db,
+    );
+    assert_eq!(
+        two_targets, state,
+        "the ability declares one target group, so a two-target answer is refused"
+    );
+
     let state = apply_action(
         &state,
         &Action::ChooseTriggerTargets {
             ability,
             mode: None,
-            targets: vec![Target::Permanent(ally), Target::Permanent(ally)],
+            targets: vec![Target::Permanent(ally)],
         },
         &db,
     );
@@ -240,6 +267,14 @@ fn skyrider_patrol_buys_a_counter_and_a_keyword_for_one_creature() {
     let stats = characteristics(&state, ally, &db);
     assert_eq!(stats.power, Some(5), "a 4/2 with a +1/+1 counter");
     assert!(stats.keywords.contains(&Keyword::Flying), "and flying");
+    // Both halves landed on the one creature the slot named, and nothing reached the
+    // other one — which is the whole of what "and that creature" means.
+    let untouched = characteristics(&state, bystander, &db);
+    assert_eq!(untouched.power, Some(3), "the bystander took no counter");
+    assert!(
+        !untouched.keywords.contains(&Keyword::Flying),
+        "and gained no flying"
+    );
     // "Another" is the source-relative class: the Patrol is not one of its own targets.
     assert_eq!(
         characteristics(&state, patrol, &db).power,
