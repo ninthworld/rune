@@ -628,6 +628,15 @@ pub enum ActivatorScope {
     /// Only an opponent of the watcher's controller — the "whenever an opponent
     /// activates" of a punisher.
     Opponents,
+    /// Only the watcher's **own controller** — the `whenever **you** activate an ability
+    /// of a Sarkhan planeswalker` of a card that watches its own player.
+    ///
+    /// The third answer to the one question this scope asks, and the one that was
+    /// missing: Sarkhan's Whelp was authored [`Self::Any`] because there was nothing
+    /// else to author, and fired on an opponent's Sarkhan (issue #823). A gap in a
+    /// closed set is not a neutral default — it silently widens every card that needed
+    /// the narrower reading.
+    You,
 }
 
 /// Which spells a [`TriggerCondition::YouCastSpell`] notices, and which spells an

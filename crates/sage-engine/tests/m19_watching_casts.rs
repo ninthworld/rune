@@ -258,6 +258,63 @@ fn sarkhans_unsealing_sweeps_for_a_creature_over_the_band() {
     );
 }
 
+/// The Whelp watches one **player** as well as one walker: `whenever **you** activate an
+/// ability of a Sarkhan planeswalker`.
+///
+/// It was authored to watch every player's activation, because the scope vocabulary had
+/// only "any" and "opponents" and no way to say "you" (issue #823) — so an opponent's own
+/// Sarkhan fired it. The comparison is the same walker on each side of the table, one
+/// activation each, which is what separates "the scope is enforced" from "nothing fired
+/// for some other reason".
+#[test]
+fn issue_823_the_whelp_watches_its_own_controllers_sarkhan_and_not_an_opponents() {
+    let db = db();
+    let mut state = main_phase(&db);
+    place(&mut state, &db, "sarkhan_s_whelp", PlayerId(0));
+    let mine = place(&mut state, &db, "sarkhan_fireblood", PlayerId(0));
+    let theirs = place(&mut state, &db, "sarkhan_fireblood", PlayerId(1));
+    for perm in &mut state.battlefield {
+        perm.entered_turn = 0;
+        perm.counters.insert(sage_engine::CounterKind::Loyalty, 5);
+    }
+
+    // Their Sarkhan, activated by them: a Sarkhan planeswalker's ability, and not one
+    // this Whelp's controller activated.
+    let mut opponents_turn = state.clone();
+    opponents_turn.active_player = PlayerId(1);
+    opponents_turn.priority = PlayerId(1);
+    let after_theirs = apply_action(
+        &opponents_turn,
+        &Action::ActivateAbility {
+            permanent: theirs,
+            index: 0,
+            targets: Vec::new(),
+            payment: Vec::new(),
+        },
+        &db,
+    );
+    assert!(
+        pending_trigger_target_choice(&after_theirs).is_none(),
+        "the card says `whenever you activate`, and that was not you"
+    );
+
+    // The same activation, on this side of the table: the Whelp owes a target.
+    let after_mine = apply_action(
+        &state,
+        &Action::ActivateAbility {
+            permanent: mine,
+            index: 0,
+            targets: Vec::new(),
+            payment: Vec::new(),
+        },
+        &db,
+    );
+    assert!(
+        pending_trigger_target_choice(&after_mine).is_some(),
+        "and this one was"
+    );
+}
+
 /// The Whelp watches one walker by name: an ability of a **Sarkhan** planeswalker.
 #[test]
 fn sarkhans_whelp_watches_a_sarkhan_and_not_another_walker() {

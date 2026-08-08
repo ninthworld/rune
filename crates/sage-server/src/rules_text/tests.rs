@@ -1335,6 +1335,13 @@ fn the_watched_draw_attack_and_activation_each_have_words() {
         "Whenever an opponent activates a nonmana ability of a creature or land, \
          you may draw a card."
     );
+    // The third scope, and the one that was missing: a card that watches its own
+    // controller says "you", not "a player" (issue #823).
+    assert_eq!(
+        text_of(&db, "sarkhan_s_whelp"),
+        "Flying\nWhenever you activate a nonmana ability of a Sarkhan planeswalker, \
+         Sarkhan's Whelp deals 1 damage to any target."
+    );
 
     // The watching attack condition and the keyword filter have no authorable card
     // yet — the M19 cards that want them need vocabulary that does not exist — so
