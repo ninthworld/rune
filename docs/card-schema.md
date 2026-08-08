@@ -2931,9 +2931,10 @@ the only reading available rather than a simplification: the class is asked abou
 a hand, a graveyard, or on the stack, which has no permanent and no computed
 characteristics of any kind.
 
-`ability_activated` watches a player activating an ability (CR 602.2), with two optional
-filters: `activator` is `any` (the default) or `opponents`, and `source_types` names the
-permanent types whose abilities count, satisfied by any one of them.
+`ability_activated` watches a player activating an ability (CR 602.2), with three
+optional filters: `activator` is `any` (the default), `opponents`, or `you`;
+`source_types` names the permanent types whose abilities count, satisfied by any one of
+them; and `source_subtype` narrows to one printed subtype — `a **Sarkhan** planeswalker`.
 
 ```json
 { "type": "triggered",
@@ -2941,6 +2942,12 @@ permanent types whose abilities count, satisfied by any one of them.
                                     "source_types": ["creature", "land"] } },
   "effects": [{ "kind": "may", "effects": [{ "kind": "draw_card", "count": 1 }] }] }
 ```
+
+The three scopes are a **closed set with no neutral member**, which is why `you` had to
+exist rather than be approximated: Sarkhan's Whelp prints `whenever **you** activate an
+ability of a Sarkhan planeswalker` and was authored `any` because there was nothing else
+to author, so it fired on an opponent's Sarkhan (issue #823). A missing scope does not
+leave a card unwritable — it leaves it writable and wrong, which is the worse failure.
 
 **A mana ability never fires it** (CR 605.3a), and no card has to say so: the condition
 looks at the objects a transition put on the stack, and a mana ability resolves without

@@ -755,10 +755,18 @@ fn observed_activation_matches(
     else {
         return false;
     };
+    // The activator is the activated permanent's controller (CR 602.1a), which is the
+    // controller of the ability this transition pushed. Read relative to the *watcher*,
+    // like every other scope on this ability.
     match observes.activator {
         ActivatorScope::Any => {}
         ActivatorScope::Opponents => {
             if object.controller == source.controller {
+                return false;
+            }
+        }
+        ActivatorScope::You => {
+            if object.controller != source.controller {
                 return false;
             }
         }

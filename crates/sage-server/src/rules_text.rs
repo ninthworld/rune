@@ -400,11 +400,16 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                 TriggerCondition::YouDrawCard => "Whenever you draw a card".to_string(),
                 // "Nonmana" is the engine's own word for the CR 605.3a exclusion the
                 // condition enforces structurally: an ability that uses the stack.
-                TriggerCondition::AbilityActivated(observes) => format!(
-                    "Whenever {} activates a nonmana ability{}",
-                    activator_subject(observes.activator),
-                    activated_source_clause(&observes.source_types)
-                ),
+                TriggerCondition::AbilityActivated(observes) => {
+                    let (subject, verb) = activator_subject(observes.activator);
+                    format!(
+                        "Whenever {subject} {verb} a nonmana ability{}",
+                        activated_source_clause(
+                            &observes.source_types,
+                            observes.source_subtype.as_deref(),
+                        )
+                    )
+                }
                 TriggerCondition::YouCastSpell(spell) => {
                     format!("Whenever you cast {}", observed_spell_noun(*spell))
                 }
@@ -606,33 +611,51 @@ fn observed_subject(observes: &ObservedPermanent) -> String {
     }
 }
 
-/// The subject of an activation-watching trigger's sentence: the player whose
-/// activations it notices.
-fn activator_subject(activator: ActivatorScope) -> &'static str {
+/// The subject of an activation-watching trigger's sentence — the player whose
+/// activations it notices — **and the verb that agrees with it**.
+///
+/// The two travel together because English does not let them travel apart: "a player
+/// activates" and "an opponent activates" take the third person, and "you activate" does
+/// not. Returning the pair is what stops a scope added later from reading as "you
+/// activates", which is what the third one did the moment it existed (issue #823).
+fn activator_subject(activator: ActivatorScope) -> (&'static str, &'static str) {
     match activator {
-        ActivatorScope::Any => "a player",
-        ActivatorScope::Opponents => "an opponent",
+        ActivatorScope::Any => ("a player", "activates"),
+        ActivatorScope::Opponents => ("an opponent", "activates"),
+        ActivatorScope::You => ("you", "activate"),
     }
 }
 
 /// The "of a creature or land" that follows "activates a nonmana ability", or nothing
-/// at all when the selector names no types and every permanent's abilities count.
-fn activated_source_clause(source_types: &[CardType]) -> String {
-    if source_types.is_empty() {
-        return String::new();
-    }
-    // "A creature or land": the article rides on the first noun only, exactly as a card
-    // prints it, and agrees with that noun alone.
+/// at all when the selector names neither types nor a subtype and every permanent's
+/// abilities count.
+///
+/// The subtype sits **in front of** the type noun, the way a card prints it — `of a
+/// Sarkhan planeswalker`, not `of a planeswalker` with the name dropped. Leaving it out
+/// made Sarkhan's Whelp read as watching every walker on the table, which is a different
+/// card from the one the engine was enforcing.
+fn activated_source_clause(source_types: &[CardType], source_subtype: Option<&str>) -> String {
     let nouns: Vec<&str> = source_types
         .iter()
         .map(|&kind| card_type_word(kind))
         .collect();
-    let article = if nouns[0].starts_with(['a', 'e', 'i', 'o', 'u']) {
+    // A subtype with no type behind it is still a class a card names — "an ability of a
+    // Sarkhan" would be nobody's card, but the vocabulary allows the pairing and the
+    // sentence has to say something rather than silently say nothing.
+    let class = match (nouns.as_slice(), source_subtype) {
+        ([], None) => return String::new(),
+        ([], Some(subtype)) => subtype.to_string(),
+        (_, None) => nouns.join(" or "),
+        (_, Some(subtype)) => format!("{subtype} {}", nouns.join(" or ")),
+    };
+    // "A creature or land": the article rides on the first word only, exactly as a card
+    // prints it, and agrees with that word alone.
+    let article = if class.starts_with(['a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U']) {
         "an"
     } else {
         "a"
     };
-    format!(" of {article} {}", nouns.join(" or "))
+    format!(" of {article} {class}")
 }
 
 /// The step a step trigger watches, as the noun phrase that follows "at the beginning
